@@ -1,0 +1,41 @@
+# CODEOWNERS
+#
+# These owners are automatically requested for review when someone opens a
+# pull request that modifies files matching the patterns below.
+#
+# Format: pattern    @owner
+# Docs: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default: all files require review from the founding team
+*                                           @your-org/core
+
+# Algorithm — any change to pruning logic requires a second reviewer
+src/pruner/                                 @your-org/core @your-org/algorithm-reviewers
+docs/ALGORITHM.md                           @your-org/core
+
+# Billing — requires two reviewers, no exceptions
+src/billing/                                @your-org/core @your-org/billing-reviewers
+supabase/migrations/                        @your-org/core
+
+# Security-critical — TEE, crypto, and ZK-Context
+src/proxy/tee/                              @your-org/core @your-org/security-reviewers
+src/pruner/crypto.ts                        @your-org/core @your-org/security-reviewers
+docs/SECURITY.md                            @your-org/core @your-org/security-reviewers
+docs/enclave-pcr-values.md                  @your-org/core @your-org/security-reviewers
+SECURITY_POLICY.md                          @your-org/core
+
+# Architecture decisions — founder must approve all ADRs
+docs/decisions/                             @your-org/core
+
+# Eval framework — any threshold change requires explicit approval
+docs/EVAL_FRAMEWORK.md                      @your-org/core
+evals/                                      @your-org/core
+
+# Claude Code instructions — changes here affect all AI-assisted development
+.claude/CLAUDE.md                           @your-org/core
+
+# Documentation — any contributor can update docs but core reviews
+docs/                                       @your-org/core
+README.md                                   @your-org/core
+CONTRIBUTING.md                             @your-org/core
+CHANGELOG.md                                @your-org/core
