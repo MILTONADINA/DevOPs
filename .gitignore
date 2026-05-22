@@ -54,3 +54,6 @@ analyzer/.cache/
 # Local override (per-machine, never committed)
 AGENTS.override.md
 .claude/local.md
+
+# Operator scratch directory (local-only)
+.prompts/
