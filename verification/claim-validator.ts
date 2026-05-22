@@ -190,7 +190,7 @@ function validateSchema(doc: ClaimDoc): string[] {
 
 function validateGitSha(sha: string): string[] {
   try {
-    execSync(`git rev-parse --verify ${sha}^{commit}`, { stdio: 'pipe' });
+    execSync(`git rev-parse --verify "${sha}^{commit}"`, { stdio: 'pipe' });
     return [];
   } catch {
     return [`git_sha ${sha} does not exist in this repository`];
