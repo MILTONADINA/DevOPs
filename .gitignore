@@ -9,6 +9,8 @@
 **/venv/
 **/dist/
 **/build/
+# Exception: lifecycle/build/ holds the build lifecycle phase definitions, not build output.
+!lifecycle/build/
 **/target/
 **/.next/
 **/.turbo/
