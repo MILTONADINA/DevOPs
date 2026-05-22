@@ -1,0 +1,17 @@
+# sandbox/docker/Dockerfile.dev
+#
+# Reproducible dev environment matching the devcontainer.
+# CI uses this; humans typically use the devcontainer instead.
+
+FROM mcr.microsoft.com/devcontainers/typescript-node:20-bookworm
+
+# Pinned tooling
+RUN curl -L https://github.com/gitleaks/gitleaks/releases/download/v8.18.0/gitleaks_8.18.0_linux_x64.tar.gz | tar -xz -C /usr/local/bin gitleaks \
+    && pip install semgrep==1.45.0 ruff==0.4.0
+
+RUN npm i -g pnpm@9 biome@latest @playwright/test
+
+# Add cargo + rustfmt for Rust projects
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+
+WORKDIR /workspace

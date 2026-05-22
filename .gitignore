@@ -1,0 +1,56 @@
+# DevOPs .gitignore
+
+# Per-project state (never committed at the workflow repo level)
+.workflow/state/
+.workflow/proofs/
+**/node_modules/
+**/__pycache__/
+**/.venv/
+**/venv/
+**/dist/
+**/build/
+**/target/
+**/.next/
+**/.turbo/
+**/coverage/
+
+# Secrets — NEVER commit
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+*.crt
+*.p12
+.secrets/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+.workflow/state/events.jsonl
+
+# OS
+.DS_Store
+
+# DevOPs runtime artifacts
+governance/telemetry/*.jsonl
+meta-memory/recommendations-history.jsonl
+meta-memory/skill-telemetry.jsonl
+analyzer/.cache/
+
+# Test artifacts
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local override (per-machine, never committed)
+AGENTS.override.md
+.claude/local.md

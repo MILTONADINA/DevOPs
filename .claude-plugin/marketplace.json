@@ -1,0 +1,12 @@
+{
+  "name": "devops-marketplace",
+  "description": "DevOPs — the universal DevOps workflow for AI coding agents",
+  "plugins": [
+    {
+      "name": "devops",
+      "source": ".",
+      "category": "workflow",
+      "tags": ["devops", "spec-driven", "verification", "security", "universal"]
+    }
+  ]
+}

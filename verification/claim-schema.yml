@@ -1,0 +1,117 @@
+# verification/claim-schema.yml
+#
+# The structure every claim artifact in .workflow/proofs/ MUST satisfy.
+# The claim-validator parses and validates against this schema.
+
+$schema: "https://json-schema.org/draft/2020-12/schema"
+title: Claim
+description: A single verifiable claim with proof of work.
+
+type: object
+required: [claim]
+properties:
+  claim:
+    type: object
+    required: [id, type, spec_ref, description, proof, confidence, reproducibility_hash]
+    properties:
+      id:
+        type: string
+        pattern: "^claim-\\d{4}-\\d{2}-\\d{2}-\\d{3}$"
+        description: "Format: claim-YYYY-MM-DD-NNN"
+        examples: ["claim-2026-05-22-018"]
+
+      type:
+        type: string
+        enum:
+          - implementation
+          - test
+          - scan
+          - deploy
+          - migration
+          - refactor
+          - perf
+          - doc
+          - security-review
+          - threat-model
+        description: Category of work being claimed.
+
+      spec_ref:
+        type: string
+        description: "Path + anchor pointing into /specs/, e.g. specs/auth/tokens.md#ac-3"
+        pattern: "^specs/.+\\.md(#.+)?$"
+
+      description:
+        type: string
+        minLength: 10
+        maxLength: 280
+        description: One factual sentence. No marketing language.
+
+      proof:
+        type: object
+        required: [git_sha, files_changed, test_command, test_exit_code, test_output_path]
+        properties:
+          git_sha:
+            type: string
+            pattern: "^[0-9a-f]{7,40}$"
+            description: Commit SHA the work corresponds to.
+
+          files_changed:
+            type: array
+            items: { type: string }
+            minItems: 1
+            description: Paths of files changed in the commit. Must exist in the SHA.
+
+          test_command:
+            type: string
+            minLength: 1
+            description: Exact, runnable command. Must be reproducible.
+
+          test_exit_code:
+            type: integer
+            description: Exit code observed. Must be 0 for a passing claim.
+
+          test_output_path:
+            type: string
+            pattern: "^\\.workflow/proofs/.+\\.log$"
+            description: Full path to captured stdout+stderr.
+
+          duration_ms:
+            type: integer
+            minimum: 0
+            description: Wall-clock duration of the test command.
+
+          environment:
+            type: object
+            description: Optional. Record OS, Node version, Python version, etc.
+            additionalProperties: { type: string }
+
+      confidence:
+        type: string
+        enum: [high, medium, low]
+        description: |
+          - high: deterministic, reproducible (tests, type checks, builds)
+          - medium: reproducible in controlled env (Docker, CI)
+          - low: subjective or non-reproducible (screenshots, A/B)
+        # low triggers explicit human review
+
+      reproducibility_hash:
+        type: string
+        pattern: "^sha256:[0-9a-f]{64}$"
+        description: sha256(test_command + sorted_env + git_sha)
+
+      caveats:
+        type: string
+        description: Optional. Conditions under which the proof might not reproduce.
+
+      timestamp:
+        type: string
+        format: date-time
+        description: When the claim was emitted (ISO 8601 UTC).
+
+      tenant_id:
+        type: string
+        description: For multi-client work, which client this claim belongs to.
+
+      session_id:
+        type: string
+        description: Originating session for traceability.

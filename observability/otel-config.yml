@@ -1,0 +1,51 @@
+# observability/otel-config.yml
+# OpenTelemetry collector config for DevOPs
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+    timeout: 10s
+    send_batch_size: 1024
+
+  # Inline PII redaction
+  attributes:
+    actions:
+      - key: user.email
+        action: hash
+      - key: user.phone
+        action: delete
+      - key: http.request.body
+        action: delete
+      - key: llm.input_messages
+        action: delete  # use truncated/redacted version instead
+
+  # Baggage propagation
+  baggage:
+    actions:
+      - key: tenant.id
+        action: insert
+
+exporters:
+  otlp/langfuse:
+    endpoint: ${LANGFUSE_OTLP_ENDPOINT:-https://cloud.langfuse.com/api/public/otel}
+    headers:
+      Authorization: "Basic ${LANGFUSE_AUTH_B64}"
+
+  otlp/laminar:
+    endpoint: ${LAMINAR_OTLP_ENDPOINT:-https://api.lmnr.ai/v1/traces}
+    headers:
+      Authorization: "Bearer ${LAMINAR_API_KEY}"
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [attributes, baggage, batch]
+      exporters: [otlp/langfuse]  # swap to laminar by changing this

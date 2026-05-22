@@ -1,0 +1,22 @@
+# cost-controls/loop-thresholds.yml
+#
+# Thresholds for hooks/universal/pre-tool/loop-detection.sh
+
+# How many times the same (tool, args) tuple may fire before halt
+same_call_threshold: 5
+
+# Window for the threshold (minutes)
+same_call_window_minutes: 10
+
+# Scratchpad stasis: if the last N calls are identical, halt
+# This catches "stuck without realizing it" scenarios faster than the count-based check
+stasis_window: 3
+
+# Wall-clock cap per goal-loop iteration
+loop_iteration_max_seconds: 1800   # 30 min
+
+# Max iterations per goal-loop (constitution/LOOP.md default)
+goal_loop_max_iterations: 5
+
+# Tool call total cap per session (catches death-by-1000-cuts)
+total_tool_calls_per_session: 500

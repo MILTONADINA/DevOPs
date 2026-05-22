@@ -1,0 +1,11 @@
+{
+  "name": "memory-zep",
+  "command": "npx",
+  "args": ["-y", "@agentmemory/zep-mcp"],
+  "env": {
+    "ZEP_API_URL": "${ZEP_API_URL:-http://localhost:8000}",
+    "ZEP_API_KEY": "${ZEP_API_KEY}",
+    "ZEP_TENANT_ID": "${ZEP_TENANT_ID}"
+  },
+  "description": "Zep MCP: semantic temporal memory across sessions"
+}

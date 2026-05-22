@@ -1,0 +1,23 @@
+{
+  "name": "DevOPs Sandbox",
+  "image": "mcr.microsoft.com/devcontainers/typescript-node:20-bookworm",
+  "features": {
+    "ghcr.io/devcontainers/features/python:1": { "version": "3.12" },
+    "ghcr.io/devcontainers/features/rust:1": {},
+    "ghcr.io/devcontainers/features/go:1": {},
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {},
+    "ghcr.io/devcontainers/features/github-cli:1": {}
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-azuretools.vscode-docker",
+        "esbenp.prettier-vscode",
+        "biomejs.biome",
+        "rust-lang.rust-analyzer",
+        "ms-python.python"
+      ]
+    }
+  },
+  "postCreateCommand": "npm i -g pnpm gitleaks semgrep && pip install ruff black"
+}

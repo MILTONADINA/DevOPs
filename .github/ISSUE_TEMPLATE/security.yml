@@ -1,0 +1,15 @@
+name: Security
+description: For non-sensitive security improvements ONLY. For vulnerabilities, email maintainer privately.
+title: "[Security] "
+labels: [security]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **DO NOT FILE THIS FORM FOR VULNERABILITIES.**
+        Email the maintainer privately. See `docs/SECURITY.md`.
+        This form is for non-sensitive security improvements only.
+  - type: textarea
+    id: improvement
+    attributes:
+      label: Security improvement proposal

@@ -1,0 +1,76 @@
+{
+  "name": "@miltonadina/devops",
+  "version": "0.1.0",
+  "description": "A self-configuring, verification-first DevOps workflow for AI coding agents. Universal across Claude Code, Codex, Cursor, Antigravity, Kiro, and local LLMs.",
+  "type": "module",
+  "bin": {
+    "devops": "./scripts/devops-cli.js",
+    "devops-analyze": "./scripts/analyze.sh",
+    "devops-install": "./scripts/install.sh"
+  },
+  "scripts": {
+    "analyze": "./scripts/analyze.sh",
+    "install:project": "./scripts/init-project.sh",
+    "validate:claims": "node ./verification/claim-validator.js",
+    "test:hooks": "./hooks/test-all.sh",
+    "test:skills": "node ./governance/skill-evals/run-evals.js"
+  },
+  "keywords": [
+    "ai-agents",
+    "claude-code",
+    "codex",
+    "cursor",
+    "antigravity",
+    "kiro",
+    "devops",
+    "spec-driven-development",
+    "ears-notation",
+    "owasp-asi",
+    "skill",
+    "agents-md",
+    "claude-md",
+    "mcp",
+    "hooks",
+    "subagents",
+    "verification",
+    "proof-of-work",
+    "stratum",
+    "karpathy"
+  ],
+  "author": "Milton Adina",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MILTONADINA/DevOPs.git"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "files": [
+    "AGENTS.md",
+    "CLAUDE.md",
+    ".claude-plugin/",
+    "constitution/",
+    "skills/",
+    "hooks/",
+    "subagents/",
+    "slash-commands/",
+    "mcp-configs/",
+    "modes/",
+    "lifecycle/",
+    "templates/",
+    "memory/",
+    "verification/",
+    "governance/",
+    "meta-memory/",
+    "sandbox/",
+    "observability/",
+    "cost-controls/",
+    "analyzer/",
+    "scripts/",
+    "docs/",
+    "LICENSE",
+    "README.md",
+    "CHANGELOG.md"
+  ]
+}

@@ -1,0 +1,59 @@
+# verification/confidence-rules.yml
+#
+# Rules for what counts as high/medium/low confidence on different claim types.
+# Read by the claim-validator and session-summary skill.
+
+rules:
+  - claim_type: implementation
+    default_confidence: high
+    require_low_review_when:
+      - "test_command starts with 'manual:'"
+      - "files_changed includes UI components AND no visual diff captured"
+      - "duration_ms < 100 (suspiciously fast)"
+
+  - claim_type: test
+    default_confidence: high
+    require_low_review_when:
+      - "uses fake_timer AND no real-clock equivalent test exists"
+      - "skips network (mocked) AND endpoint is in production-critical path"
+
+  - claim_type: scan
+    default_confidence: high
+    require_low_review_when:
+      - "tool not in [gitleaks, semgrep, trivy, nuclei, zap, npm-audit, pnpm-audit, pip-audit, cargo-audit]"
+      - "exit_code 0 but findings file shows non-zero severity entries"
+
+  - claim_type: deploy
+    default_confidence: medium
+    require_low_review_when:
+      - "target environment is production AND no canary or blue-green referenced"
+      - "no smoke test command in test_command"
+    auto_downgrade_to_low:
+      - "test_command does not include a health check"
+
+  - claim_type: migration
+    default_confidence: medium
+    auto_downgrade_to_low:
+      - "test_command does not include rollback verification"
+      - "no backup_proof field"
+
+  - claim_type: refactor
+    default_confidence: high
+    require_low_review_when:
+      - "diff size > 500 lines (large refactor — verify behavior preserved)"
+
+  - claim_type: perf
+    default_confidence: low  # always require human review for perf claims
+    note: "Perf claims always require human review. Numbers without methodology are noise."
+
+  - claim_type: security-review
+    default_confidence: medium
+    require_low_review_when:
+      - "reviewer is the same as implementer"
+    require_two_reviewers: true
+
+low_confidence_handling:
+  block_session_complete: true
+  surface_in_summary: top
+  require_approval_token: true
+  notify: [".workflow/state/blockers.md"]

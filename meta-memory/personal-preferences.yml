@@ -1,0 +1,28 @@
+# meta-memory/personal-preferences.yml
+#
+# Per-user preferences learned across projects. Update by hand or via the
+# `surface-preference` skill (Phase 6).
+
+user: milton-adina
+
+preferences:
+  models:
+    default_tier: sonnet
+    routine_tier: haiku
+    architecture_tier: opus
+  workflow:
+    spec_first: true
+    test_first: true
+    surgical_diffs: true
+    verification_required: true
+  communication:
+    prefers: "direct, concise, technical"
+    avoids: "marketing language, em-dash, excessive emoji"
+  stacks_known:
+    - next.js + supabase + stripe
+    - rust + axum + postgres
+    - python + fastapi
+  domains_active:
+    - coppa-scope work
+    - cybersecurity
+    - full-stack web

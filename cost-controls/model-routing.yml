@@ -1,0 +1,76 @@
+# cost-controls/model-routing.yml
+#
+# Three-tier routing. Documented 50-80% cost reduction vs. all-Sonnet baseline.
+# Read by Claude Code subagent definitions and the orchestrator.
+
+models:
+  haiku:
+    id: claude-haiku-4-5
+    cost_per_mtok_input_usd: 1.00
+    cost_per_mtok_output_usd: 5.00
+    context_window: 200000
+    use_for:
+      - routine code edits
+      - classification
+      - extraction
+      - short-context coding
+      - code review (lint-level)
+      - documentation generation
+      - test execution (low reasoning)
+
+  sonnet:
+    id: claude-sonnet-4-6
+    cost_per_mtok_input_usd: 3.00
+    cost_per_mtok_output_usd: 15.00
+    context_window: 1000000
+    use_for:
+      - default for complex implementation
+      - bug fixes
+      - standard refactoring
+      - code review (deep)
+      - long-context tasks
+
+  opus:
+    id: claude-opus-4-7
+    cost_per_mtok_input_usd: 5.00
+    cost_per_mtok_output_usd: 25.00
+    context_window: 1000000
+    use_for:
+      - architecture decisions
+      - novel problem solving
+      - planning phase only (advisor strategy)
+      - complex multi-file refactoring
+
+# Subagent routing
+subagents:
+  planner: opus      # architecture decisions
+  researcher: haiku  # read-heavy, low reasoning
+  coder: sonnet      # the workhorse
+  tester: haiku      # test execution
+  reviewer: sonnet   # diff analysis
+  security: sonnet   # scan interpretation
+  validator: opus    # independent final verification
+
+# Advisor strategy: Opus plans, Sonnet/Haiku implements
+advisor_strategy:
+  enabled: true
+  planning_phase_model: opus
+  implementation_phase_model: sonnet
+  review_phase_model: haiku
+
+# Batch API (50% discount for non-real-time work)
+batch_api:
+  enabled: true
+  use_for:
+    - security scans
+    - documentation generation
+    - eval runs
+    - cost reports
+    - test data generation
+
+# Prompt caching (constitution layer is the ideal cache candidate)
+prompt_caching:
+  cache_constitution: true
+  cache_agents_md: true
+  cache_skill_metadata: true
+  ttl_minutes: 60

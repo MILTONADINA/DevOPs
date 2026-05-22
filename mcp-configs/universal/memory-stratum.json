@@ -1,0 +1,11 @@
+{
+  "name": "memory-stratum",
+  "command": "npx",
+  "args": ["-y", "@miltonadina/stratum-mcp"],
+  "env": {
+    "STRATUM_BASE_URL": "${ANTHROPIC_BASE_URL:-http://localhost:4080}",
+    "STRATUM_API_KEY": "${STRATUM_API_KEY}",
+    "STRATUM_TENANT_ID": "${STRATUM_TENANT_ID}"
+  },
+  "description": "Stratum memory MCP: structured facts, billing ledger, audit conflicts"
+}

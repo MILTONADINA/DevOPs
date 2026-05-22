@@ -1,0 +1,51 @@
+{
+  "name": "devops",
+  "displayName": "DevOPs",
+  "version": "0.1.0",
+  "description": "Self-configuring, verification-first DevOps workflow for AI coding agents. Universal across Claude Code, Codex, Cursor, Antigravity, Kiro, and local LLMs. Includes constitution, hooks, project analyzer, claim validator, three-tier memory, EARS specs, OWASP ASI 2026 security baseline, and 50+ skills.",
+  "author": {
+    "name": "Milton Adina",
+    "url": "https://github.com/MILTONADINA"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/MILTONADINA/DevOPs",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MILTONADINA/DevOPs.git"
+  },
+  "keywords": [
+    "devops",
+    "spec-driven-development",
+    "ears",
+    "owasp-asi",
+    "verification",
+    "proof-of-work",
+    "agents-md",
+    "skills",
+    "hooks",
+    "subagents",
+    "karpathy",
+    "stratum"
+  ],
+  "components": {
+    "skills": "skills/universal/**",
+    "agents": "subagents/universal",
+    "commands": "slash-commands/universal",
+    "hooks": "hooks/universal",
+    "mcp": "mcp-configs/universal"
+  },
+  "lifecycle": {
+    "onInstall": "./scripts/post-install.sh",
+    "onSessionStart": "./hooks/universal/session-start/load-constitution.sh",
+    "onSessionEnd": "./hooks/universal/session-end/write-baton.sh"
+  },
+  "requires": {
+    "claudeCode": ">=2.1.0"
+  },
+  "optionalDependencies": {
+    "stratum": "Phase 0+ session capture proxy; pruning requires Stratum Phase 2",
+    "zep": "Self-hosted Zep for semantic temporal memory",
+    "langfuse": "Observability backend",
+    "laminar": "Agent-first observability alternative to Langfuse"
+  }
+}

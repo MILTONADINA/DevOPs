@@ -1,0 +1,20 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm install -g tsx
+      - name: Validate all claims
+        run: tsx verification/claim-validator.ts --all --no-rerun
+        # Note: --no-rerun in CI; full --rerun in pre-merge gate
+      - name: Check stale proofs
+        run: tsx verification/stale-proof-detector.ts

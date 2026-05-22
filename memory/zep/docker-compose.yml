@@ -1,0 +1,33 @@
+# memory/zep/docker-compose.yml
+#
+# Self-hosted Zep for semantic temporal memory.
+
+version: "3.9"
+
+services:
+  zep:
+    image: ghcr.io/getzep/zep:latest
+    ports:
+      - "8000:8000"
+    environment:
+      ZEP_OPENAI_API_KEY: ${OPENAI_API_KEY}
+      ZEP_LLM_PROVIDER: openai
+      ZEP_EMBEDDINGS_PROVIDER: openai
+      ZEP_DATABASE_URL: postgres://zep:zep@postgres:5432/zep?sslmode=disable
+      ZEP_AUTH_SECRET: ${ZEP_AUTH_SECRET:-change-me-in-production}
+    depends_on:
+      - postgres
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: zep
+      POSTGRES_PASSWORD: zep
+      POSTGRES_DB: zep
+    volumes:
+      - zep_pg_data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+
+volumes:
+  zep_pg_data:

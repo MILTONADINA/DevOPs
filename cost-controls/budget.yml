@@ -1,0 +1,38 @@
+# cost-controls/budget.yml
+#
+# Default budget brakes. Copied into each project's .workflow/state/budget.yml
+# by init-project.sh. Each project can override.
+#
+# Read by hooks/universal/pre-tool/budget-brake.sh on every LLM call.
+
+# Per-session cap. When hit, session halts.
+# Sensible default: enough for a focused 1-2 hour session.
+session_cap_usd: 5.00
+
+# Per-hour cap across all sessions for this project.
+# Catches multiple parallel sessions runaway.
+hourly_cap_usd: 20.00
+
+# Per-day cap (rolling 24h).
+# Catches "left it running overnight" disasters.
+# Real incident: $437 burned overnight.
+daily_cap_usd: 100.00
+
+# Per-month cap (rolling 30d). For project-level cost governance.
+monthly_cap_usd: 1000.00
+
+# What to do when a cap is hit
+on_cap_hit:
+  session: halt   # halt | warn
+  hourly: halt
+  daily: halt
+  monthly: halt
+
+# Notification (optional)
+notify:
+  on_50_percent_consumed: true
+  on_80_percent_consumed: true
+  on_cap_hit: true
+  channels:
+    - file: .workflow/state/events.jsonl
+    # Add Slack/email/webhook in observability/notifiers.yml

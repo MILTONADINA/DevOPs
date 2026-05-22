@@ -1,0 +1,26 @@
+name: Feature Request
+description: Propose a new skill, hook, subagent, mode, or other capability
+title: "[Feature] "
+labels: [feature]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What's currently painful or missing?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: How might DevOPs address this? EARS notation appreciated.
+    validations:
+      required: true
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Kind
+      options: [skill, hook, subagent, mode, lifecycle-phase, template, doc, other]
+    validations:
+      required: true
