@@ -235,6 +235,19 @@ function recommend(profile: Omit<Profile, 'recommended'>): Profile['recommended'
     skills.push('compliance/coppa-audit');
   }
 
+  // REQ-A5 (specs/phase-2/A-pentest-stack.md): pentest-stack MCPs surface when the
+  // project handles credentials or operates in a regulated scope. The 4 tools run
+  // under the security subagent's scoped permissions; planner/coder/researcher must
+  // not invoke them (enforced in subagents/universal/security.md).
+  const triggersPentest =
+    profile.domain.compliance.includes('PCI DSS') ||
+    profile.domain.compliance.includes('HIPAA') ||
+    profile.domain.compliance.includes('COPPA') ||
+    profile.stack.auth.length > 0;
+  if (triggersPentest) {
+    mcp_servers.push('shannon', 'pentagi', 'lyrie', 'pentest-ai');
+  }
+
   let initial_mode = 'brownfield';
   if (profile.state === 'greenfield') initial_mode = 'greenfield';
   if (profile.state === 'hotfix') initial_mode = 'hotfix';
