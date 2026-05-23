@@ -31,8 +31,8 @@ The red-team gate is the deterministic enforcement of the ASI 2026 threat model 
 
 ## Functional requirements (EARS)
 
-### REQ-B1 (Event-driven) — DeepTeam runs on PR
-WHEN a pull request is opened or updated against `main`, THE SYSTEM SHALL invoke DeepTeam with the `OWASP_ASI_2026()` framework against the agent under test and report results back to the PR.
+### REQ-B1 (Event-driven) — DeepTeam runs on agent-behavior PRs
+WHEN a pull request is opened or updated against `main` AND the PR's changed files include any path under `skills/**`, `hooks/**`, `subagents/**`, `constitution/**`, `mcp-configs/**`, `analyzer/**`, or `governance/owasp-asi-2026/**`, THE SYSTEM SHALL invoke DeepTeam with the `OWASP_ASI_2026()` framework against the agent under test and report results back to the PR. Documentation-only, dependency-bump-only, and pure-refactor PRs that do not touch any of these paths SHALL skip the red-team gate (REQ-B2 remains the defense-in-depth backstop on push to `main`).
 
 ### REQ-B2 (Event-driven) — DeepTeam runs on push to main
 WHEN a commit is pushed directly to `main`, THE SYSTEM SHALL invoke DeepTeam against the agent under test and fail the workflow on critical findings.
@@ -43,8 +43,8 @@ IF DeepTeam reports any finding with `severity: critical`, THEN THE SYSTEM SHALL
 ### REQ-B4 (Ubiquitous) — Medium/low findings are reported, not blocking
 THE SYSTEM SHALL surface medium- and low-severity findings as PR comments and uploaded artifacts (markdown report, JSONL log) but SHALL NOT block the merge on them.
 
-### REQ-B5 (Ubiquitous) — Red-team budget bounded
-THE SYSTEM SHALL enforce a per-run red-team token budget configured in `cost-controls/budget.yml` under a new `red_team` section. If the budget is exhausted before the framework completes, the workflow records a `budget_exhausted` artifact and fails with a clear message.
+### REQ-B5 (Ubiquitous) — Red-team budget bounded with production default
+THE SYSTEM SHALL enforce a per-run red-team budget configured in `cost-controls/budget.yml` under a new `red_team` section. The production default SHALL be `red_team.per_run_usd: 0.50` (rationale in Decisions). Per-project overrides SHALL be supported by editing the same field in the project's `cost-controls/budget.yml`. If the budget is exhausted before the framework completes, the workflow records a `budget_exhausted` artifact and fails with a clear message.
 
 ### REQ-B6 (Ubiquitous) — Results uploaded as artifacts
 THE SYSTEM SHALL upload the DeepTeam JSONL log, markdown report, and the agent's prompt/response transcript as GitHub Actions artifacts named `deepteam-{run-id}` with a 90-day retention.
@@ -60,9 +60,14 @@ THE SYSTEM SHALL pin every GitHub Action used in `security-scan.yml` to a commit
 ## Acceptance criteria
 
 ### AC-B1.1 (maps to REQ-B1)
-**Given** a feature branch with an agent-behaviour-changing commit
+**Given** a feature branch with at least one commit touching any path under `skills/**`, `hooks/**`, `subagents/**`, `constitution/**`, `mcp-configs/**`, `analyzer/**`, or `governance/owasp-asi-2026/**`
 **When** a pull request is opened against `main`
 **Then** a workflow run named `security-scan / deepteam` appears in the PR's checks list and completes within the configured budget.
+
+### AC-B1.2 (maps to REQ-B1)
+**Given** a feature branch with a documentation-only commit (changes confined to `docs/**`, `README.md`, or other paths NOT in the agent-behavior set above)
+**When** a pull request is opened against `main`
+**Then** the `security-scan / deepteam` job is skipped (does not appear in the PR's checks list, or appears as `skipped`).
 
 ### AC-B2.1 (maps to REQ-B2)
 **Given** a direct push to `main` (admin-allowed exception)
@@ -83,6 +88,11 @@ THE SYSTEM SHALL pin every GitHub Action used in `security-scan.yml` to a commit
 **Given** a `cost-controls/budget.yml` `red_team.per_run_usd: 0.05` configured to a value below the framework's typical cost
 **When** the workflow runs
 **Then** the framework is interrupted, an artifact `budget-exhausted.md` is uploaded, and the workflow exits non-zero with the message `Red-team run halted by budget brake`.
+
+### AC-B5.2 (maps to REQ-B5)
+**Given** the post-implementation `cost-controls/budget.yml` on a project that has not overridden the default
+**When** the file is parsed
+**Then** `red_team.per_run_usd` is present and equals `0.50`.
 
 ### AC-B6.1 (maps to REQ-B6)
 **Given** a completed workflow run
@@ -131,6 +141,8 @@ See `docs/threat-models/phase-2/B-deepteam-ci.md` (Step 2). Anticipated primary 
 
 ## Decisions
 
+- **PR trigger scoped to agent-behavior paths (REQ-B1).** Rationale: documentation-only, dependency-bump-only, and pure-refactor PRs cannot change agent behaviour, so running DeepTeam against them burns red-team budget on guaranteed-pass outcomes (~$0.50/run × ~100 PRs/month ≈ $50/month of waste in a busy month). Scoping the trigger to `skills/**`, `hooks/**`, `subagents/**`, `constitution/**`, `mcp-configs/**`, `analyzer/**`, and `governance/owasp-asi-2026/**` keeps per-PR cost on the PRs that actually exercise the threat surface. REQ-B2 (push to `main`) remains unconditional as the defense-in-depth backstop, so any path that bypasses the PR trigger still gets scanned at merge.
+- **Production default `red_team.per_run_usd: 0.50` (REQ-B5).** Rationale: DeepTeam's `OWASP_ASI_2026()` framework typical run cost is ~$0.30–$0.40 on the modelled small-to-medium agent surface; $0.50 provides ~25% headroom while still firing the brake on runaway probes. Projects with larger agent surfaces (multi-MCP, many subagents, larger context windows) override this in their project-local `cost-controls/budget.yml` to a value sized for their probe set. The override is a single-line YAML edit, no code change required.
 - **Block on `critical` only, not `high`.** The ASI 2026 severity scale is multi-tier; blocking on `high` would create churn during early Phase 2 development. Severity threshold is configurable in a future v0.2.x.
 - **Local parity script in POSIX bash, not PowerShell.** CI is Linux; developer parity should be on the same shell. Windows contributors run via Git Bash / WSL (already documented in `docs/HOOKS.md`).
 - **Artifact retention 90 days.** Matches the validation report retention; longer than typical PR cycles, shorter than the audit-trail retention which lives in `events.jsonl`.
@@ -145,25 +157,26 @@ None blocking. The synthetic agent fixture for AC-B3.1 will be a thin Python har
 
 ## Implementation plan
 
-Step 3 atomization will likely produce: (1) extend `cost-controls/budget.yml` with `red_team` section; (2) write `scripts/run-redteam.sh`; (3) modify `.github/workflows/security-scan.yml` to add the deepteam job; (4) author synthetic ASI01-failing fixture for AC-B3.1; (5) wire artifact upload + PR comment; (6) SHA-pin all actions.
+Step 3 atomization will likely produce: (1) extend `cost-controls/budget.yml` with `red_team` section (default `per_run_usd: 0.50`); (2) write `scripts/run-redteam.sh`; (3) modify `.github/workflows/security-scan.yml` to add the deepteam job with the `paths:` filter that scopes the trigger per REQ-B1; (4) author synthetic ASI01-failing fixture for AC-B3.1 and documentation-only fixture for AC-B1.2; (5) wire artifact upload + PR comment; (6) SHA-pin all actions.
 
 ## Test plan
 
-| REQ   | AC(s)   | Phase-2-impl claim ID (provisional) |
-| ----- | ------- | ----------------------------------- |
-| REQ-B1 | AC-B1.1 | (Phase 2 implementation) |
-| REQ-B2 | AC-B2.1 | (Phase 2 implementation) |
-| REQ-B3 | AC-B3.1 | (Phase 2 implementation) |
-| REQ-B4 | AC-B4.1 | (Phase 2 implementation) |
-| REQ-B5 | AC-B5.1 | (Phase 2 implementation) |
-| REQ-B6 | AC-B6.1 | (Phase 2 implementation) |
-| REQ-B7 | AC-B7.1 | (Phase 2 implementation) |
-| REQ-B8 | AC-B8.1 | (Phase 2 implementation) |
+| REQ   | AC(s)             | Phase-2-impl claim ID (provisional) |
+| ----- | ----------------- | ----------------------------------- |
+| REQ-B1 | AC-B1.1, AC-B1.2 | (Phase 2 implementation) |
+| REQ-B2 | AC-B2.1          | (Phase 2 implementation) |
+| REQ-B3 | AC-B3.1          | (Phase 2 implementation) |
+| REQ-B4 | AC-B4.1          | (Phase 2 implementation) |
+| REQ-B5 | AC-B5.1, AC-B5.2 | (Phase 2 implementation) |
+| REQ-B6 | AC-B6.1          | (Phase 2 implementation) |
+| REQ-B7 | AC-B7.1          | (Phase 2 implementation) |
+| REQ-B8 | AC-B8.1          | (Phase 2 implementation) |
 
-The Phase 2 spec-authoring claim for this spec is `claim-2026-05-22-018`.
+The Phase 2 spec-authoring claim for this spec is `claim-2026-05-22-018` (still valid after revision; the spec remains well-formed). The Step 1 revision claim — attesting that REQ-B1 + REQ-B5 were revised per reviewer feedback — is `claim-2026-05-22-025`.
 
 ---
 
 ## Change log
 
 - 2026-05-22 miltonadina: created (Phase 2 Step 1; Prompt 3 area B).
+- 2026-05-22 miltonadina: revised REQ-B1 (PR trigger scoped to agent-behavior paths — `skills/**`, `hooks/**`, `subagents/**`, `constitution/**`, `mcp-configs/**`, `analyzer/**`, `governance/owasp-asi-2026/**`) and REQ-B5 (production default `red_team.per_run_usd: 0.50` + override path); added AC-B1.2 (documentation PR skips gate) and AC-B5.2 (default value asserted); extended Decisions with scoping rationale and production-default rationale. Step 1 reviewer feedback.
