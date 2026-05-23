@@ -30,7 +30,7 @@
 **Type**: implementation
 **Effort**: ~45 min
 **Depends on**: D.01
-**Success criterion**: Body documents ≥ 3 patterns/anti-patterns (e.g., authn drift, server-action input validation, mutation idempotency); a `Tradeoff:` or `Why this matters:` section; ≥ 1 ` ```ts ` fenced block; ≥ 1 `ASI\d{2}` or `AST\d{2}` identifier (likely ASI02 Tool Misuse + ASI09 Misaligned & Deceptive Behaviours for client→server boundary confusion). D-lint (D.11) passes for this file.
+**Success criterion**: Body documents ≥ 3 patterns/anti-patterns (e.g., authn drift, server-action input validation, mutation idempotency); a `Tradeoff:` or `Why this matters:` section; ≥ 1 ` ```ts ` fenced block; canonical ASI identifiers — ASI02 (Tool Misuse — server action invoked from a wrong client context) AND ASI03 (Identity & Privilege Abuse — authn drift in token-bound mutations). Both verified against `governance/owasp-asi-2026/threats.md`. D-lint (D.11) passes for this file.
 
 ### Task D.03 — Author body: `skills/stack-specific/nextjs/check-route-types/SKILL.md`
 **REQ**: REQ-D3, D5, D6, D7
@@ -38,7 +38,7 @@
 **Type**: implementation
 **Effort**: ~45 min
 **Depends on**: D.01
-**Success criterion**: Body documents ≥ 3 anti-patterns around `next dev/build` typecheck gaps (`any`-typed params, missing route handler signatures, generated types staleness); tradeoff section; ` ```ts ` block; ASI/AST reference. D-lint passes.
+**Success criterion**: Body documents ≥ 3 anti-patterns around `next dev/build` typecheck gaps (`any`-typed params, missing route handler signatures, generated types staleness); tradeoff section; ` ```ts ` block. Per revised REQ-D7 (Step 3 reviewer feedback): no canonical ASI/AST identifier materially applies — typed-route hygiene is type-system correctness, not an agent-specific threat surface. Skill includes the explicit line `No canonical ASI/AST applies — type-system hygiene, not agent-specific security`. D-lint passes via the either-or branch.
 
 ### Task D.04 — Author body: `skills/stack-specific/stripe/webhook-idempotency/SKILL.md`
 **REQ**: REQ-D3, D5, D6, D7
@@ -86,7 +86,7 @@
 **Type**: implementation
 **Effort**: ~45 min
 **Depends on**: D.01
-**Success criterion**: Body documents ≥ 3 anti-patterns (`unwrap()` in request path, `panic!` instead of `Result`, leaking error internals via `Debug`); ` ```rust ` block with `thiserror`/`anyhow` example; ASI06 (Unexpected RCE — leaked error details fueling exploit chains) reference. D-lint passes.
+**Success criterion**: Body documents ≥ 3 anti-patterns (`unwrap()` in request path, `panic!` instead of `Result`, leaking error internals via `Debug`); ` ```rust ` block with `thiserror`/`anyhow` example. Per revised REQ-D7 (Step 3 reviewer feedback): no canonical ASI/AST identifier materially applies — Rust error handling is general security hygiene at the language-runtime layer; canonical ASI06 (Inter-agent Communication Attacks) does NOT map onto this concern. Skill includes the explicit line `No canonical ASI/AST applies — language-runtime hygiene, not agent-specific security`. D-lint passes via the either-or branch.
 
 ### Task D.10 — Author body: `skills/stack-specific/rust/cargo-audit/SKILL.md`
 **REQ**: REQ-D3, D5, D6, D7
@@ -102,7 +102,7 @@
 **Type**: test
 **Effort**: ~45 min
 **Depends on**: D.01
-**Success criterion**: The lint script walks `skills/stack-specific/**/SKILL.md`, validates frontmatter, counts H3/numbered anti-pattern entries (≥ 3), checks for `Tradeoff:` or `Why this matters:`, checks for ≥ 1 stack-appropriate fenced code block, checks for ≥ 1 `ASI\d{2}` or `AST\d{2}` identifier. Exit 0 PASS / non-zero FAIL with named file.
+**Success criterion**: The lint script walks `skills/stack-specific/**/SKILL.md`, validates frontmatter, counts H3/numbered anti-pattern entries (≥ 3), checks for `Tradeoff:` or `Why this matters:`, checks for ≥ 1 stack-appropriate fenced code block. Per revised AC-D7.1 (Step 3 reviewer feedback), the lint applies the either-or branch: EITHER (a) finds ≥ 1 `ASI\d{2}` or `AST\d{2}` identifier where every match is in the canonical set (ASI01–ASI10, AST01–AST10 from `governance/owasp-asi-2026/threats.md`), OR (b) finds zero matches AND finds the literal phrase `No canonical ASI/AST applies` followed by a reason. Non-canonical identifiers (e.g., a string `ASI06` paired with a description that doesn't match Inter-agent Communication Attacks) are caught by cross-referencing the canonical descriptions in the threats file. Exit 0 PASS / non-zero FAIL with named file.
 
 ### Task D.12 — Extend `analyzer/recommendation-rules.yml` with stack-specific skill recommendations
 **REQ**: REQ-D4
@@ -126,7 +126,7 @@
 **Type**: security-review
 **Effort**: ~45 min
 **Depends on**: D.02 – D.10
-**Success criterion**: Each of the 9 skills' cited ASI/AST identifier maps onto a documented threat in `governance/owasp-asi-2026/threats.md` and is materially mitigated by the skill's content (not decorative). Review checklist signed; any drift annotated.
+**Success criterion**: Each ASI/AST citation present in the 9 skills (i) is from the canonical ASI01–ASI10 / AST01–AST10 set in `governance/owasp-asi-2026/threats.md` (the identifier number AND its canonical description), AND (ii) is materially mitigated by the skill's content (not decorative). For each skill with no citation (per revised REQ-D7), the explicit `No canonical ASI/AST applies — <reason>` line is present with a defensible one-line reason. Review checklist signed. Audit closes the Step 3 reviewer finding that D.02 had cited "ASI09 Misaligned & Deceptive Behaviours" (non-canonical name) and D.09 had cited "ASI06 (Unexpected RCE)" (non-canonical mapping).
 
 ### Task D.15 — Security-review: PCI / GDPR / SOC 2 citations are accurate
 **REQ**: NFR-D4 (compliance accuracy)
@@ -184,3 +184,4 @@ D.02–D.10 are parallelisable. D.11 (lint) gates the per-skill quality bar. D.1
 ## Change log
 
 - 2026-05-23 miltonadina: created (Phase 2 Step 3; Prompt 3 area D plan decomposition).
+- 2026-05-23 miltonadina: revised D.02 (drop non-canonical "ASI09 Misaligned & Deceptive Behaviours"; keep canonical ASI02 + add canonical ASI03 for authn drift); revised D.03 + D.09 (explicit `No canonical ASI/AST applies` opt-out — D.03 is type-system hygiene, D.09 is language-runtime hygiene, neither maps onto canonical ASI06); revised D.11 (D-lint enforces either-or branch from revised AC-D7.1); revised D.14 (security-review now validates citations against canonical set, not just "documented threat"). Mirrors the Step 3 reviewer feedback and the corresponding REQ-D7 + AC-D7.1 revisions in spec D.

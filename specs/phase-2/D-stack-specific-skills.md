@@ -60,8 +60,8 @@ THE SYSTEM SHALL ensure every stack-specific skill contains an explicit "Tradeof
 ### REQ-D6 (Ubiquitous) — Worked code example
 THE SYSTEM SHALL ensure every stack-specific skill includes at least one fenced code example in the stack's native language (TypeScript/JS for Next.js & Stripe-JS; Python for FastAPI; SQL or JS for Supabase; Rust for Rust skills).
 
-### REQ-D7 (Ubiquitous) — ASI/AST threat reference
-THE SYSTEM SHALL ensure every stack-specific skill references at least one OWASP ASI 2026 or AST10 identifier from `governance/owasp-asi-2026/threats.md` that the skill mitigates.
+### REQ-D7 (Optional feature) — ASI/AST threat reference (MAY, with explicit opt-out)
+THE SYSTEM MAY ensure every stack-specific skill references at least one OWASP ASI 2026 or AST10 identifier from `governance/owasp-asi-2026/threats.md` that the skill materially mitigates. WHERE no canonical identifier materially applies (for example, language-runtime hygiene with no agent-specific threat path), the skill SHALL include an explicit line `No canonical ASI/AST applies — <one-line reason>` instead of a decorative reference. Any `ASI\d{2}` or `AST\d{2}` identifier present in the skill SHALL exist in the canonical set declared in `governance/owasp-asi-2026/threats.md` (ASI01–ASI10, AST01–AST10).
 
 ---
 
@@ -100,7 +100,7 @@ THE SYSTEM SHALL ensure every stack-specific skill references at least one OWASP
 ### AC-D7.1 (maps to REQ-D7)
 **Given** any stack-specific `SKILL.md`
 **When** the file is scanned for `ASI\d{2}` or `AST\d{2}` identifiers
-**Then** at least one match is found.
+**Then** EITHER (a) at least one match is found AND every match references a canonical identifier from `governance/owasp-asi-2026/threats.md` (the set ASI01–ASI10, AST01–AST10), OR (b) no match is found AND the file contains the literal phrase `No canonical ASI/AST applies` followed by a reason.
 
 ---
 
@@ -168,3 +168,4 @@ The Phase 2 spec-authoring claim for this spec is `claim-2026-05-22-020`.
 ## Change log
 
 - 2026-05-22 miltonadina: created (Phase 2 Step 1; Prompt 3 area D).
+- 2026-05-23 miltonadina: revised REQ-D7 (Ubiquitous SHALL → Optional MAY, with explicit `No canonical ASI/AST applies` opt-out path; any present identifier MUST be from the canonical set) and AC-D7.1 (either-or branch — match-found-and-canonical, OR no-match-with-explicit-note). Step 3 reviewer feedback after audit found D.02 and D.09 citing non-canonical ASI identifiers; the spec is updated so honest "no agentic threat applies" is permitted instead of forcing decorative references.
