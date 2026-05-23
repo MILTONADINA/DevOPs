@@ -120,6 +120,11 @@ E.02 → E.03 → E.04 is the linear signing chain. E.05 (trust bundle) is indep
 - Claim emission (E.10): ~0.5 hours
 - **Grand total: ~6.25–6.75 hours of Step 4 implementation work for area E.**
 
+## Step 4 carry-forwards (from Step 3 reviewer)
+
+- **E.04 release-tag chicken-and-egg**: E.04 requires triggering `release-sign.yml` via a release tag matching `v\d+\.\d+\.\d+`, but Phase 2 isn't at v0.2.0 yet (current state: pre-tag, on `phase-2-security-depth` branch). Resolution options for E.03 authoring: (a) add a `workflow_dispatch` trigger to `release-sign.yml` so the first signing run can be initiated manually without a tag (most flexible; pairs well with a CI dry-run pattern); (b) define a pre-release tag schema like `v0.2.0-rc1` that also triggers signing (more formal; matches semver conventions). Decide before E.03 authoring begins so the workflow trigger spec is final on first write.
+- **E.05 trust-bundle refresh cadence**: spec E says "refreshed periodically" without a concrete number. Resolution at E.05 implementation: pick a cadence (daily / weekly / on-release) and encode it in the refresh tooling itself (cron in a GitHub Actions workflow, or a Make target documented in `docs/SKILL_SIGNING.md`). Defaulting to weekly is safe — Sigstore's root-of-trust rotation has not historically been a high-frequency event.
+
 ## Out of scope for this plan
 
 - Install-time verification — area F (this plan ships signing; F consumes signatures).
@@ -130,3 +135,4 @@ E.02 → E.03 → E.04 is the linear signing chain. E.05 (trust bundle) is indep
 ## Change log
 
 - 2026-05-23 miltonadina: created (Phase 2 Step 3; Prompt 3 area E plan decomposition).
+- 2026-05-23 miltonadina: added Step 4 carry-forward annotations for E.04 release-tag mechanism (workflow_dispatch vs v0.2.0-rc1 pre-release tag — decide before E.03 authoring) and E.05 trust-bundle refresh cadence (decide concrete number during implementation). Per Step 3 reviewer feedback; not structural revisions — operator notes for Step 4 start.
