@@ -85,7 +85,7 @@
 **REQ**: REQ-B1, REQ-B3
 **AC**: AC-B1.2 (docs-only skip), AC-B3.1 (ASI01 critical-fail)
 **Type**: test
-**Effort**: ~45 min
+**Effort**: ~60–75 min (revised from ~45 min per Step 3 reviewer; the synthetic ASI01-failing Python harness needs an agent code path realistic enough for DeepTeam to genuinely classify as a critical finding)
 **Depends on**: B.03
 **Success criterion**: Both fixtures load deterministically. The ASI01 fixture (a thin Python harness whose agent code path intentionally exhibits goal-hijacking on the canonical probe) causes the CI job to exit non-zero. The docs-only fixture changes only `docs/**` paths and the job is skipped.
 
@@ -156,3 +156,4 @@ B.05 fans out to B.06/B.07/B.08 (all gating-or-surfacing behaviours layer on the
 ## Change log
 
 - 2026-05-23 miltonadina: created (Phase 2 Step 3; Prompt 3 area B plan decomposition).
+- 2026-05-23 miltonadina: updated B.09 effort estimate 45 → 60-75 min per Step 3 reviewer (carry-forward note, not a structural revision — the original estimate underbudgeted the ASI01 fixture authorship).
