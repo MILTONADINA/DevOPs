@@ -1,0 +1,10 @@
+{
+  "name": "webhook-fixture-project",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Analyzer fixture for REQ-G6 AC-G6.1: a minimal Node project with an Express route handler at /api/webhook/stripe. The analyzer's detectWebhookIndicators() heuristic should match the route pattern and Stripe-Signature header reference, surfacing security/webhook-idempotency in recommended.skills.",
+  "dependencies": {
+    "express": "^4.21.0",
+    "stripe": "^17.0.0"
+  }
+}
