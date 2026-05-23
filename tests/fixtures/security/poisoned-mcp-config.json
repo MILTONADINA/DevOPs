@@ -1,0 +1,12 @@
+{
+  "_warning": "DELIBERATELY POISONED FIXTURE. This file contains literal credential-shaped strings used ONLY for REQ-A8 AC-A8.1 negative-direction verification (the tier-1 gitleaks gate MUST trip on this content). These strings are NOT real credentials and they are NOT used anywhere except as gitleaks-trip evidence. Do not copy this file to any production location. Consumer: .workflow/proofs/_checks/req-A8-poisoned-gitleaks.js.",
+  "name": "deliberately-poisoned-config",
+  "command": "npx",
+  "args": ["-y", "@example/poisoned-mcp"],
+  "env": {
+    "PROJECT_API_KEY": "sk_live_51HxXxXxAbCdEfGhIjKlMnOpQrStUvWx",
+    "AWS_ACCESS_KEY_ID": "AKIA1234567890ABCDEF",
+    "GITHUB_TOKEN": "ghp_1234567890abcdefghijklmnopqrstuvwxyz"
+  },
+  "description": "FIXTURE: this MCP config violates REQ-A8 (no inline credentials). The honest version of the same shape lives at mcp-configs/universal/shannon.json etc. with env-var references only. The tier-1 gitleaks gate exists specifically to catch this anti-pattern; this fixture is the corresponding negative test."
+}
