@@ -1,0 +1,9 @@
+{
+  "name": "no-renovate-fixture-project",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Analyzer fixture for REQ-H8 AC-H8.1: a minimal Node project that has an upgradable manifest (package.json) but no renovate.json and no .github/dependabot.yml. The analyzer should surface templates/renovate/renovate.json in recommended.next_steps.",
+  "dependencies": {
+    "express": "^4.21.0"
+  }
+}

@@ -35,6 +35,7 @@ interface Profile {
     hooks: string[];
     mcp_servers: string[];
     subagents: string[];
+    next_steps: string[];
     initial_mode: string;
     initial_lifecycle: string;
   };
@@ -248,6 +249,25 @@ function recommend(profile: Omit<Profile, 'recommended'>): Profile['recommended'
     mcp_servers.push('shannon', 'pentagi', 'lyrie', 'pentest-ai');
   }
 
+  // REQ-H8 (specs/phase-2/H-renovate-template.md): when a consumer project
+  // handles upgradable dependencies but has no upgrade-PR automation
+  // configured, surface the Renovate template as a next-step recommendation.
+  const next_steps: string[] = [];
+  const root = profile.project_root;
+  const hasUpgradableManifest =
+    fileExists(path.join(root, 'package.json')) ||
+    fileExists(path.join(root, 'requirements.txt')) ||
+    fileExists(path.join(root, 'pyproject.toml')) ||
+    fileExists(path.join(root, 'Cargo.toml')) ||
+    fileExists(path.join(root, 'go.mod'));
+  const hasRenovate = fileExists(path.join(root, 'renovate.json'));
+  const hasDependabot =
+    fileExists(path.join(root, '.github', 'dependabot.yml')) ||
+    fileExists(path.join(root, '.github', 'dependabot.yaml'));
+  if (hasUpgradableManifest && !hasRenovate && !hasDependabot) {
+    next_steps.push('Use templates/renovate/renovate.json -- Renovate config for dependency-update PR automation (see docs/COST_OPTIMIZATION.md)');
+  }
+
   let initial_mode = 'brownfield';
   if (profile.state === 'greenfield') initial_mode = 'greenfield';
   if (profile.state === 'hotfix') initial_mode = 'hotfix';
@@ -260,10 +280,12 @@ function recommend(profile: Omit<Profile, 'recommended'>): Profile['recommended'
     hooks: [...new Set(hooks)],
     mcp_servers,
     subagents,
+    next_steps,
     initial_mode,
     initial_lifecycle,
   };
 }
+
 
 function main() {
   const root = process.cwd();

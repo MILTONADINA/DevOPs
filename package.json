@@ -12,6 +12,7 @@
     "analyze": "./scripts/analyze.sh",
     "install:project": "./scripts/init-project.sh",
     "validate:claims": "npx --yes tsx ./verification/claim-validator.ts",
+    "lint:renovate": "node ./scripts/lint-renovate.js",
     "test:hooks": "./hooks/test-all.sh",
     "test:skills": "node ./governance/skill-evals/run-evals.js"
   },
