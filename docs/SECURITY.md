@@ -49,6 +49,7 @@ Full threat-model context: [`docs/threat-models/phase-2/A-pentest-stack.md`](thr
 - `security/prompt-injection-defense` — content sanitization
 - `security/gitleaks-scan` — secret detection
 - `security/semgrep-scan` — static analysis
+- [`security/webhook-idempotency`](../skills/universal/security/webhook-idempotency/SKILL.md) — idempotency-key + replay-window + dedupe-storage discipline for webhook receivers (ASI02 Tool Misuse defense; universal across Stripe / GitHub / Slack / Twilio / SendGrid)
 
 ## Red team
 
