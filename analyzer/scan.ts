@@ -249,6 +249,16 @@ function recommend(profile: Omit<Profile, 'recommended'>): Profile['recommended'
     mcp_servers.push('shannon', 'pentagi', 'lyrie', 'pentest-ai');
   }
 
+  // REQ-G6 (specs/phase-2/G-webhook-idempotency.md): when the project has
+  // webhook-handler indicators (route matching /webhook(s)?/, Stripe/GitHub
+  // webhook headers, provider webhook SDK references), surface the universal
+  // webhook-idempotency skill. The detection is a bounded heuristic on common
+  // entry-point directories -- not a full source crawl. Downstream human
+  // review of the recommendation is the final gate.
+  if (detectWebhookIndicators(profile.project_root)) {
+    skills.push('security/webhook-idempotency');
+  }
+
   // REQ-H8 (specs/phase-2/H-renovate-template.md): when a consumer project
   // handles upgradable dependencies but has no upgrade-PR automation
   // configured, surface the Renovate template as a next-step recommendation.
@@ -284,6 +294,49 @@ function recommend(profile: Omit<Profile, 'recommended'>): Profile['recommended'
     initial_mode,
     initial_lifecycle,
   };
+}
+
+// REQ-G6 helper: detect webhook-handler indicators in the project root.
+// Scans common entry-point directories one level deep (no recursive walk) for
+// route paths or header references that signal a webhook receiver. Cheap
+// heuristic; downstream human review of the recommendation is the final gate.
+function detectWebhookIndicators(root: string): boolean {
+  const candidates: string[] = [];
+  for (const rel of ['src', 'app', 'pages', 'api', 'routes', 'server']) {
+    const dir = path.join(root, rel);
+    if (!fileExists(dir)) continue;
+    try {
+      const entries = fs.readdirSync(dir, { withFileTypes: true });
+      for (const e of entries) {
+        if (e.isFile()) candidates.push(path.join(dir, e.name));
+        else if (e.isDirectory()) {
+          try {
+            const sub = fs.readdirSync(path.join(dir, e.name), { withFileTypes: true });
+            for (const s of sub) if (s.isFile()) candidates.push(path.join(dir, e.name, s.name));
+          } catch { /* skip unreadable */ }
+        }
+      }
+    } catch { /* skip unreadable */ }
+  }
+  try {
+    for (const e of fs.readdirSync(root, { withFileTypes: true })) {
+      if (e.isFile() && /\.(ts|tsx|js|jsx|py|rs|go)$/.test(e.name)) candidates.push(path.join(root, e.name));
+    }
+  } catch { /* skip */ }
+
+  const webhookRoute = /['"\/]webhooks?[\/'"]/i;
+  const stripeSig = /['"]Stripe-Signature['"]/;
+  const githubSig = /['"]X-Hub-Signature(-256)?['"]/i;
+  const sdkRef = /from\s+['"]@octokit\/webhooks['"]|require\s*\(\s*['"]@octokit\/webhooks['"]\s*\)|stripe\.webhooks\./;
+
+  for (const file of candidates) {
+    let text: string;
+    try { text = fs.readFileSync(file, 'utf-8'); } catch { continue; }
+    if (webhookRoute.test(text) || stripeSig.test(text) || githubSig.test(text) || sdkRef.test(text)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 
