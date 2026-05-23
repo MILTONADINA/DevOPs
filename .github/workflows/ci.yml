@@ -18,3 +18,5 @@ jobs:
         # Note: --no-rerun in CI; full --rerun in pre-merge gate
       - name: Check stale proofs
         run: tsx verification/stale-proof-detector.ts
+      - name: Lint Renovate template (REQ-H1..H6)
+        run: npm run lint:renovate
