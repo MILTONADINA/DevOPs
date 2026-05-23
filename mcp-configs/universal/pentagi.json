@@ -1,0 +1,10 @@
+{
+  "name": "pentagi",
+  "command": "npx",
+  "args": ["-y", "@miltonadina/pentagi-mcp"],
+  "env": {
+    "PENTAGI_API_KEY": "${PENTAGI_API_KEY}",
+    "PENTAGI_AUTHORIZED_SCOPE": "${PENTAGI_AUTHORIZED_SCOPE}"
+  },
+  "description": "PentAGI autonomous-pentest-agent MCP. Long-running scan workflows under bounded scope. PENTAGI_AUTHORIZED_SCOPE must match the pentest authorization in .workflow/client/profile.yml (Constitution P7). Wall-clock and budget brakes (cost-controls/budget.yml) apply to every invocation."
+}

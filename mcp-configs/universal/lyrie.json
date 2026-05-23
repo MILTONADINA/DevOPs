@@ -1,0 +1,10 @@
+{
+  "name": "lyrie",
+  "command": "npx",
+  "args": ["-y", "@miltonadina/lyrie-mcp"],
+  "env": {
+    "LYRIE_API_KEY": "${LYRIE_API_KEY}",
+    "LYRIE_CORPUS_PATH": "${LYRIE_CORPUS_PATH:-./security-corpus}"
+  },
+  "description": "Lyrie RAG-based vulnerability-research assistant MCP. CVE database + security-literature lookup. ASI04 defense: every Lyrie output MUST pass through area C's external-content-boundary before re-entering agent context -- RAG corpora are attacker-influenceable channels."
+}
