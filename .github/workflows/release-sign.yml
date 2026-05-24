@@ -81,11 +81,17 @@ jobs:
           while IFS= read -r skill; do
             TOTAL_COUNT=$((TOTAL_COUNT + 1))
             sig="${skill}.sig"
+            bundle="${skill}.bundle"
             log=".workflow/sigstore/signing-logs/$(echo "${skill}" | tr '/' '_').log"
 
             echo "Signing: ${skill}"
+            # --output-signature: bare ECDSA signature (legacy/audit)
+            # --bundle: full Sigstore bundle (signature + signing certificate
+            #   + Rekor inclusion proof) -- this is the artifact required for
+            #   keyless verification via `cosign verify-blob --bundle ...`
             cosign sign-blob --yes "${skill}" \
               --output-signature "${sig}" \
+              --bundle "${bundle}" \
               > "${log}" 2>&1 || {
                 echo "FAIL: cosign sign-blob failed for ${skill}"
                 cat "${log}" || true
@@ -121,9 +127,12 @@ jobs:
           for entry in manifest['skills']:
               skill_path = Path(entry['path'])
               sig_path = Path(entry['sig_path'])
+              bundle_path = Path(str(skill_path) + '.bundle')
               if not sig_path.exists():
                   print(f"WARN: signature missing for {skill_path}; leaving placeholders")
                   continue
+              if not bundle_path.exists():
+                  print(f"WARN: bundle missing for {skill_path}; leaving bundle_path empty")
 
               # Recompute sha256 (defense against silent drift between
               # manifest-author time and signing time)
@@ -133,6 +142,11 @@ jobs:
               entry['signed_by'] = signed_by
               entry['signed_at'] = signed_at
               entry['signed_with_version'] = cosign_ver
+              # bundle_path: full Sigstore bundle (signature + certificate
+              # + Rekor inclusion proof) required for `cosign verify-blob
+              # --bundle ...`. The .sig file alone is insufficient for
+              # keyless verification.
+              entry['bundle_path'] = str(bundle_path).replace('\\', '/')
               # rekor_log_index: cosign v2.x writes the index to its
               # stderr log; full parsing is operator follow-up. Mark as
               # 'see-signing-logs' to make the lookup explicit.
@@ -150,8 +164,8 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email 'github-actions[bot]@users.noreply.github.com'
 
-          # Stage signatures + manifest
-          git add 'skills/universal/**/SKILL.md.sig' governance/skill-manifest.yml
+          # Stage signatures + bundles + manifest
+          git add 'skills/universal/**/SKILL.md.sig' 'skills/universal/**/SKILL.md.bundle' governance/skill-manifest.yml
 
           if git diff --staged --quiet; then
             echo "No changes to commit -- skills + manifest already in sync."
