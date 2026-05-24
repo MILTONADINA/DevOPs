@@ -1,0 +1,50 @@
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Build outputs
+dist/
+.wrangler/
+
+# Dependencies
+node_modules/
+
+# TypeScript
+*.tsbuildinfo
+
+# Rust / WASM
+rust/*/target/
+rust/*/pkg/
+
+# Supabase local
+.branches/
+supabase/.temp/
+supabase/docker-compose.yml
+
+# Eval results (too large to commit)
+evals/results/
+
+# Raw captured sessions (may contain sensitive content)
+data/sessions/
+data/design-partner/
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/settings.json
+.idea/
+*.swp
+
+# Test coverage
+coverage/
+
+# Temporary
+tmp/
+.tmp/
