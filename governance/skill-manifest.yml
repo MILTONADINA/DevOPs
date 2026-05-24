@@ -1,220 +1,163 @@
-# governance/skill-manifest.yml
-#
-# Phase 2 area E: cryptographic provenance manifest for every universal skill.
-# Per spec phase-2/E-sigstore-signing.md REQ-E2: every skill entry carries
-# name, path, sha256, sig_path, signed_by, signed_at, rekor_log_index, and
-# signed_with_version. The signature-related fields are placeholders until
-# the first signing run (E.04 via .github/workflows/release-sign.yml) fills
-# them via the cosign keyless OIDC flow.
-#
-# Schema:
-#   skills:
-#     - name: <slug, matches the parent directory name>
-#       path: <repo-relative path to the SKILL.md>
-#       sha256: <sha256 of the SKILL.md content, lowercase hex>
-#       sig_path: <repo-relative path the .sig file WILL hold post-signing>
-#       signed_by: <Sigstore identity that produced the signature; placeholder
-#                   until first release-sign.yml run>
-#       signed_at: <ISO 8601 UTC timestamp of the signing; placeholder>
-#       rekor_log_index: <Rekor transparency log index for the entry;
-#                          placeholder>
-#       signed_with_version: <cosign version pinned in release-sign.yml at
-#                              signing time; placeholder>
-#
-# Lifecycle:
-#   - sha256 is computed at manifest-author time + recomputed on every CI
-#     run to detect drift between SKILL.md content and the manifest entry.
-#   - sig_path is a stable string from the start (the directory layout is
-#     known); the actual .sig file lands at that path post-signing.
-#   - signed_by / signed_at / rekor_log_index / signed_with_version are
-#     populated by the release-sign.yml workflow on its first successful
-#     run (E.04). A future run that re-signs a changed skill updates the
-#     entry in-place.
-#
-# AST08 defense: any modification to a SKILL.md without a corresponding
-# manifest re-sign would mismatch the recorded sha256, which the verifier
-# (analyzer/install.ts area F) refuses to install.
-
 manifest_version: 1
-generated_at: '2026-05-24T00:00:00Z'
-
+generated_at: '2026-05-24T02:52:49Z'
 skills:
-  - name: karpathy-guidelines
-    path: skills/universal/process/karpathy-guidelines/SKILL.md
-    sha256: 474fa7e3ebf5aa6a0cf32450e5c071ac65f1711cfc24e08f8f388570e50936fa
-    sig_path: skills/universal/process/karpathy-guidelines/SKILL.md.sig
-    signed_by: PENDING_FIRST_SIGNING_RUN
-    signed_at: PENDING_FIRST_SIGNING_RUN
-    rekor_log_index: PENDING_FIRST_SIGNING_RUN
-    signed_with_version: PENDING_FIRST_SIGNING_RUN
-
-  - name: proof-of-work
-    path: skills/universal/process/proof-of-work/SKILL.md
-    sha256: 277be738a169c6d70e61facb67c7ec58f3a65d27c2ab374b5ae28bd075d7cbfd
-    sig_path: skills/universal/process/proof-of-work/SKILL.md.sig
-    signed_by: PENDING_FIRST_SIGNING_RUN
-    signed_at: PENDING_FIRST_SIGNING_RUN
-    rekor_log_index: PENDING_FIRST_SIGNING_RUN
-    signed_with_version: PENDING_FIRST_SIGNING_RUN
-
-  - name: baton-handoff
-    path: skills/universal/process/baton-handoff/SKILL.md
-    sha256: f058f0d6d6c611d5d0ed85b4d1a18e03e022398a1a40924500478dec5038dcae
-    sig_path: skills/universal/process/baton-handoff/SKILL.md.sig
-    signed_by: PENDING_FIRST_SIGNING_RUN
-    signed_at: PENDING_FIRST_SIGNING_RUN
-    rekor_log_index: PENDING_FIRST_SIGNING_RUN
-    signed_with_version: PENDING_FIRST_SIGNING_RUN
-
-  - name: ask-dont-assume
-    path: skills/universal/process/ask-dont-assume/SKILL.md
-    sha256: dd1d54ec8f623a0d46ac657538a1715b22fe9d492f6132d72bf59e1120625e2f
-    sig_path: skills/universal/process/ask-dont-assume/SKILL.md.sig
-    signed_by: PENDING_FIRST_SIGNING_RUN
-    signed_at: PENDING_FIRST_SIGNING_RUN
-    rekor_log_index: PENDING_FIRST_SIGNING_RUN
-    signed_with_version: PENDING_FIRST_SIGNING_RUN
-
-  - name: spec-extraction
-    path: skills/universal/process/spec-extraction/SKILL.md
-    sha256: f83a3c535b209b0f3f127cb569dbd7eda0a8c4f51b03b9b647811288da504d6c
-    sig_path: skills/universal/process/spec-extraction/SKILL.md.sig
-    signed_by: PENDING_FIRST_SIGNING_RUN
-    signed_at: PENDING_FIRST_SIGNING_RUN
-    rekor_log_index: PENDING_FIRST_SIGNING_RUN
-    signed_with_version: PENDING_FIRST_SIGNING_RUN
-
-  - name: goal-loop
-    path: skills/universal/process/goal-loop/SKILL.md
-    sha256: 48bf2df982fd9ddbd03f42545c4a70302c1be341905f5f52ca942a1ad9cbc14d
-    sig_path: skills/universal/process/goal-loop/SKILL.md.sig
-    signed_by: PENDING_FIRST_SIGNING_RUN
-    signed_at: PENDING_FIRST_SIGNING_RUN
-    rekor_log_index: PENDING_FIRST_SIGNING_RUN
-    signed_with_version: PENDING_FIRST_SIGNING_RUN
-
-  - name: multi-tool-failover
-    path: skills/universal/process/multi-tool-failover/SKILL.md
-    sha256: d25fc590ef098c41d4c01fd9ba466d8e4327f8ffeb73cafc39bb34bab371b60a
-    sig_path: skills/universal/process/multi-tool-failover/SKILL.md.sig
-    signed_by: PENDING_FIRST_SIGNING_RUN
-    signed_at: PENDING_FIRST_SIGNING_RUN
-    rekor_log_index: PENDING_FIRST_SIGNING_RUN
-    signed_with_version: PENDING_FIRST_SIGNING_RUN
-
-  - name: plan-decomposition
-    path: skills/universal/process/plan-decomposition/SKILL.md
-    sha256: 491fb09061a61cd66087d862d8d537a7b85b9d7bd42c0c9c055c0b78d6b78645
-    sig_path: skills/universal/process/plan-decomposition/SKILL.md.sig
-    signed_by: PENDING_FIRST_SIGNING_RUN
-    signed_at: PENDING_FIRST_SIGNING_RUN
-    rekor_log_index: PENDING_FIRST_SIGNING_RUN
-    signed_with_version: PENDING_FIRST_SIGNING_RUN
-
-  - name: session-summary
-    path: skills/universal/process/session-summary/SKILL.md
-    sha256: 8e9f016ef4484e92e47c622eca4ab7bf98d5c136fc08e24d362bf2007ec97532
-    sig_path: skills/universal/process/session-summary/SKILL.md.sig
-    signed_by: PENDING_FIRST_SIGNING_RUN
-    signed_at: PENDING_FIRST_SIGNING_RUN
-    rekor_log_index: PENDING_FIRST_SIGNING_RUN
-    signed_with_version: PENDING_FIRST_SIGNING_RUN
-
-  - name: surgical-edits
-    path: skills/universal/process/surgical-edits/SKILL.md
-    sha256: fdf28f55f008335a9984e25d947bbb70a25f0cac8f2001867475f9c1bd2812fa
-    sig_path: skills/universal/process/surgical-edits/SKILL.md.sig
-    signed_by: PENDING_FIRST_SIGNING_RUN
-    signed_at: PENDING_FIRST_SIGNING_RUN
-    rekor_log_index: PENDING_FIRST_SIGNING_RUN
-    signed_with_version: PENDING_FIRST_SIGNING_RUN
-
-  - name: ears-spec-writing
-    path: skills/universal/development/ears-spec-writing/SKILL.md
-    sha256: 2b95da89192cfb7ef897de47b61840bf37113518c8f553c0547cf8255dc564aa
-    sig_path: skills/universal/development/ears-spec-writing/SKILL.md.sig
-    signed_by: PENDING_FIRST_SIGNING_RUN
-    signed_at: PENDING_FIRST_SIGNING_RUN
-    rekor_log_index: PENDING_FIRST_SIGNING_RUN
-    signed_with_version: PENDING_FIRST_SIGNING_RUN
-
-  - name: openapi-first
-    path: skills/universal/development/openapi-first/SKILL.md
-    sha256: 532096a4acbb9858bd5ecb708441361f519b391b4bca7c9471a68ca60a314409
-    sig_path: skills/universal/development/openapi-first/SKILL.md.sig
-    signed_by: PENDING_FIRST_SIGNING_RUN
-    signed_at: PENDING_FIRST_SIGNING_RUN
-    rekor_log_index: PENDING_FIRST_SIGNING_RUN
-    signed_with_version: PENDING_FIRST_SIGNING_RUN
-
-  - name: gitleaks-scan
-    path: skills/universal/security/gitleaks-scan/SKILL.md
-    sha256: 4c12f89a5b4ca298065be94afaecbe0e3046416f3c2ad50e58adc7806d2d1911
-    sig_path: skills/universal/security/gitleaks-scan/SKILL.md.sig
-    signed_by: PENDING_FIRST_SIGNING_RUN
-    signed_at: PENDING_FIRST_SIGNING_RUN
-    rekor_log_index: PENDING_FIRST_SIGNING_RUN
-    signed_with_version: PENDING_FIRST_SIGNING_RUN
-
-  - name: owasp-asi-threat-model
-    path: skills/universal/security/owasp-asi-threat-model/SKILL.md
-    sha256: b65ea2134642d74725c4ff1881fc1f43142bf7d5526f0d57b91f810276ebd8a8
-    sig_path: skills/universal/security/owasp-asi-threat-model/SKILL.md.sig
-    signed_by: PENDING_FIRST_SIGNING_RUN
-    signed_at: PENDING_FIRST_SIGNING_RUN
-    rekor_log_index: PENDING_FIRST_SIGNING_RUN
-    signed_with_version: PENDING_FIRST_SIGNING_RUN
-
-  - name: prompt-injection-defense
-    path: skills/universal/security/prompt-injection-defense/SKILL.md
-    sha256: facfbed88b7a47c825a1a32658a7837cdbadfaa52c61a6e0e1a1d92684d84f86
-    sig_path: skills/universal/security/prompt-injection-defense/SKILL.md.sig
-    signed_by: PENDING_FIRST_SIGNING_RUN
-    signed_at: PENDING_FIRST_SIGNING_RUN
-    rekor_log_index: PENDING_FIRST_SIGNING_RUN
-    signed_with_version: PENDING_FIRST_SIGNING_RUN
-
-  - name: semgrep-scan
-    path: skills/universal/security/semgrep-scan/SKILL.md
-    sha256: b8e01381f62b7a85cc3475f7f39dbc33a4ec990f5657def355a00cecbd85d914
-    sig_path: skills/universal/security/semgrep-scan/SKILL.md.sig
-    signed_by: PENDING_FIRST_SIGNING_RUN
-    signed_at: PENDING_FIRST_SIGNING_RUN
-    rekor_log_index: PENDING_FIRST_SIGNING_RUN
-    signed_with_version: PENDING_FIRST_SIGNING_RUN
-
-  - name: webhook-idempotency
-    path: skills/universal/security/webhook-idempotency/SKILL.md
-    sha256: 4656c2d69fbad5314b5d1c5618043933bcc0066a373d453e1fa265fa85988254
-    sig_path: skills/universal/security/webhook-idempotency/SKILL.md.sig
-    signed_by: PENDING_FIRST_SIGNING_RUN
-    signed_at: PENDING_FIRST_SIGNING_RUN
-    rekor_log_index: PENDING_FIRST_SIGNING_RUN
-    signed_with_version: PENDING_FIRST_SIGNING_RUN
-
-  - name: coppa-audit
-    path: skills/universal/compliance/coppa-audit/SKILL.md
-    sha256: b32e9057371bf865cfe5b245ff5484560b96e561cf7e14e1758bd4504055ba9d
-    sig_path: skills/universal/compliance/coppa-audit/SKILL.md.sig
-    signed_by: PENDING_FIRST_SIGNING_RUN
-    signed_at: PENDING_FIRST_SIGNING_RUN
-    rekor_log_index: PENDING_FIRST_SIGNING_RUN
-    signed_with_version: PENDING_FIRST_SIGNING_RUN
-
-  - name: cost-attribution
-    path: skills/universal/devops/cost-attribution/SKILL.md
-    sha256: 9282c059cd2ed80bf77a40f160dc390cfe343ae770c59803996e3acf01d17275
-    sig_path: skills/universal/devops/cost-attribution/SKILL.md.sig
-    signed_by: PENDING_FIRST_SIGNING_RUN
-    signed_at: PENDING_FIRST_SIGNING_RUN
-    rekor_log_index: PENDING_FIRST_SIGNING_RUN
-    signed_with_version: PENDING_FIRST_SIGNING_RUN
-
-  - name: observability-instrument
-    path: skills/universal/devops/observability-instrument/SKILL.md
-    sha256: 85b7a225770a9d007472f02a99292d611805d8a6a6496c73d7250183494cff9c
-    sig_path: skills/universal/devops/observability-instrument/SKILL.md.sig
-    signed_by: PENDING_FIRST_SIGNING_RUN
-    signed_at: PENDING_FIRST_SIGNING_RUN
-    rekor_log_index: PENDING_FIRST_SIGNING_RUN
-    signed_with_version: PENDING_FIRST_SIGNING_RUN
+- name: karpathy-guidelines
+  path: skills/universal/process/karpathy-guidelines/SKILL.md
+  sha256: 474fa7e3ebf5aa6a0cf32450e5c071ac65f1711cfc24e08f8f388570e50936fa
+  sig_path: skills/universal/process/karpathy-guidelines/SKILL.md.sig
+  signed_by: https://github.com/MILTONADINA/DevOPs/.github/workflows/release-sign.yml@refs/heads/phase-2-security-depth
+  signed_at: '2026-05-24T02:52:49Z'
+  rekor_log_index: see .workflow/sigstore/signing-logs/
+  signed_with_version: v2.4.3
+- name: proof-of-work
+  path: skills/universal/process/proof-of-work/SKILL.md
+  sha256: 277be738a169c6d70e61facb67c7ec58f3a65d27c2ab374b5ae28bd075d7cbfd
+  sig_path: skills/universal/process/proof-of-work/SKILL.md.sig
+  signed_by: https://github.com/MILTONADINA/DevOPs/.github/workflows/release-sign.yml@refs/heads/phase-2-security-depth
+  signed_at: '2026-05-24T02:52:49Z'
+  rekor_log_index: see .workflow/sigstore/signing-logs/
+  signed_with_version: v2.4.3
+- name: baton-handoff
+  path: skills/universal/process/baton-handoff/SKILL.md
+  sha256: f058f0d6d6c611d5d0ed85b4d1a18e03e022398a1a40924500478dec5038dcae
+  sig_path: skills/universal/process/baton-handoff/SKILL.md.sig
+  signed_by: https://github.com/MILTONADINA/DevOPs/.github/workflows/release-sign.yml@refs/heads/phase-2-security-depth
+  signed_at: '2026-05-24T02:52:49Z'
+  rekor_log_index: see .workflow/sigstore/signing-logs/
+  signed_with_version: v2.4.3
+- name: ask-dont-assume
+  path: skills/universal/process/ask-dont-assume/SKILL.md
+  sha256: dd1d54ec8f623a0d46ac657538a1715b22fe9d492f6132d72bf59e1120625e2f
+  sig_path: skills/universal/process/ask-dont-assume/SKILL.md.sig
+  signed_by: https://github.com/MILTONADINA/DevOPs/.github/workflows/release-sign.yml@refs/heads/phase-2-security-depth
+  signed_at: '2026-05-24T02:52:49Z'
+  rekor_log_index: see .workflow/sigstore/signing-logs/
+  signed_with_version: v2.4.3
+- name: spec-extraction
+  path: skills/universal/process/spec-extraction/SKILL.md
+  sha256: f83a3c535b209b0f3f127cb569dbd7eda0a8c4f51b03b9b647811288da504d6c
+  sig_path: skills/universal/process/spec-extraction/SKILL.md.sig
+  signed_by: https://github.com/MILTONADINA/DevOPs/.github/workflows/release-sign.yml@refs/heads/phase-2-security-depth
+  signed_at: '2026-05-24T02:52:49Z'
+  rekor_log_index: see .workflow/sigstore/signing-logs/
+  signed_with_version: v2.4.3
+- name: goal-loop
+  path: skills/universal/process/goal-loop/SKILL.md
+  sha256: 48bf2df982fd9ddbd03f42545c4a70302c1be341905f5f52ca942a1ad9cbc14d
+  sig_path: skills/universal/process/goal-loop/SKILL.md.sig
+  signed_by: https://github.com/MILTONADINA/DevOPs/.github/workflows/release-sign.yml@refs/heads/phase-2-security-depth
+  signed_at: '2026-05-24T02:52:49Z'
+  rekor_log_index: see .workflow/sigstore/signing-logs/
+  signed_with_version: v2.4.3
+- name: multi-tool-failover
+  path: skills/universal/process/multi-tool-failover/SKILL.md
+  sha256: d25fc590ef098c41d4c01fd9ba466d8e4327f8ffeb73cafc39bb34bab371b60a
+  sig_path: skills/universal/process/multi-tool-failover/SKILL.md.sig
+  signed_by: https://github.com/MILTONADINA/DevOPs/.github/workflows/release-sign.yml@refs/heads/phase-2-security-depth
+  signed_at: '2026-05-24T02:52:49Z'
+  rekor_log_index: see .workflow/sigstore/signing-logs/
+  signed_with_version: v2.4.3
+- name: plan-decomposition
+  path: skills/universal/process/plan-decomposition/SKILL.md
+  sha256: 491fb09061a61cd66087d862d8d537a7b85b9d7bd42c0c9c055c0b78d6b78645
+  sig_path: skills/universal/process/plan-decomposition/SKILL.md.sig
+  signed_by: https://github.com/MILTONADINA/DevOPs/.github/workflows/release-sign.yml@refs/heads/phase-2-security-depth
+  signed_at: '2026-05-24T02:52:49Z'
+  rekor_log_index: see .workflow/sigstore/signing-logs/
+  signed_with_version: v2.4.3
+- name: session-summary
+  path: skills/universal/process/session-summary/SKILL.md
+  sha256: 8e9f016ef4484e92e47c622eca4ab7bf98d5c136fc08e24d362bf2007ec97532
+  sig_path: skills/universal/process/session-summary/SKILL.md.sig
+  signed_by: https://github.com/MILTONADINA/DevOPs/.github/workflows/release-sign.yml@refs/heads/phase-2-security-depth
+  signed_at: '2026-05-24T02:52:49Z'
+  rekor_log_index: see .workflow/sigstore/signing-logs/
+  signed_with_version: v2.4.3
+- name: surgical-edits
+  path: skills/universal/process/surgical-edits/SKILL.md
+  sha256: fdf28f55f008335a9984e25d947bbb70a25f0cac8f2001867475f9c1bd2812fa
+  sig_path: skills/universal/process/surgical-edits/SKILL.md.sig
+  signed_by: https://github.com/MILTONADINA/DevOPs/.github/workflows/release-sign.yml@refs/heads/phase-2-security-depth
+  signed_at: '2026-05-24T02:52:49Z'
+  rekor_log_index: see .workflow/sigstore/signing-logs/
+  signed_with_version: v2.4.3
+- name: ears-spec-writing
+  path: skills/universal/development/ears-spec-writing/SKILL.md
+  sha256: 2b95da89192cfb7ef897de47b61840bf37113518c8f553c0547cf8255dc564aa
+  sig_path: skills/universal/development/ears-spec-writing/SKILL.md.sig
+  signed_by: https://github.com/MILTONADINA/DevOPs/.github/workflows/release-sign.yml@refs/heads/phase-2-security-depth
+  signed_at: '2026-05-24T02:52:49Z'
+  rekor_log_index: see .workflow/sigstore/signing-logs/
+  signed_with_version: v2.4.3
+- name: openapi-first
+  path: skills/universal/development/openapi-first/SKILL.md
+  sha256: 532096a4acbb9858bd5ecb708441361f519b391b4bca7c9471a68ca60a314409
+  sig_path: skills/universal/development/openapi-first/SKILL.md.sig
+  signed_by: https://github.com/MILTONADINA/DevOPs/.github/workflows/release-sign.yml@refs/heads/phase-2-security-depth
+  signed_at: '2026-05-24T02:52:49Z'
+  rekor_log_index: see .workflow/sigstore/signing-logs/
+  signed_with_version: v2.4.3
+- name: gitleaks-scan
+  path: skills/universal/security/gitleaks-scan/SKILL.md
+  sha256: 4c12f89a5b4ca298065be94afaecbe0e3046416f3c2ad50e58adc7806d2d1911
+  sig_path: skills/universal/security/gitleaks-scan/SKILL.md.sig
+  signed_by: https://github.com/MILTONADINA/DevOPs/.github/workflows/release-sign.yml@refs/heads/phase-2-security-depth
+  signed_at: '2026-05-24T02:52:49Z'
+  rekor_log_index: see .workflow/sigstore/signing-logs/
+  signed_with_version: v2.4.3
+- name: owasp-asi-threat-model
+  path: skills/universal/security/owasp-asi-threat-model/SKILL.md
+  sha256: b65ea2134642d74725c4ff1881fc1f43142bf7d5526f0d57b91f810276ebd8a8
+  sig_path: skills/universal/security/owasp-asi-threat-model/SKILL.md.sig
+  signed_by: https://github.com/MILTONADINA/DevOPs/.github/workflows/release-sign.yml@refs/heads/phase-2-security-depth
+  signed_at: '2026-05-24T02:52:49Z'
+  rekor_log_index: see .workflow/sigstore/signing-logs/
+  signed_with_version: v2.4.3
+- name: prompt-injection-defense
+  path: skills/universal/security/prompt-injection-defense/SKILL.md
+  sha256: facfbed88b7a47c825a1a32658a7837cdbadfaa52c61a6e0e1a1d92684d84f86
+  sig_path: skills/universal/security/prompt-injection-defense/SKILL.md.sig
+  signed_by: https://github.com/MILTONADINA/DevOPs/.github/workflows/release-sign.yml@refs/heads/phase-2-security-depth
+  signed_at: '2026-05-24T02:52:49Z'
+  rekor_log_index: see .workflow/sigstore/signing-logs/
+  signed_with_version: v2.4.3
+- name: semgrep-scan
+  path: skills/universal/security/semgrep-scan/SKILL.md
+  sha256: b8e01381f62b7a85cc3475f7f39dbc33a4ec990f5657def355a00cecbd85d914
+  sig_path: skills/universal/security/semgrep-scan/SKILL.md.sig
+  signed_by: https://github.com/MILTONADINA/DevOPs/.github/workflows/release-sign.yml@refs/heads/phase-2-security-depth
+  signed_at: '2026-05-24T02:52:49Z'
+  rekor_log_index: see .workflow/sigstore/signing-logs/
+  signed_with_version: v2.4.3
+- name: webhook-idempotency
+  path: skills/universal/security/webhook-idempotency/SKILL.md
+  sha256: 4656c2d69fbad5314b5d1c5618043933bcc0066a373d453e1fa265fa85988254
+  sig_path: skills/universal/security/webhook-idempotency/SKILL.md.sig
+  signed_by: https://github.com/MILTONADINA/DevOPs/.github/workflows/release-sign.yml@refs/heads/phase-2-security-depth
+  signed_at: '2026-05-24T02:52:49Z'
+  rekor_log_index: see .workflow/sigstore/signing-logs/
+  signed_with_version: v2.4.3
+- name: coppa-audit
+  path: skills/universal/compliance/coppa-audit/SKILL.md
+  sha256: b32e9057371bf865cfe5b245ff5484560b96e561cf7e14e1758bd4504055ba9d
+  sig_path: skills/universal/compliance/coppa-audit/SKILL.md.sig
+  signed_by: https://github.com/MILTONADINA/DevOPs/.github/workflows/release-sign.yml@refs/heads/phase-2-security-depth
+  signed_at: '2026-05-24T02:52:49Z'
+  rekor_log_index: see .workflow/sigstore/signing-logs/
+  signed_with_version: v2.4.3
+- name: cost-attribution
+  path: skills/universal/devops/cost-attribution/SKILL.md
+  sha256: 9282c059cd2ed80bf77a40f160dc390cfe343ae770c59803996e3acf01d17275
+  sig_path: skills/universal/devops/cost-attribution/SKILL.md.sig
+  signed_by: https://github.com/MILTONADINA/DevOPs/.github/workflows/release-sign.yml@refs/heads/phase-2-security-depth
+  signed_at: '2026-05-24T02:52:49Z'
+  rekor_log_index: see .workflow/sigstore/signing-logs/
+  signed_with_version: v2.4.3
+- name: observability-instrument
+  path: skills/universal/devops/observability-instrument/SKILL.md
+  sha256: 85b7a225770a9d007472f02a99292d611805d8a6a6496c73d7250183494cff9c
+  sig_path: skills/universal/devops/observability-instrument/SKILL.md.sig
+  signed_by: https://github.com/MILTONADINA/DevOPs/.github/workflows/release-sign.yml@refs/heads/phase-2-security-depth
+  signed_at: '2026-05-24T02:52:49Z'
+  rekor_log_index: see .workflow/sigstore/signing-logs/
+  signed_with_version: v2.4.3
