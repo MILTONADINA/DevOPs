@@ -21,6 +21,22 @@ daily_cap_usd: 100.00
 # Per-month cap (rolling 30d). For project-level cost governance.
 monthly_cap_usd: 1000.00
 
+# Red-team budget (spec phase-2/B-deepteam-ci.md REQ-B5).
+# Per-run cap on DeepTeam OWASP_ASI_2026() invocations. The CI workflow
+# (.github/workflows/security-scan.yml) and the local parity script
+# (scripts/run-redteam.sh) both read this value and halt the framework if
+# the per-invocation accumulated cost exceeds the cap. Production default
+# 0.50 USD provides ~25% headroom over the framework's typical
+# 0.30-0.40 USD run cost on small-to-medium agent surfaces (Decisions
+# section in spec B).
+#
+# Override path: edit the value here in the project-local copy of this
+# file. No code change required. Projects with larger agent surfaces
+# (multi-MCP, many subagents, larger context windows) typically size
+# this up to 1.00-2.00 USD per their probe set.
+red_team:
+  per_run_usd: 0.50
+
 # What to do when a cap is hit
 on_cap_hit:
   session: halt   # halt | warn
