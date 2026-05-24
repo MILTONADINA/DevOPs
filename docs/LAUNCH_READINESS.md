@@ -1,9 +1,16 @@
 # DevOPs — Launch Readiness
 
-**Last refined**: 2026-05-24 (session 7, Batch 3 — post-Stratum-audit refined figure)
+**Last refined**: 2026-05-24 (session 7.5 — Option B locked; range collapses to 12% full-project)
 **Methodology**: Effort-hours-weighted progress toward defined milestones — single
 methodology committed, replacing the four different figures (85% / 61% / 49% / 20-25%)
 floated in earlier conversations.
+**Phase 3 scope**: **Option B locked 2026-05-24** — Stratum closeout via Stratum
+Phase 0 + Phase 1 + Phase 3 (~619h Phase 3 total). Stratum Phase 2 (KadaneDial
+pruner) + Phase 5 (git-attestation audit) explicitly deferred post-v0.3.0 with
+re-scope option after Phase 0+1+3 ships and real telemetry surfaces. See
+`governance/changelog/ROADMAP.md` Phase 3 section + audit
+`.workflow/state/stratum-audit/04-gap-roadmap-deltas.md` for the canonical
+proposal text.
 
 > **v0.2.0 = personal-use production-ready milestone.** Envelope = DevOPs
 > Phase 1 + DevOPs Phase 2 (137 hours total). Stratum work + DevOPs Phases
@@ -68,70 +75,77 @@ A stricter "release-prep-inclusive" read (envelope = 167h including Areas C+F+A.
 
 ---
 
-## Figure 2 — Full Project Completion (NEW post-Stratum-audit)
+## Figure 2 — Full Project Completion (Option B locked 2026-05-24)
 
-The full-project envelope depends on the user's choice of Phase 3 scope.
 Stratum upstream is a single-commit scaffold (per audit
 `.workflow/state/stratum-audit/01-stratum-state.md`), not a partially-built
 backend. Phase 3 of DevOPs therefore must absorb Stratum's own Phase 0+1+3
-(at minimum) before any "Stratum integration" is operational.
+before any "Stratum integration" is operational.
 
-The three options (full detail in `.workflow/state/stratum-audit/03-integration.md`):
+**Locked scope**: **Option B — Stratum Phase-3-aligned (Phase 0 + 1 + 3),
+~619h Phase 3 total.** Stratum Phase 2 (KadaneDial pruner) + Phase 5
+(git-attestation audit) deferred post-v0.3.0. Decision rationale (per
+user, 2026-05-24): preserves trajectory toward Option C without committing
+~1179h upfront; preserves optionality to course-correct after Phase 0+1+3
+ships and real telemetry surfaces; "A under-delivers on the autonomy
+thesis — without Phase 3 integration, Stratum is just storage."
 
-| Option | Stratum scope | Stratum effort | DevOPs Phase 3 total |
-|---|---|---:|---:|
-| **A. MVP** | Stratum Phase 0 + 1 only | 120–240h | ~357h |
-| **B. Phase-3-aligned** | Stratum Phase 0 + 1 + 3 | 240–480h | ~619h |
-| **C. Full value** | Stratum Phase 0 + 1 + 2 + 3 + 5 | 520–1040h | ~1179h |
-
-DevOPs Phase 4 / 5 / 6 estimates (rough order of magnitude):
+DevOPs Phase 4 / 5 / 6 estimates (rough order of magnitude — unchanged):
 - Phase 4 (Design tooling): ~80h
 - Phase 5 (SRE & operate): ~60h
 - Phase 6 (Self-improvement): ~100h
 
-### Full-project envelope, three figures
+### Full-project envelope (Option B locked)
 
 ```
 ═══════════════════════════════════════════════════════════════
-FULL PROJECT COMPLETION:  8% – 17%  (depends on Phase 3 option)
+FULL PROJECT COMPLETION:  12%  (Option B locked 2026-05-24)
 ═══════════════════════════════════════════════════════════════
-                                              Option A    Option B    Option C
-                                              (MVP)       (aligned)   (full)
-Envelope                                      734h        996h        1556h
-Done                                          122.75h     122.75h     122.75h
-Complete                                      17%         12%         8%
+Envelope = 80 (Phase 1) + 57 (Phase 2) + 619 (Phase 3 Option B)
+         + 80 (Phase 4) + 60 (Phase 5) + 100 (Phase 6) = 996h
+Done     = 80 (Phase 1, 100%) + 42.75 (Phase 2, 75%) = 122.75h
+Complete = 122.75 / 996 = 12.3% ≈ 12%
 ═══════════════════════════════════════════════════════════════
 ```
 
-| | Envelope (h) | Done (h) | Complete |
-|---|---:|---:|---:|
-| **Option A** (Stratum MVP) | 80 + 57 + 357 + 80 + 60 + 100 = **734** | 122.75 | **17%** |
-| **Option B** (Phase-3-aligned) | 80 + 57 + 619 + 80 + 60 + 100 = **996** | 122.75 | **12%** |
-| **Option C** (Full value) | 80 + 57 + 1179 + 80 + 60 + 100 = **1556** | 122.75 | **8%** |
+| Phase | Effort (h) | Done (h) |
+|---|---:|---:|
+| DevOPs Phase 1 (Foundation) | 80 | 80.0 (100%) |
+| DevOPs Phase 2 (Security depth) | 57 | 42.75 (75%, 6/8 areas) |
+| DevOPs Phase 3 (Stratum closeout Option B + memory/observability depth) | 619 | 0 |
+| DevOPs Phase 4 (Design phase skills) | 80 | 0 |
+| DevOPs Phase 5 (SRE & operate) | 60 | 0 |
+| DevOPs Phase 6 (Self-improvement) | 100 | 0 |
+| **Total** | **996** | **122.75** = **12%** |
 
-The choice swings full-project completion by ~10 percentage points. This is the load-bearing user decision out of session 7.
+Re-scope hooks for future sessions:
+- **Phase 3 mid-build** (after Stratum Phase 0+1 ships, before Phase 3 starts): re-evaluate whether Stratum Phase 2 (pruner) should move into the v0.3.0 envelope based on observed token-waste telemetry. If pruner integration is fast, may absorb without altering the launch math.
+- **Post-v0.3.0**: Option B → Option C transition is the natural next decision point. Re-scope when Stratum Phase 0+1+3 production telemetry is available.
 
 ---
 
 ## Headline guidance
 
 - **For "are we close to launching v0.2.0?"** → **90%**. Personal-use production-ready, Stratum-independent, on track.
-- **For "is the full vision done?"** → **8–17%**. The lower bound is honest if Phase 3 includes a full Stratum closeout (option C). The upper bound is honest if Phase 3 settles for Stratum MVP (option A) plus DevOPs Phase 3 base.
-- **For "what's the largest unknown?"** → The user's choice between Phase 3 options A / B / C. Decision surfaces session 7 Batch 3 closure.
+- **For "is the full vision done?"** → **12%** (Option B locked). 122.75h done of 996h envelope; full-project completion advances as Phase 2 closes (areas C+F+A.11) and as Phase 3 Stratum closeout work lands.
+- **For "what's the next load-bearing decision?"** → No longer Phase 3 scope (Option B locked 2026-05-24). Next is mid-Phase-3 re-scope hook: after Stratum Phase 0+1 ships, decide whether Stratum Phase 2 (pruner) should join the v0.3.0 envelope based on observed telemetry.
 
 ---
 
-## Decisions queued for user approval (post-audit)
+## Audit decisions — APPLIED 2026-05-24 (session 7.5)
 
 Per `.workflow/state/stratum-audit/04-gap-roadmap-deltas.md`:
 
-1. **Pick Phase 3 scope**: Option A (MVP), B (Phase-3-aligned), or C (Full value). Locks the full-project envelope.
-2. **Approve ROADMAP.md Phase 3 line expansion**: changes "Stratum Phase 2 pruning integration" to "Stratum closeout" with the option-specific scope.
-3. **Approve GAP_61 row 57 revision**: updates location + phase columns to reflect scaffold reality.
-4. **Add PB-11 to polish backlog**: `memory/stratum/README.md` revision after Phase 3 scope is finalized.
-5. **Optional**: header comment on `memory/stratum/config.yml` clarifying wiring-spec-vs-operational-state.
+| # | Decision | Status |
+|---|---|---|
+| 1 | Pick Phase 3 scope | ✅ **Option B locked** |
+| 2 | ROADMAP.md Phase 3 line expansion | ✅ Applied in session 7.5 commit |
+| 3 | GAP_61 row 57 revision | ✅ Applied in session 7.5 commit |
+| 4 | PB-11 filed in polish backlog | ✅ `.workflow/state/polish-backlog.md` |
+| 5 | `memory/stratum/config.yml` header comment | ✅ Applied in session 7.5 commit |
 
-No edits to `governance/changelog/ROADMAP.md` or `docs/GAP_61_COVERAGE_MATRIX.md` are applied in session 7 per the spec REQ-S7-4 (proposal-only). User explicit go-ahead required before any of those edits.
+Deferred to a separate commit (PB-11 itself):
+- `memory/stratum/README.md` revision to reflect scaffold reality + Option B scope + Stratum's 7-phase taxonomy. **Trigger met** (Phase 3 scope decision locked); session 8+ can apply the README revision as the polish-backlog drawdown for v0.2.0 release prep.
 
 ---
 
