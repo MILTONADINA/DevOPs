@@ -13,6 +13,7 @@
     "install:project": "./scripts/init-project.sh",
     "validate:claims": "npx --yes tsx ./verification/claim-validator.ts",
     "lint:renovate": "node ./scripts/lint-renovate.js",
+    "lint:stack-specific-skills": "node ./scripts/lint-stack-specific-skills.js",
     "test:hooks": "./hooks/test-all.sh",
     "test:skills": "node ./governance/skill-evals/run-evals.js"
   },
