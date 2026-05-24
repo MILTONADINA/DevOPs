@@ -7,21 +7,28 @@ on:
   schedule:
     - cron: '0 6 * * *'
 
+# All `uses:` actions in this workflow are SHA-pinned per REQ-B8 / AC-B8.1
+# (AST08 defense -- a malicious tag move on an upstream action would
+# otherwise compromise the security-scan layer itself). SHAs verified via
+# `git ls-remote https://github.com/<owner>/<repo> refs/tags/<tag>` at
+# pin time (B.10 sweep, session 6). When upgrading an action, look up the
+# new tag's SHA and replace; do NOT use a tag reference.
+
 jobs:
   gitleaks:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
         with: { fetch-depth: 0 }
-      - uses: gitleaks/gitleaks-action@v2
+      - uses: gitleaks/gitleaks-action@dcedce43c6f43de0b836d1fe38946645c9c638dc  # v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   semgrep:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: returntocorp/semgrep-action@v1
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+      - uses: returntocorp/semgrep-action@713efdd345f3035192eaa63f56867b88e63e4e5d  # v1
         with:
           config: >-
             p/owasp-top-ten
@@ -30,9 +37,7 @@ jobs:
 
   # ---------------------------------------------------------------------
   # DeepTeam OWASP_ASI_2026() red-team gate (spec phase-2/B-deepteam-ci.md).
-  # New uses: actions are SHA-pinned (REQ-B8 / AST08 defense). Pre-existing
-  # tagged refs in gitleaks + semgrep jobs above are out of scope for this
-  # batch -- B.10 (session 6) is the SHA-pin sweep for the whole workflow.
+  # All `uses:` here SHA-pinned per REQ-B8 / AST08 defense.
   # ---------------------------------------------------------------------
   deepteam:
     runs-on: ubuntu-latest
