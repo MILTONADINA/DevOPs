@@ -1,0 +1,70 @@
+name: Refresh Sigstore trust bundle
+
+# Phase 2 area E / E.05 -- weekly refresh of the cached Sigstore
+# root-of-trust at .workflow/sigstore/trust-bundle.json. The cached
+# bundle is what offline-verification consumers (e.g., analyzer/install.ts
+# from area F) use to verify signatures without internet access.
+# Weekly cadence per docs/SKILL_SIGNING.md; Sigstore's root-of-trust
+# rotation is historically low-frequency, but the bundle should track
+# it. Operators wanting tighter freshness can shorten the cron.
+#
+# Auto-PR on change: if the upstream bundle has changed since the last
+# refresh, this workflow opens a PR to commit the updated bundle. A
+# reviewer can spot-check the diff (rare in practice but worth the
+# human gate) before merging.
+#
+# AST08 defense: tag-pinned actions throughout. SHAs verified via
+# git ls-remote pattern from session 5 + B.10 sweep.
+
+on:
+  schedule:
+    # Weekly Monday 06:00 UTC. Stays clear of typical PR-merge windows.
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+
+      - name: Download latest Sigstore trust root
+        run: |
+          set -euo pipefail
+          mkdir -p .workflow/sigstore
+          curl -sSfL \
+            https://tuf-repo-cdn.sigstore.dev/targets/trusted_root.json \
+            -o .workflow/sigstore/trust-bundle.json
+
+      - name: Check for drift
+        id: drift
+        run: |
+          set -euo pipefail
+          if git diff --quiet .workflow/sigstore/trust-bundle.json; then
+            echo "no_change=true" >> "$GITHUB_OUTPUT"
+            echo "Trust bundle unchanged -- no PR needed."
+          else
+            echo "no_change=false" >> "$GITHUB_OUTPUT"
+            echo "Trust bundle changed -- opening PR."
+          fi
+
+      - name: Open PR with refreshed trust bundle
+        if: steps.drift.outputs.no_change == 'false'
+        uses: peter-evans/create-pull-request@22a9089034f40e5a961c8808d113e2c98fb63676  # v7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: chore/refresh-trust-bundle
+          title: 'chore(sigstore): refresh trust-bundle.json (weekly cadence)'
+          body: |
+            Automated refresh of `.workflow/sigstore/trust-bundle.json`
+            from <https://tuf-repo-cdn.sigstore.dev/targets/trusted_root.json>.
+
+            Per `docs/SKILL_SIGNING.md` E.05 weekly refresh cadence.
+            Spot-check the diff against the upstream Sigstore TUF
+            repository before merging.
+          commit-message: 'chore(sigstore): refresh trust-bundle.json'
+          delete-branch: true

@@ -1,0 +1,183 @@
+name: Release sign skills
+
+# Phase 2 area E / E.03 -- Sigstore signing workflow.
+# Triggers:
+#   workflow_dispatch -- manual invocation for testing (E.04 first run)
+#   push of tags matching v\d+\.\d+\.\d+ -- production release-tag signing
+#
+# REQ-E3 (AC-E3.1): WHEN a release tag matching v<major>.<minor>.<patch>
+# is pushed, THE SYSTEM SHALL run this workflow to produce .sig files for
+# every changed skill and update governance/skill-manifest.yml.
+#
+# REQ-E1 (AC-E1.1): every universal SKILL.md gets a corresponding .sig
+# file alongside it.
+#
+# REQ-E7 (AC-E7.1): cosign version pinned in this workflow + recorded
+# in the manifest's signed_with_version field per signing run for
+# reproducibility.
+#
+# AST08 defense: all `uses:` actions SHA-pinned (REQ-B8 discipline
+# extended to this workflow file from session 6 onward).
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+
+permissions:
+  id-token: write    # Sigstore keyless OIDC: workflow's ambient identity
+  contents: write    # commit .sig files + updated manifest back to branch
+
+jobs:
+  sign:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      COSIGN_VERSION: 'v2.4.3'  # E.06 pin -- DO NOT bump without re-running sec-review
+
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+        with:
+          # The default GITHUB_TOKEN with contents:write can push back to
+          # feature branches (not protected main; that's intentional --
+          # signing on main happens via tag push, which lands as a new
+          # commit on main via this workflow's push step).
+          token: ${{ secrets.GITHUB_TOKEN }}
+          ref: ${{ github.ref }}
+          fetch-depth: 0
+
+      - name: Install cosign (E.06 version pin)
+        uses: sigstore/cosign-installer@f713795cb21599bc4e5c4b58cbad1da852d7eeb9  # v3
+        with:
+          cosign-release: ${{ env.COSIGN_VERSION }}
+
+      - name: Verify cosign version matches pin
+        run: |
+          set -euo pipefail
+          ACTUAL="$(cosign version 2>&1 | grep -oE 'GitVersion:\s+v?[0-9.]+' | awk '{print $2}' | head -1)"
+          # Strip leading 'v' for comparison flexibility
+          EXPECT="${COSIGN_VERSION#v}"
+          ACTUAL_CLEAN="${ACTUAL#v}"
+          if [ "$ACTUAL_CLEAN" != "$EXPECT" ]; then
+            echo "FAIL: cosign actual=$ACTUAL_CLEAN, expected=$EXPECT (from COSIGN_VERSION env)"
+            exit 1
+          fi
+          echo "Cosign $ACTUAL pinned + verified."
+
+      - name: Install PyYAML for manifest update
+        run: pip install --quiet pyyaml
+
+      - name: Sign each universal SKILL.md
+        id: sign
+        env:
+          COSIGN_EXPERIMENTAL: '1'  # legacy flag, harmless on v2.x
+        run: |
+          set -euo pipefail
+          mkdir -p .workflow/sigstore/signing-logs
+
+          SIGNED_COUNT=0
+          TOTAL_COUNT=0
+          while IFS= read -r skill; do
+            TOTAL_COUNT=$((TOTAL_COUNT + 1))
+            sig="${skill}.sig"
+            log=".workflow/sigstore/signing-logs/$(echo "${skill}" | tr '/' '_').log"
+
+            echo "Signing: ${skill}"
+            cosign sign-blob --yes "${skill}" \
+              --output-signature "${sig}" \
+              > "${log}" 2>&1 || {
+                echo "FAIL: cosign sign-blob failed for ${skill}"
+                cat "${log}" || true
+                exit 1
+              }
+            SIGNED_COUNT=$((SIGNED_COUNT + 1))
+          done < <(find skills/universal -name 'SKILL.md' -type f)
+
+          echo "signed_count=${SIGNED_COUNT}" >> "$GITHUB_OUTPUT"
+          echo "total_count=${TOTAL_COUNT}" >> "$GITHUB_OUTPUT"
+          echo ""
+          echo "Signed ${SIGNED_COUNT} / ${TOTAL_COUNT} universal SKILL.md files."
+
+      - name: Update governance/skill-manifest.yml with signature metadata
+        run: |
+          python3 - <<'PYEOF'
+          import yaml, hashlib, os, datetime, subprocess
+          from pathlib import Path
+
+          # cosign version (from the env that was used for the install step)
+          cosign_ver = os.environ.get('COSIGN_VERSION', 'unknown')
+
+          # signing identity = workflow's OIDC subject
+          repo = os.environ.get('GITHUB_REPOSITORY', 'unknown/unknown')
+          ref = os.environ.get('GITHUB_REF', 'unknown')
+          signed_by = f"https://github.com/{repo}/.github/workflows/release-sign.yml@{ref}"
+
+          signed_at = datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+
+          with open('governance/skill-manifest.yml', 'r') as f:
+              manifest = yaml.safe_load(f)
+
+          for entry in manifest['skills']:
+              skill_path = Path(entry['path'])
+              sig_path = Path(entry['sig_path'])
+              if not sig_path.exists():
+                  print(f"WARN: signature missing for {skill_path}; leaving placeholders")
+                  continue
+
+              # Recompute sha256 (defense against silent drift between
+              # manifest-author time and signing time)
+              with open(skill_path, 'rb') as fh:
+                  entry['sha256'] = hashlib.sha256(fh.read()).hexdigest()
+
+              entry['signed_by'] = signed_by
+              entry['signed_at'] = signed_at
+              entry['signed_with_version'] = cosign_ver
+              # rekor_log_index: cosign v2.x writes the index to its
+              # stderr log; full parsing is operator follow-up. Mark as
+              # 'see-signing-logs' to make the lookup explicit.
+              entry['rekor_log_index'] = 'see .workflow/sigstore/signing-logs/'
+
+          manifest['generated_at'] = signed_at
+
+          with open('governance/skill-manifest.yml', 'w') as f:
+              yaml.safe_dump(manifest, f, sort_keys=False, default_flow_style=False, width=1000)
+          PYEOF
+
+      - name: Commit signatures + updated manifest back
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+
+          # Stage signatures + manifest
+          git add 'skills/universal/**/SKILL.md.sig' governance/skill-manifest.yml
+
+          if git diff --staged --quiet; then
+            echo "No changes to commit -- skills + manifest already in sync."
+            exit 0
+          fi
+
+          git commit -m "ci(sigstore): sign $(find skills/universal -name 'SKILL.md.sig' -type f | wc -l) universal skills via cosign ${COSIGN_VERSION} [skip ci]"
+
+          # Push back to the same ref. For workflow_dispatch on a feature
+          # branch, this lands on the feature branch. For a release-tag
+          # push, github.ref is the tag (refs/tags/v...) and we don't push
+          # back to a tag -- branch-target the canonical main instead.
+          REF="${GITHUB_REF}"
+          if [[ "${REF}" == refs/tags/* ]]; then
+            echo "Tag-driven signing -- pushing manifest commit to main."
+            git push origin HEAD:main
+          else
+            echo "Branch-driven signing -- pushing back to ${GITHUB_REF_NAME}."
+            git push origin HEAD:${GITHUB_REF_NAME}
+          fi
+
+      - name: Upload signing logs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        with:
+          name: signing-logs-${{ github.run_id }}
+          path: .workflow/sigstore/signing-logs/
+          retention-days: 30
+          if-no-files-found: warn
