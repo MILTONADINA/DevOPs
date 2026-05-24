@@ -224,13 +224,39 @@ function recommend(profile: Omit<Profile, 'recommended'>): Profile['recommended'
   const subagents = ['planner', 'researcher', 'coder', 'tester', 'reviewer', 'security', 'validator'];
 
   // Stack-specific additions
+  // REQ-D4 (specs/phase-2/D-stack-specific-skills.md): on stack-indicator
+  // detection, surface the corresponding stack-specific skills. The 9 skills
+  // ship under skills/stack-specific/<stack>/<topic>/SKILL.md and are
+  // authored / linted in session 4 (D.01-D.10). Inline conditional pattern
+  // mirrors A.06 / H.03 / G.08; the dead analyzer/recommendation-rules.yml
+  // stays untouched per PB-7 (v0.2.0 cleanup).
   if (profile.stack.frameworks.includes('next.js')) {
     skills.push('development/openapi-first');
+    skills.push('stack-specific/nextjs/server-action-safety');
+    skills.push('stack-specific/nextjs/check-route-types');
+    // Note: hooks.push('stack-specific/nextjs/check-route-types.sh') below is
+    // a Phase 1 placeholder for a hook file that doesn't exist; it does not
+    // affect REQ-D4 (which is about the skills array). Polish-backlog PB-10
+    // tracks the cleanup at v0.2.0.
     hooks.push('stack-specific/nextjs/check-route-types.sh');
   }
   if (profile.stack.frameworks.includes('stripe')) {
     skills.push('stack-specific/stripe/webhook-idempotency');
-    skills.push('stack-specific/stripe/pci-scope');
+    skills.push('stack-specific/stripe/pci-scope-minimization');
+  }
+  if (profile.stack.frameworks.includes('fastapi')) {
+    skills.push('stack-specific/fastapi/dependency-injection');
+  }
+  if (
+    profile.stack.databases.includes('supabase (postgres)') ||
+    profile.stack.auth.includes('supabase')
+  ) {
+    skills.push('stack-specific/supabase/rls-policies');
+    skills.push('stack-specific/supabase/rpc-functions');
+  }
+  if (profile.stack.language.includes('rust')) {
+    skills.push('stack-specific/rust/error-handling');
+    skills.push('stack-specific/rust/cargo-audit');
   }
   if (profile.domain.compliance.includes('COPPA')) {
     skills.push('compliance/coppa-audit');
