@@ -1,0 +1,65 @@
+{
+  "name": "startum",
+  "version": "0.1.0",
+  "description": "High-fidelity AI context pruning middleware — eliminate the Context Tax",
+  "private": true,
+  "scripts": {
+    "dev": "ts-node src/proxy/index.ts",
+    "build": "tsc",
+    "build:wasm": "cd rust/hot-path && wasm-pack build --target nodejs",
+    "start": "node dist/proxy/index.js",
+    "lint": "eslint src --ext .ts && prettier --check src",
+    "lint:fix": "eslint src --ext .ts --fix && prettier --write src",
+    "typecheck": "tsc --noEmit",
+    "test": "jest --testPathPattern='tests/(unit|integration)'",
+    "test:eval": "ts-node evals/harness/runner.ts",
+    "test:e2e": "jest --testPathPattern='tests/api'",
+    "test:all": "npm run typecheck && npm run lint && npm run test && npm run test:eval",
+    "capture": "ts-node scripts/capture-session.ts",
+    "promote": "ts-node scripts/promote-tier2-to-tier3.ts",
+    "db:start": "npx supabase start",
+    "db:stop": "npx supabase stop",
+    "db:reset": "npx supabase db reset",
+    "db:push": "npx supabase db push",
+    "deploy": "wrangler deploy"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "@anthropic-ai/tokenizer": "^0.3.0",
+    "@pinecone-database/pinecone": "^3.0.0",
+    "@supabase/supabase-js": "^2.39.0",
+    "fastify": "^4.26.0",
+    "fastify-plugin": "^4.5.1",
+    "@fastify/cors": "^9.0.0",
+    "@fastify/rate-limit": "^9.1.0",
+    "neo4j-driver": "^5.17.0",
+    "onnxruntime-node": "^1.17.3",
+    "zod": "^3.22.4",
+    "dotenv": "^16.4.5",
+    "uuid": "^9.0.0",
+    "pino": "^8.19.0",
+    "pino-pretty": "^11.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/uuid": "^9.0.8",
+    "@typescript-eslint/eslint-plugin": "^7.0.0",
+    "@typescript-eslint/parser": "^7.0.0",
+    "eslint": "^8.57.0",
+    "prettier": "^3.2.5",
+    "jest": "^29.7.0",
+    "@jest/globals": "^29.7.0",
+    "ts-jest": "^29.1.5",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.4.0",
+    "supabase": "^1.145.0",
+    "wrangler": "^3.50.0"
+  },
+  "jest": {
+    "preset": "ts-jest",
+    "testEnvironment": "node",
+    "moduleNameMapper": {
+      "^@/(.*)$": "<rootDir>/src/$1"
+    }
+  }
+}
