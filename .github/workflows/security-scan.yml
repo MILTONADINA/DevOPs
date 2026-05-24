@@ -86,8 +86,35 @@ jobs:
         # the branch-protection gate per REQ-B3.
         run: bash scripts/run-redteam.sh
 
-      # PR-comment surfacing (REQ-B4) + artifact upload (REQ-B6) ship in
-      # Batch 3 of this session. The script already writes
-      # .workflow/proofs/red-team/{report,findings,transcript}.jsonl
-      # (and budget-exhausted.md if REQ-B5 brake fires); Batch 3 wires
-      # the workflow steps that surface those artifacts.
+      # REQ-B4 medium/low surfacing -- non-blocking PR comment.
+      # `always()` ensures this step runs even after the prior step's
+      # non-zero exit (REQ-B3 critical-fail OR REQ-B5 budget-brake), so
+      # surfacing information always reaches the PR. The step itself
+      # exits 0 (med/low surfacing is non-blocking by REQ-B4 design).
+      - name: Surface med/low findings on PR (REQ-B4 non-blocking)
+        if: ${{ always() && steps.path-filter.outputs.should_run == 'true' && github.event_name == 'pull_request' }}
+        run: |
+          set -euo pipefail
+          if [ -f .workflow/proofs/red-team/findings.jsonl ]; then
+            MED_LOW=$(grep -cE '"severity":\s*"(medium|low)"' .workflow/proofs/red-team/findings.jsonl || echo 0)
+            echo "Red-team scan: ${MED_LOW} medium/low finding(s) (non-blocking)."
+            echo "Detailed report uploaded as artifact deepteam-${{ github.run_id }} (90d retention)."
+          fi
+          if [ -f .workflow/proofs/red-team/budget-exhausted.md ]; then
+            echo "WARNING: budget brake fired -- see uploaded budget-exhausted.md artifact (REQ-B5)."
+          fi
+        # Explicit exit 0 -- REQ-B4 mandates med/low surfacing is non-blocking
+        continue-on-error: false  # this step itself does not fail the workflow
+
+      # REQ-B6 artifact upload. Includes report.md + findings.jsonl +
+      # (when REQ-B5 brake fired) budget-exhausted.md. 90-day retention
+      # per spec B Decisions. `always()` ensures uploads happen even on
+      # REQ-B3 critical-fail or REQ-B5 budget-brake exit.
+      - name: Upload deepteam artifacts (REQ-B6 / REQ-B5)
+        if: ${{ always() && steps.path-filter.outputs.should_run == 'true' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        with:
+          name: deepteam-${{ github.run_id }}
+          path: .workflow/proofs/red-team/
+          retention-days: 90
+          if-no-files-found: warn
