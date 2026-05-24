@@ -2,6 +2,8 @@ name: Security scan
 
 on:
   pull_request:
+  push:
+    branches: [main]
   schedule:
     - cron: '0 6 * * *'
 
@@ -25,3 +27,67 @@ jobs:
             p/owasp-top-ten
             p/r2c-security-audit
             p/secrets
+
+  # ---------------------------------------------------------------------
+  # DeepTeam OWASP_ASI_2026() red-team gate (spec phase-2/B-deepteam-ci.md).
+  # New uses: actions are SHA-pinned (REQ-B8 / AST08 defense). Pre-existing
+  # tagged refs in gitleaks + semgrep jobs above are out of scope for this
+  # batch -- B.10 (session 6) is the SHA-pin sweep for the whole workflow.
+  # ---------------------------------------------------------------------
+  deepteam:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20  # NFR-B1 hard wall-clock cap (ASI07 defense)
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+        with:
+          fetch-depth: 0  # need base for changed-files diff in path filter
+
+      # REQ-B1: On pull_request, only run if changed files include any path
+      # under the 7 agent-behavior globs. On push to main, REQ-B2 backstop
+      # runs unconditionally (no path filter).
+      - id: path-filter
+        name: REQ-B1 path filter (agent-behavior PRs only; push-to-main bypasses)
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE_SHA="${{ github.event.pull_request.base.sha }}"
+            CHANGED="$(git diff --name-only "${BASE_SHA}" HEAD || echo '')"
+            AGENT_PATTERN='^(skills/|hooks/|subagents/|constitution/|mcp-configs/|analyzer/|governance/owasp-asi-2026/)'
+            if echo "$CHANGED" | grep -qE "$AGENT_PATTERN"; then
+              echo "should_run=true" >> "$GITHUB_OUTPUT"
+              echo "REQ-B1 trigger: matched agent-behavior paths in PR diff"
+            else
+              echo "should_run=false" >> "$GITHUB_OUTPUT"
+              echo "REQ-B1 skip: docs-only / dep-bump / refactor PR (AC-B1.2)"
+            fi
+          else
+            # push to main, schedule, etc. -- REQ-B2 backstop, always run
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+            echo "REQ-B2 trigger: ${{ github.event_name }} event"
+          fi
+
+      - name: Setup Python
+        if: steps.path-filter.outputs.should_run == 'true'
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
+        with:
+          python-version: '3.12'
+
+      - name: Install DeepTeam
+        if: steps.path-filter.outputs.should_run == 'true'
+        run: pip install deepteam
+
+      - name: Run DeepTeam OWASP_ASI_2026 red-team
+        if: steps.path-filter.outputs.should_run == 'true'
+        id: redteam
+        # Critical-severity exit gate (REQ-B3) is inherited from the script:
+        # scripts/run-redteam.sh exits 1 on >=1 critical finding, 2 on
+        # budget brake (REQ-B5), 0 otherwise. GitHub Actions fails the
+        # step on non-zero exit, which fails the workflow, which blocks
+        # the branch-protection gate per REQ-B3.
+        run: bash scripts/run-redteam.sh
+
+      # PR-comment surfacing (REQ-B4) + artifact upload (REQ-B6) ship in
+      # Batch 3 of this session. The script already writes
+      # .workflow/proofs/red-team/{report,findings,transcript}.jsonl
+      # (and budget-exhausted.md if REQ-B5 brake fires); Batch 3 wires
+      # the workflow steps that surface those artifacts.
