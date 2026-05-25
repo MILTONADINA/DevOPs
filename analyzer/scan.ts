@@ -234,11 +234,6 @@ function recommend(profile: Omit<Profile, 'recommended'>): Profile['recommended'
     skills.push('development/openapi-first');
     skills.push('stack-specific/nextjs/server-action-safety');
     skills.push('stack-specific/nextjs/check-route-types');
-    // Note: hooks.push('stack-specific/nextjs/check-route-types.sh') below is
-    // a Phase 1 placeholder for a hook file that doesn't exist; it does not
-    // affect REQ-D4 (which is about the skills array). Polish-backlog PB-10
-    // tracks the cleanup at v0.2.0.
-    hooks.push('stack-specific/nextjs/check-route-types.sh');
   }
   if (profile.stack.frameworks.includes('stripe')) {
     skills.push('stack-specific/stripe/webhook-idempotency');
