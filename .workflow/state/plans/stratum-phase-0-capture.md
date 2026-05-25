@@ -239,11 +239,13 @@ User-confirmed answers to all 7 open questions. Each carries a one-line rational
 
 **Q7 — OTel exporter dependency** → **DECIDED: soft dep with graceful degradation**. If `OTEL_EXPORTER_OTLP_ENDPOINT` is unreachable (unset, network failure, collector not running), capture-session continues with stderr-fallback log emission. Hard dep is the wrong default for a tool that runs on laptops with flaky networks. AC-P0-G.5 in §4 already encodes this; reaffirmed here.
 
+**Q8 — Test runner** → **DECIDED: jest** (Session 12 user-confirmed 2026-05-25). `stratum/package.json` already declares `jest ^29.7.0` + `ts-jest ^29.1.5` + a `jest:{}` config block (preset `ts-jest`, testEnvironment `node`, moduleNameMapper `@/*` → `src/*`). Migration to vitest costs devDep churn + config rewrite + breaks consistency with the upstream Stratum scaffold without payoff at personal-tool scope. The "vitest preferred" default from the Session 11 prompt was a greenfield default — it does not override an existing functional scaffold. **Carry-forward**: jest is also the binding test runner for Phase 1 + Phase 3 stratum specs (no per-phase test-runner divergence).
+
 ### Resolution provenance
 
-- Confirmation date: 2026-05-25
+- Confirmation date: 2026-05-25 (Q1-Q7 baked Session 11 Phase A; Q8 baked Session 12 Phase A — same physical day)
 - Confirming party: Milton Adina (user)
-- Strategist context: recommendations originated from strategist-side analysis; user confirmed all 7 verbatim ("yes for both" gates)
+- Strategist context: Q1-Q7 originated from strategist-side analysis (user confirmed verbatim); Q8 surfaced by Session 11 Phase B STOP after discovering the existing jest scaffold, user-decided in Session 12 prompt
 - Decisions are BINDING for Phase 0 implementation (P0-A through P0-G); override requires a new spec revision + claim emission
 
 ---
@@ -273,7 +275,7 @@ Apply at every Stratum Phase 0+1+3 PR before merge to main:
 - [ ] Branch flow per PB-17 outcome (PR-based for v0.3.x; no direct-push)
 - [ ] CI checks pass on PR before merge (gated on GitHub Actions billing being unblocked — Session 9/10 finding)
 - [ ] Linear history preserved (squash-merge or rebase-merge; no merge commits)
-- [ ] §7 resolutions (Q1-Q7) reflected in P0-A through P0-G acceptance criteria — no implementation diverges from binding decisions without a spec revision
+- [ ] §7 resolutions (Q1-Q8) reflected in P0-A through P0-G acceptance criteria — no implementation diverges from binding decisions without a spec revision
 
 ---
 
@@ -281,6 +283,7 @@ Apply at every Stratum Phase 0+1+3 PR before merge to main:
 
 - 2026-05-25 (Session 10 Phase C) — Spec authored. Awaiting user answers on §7 open questions (Q1–Q7) before Session 11 implementation begins.
 - 2026-05-25 (Session 11 Phase A) — §7 resolved with user-confirmed Q1-Q7 decisions ("yes for both" gates). Q1 local-only Supabase; Q2 per-turn live countTokens; Q3 indefinite retention + 5/10GB stderr warning; Q4 env-var primary + config-file secondary; Q5 fastify 4→5 bundled into P0-A; Q6 multi-tenant shape + single-tenant enforcement; Q7 OTel soft dep + stderr fallback. P0-A through P0-G acceptance criteria reflect these resolutions. Session 11 also attempted PB-13 closure via release-sign.yml re-dispatch against v0.2.0 (run 26414947646); failed at scheduler in 5s with same billing annotation as Session 9 + Session 10 Phase A — billing block persists; PB-13 stays BLOCKED.
+- 2026-05-25 (Session 12 Phase A) — §7 Q8 baked: test runner = jest (existing `stratum/package.json` scaffold; no vitest migration). §9 pre-merge checklist updated to "Q1-Q8". PB-13 re-attempted ONCE per Session 12 prompt's no-retry policy: run `26416394799` failed at scheduler in 5s with 0 steps — FOURTH consecutive billing-blocked failure (Sessions 9, 10, 11, 12). Logged as PB-13.3 (third confirmed re-attempt failure post the initial Session 9 Phase F failure). Escalation: user-side spending-limit configuration at github.com/settings/billing/spending_limit. Phase B (P0-A scaffolding) deferred pending strategist resolution of two pre-flight findings: (1) `stratum/CHANGELOG.md` streaming-crash entry is fictional (lives inside the "Format Reference" example code block, not a real `[Unreleased]` entry); (2) `stratum/scripts/capture-session.ts` has no streaming code path — `axios.post('/v1/messages', body)` non-streaming only, no `messages.stream()`, no SSE handling. The crash-replication.jsonl fixture cannot be reconstructed because no crash exists yet.
 
 ---
 
