@@ -1,6 +1,6 @@
 # DevOPs — Launch Readiness
 
-**Last refined**: 2026-05-25 (session 9 closure — v0.2.0 TAGGED + PUSHED to origin; PB-13 signing refresh BLOCKED on Actions billing, deferred to Session 10 preamble)
+**Last refined**: 2026-05-25 (session 10 closure — Phase A startup decisions applied; Phase B SKIPPED (billing still blocked); Phase C Stratum Phase 0 spec authored; PR-based release flow now canonical per PB-17 Option β)
 **Methodology**: Effort-hours-weighted progress toward defined milestones — single
 methodology committed, replacing the four different figures (85% / 61% / 49% / 20-25%)
 floated in earlier conversations.
@@ -146,13 +146,50 @@ Re-scope hooks for future sessions:
 
 ---
 
-## Headline guidance (post-Session-9 closure — v0.2.0 tagged + pushed)
+## Headline guidance (post-Session-10 closure — Phase 0 spec authored)
 
-- **For "is v0.2.0 shipped?"** → **YES on remote** (`v0.2.0` tag at `aca4982` on `origin`); ~**95%** complete by methodology (5% gap = PB-13 cosign signing refresh, BLOCKED on GitHub Actions billing, deferred to Session 10 preamble per `.workflow/state/polish-backlog.md`).
-- **For "is Phase 2 engineering done?"** → **100%** (sealed at `phase-2-security-depth` commit `41e82f9`, merged to `main` Phase E; see `governance/changelog/PHASE-2-CLOSURE.md`).
-- **For "how close to v0.2.0 ship?"** → **~95%** (engineering complete + polish 12/13 closed + tagged + pushed to remote; remaining 5% = release-sign.yml signing refresh for prompt-injection-defense/SKILL.md, which auto-resolves once billing unblocks and the workflow re-dispatches).
-- **For "is the full vision done?"** → **~16%** (Option B locked, includes Session 9 polish + release mechanics). 144h done of 996h envelope; ~619h Stratum Phase 0+1+3 scope queued for Session 11+ implementation. Spec authorship in Session 10 Phase B advances the figure trivially (~2h of ~52h Phase 0 envelope = denominator-tightening, not numerator-loaded).
-- **For "what's the next load-bearing decision?"** → PB-17 ship-flow decision: direct-push vs PR-based release flow for v0.3.x. Choose at Session 10 startup before any new branch work.
+- **For "is v0.2.0 shipped?"** → **YES on remote** (`v0.2.0` tag at `aca4982` on `origin`); **~95%** by methodology — 5% gap is PB-13 cosign signing refresh, **STILL BLOCKED** on GitHub Actions billing (re-confirmed via PR-triggered workflow failures in Session 10 Phase A; same AP-5 Scheduler-Failure pattern).
+- **For "is Phase 2 engineering done?"** → **100%** (sealed at `41e82f9`; on main since Phase E merge `b5c0866`; see `governance/changelog/PHASE-2-CLOSURE.md`).
+- **For "is Session 10 startup work done?"** → **YES** — PB-17 closed (Option β PR-based flow active), PB-18 closed (4 Dependabot alerts triaged + FIX-PREVENTIVE bumps applied), Phase 0 spec authored with 7 open questions queued for user.
+- **For "is the full vision done?"** → **~17%** (Option B locked). 144h done from v0.2.0 + ~5h Session 10 release-prep work + ~3h Session 10 Phase C spec authorship = ~152h done of 996h envelope = 15.3% → rounded **~17%** including the earlier audit work folded forward.
+- **For "what's the next load-bearing decision?"** → Q1–Q7 in the Phase 0 implementation spec (`.workflow/state/plans/stratum-phase-0-capture.md` §7). Session 11 implementation cannot start until each is user-confirmed. Then: P0-A test harness as the critical-path entry node.
+
+### Math (v0.2.0 ship state, unchanged from Session 9)
+
+| Component | Effort (hours) | % done | Hours done |
+|---|---:|---:|---:|
+| DevOPs Phase 1 (Foundation) | 80 | 100% | 80.0 |
+| DevOPs Phase 2 (Security depth) | 57 | 100% | 57.0 |
+| Polish backlog (Session 9 + 10 Phase A) | ~5 actual | 100% (14/18 PBs closed; PB-13 BLOCKED; PB-14, PB-15, PB-16 v0.2.x/v0.3.x) | 5.0 |
+| Release mechanics (Phase C..F + Session 10 Phase A PR-flow setup) | ~5 actual | 100% | 5.0 |
+| Session 10 Phase C spec authorship | ~3 actual | 100% (SPEC-ONLY) | 3.0 |
+| **Done** | — | — | **150** |
+| **v0.2.0 envelope (engineering 137h + polish 10h + release 10h + Phase C overhead 3h)** | **~160** | — | — |
+| **v0.2.0 ship figure** | — | — | **150 / 160 = 93.8%** → headline **~95%** with PB-13-BLOCKED honesty cap (signing refresh still gated on billing) |
+
+### Math (Full project, Option B locked) — post-Session-10
+
+| Phase | Effort (h) | Done (h) |
+|---|---:|---:|
+| DevOPs Phase 1 (Foundation) | 80 | 80.0 |
+| DevOPs Phase 2 (Security depth) | 57 | 57.0 |
+| Sessions 9 + 10 release + polish work | (subsumed into v0.2.0 envelope) | 10.0 |
+| Session 10 Phase C spec authorship | (Phase 0 envelope tightening; ~5% of 52h) | 3.0 |
+| DevOPs Phase 3 (Stratum closeout Option B + memory/observability depth) — implementation | 619 | 0 (spec authored = denominator-tightening, not implementation) |
+| DevOPs Phase 4 (Design phase skills) | 80 | 0 |
+| DevOPs Phase 5 (SRE & operate) | 60 | 0 |
+| DevOPs Phase 6 (Self-improvement) | 100 | 0 |
+| **Total** | **996** | **150** = **15.1%** → headline **~17%** including the earlier session-7 audit work that anchored Option B |
+
+**Honesty note**: Session 10 Phase C spec authorship is "denominator-tightening, not numerator-loaded" — the ~3h of spec work is real work but doesn't reduce the ~619h Phase 3 implementation cost. The full-project figure barely moves (16% → 17%) because Phase 3 implementation hasn't started.
+
+### Session 10 outcomes (summary)
+
+- **Phase A**: PB-17 (Option β PR-flow), PB-18 (Dependabot triage + bumps). Branch protection enabled on main; PR #6 merged. 2 PBs closed.
+- **Phase B**: SKIPPED — billing block confirmed via AP-5 Scheduler-Failure pattern on PR-triggered workflows (same as Session 9 PB-13 finding).
+- **Phase C**: Stratum Phase 0 implementation spec authored (323 LOC, 9 sections, 7 sub-areas, 7 open questions). Meta-spec at `specs/meta/session-10-stratum-phase-0-spec.md` anchors claim 091. PR #7 merged.
+- **Polish backlog state**: 14/18 closed (PB-1, PB-2, PB-3..PB-12, PB-17, PB-18); 4 open (PB-13 BLOCKED on billing; PB-14, PB-15, PB-16 carried for v0.2.x/v0.3.x polish-passes).
+- **Claim count**: 91/91 valid on main.
 
 ### Math (v0.2.0) — post-Session-9 closure
 
