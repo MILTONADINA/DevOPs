@@ -243,17 +243,22 @@ function main() {
   if (flags.allowUnsigned) console.log(`Override:      --allow-unsigned rationale="${flags.rationale}"`);
   console.log('');
 
-  // AGENTS.md + CLAUDE.md install (preserved; not skills, no verification)
+  // AGENTS.md + CLAUDE.md install (preserved; not skills, no verification).
+  // Gracefully skip when DEVOPS_ROOT source is missing (test harnesses or
+  // non-canonical layouts) — these are operator-convenience copies, not
+  // verification-gated artifacts.
+  const srcAgents = path.join(DEVOPS_ROOT, 'AGENTS.md');
   const targetAgents = path.join(PROJECT_ROOT, 'AGENTS.md');
-  if (!fs.existsSync(targetAgents)) {
-    if (!flags.dryRun) copy(path.join(DEVOPS_ROOT, 'AGENTS.md'), targetAgents);
+  if (!fs.existsSync(targetAgents) && fs.existsSync(srcAgents)) {
+    if (!flags.dryRun) copy(srcAgents, targetAgents);
     console.log('✓ Installed AGENTS.md');
-  } else {
+  } else if (fs.existsSync(targetAgents)) {
     console.log('⚠ AGENTS.md already exists; not overwriting');
   }
+  const srcClaude = path.join(DEVOPS_ROOT, 'CLAUDE.md');
   const targetClaude = path.join(PROJECT_ROOT, 'CLAUDE.md');
-  if (!fs.existsSync(targetClaude)) {
-    if (!flags.dryRun) copy(path.join(DEVOPS_ROOT, 'CLAUDE.md'), targetClaude);
+  if (!fs.existsSync(targetClaude) && fs.existsSync(srcClaude)) {
+    if (!flags.dryRun) copy(srcClaude, targetClaude);
     console.log('✓ Installed CLAUDE.md');
   }
 
@@ -334,9 +339,10 @@ function main() {
     fs.mkdirSync(path.join(PROJECT_ROOT, '.workflow/proofs'), { recursive: true });
     fs.mkdirSync(path.join(PROJECT_ROOT, '.workflow/memory'), { recursive: true });
     fs.mkdirSync(path.join(PROJECT_ROOT, '.workflow/client'), { recursive: true });
-    if (!fs.existsSync(path.join(PROJECT_ROOT, '.workflow/state/budget.yml'))) {
-      copy(path.join(DEVOPS_ROOT, 'cost-controls/budget.yml'),
-           path.join(PROJECT_ROOT, '.workflow/state/budget.yml'));
+    const srcBudget = path.join(DEVOPS_ROOT, 'cost-controls/budget.yml');
+    const dstBudget = path.join(PROJECT_ROOT, '.workflow/state/budget.yml');
+    if (!fs.existsSync(dstBudget) && fs.existsSync(srcBudget)) {
+      copy(srcBudget, dstBudget);
     }
   }
 
