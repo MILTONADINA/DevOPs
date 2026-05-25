@@ -228,8 +228,7 @@ function recommend(profile: Omit<Profile, 'recommended'>): Profile['recommended'
   // detection, surface the corresponding stack-specific skills. The 9 skills
   // ship under skills/stack-specific/<stack>/<topic>/SKILL.md and are
   // authored / linted in session 4 (D.01-D.10). Inline conditional pattern
-  // mirrors A.06 / H.03 / G.08; the dead analyzer/recommendation-rules.yml
-  // stays untouched per PB-7 (v0.2.0 cleanup).
+  // mirrors A.06 / H.03 / G.08.
   if (profile.stack.frameworks.includes('next.js')) {
     skills.push('development/openapi-first');
     skills.push('stack-specific/nextjs/server-action-safety');
