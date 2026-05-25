@@ -28,7 +28,7 @@
 | 9 | ASI03 Identity & Privilege Abuse | per-subagent `permissions` in `subagents/universal/*.md` | 1 |
 | 10 | ASI04 Indirect Injection | `skills/universal/security/prompt-injection-defense/SKILL.md` | 1 |
 | 11 | ASI05-10 (remaining ASI threats) | `governance/owasp-asi-2026/threats.md` (full reference + mitigations) | 1 |
-| 12 | OWASP AST10 skill supply-chain (ClawHub-style) | `governance/owasp-asi-2026/threats.md` (AST10 section); skill signing in Phase 2 | 1 (ref); 2 (impl) |
+| 12 | OWASP AST10 skill supply-chain (ClawHub-style) | `governance/owasp-asi-2026/threats.md` (AST10 section); skill signing in Phase 2 | 1 (ref); 2 ✅ sealed 41e82f9 (Area E sigstore + Area F install-time verify) |
 
 ## C. Agent failure modes — 591-incident taxonomy (gaps 13-18)
 
@@ -123,8 +123,8 @@
 | # | Gap | Location | Phase |
 |---|-----|----------|-------|
 | 46 | OpenAPI-first development | `skills/universal/development/openapi-first/SKILL.md` | 1 |
-| 47 | Webhook idempotency (Stripe-style) | Stack-specific skill scheduled for Phase 2 (`skills/stack-specific/stripe/`) | 2 |
-| 48 | Renovate over Dependabot | `docs/COST_OPTIMIZATION.md` (recommended tools section); CI in Phase 2 | 1 (rec); 2 (impl) |
+| 47 | Webhook idempotency (Stripe-style) | `skills/universal/security/webhook-idempotency/` (G universal) + `skills/stack-specific/stripe/webhook-idempotency/` (D Stripe stack-specific) | 2 ✅ sealed 41e82f9 (Areas G + D) |
+| 48 | Renovate over Dependabot | `templates/renovate/renovate.json` + `scripts/lint-renovate.js` + ci.yml wire | 1 (rec); 2 ✅ sealed 41e82f9 (Area H impl) |
 
 ## O. Documentation discipline (gaps 49-50)
 
@@ -138,7 +138,7 @@
 | # | Gap | Location | Phase |
 |---|-----|----------|-------|
 | 51 | COPPA audit skill | `skills/universal/compliance/coppa-audit/SKILL.md` | 1 |
-| 52 | PCI scope minimization (Stripe) | Stack-specific skill scheduled | 2 |
+| 52 | PCI scope minimization (Stripe) | `skills/stack-specific/stripe/pci-scope-minimization/SKILL.md` | 2 ✅ sealed 41e82f9 (Area D Stripe stack-specific) |
 | 53 | HIPAA audit | Phase 4 — `skills/universal/compliance/hipaa-audit/` | 4 |
 | 54 | GDPR / SOC 2 / Accessibility (WCAG 2.2 AA) | `templates/ears-spec/SPEC_TEMPLATE.md` (NFR-4); accessibility CI in Phase 2 | 1 (template); 2 (CI) |
 
@@ -161,7 +161,7 @@
 
 | # | Gap | Location | Phase |
 |---|-----|----------|-------|
-| 60 | Sigstore/Cosign skill signing + hash pinning | `governance/owasp-asi-2026/threats.md` (AST10 section + plan) | 2 |
+| 60 | Sigstore/Cosign skill signing + hash pinning | `.github/workflows/release-sign.yml` + `governance/skill-manifest.yml` (cosign v2.4.3 keyless OIDC); install-time verify at `analyzer/install.ts` | 2 ✅ sealed 41e82f9 (Area E + Area F) |
 
 ## T. Multi-tool failover (gap 61)
 
