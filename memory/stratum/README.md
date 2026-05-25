@@ -63,6 +63,21 @@ agents.
 
 ---
 
+## Phase 0 spec (authored 2026-05-25, Session 10 Phase C)
+
+The authoritative implementation spec for Stratum Phase 0 (Capture) lives
+at [`.workflow/state/plans/stratum-phase-0-capture.md`](../../.workflow/state/plans/stratum-phase-0-capture.md).
+It decomposes Phase 0 into 7 sub-areas (P0-A test harness → P0-G OTel
+event emission) totaling ~52h, with cross-area constraints, per-REQ
+acceptance criteria, and 7 open questions blocking Session 11
+implementation start.
+
+**Spec status**: SPEC-AUTHORED, IMPLEMENTATION-NOT-STARTED. The "0%
+complete" Phase 0 marker in the taxonomy table below stays — spec
+authorship is not implementation.
+
+---
+
 ## Stratum's own 7-phase taxonomy + state markers
 
 These are **Stratum's** phases as defined in
