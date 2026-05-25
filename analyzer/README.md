@@ -7,14 +7,19 @@ and lifecycle phase.
 ## How it works
 
 ```
-analyzer/scan.ts        ← detects stack, domain, state, risk
-       │
-       ▼
-analyzer/recommend.ts   ← maps detection → recommendations
+analyzer/scan.ts        ← detects stack, domain, state, risk;
+                          maps detection → recommendation inline
        │
        ▼
 analyzer/install.ts     ← installs the chosen components
+                          (Phase 2 / Area F adds signature verification
+                          before copy; see docs/SKILL_SIGNING.md)
 ```
+
+Recommendation logic lives directly in `scan.ts` via inline conditionals
+(the original `recommend.ts` split described in early drafts was not
+implemented — Phase 2 sessions A.06, D.12, G.08 settled on the inline
+pattern as the canonical approach).
 
 ## What it detects
 
