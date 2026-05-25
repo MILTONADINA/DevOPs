@@ -1,0 +1,48 @@
+# governance/gitleaks-tier3.toml
+#
+# DevOPs v0.2.x tier-3 pre-release gitleaks configuration.
+#
+# Scope: pre-release whole-repo scans. NOT auto-discovered (lives at a
+# non-default path) — invoke via:
+#
+#     gitleaks detect --config governance/gitleaks-tier3.toml \
+#                     --source . \
+#                     --report-format json \
+#                     --report-path /tmp/gitleaks-tier3.json
+#
+# Why a non-default path: A.10's negative-direction proof (REQ-A8 AC-A8.1)
+# invokes `gitleaks detect --no-git --source tests/fixtures/security/poisoned-mcp-config.json`
+# without `--config`. Gitleaks auto-discovers `.gitleaks.toml` from the source
+# upward. Placing this config at `.gitleaks.toml` in repo root would suppress
+# A.10's tripping (the allowlist below exempts the fixture from whole-repo
+# scans) → claim 049 regresses. Keeping this config at a non-default path
+# preserves A.10's behavior while still being available for tier-3 scans.
+#
+# Closes: PB-9.
+# Filed by: Phase 2 session 2 (A.10 negative-direction proof needed allowlist
+# scoping that the over-broad `.gitleaksignore` dropped during authoring did
+# not provide).
+
+# Extends the default gitleaks rule set; no custom rules in v0.2.x.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "DevOPs v0.2.x deliberate-fixture allowlist (tier-3 whole-repo scan only)"
+
+# Deliberate test fixtures containing credential-shaped strings used ONLY
+# for negative-direction security proofs. These files self-identify with
+# a `DELIBERATELY POISONED FIXTURE` marker in their content and are never
+# used as production credentials.
+paths = [
+  '''tests/fixtures/security/poisoned-mcp-config\.json$''',
+]
+
+# Future v0.2.x extensions can add path entries here for additional
+# deliberate-fixture files. Two rules:
+#   1. The file MUST self-identify as a fixture (a `DELIBERATELY POISONED`
+#      or `TEST FIXTURE` marker in its content).
+#   2. The corresponding negative-direction proof script MUST scan the
+#      fixture WITHOUT `--config`, so the proof still trips. If you must
+#      allowlist a fixture that the proof needs to trip on, the proof
+#      script needs revision first.
