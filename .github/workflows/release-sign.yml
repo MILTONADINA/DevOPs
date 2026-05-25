@@ -37,7 +37,7 @@ jobs:
       COSIGN_VERSION: 'v2.4.3'  # E.06 pin -- DO NOT bump without re-running sec-review
 
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
         with:
           # The default GITHUB_TOKEN with contents:write can push back to
           # feature branches (not protected main; that's intentional --
@@ -189,7 +189,7 @@ jobs:
 
       - name: Upload signing logs
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4  # v5.0.0
         with:
           name: signing-logs-${{ github.run_id }}
           path: .workflow/sigstore/signing-logs/
