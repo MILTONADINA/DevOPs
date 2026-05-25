@@ -1,6 +1,6 @@
 {
   "name": "@miltonadina/devops",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A self-configuring, verification-first DevOps workflow for AI coding agents. Universal across Claude Code, Codex, Cursor, Antigravity, Kiro, and local LLMs.",
   "type": "module",
   "bin": {
