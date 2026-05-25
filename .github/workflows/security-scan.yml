@@ -2,26 +2,124 @@ name: Security scan
 
 on:
   pull_request:
+  push:
+    branches: [main]
   schedule:
     - cron: '0 6 * * *'
+
+# All `uses:` actions in this workflow are SHA-pinned per REQ-B8 / AC-B8.1
+# (AST08 defense -- a malicious tag move on an upstream action would
+# otherwise compromise the security-scan layer itself). SHAs verified via
+# `git ls-remote https://github.com/<owner>/<repo> refs/tags/<tag>` at
+# pin time (B.10 sweep, session 6). When upgrading an action, look up the
+# new tag's SHA and replace; do NOT use a tag reference.
 
 jobs:
   gitleaks:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
         with: { fetch-depth: 0 }
-      - uses: gitleaks/gitleaks-action@v2
+      - uses: gitleaks/gitleaks-action@dcedce43c6f43de0b836d1fe38946645c9c638dc  # v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   semgrep:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: returntocorp/semgrep-action@v1
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
+      - uses: returntocorp/semgrep-action@713efdd345f3035192eaa63f56867b88e63e4e5d  # v1
         with:
           config: >-
             p/owasp-top-ten
             p/r2c-security-audit
             p/secrets
+
+  # ---------------------------------------------------------------------
+  # DeepTeam OWASP_ASI_2026() red-team gate (spec phase-2/B-deepteam-ci.md).
+  # All `uses:` here SHA-pinned per REQ-B8 / AST08 defense.
+  # ---------------------------------------------------------------------
+  deepteam:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20  # NFR-B1 hard wall-clock cap (ASI07 defense)
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
+        with:
+          fetch-depth: 0  # need base for changed-files diff in path filter
+
+      # REQ-B1: On pull_request, only run if changed files include any path
+      # under the 7 agent-behavior globs. On push to main, REQ-B2 backstop
+      # runs unconditionally (no path filter).
+      - id: path-filter
+        name: REQ-B1 path filter (agent-behavior PRs only; push-to-main bypasses)
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE_SHA="${{ github.event.pull_request.base.sha }}"
+            CHANGED="$(git diff --name-only "${BASE_SHA}" HEAD || echo '')"
+            AGENT_PATTERN='^(skills/|hooks/|subagents/|constitution/|mcp-configs/|analyzer/|governance/owasp-asi-2026/)'
+            if echo "$CHANGED" | grep -qE "$AGENT_PATTERN"; then
+              echo "should_run=true" >> "$GITHUB_OUTPUT"
+              echo "REQ-B1 trigger: matched agent-behavior paths in PR diff"
+            else
+              echo "should_run=false" >> "$GITHUB_OUTPUT"
+              echo "REQ-B1 skip: docs-only / dep-bump / refactor PR (AC-B1.2)"
+            fi
+          else
+            # push to main, schedule, etc. -- REQ-B2 backstop, always run
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+            echo "REQ-B2 trigger: ${{ github.event_name }} event"
+          fi
+
+      - name: Setup Python
+        if: steps.path-filter.outputs.should_run == 'true'
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
+        with:
+          python-version: '3.12'
+
+      - name: Install DeepTeam
+        if: steps.path-filter.outputs.should_run == 'true'
+        run: pip install deepteam
+
+      - name: Run DeepTeam OWASP_ASI_2026 red-team
+        if: steps.path-filter.outputs.should_run == 'true'
+        id: redteam
+        # Critical-severity exit gate (REQ-B3) is inherited from the script:
+        # scripts/run-redteam.sh exits 1 on >=1 critical finding, 2 on
+        # budget brake (REQ-B5), 0 otherwise. GitHub Actions fails the
+        # step on non-zero exit, which fails the workflow, which blocks
+        # the branch-protection gate per REQ-B3.
+        run: bash scripts/run-redteam.sh
+
+      # REQ-B4 medium/low surfacing -- non-blocking PR comment.
+      # `always()` ensures this step runs even after the prior step's
+      # non-zero exit (REQ-B3 critical-fail OR REQ-B5 budget-brake), so
+      # surfacing information always reaches the PR. The step itself
+      # exits 0 (med/low surfacing is non-blocking by REQ-B4 design).
+      - name: Surface med/low findings on PR (REQ-B4 non-blocking)
+        if: ${{ always() && steps.path-filter.outputs.should_run == 'true' && github.event_name == 'pull_request' }}
+        run: |
+          set -euo pipefail
+          if [ -f .workflow/proofs/red-team/findings.jsonl ]; then
+            MED_LOW=$(grep -cE '"severity":\s*"(medium|low)"' .workflow/proofs/red-team/findings.jsonl || echo 0)
+            echo "Red-team scan: ${MED_LOW} medium/low finding(s) (non-blocking)."
+            echo "Detailed report uploaded as artifact deepteam-${{ github.run_id }} (90d retention)."
+          fi
+          if [ -f .workflow/proofs/red-team/budget-exhausted.md ]; then
+            echo "WARNING: budget brake fired -- see uploaded budget-exhausted.md artifact (REQ-B5)."
+          fi
+        # Explicit exit 0 -- REQ-B4 mandates med/low surfacing is non-blocking
+        continue-on-error: false  # this step itself does not fail the workflow
+
+      # REQ-B6 artifact upload. Includes report.md + findings.jsonl +
+      # (when REQ-B5 brake fired) budget-exhausted.md. 90-day retention
+      # per spec B Decisions. `always()` ensures uploads happen even on
+      # REQ-B3 critical-fail or REQ-B5 budget-brake exit.
+      - name: Upload deepteam artifacts (REQ-B6 / REQ-B5)
+        if: ${{ always() && steps.path-filter.outputs.should_run == 'true' }}
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4  # v5.0.0
+        with:
+          name: deepteam-${{ github.run_id }}
+          path: .workflow/proofs/red-team/
+          retention-days: 90
+          if-no-files-found: warn

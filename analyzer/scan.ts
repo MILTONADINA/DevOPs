@@ -35,6 +35,7 @@ interface Profile {
     hooks: string[];
     mcp_servers: string[];
     subagents: string[];
+    next_steps: string[];
     initial_mode: string;
     initial_lifecycle: string;
   };
@@ -223,16 +224,78 @@ function recommend(profile: Omit<Profile, 'recommended'>): Profile['recommended'
   const subagents = ['planner', 'researcher', 'coder', 'tester', 'reviewer', 'security', 'validator'];
 
   // Stack-specific additions
+  // REQ-D4 (specs/phase-2/D-stack-specific-skills.md): on stack-indicator
+  // detection, surface the corresponding stack-specific skills. The 9 skills
+  // ship under skills/stack-specific/<stack>/<topic>/SKILL.md and are
+  // authored / linted in session 4 (D.01-D.10). Inline conditional pattern
+  // mirrors A.06 / H.03 / G.08.
   if (profile.stack.frameworks.includes('next.js')) {
     skills.push('development/openapi-first');
-    hooks.push('stack-specific/nextjs/check-route-types.sh');
+    skills.push('stack-specific/nextjs/server-action-safety');
+    skills.push('stack-specific/nextjs/check-route-types');
   }
   if (profile.stack.frameworks.includes('stripe')) {
     skills.push('stack-specific/stripe/webhook-idempotency');
-    skills.push('stack-specific/stripe/pci-scope');
+    skills.push('stack-specific/stripe/pci-scope-minimization');
+  }
+  if (profile.stack.frameworks.includes('fastapi')) {
+    skills.push('stack-specific/fastapi/dependency-injection');
+  }
+  if (
+    profile.stack.databases.includes('supabase (postgres)') ||
+    profile.stack.auth.includes('supabase')
+  ) {
+    skills.push('stack-specific/supabase/rls-policies');
+    skills.push('stack-specific/supabase/rpc-functions');
+  }
+  if (profile.stack.language.includes('rust')) {
+    skills.push('stack-specific/rust/error-handling');
+    skills.push('stack-specific/rust/cargo-audit');
   }
   if (profile.domain.compliance.includes('COPPA')) {
     skills.push('compliance/coppa-audit');
+  }
+
+  // REQ-A5 (specs/phase-2/A-pentest-stack.md): pentest-stack MCPs surface when the
+  // project handles credentials or operates in a regulated scope. The 4 tools run
+  // under the security subagent's scoped permissions; planner/coder/researcher must
+  // not invoke them (enforced in subagents/universal/security.md).
+  const triggersPentest =
+    profile.domain.compliance.includes('PCI DSS') ||
+    profile.domain.compliance.includes('HIPAA') ||
+    profile.domain.compliance.includes('COPPA') ||
+    profile.stack.auth.length > 0;
+  if (triggersPentest) {
+    mcp_servers.push('shannon', 'pentagi', 'lyrie', 'pentest-ai');
+  }
+
+  // REQ-G6 (specs/phase-2/G-webhook-idempotency.md): when the project has
+  // webhook-handler indicators (route matching /webhook(s)?/, Stripe/GitHub
+  // webhook headers, provider webhook SDK references), surface the universal
+  // webhook-idempotency skill. The detection is a bounded heuristic on common
+  // entry-point directories -- not a full source crawl. Downstream human
+  // review of the recommendation is the final gate.
+  if (detectWebhookIndicators(profile.project_root)) {
+    skills.push('security/webhook-idempotency');
+  }
+
+  // REQ-H8 (specs/phase-2/H-renovate-template.md): when a consumer project
+  // handles upgradable dependencies but has no upgrade-PR automation
+  // configured, surface the Renovate template as a next-step recommendation.
+  const next_steps: string[] = [];
+  const root = profile.project_root;
+  const hasUpgradableManifest =
+    fileExists(path.join(root, 'package.json')) ||
+    fileExists(path.join(root, 'requirements.txt')) ||
+    fileExists(path.join(root, 'pyproject.toml')) ||
+    fileExists(path.join(root, 'Cargo.toml')) ||
+    fileExists(path.join(root, 'go.mod'));
+  const hasRenovate = fileExists(path.join(root, 'renovate.json'));
+  const hasDependabot =
+    fileExists(path.join(root, '.github', 'dependabot.yml')) ||
+    fileExists(path.join(root, '.github', 'dependabot.yaml'));
+  if (hasUpgradableManifest && !hasRenovate && !hasDependabot) {
+    next_steps.push('Use templates/renovate/renovate.json -- Renovate config for dependency-update PR automation (see docs/COST_OPTIMIZATION.md)');
   }
 
   let initial_mode = 'brownfield';
@@ -247,10 +310,55 @@ function recommend(profile: Omit<Profile, 'recommended'>): Profile['recommended'
     hooks: [...new Set(hooks)],
     mcp_servers,
     subagents,
+    next_steps,
     initial_mode,
     initial_lifecycle,
   };
 }
+
+// REQ-G6 helper: detect webhook-handler indicators in the project root.
+// Scans common entry-point directories one level deep (no recursive walk) for
+// route paths or header references that signal a webhook receiver. Cheap
+// heuristic; downstream human review of the recommendation is the final gate.
+function detectWebhookIndicators(root: string): boolean {
+  const candidates: string[] = [];
+  for (const rel of ['src', 'app', 'pages', 'api', 'routes', 'server']) {
+    const dir = path.join(root, rel);
+    if (!fileExists(dir)) continue;
+    try {
+      const entries = fs.readdirSync(dir, { withFileTypes: true });
+      for (const e of entries) {
+        if (e.isFile()) candidates.push(path.join(dir, e.name));
+        else if (e.isDirectory()) {
+          try {
+            const sub = fs.readdirSync(path.join(dir, e.name), { withFileTypes: true });
+            for (const s of sub) if (s.isFile()) candidates.push(path.join(dir, e.name, s.name));
+          } catch { /* skip unreadable */ }
+        }
+      }
+    } catch { /* skip unreadable */ }
+  }
+  try {
+    for (const e of fs.readdirSync(root, { withFileTypes: true })) {
+      if (e.isFile() && /\.(ts|tsx|js|jsx|py|rs|go)$/.test(e.name)) candidates.push(path.join(root, e.name));
+    }
+  } catch { /* skip */ }
+
+  const webhookRoute = /['"\/]webhooks?[\/'"]/i;
+  const stripeSig = /['"]Stripe-Signature['"]/;
+  const githubSig = /['"]X-Hub-Signature(-256)?['"]/i;
+  const sdkRef = /from\s+['"]@octokit\/webhooks['"]|require\s*\(\s*['"]@octokit\/webhooks['"]\s*\)|stripe\.webhooks\./;
+
+  for (const file of candidates) {
+    let text: string;
+    try { text = fs.readFileSync(file, 'utf-8'); } catch { continue; }
+    if (webhookRoute.test(text) || stripeSig.test(text) || githubSig.test(text) || sdkRef.test(text)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 
 function main() {
   const root = process.cwd();

@@ -1,0 +1,8 @@
+[package]
+name = "rust-fixture-project"
+version = "0.0.0"
+edition = "2021"
+description = "Analyzer fixture for REQ-D4 / AC-D4.1: a minimal Rust project (Cargo.toml present) that should trigger stack-specific/rust/error-handling + stack-specific/rust/cargo-audit in recommended.skills."
+
+[dependencies]
+thiserror = "=1.0.66"
