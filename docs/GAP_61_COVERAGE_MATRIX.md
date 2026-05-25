@@ -153,7 +153,7 @@
 | # | Gap | Location | Phase |
 |---|-----|----------|-------|
 | 56 | File-based memory (always-on) | `memory/file-based/` | 1 |
-| 57 | Stratum structured fact store | `memory/stratum/README.md` + `config.yml` | 1 (wiring); 2 (pruner) |
+| 57 | Stratum structured fact store | `memory/stratum/README.md` + `config.yml`; backend at `stratum/` subtree (scaffold-only per audit 2026-05-24, see `.workflow/state/stratum-audit/`) | 1 (DevOPs-side wiring stub); 3 (build Stratum Phase 0+1+3 from scaffold AND integrate as memory backend — Option B locked) |
 | 58 | Zep semantic temporal memory | `memory/zep/README.md` + `docker-compose.yml` | 1 |
 | 59 | Cross-project meta-memory (PII-scrubbed) | `meta-memory/README.md` + `personal-preferences.yml` | 1 (scaffold); 6 (auto-learning) |
 
