@@ -1,6 +1,6 @@
 # DevOPs — Launch Readiness
 
-**Last refined**: 2026-05-25 (session 10 closure — Phase A startup decisions applied; Phase B SKIPPED (billing still blocked); Phase C Stratum Phase 0 spec authored; PR-based release flow now canonical per PB-17 Option β)
+**Last refined**: 2026-05-25 (session 11 Phase A — spec §7 resolved with Q1-Q7 user-confirmed; PB-13 cosign refresh re-attempted and re-failed with same billing block (run 26414947646, 5s scheduler-failure); PR-flow proven across 4 PRs)
 **Methodology**: Effort-hours-weighted progress toward defined milestones — single
 methodology committed, replacing the four different figures (85% / 61% / 49% / 20-25%)
 floated in earlier conversations.
@@ -146,13 +146,47 @@ Re-scope hooks for future sessions:
 
 ---
 
-## Headline guidance (post-Session-10 closure — Phase 0 spec authored)
+## Headline guidance (post-Session-11 Phase A — spec §7 resolved; PB-13 re-blocked)
 
-- **For "is v0.2.0 shipped?"** → **YES on remote** (`v0.2.0` tag at `aca4982` on `origin`); **~95%** by methodology — 5% gap is PB-13 cosign signing refresh, **STILL BLOCKED** on GitHub Actions billing (re-confirmed via PR-triggered workflow failures in Session 10 Phase A; same AP-5 Scheduler-Failure pattern).
-- **For "is Phase 2 engineering done?"** → **100%** (sealed at `41e82f9`; on main since Phase E merge `b5c0866`; see `governance/changelog/PHASE-2-CLOSURE.md`).
-- **For "is Session 10 startup work done?"** → **YES** — PB-17 closed (Option β PR-based flow active), PB-18 closed (4 Dependabot alerts triaged + FIX-PREVENTIVE bumps applied), Phase 0 spec authored with 7 open questions queued for user.
-- **For "is the full vision done?"** → **~17%** (Option B locked). 144h done from v0.2.0 + ~5h Session 10 release-prep work + ~3h Session 10 Phase C spec authorship = ~152h done of 996h envelope = 15.3% → rounded **~17%** including the earlier audit work folded forward.
-- **For "what's the next load-bearing decision?"** → Q1–Q7 in the Phase 0 implementation spec (`.workflow/state/plans/stratum-phase-0-capture.md` §7). Session 11 implementation cannot start until each is user-confirmed. Then: P0-A test harness as the critical-path entry node.
+- **For "is v0.2.0 shipped?"** → **YES on remote** (`v0.2.0` tag at `aca4982`); **~95%** by methodology — the same 5% gap (PB-13 cosign signing refresh). Re-attempted at Session 11 Phase A; release-sign.yml run `26414947646` failed at scheduler in 5s with identical billing annotation as Session 9 + Session 10 Phase A. Billing block persists across THREE re-attempts; user's "billing unblocked" signal didn't reflect actual GitHub state.
+- **For "is Phase 2 engineering done?"** → **100%** (sealed; unchanged).
+- **For "is the Phase 0 spec ready for implementation?"** → **YES** — §7 resolved with binding Q1-Q7 decisions (Session 11 Phase A). P0-A through P0-G acceptance criteria reflect Q1 local-only Supabase, Q2 per-turn live countTokens, Q3 indefinite retention + 5/10GB stderr warning, Q4 env-var primary + config-file secondary, Q5 fastify 4→5 bundled into P0-A, Q6 multi-tenant shape + single-tenant enforcement, Q7 OTel soft dep + stderr fallback.
+- **For "is the full vision done?"** → **~16%** (Option B locked). 150h v0.2.0 done + ~3h Session 11 Phase A (spec §7 + LR + claim 093) = ~153h done of 996h envelope = 15.4% → rounded **~16%**. Session 10 Phase C spec authorship continues to be denominator-tightening rather than numerator-loaded — Phase 0 implementation has not started.
+- **For "what's the next load-bearing decision?"** → Resolve GitHub Actions billing (PB-13 unblock). Once billing is unblocked AND a release-sign.yml dispatch returns conclusion=success, PB-13 closes and v0.2.0 ship-state hits 100%. Session 12 main work: P0-A test harness implementation (deferred from Session 11 Phase B if test-runner ambiguity blocks; see baton).
+
+### Math (v0.2.0 ship state, post-Session-11 Phase A)
+
+| Component | Effort (hours) | % done | Hours done |
+|---|---:|---:|---:|
+| DevOPs Phase 1 (Foundation) | 80 | 100% | 80.0 |
+| DevOPs Phase 2 (Security depth) | 57 | 100% | 57.0 |
+| Polish backlog (Sessions 9 + 10 + 11 Phase A) | ~5 actual | 14/18 PBs closed; PB-13 STILL BLOCKED (3 re-attempts) | 5.0 |
+| Release mechanics (Phase C..F + Session 10 + Session 11 Phase A PR-flow) | ~6 actual | 100% | 6.0 |
+| Spec authorship + §7 resolution (Session 10 Phase C + Session 11 Phase A) | ~5 actual | 100% (SPEC-ONLY; P0-A through P0-G unblocked for implementation) | 5.0 |
+| **Done** | — | — | **153** |
+| **v0.2.0 envelope (engineering 137h + polish 10h + release 10h + spec/§7 5h)** | **~162** | — | — |
+| **v0.2.0 ship figure** | — | — | **153 / 162 = 94.4%** → headline **~95%** with PB-13-BLOCKED honesty cap (billing block persists; same 5% gap as Session 10) |
+
+### Math (Full project, Option B locked) — post-Session-11
+
+| Phase | Effort (h) | Done (h) |
+|---|---:|---:|
+| DevOPs Phase 1 (Foundation) | 80 | 80.0 |
+| DevOPs Phase 2 (Security depth) | 57 | 57.0 |
+| Sessions 9 + 10 + 11 release/polish/spec work | (subsumed into v0.2.0 envelope) | 16.0 |
+| DevOPs Phase 3 (Stratum closeout Option B + memory/observability depth) — implementation | 619 | 0 (spec authored + §7 resolved = denominator-tightening, not numerator-loaded) |
+| DevOPs Phase 4 (Design phase skills) | 80 | 0 |
+| DevOPs Phase 5 (SRE & operate) | 60 | 0 |
+| DevOPs Phase 6 (Self-improvement) | 100 | 0 |
+| **Total** | **996** | **153** = **15.4%** → headline **~16%** including audit work that anchored Option B |
+
+### Session 11 Phase A outcomes (summary)
+
+- **Spec §7 resolution committed**: all 7 questions answered with binding DECIDED-prefixed entries + rationale lines. Session 12+ implementation has unblocked premises.
+- **PB-13 re-attempted, re-blocked**: release-sign.yml run `26414947646` failed at scheduler with same billing annotation. Third confirmation that the billing block is persistent + account-global. PB-13 stays BLOCKED.
+- **Claim 093 emitted** (spec §7 resolution); claim 092 (PB-13 closure) NOT emitted because premise unmet.
+- **Polish backlog state**: 14/18 closed (unchanged from Session 10). PB-13 stays BLOCKED.
+- **Phase B (P0-A test harness) gated**: stratum/package.json already declares jest as the test runner. T-B2 hard-stop condition triggered; user direction needed before Session 12 (jest vs vitest, or jest-and-no-override).
 
 ### Math (v0.2.0 ship state, unchanged from Session 9)
 
