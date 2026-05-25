@@ -65,6 +65,11 @@ sources:
     description: Output from the pentest-ai LLM-orchestrated pentest tool (area A).
     examples: [exploit suggestion]
 
+  - name: lyrie-mcp
+    trust_tier: 3
+    description: Output from the Lyrie LLM-orchestrated pentest tool (area A). RAG-driven; treated as web-fetch-equivalent. Added 2026-05-24 in A.11 sec-review to close ASI04 config gap.
+    examples: [RAG retrieval excerpt, technique recommendation]
+
 # Policy: payloads with `source` not in `sources[].name` MUST be rejected
 # by the boundary layer (AC-C4.1).
 unknown_source_policy:
