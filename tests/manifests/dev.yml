@@ -1,0 +1,24 @@
+# tests/manifests/dev.yml
+# Alternate manifest for F.08 / F.09 testing.
+#
+# Entries reference the three fixture skills with their actual sha256 values
+# computed via openssl/sha256sum at fixture-authoring time.
+
+manifest_version: 1
+generated_at: '2026-05-24T00:00:00Z'
+skills:
+- name: signed
+  path: tests/fixtures/install/source-skills/signed/SKILL.md
+  sha256: 474fa7e3ebf5aa6a0cf32450e5c071ac65f1711cfc24e08f8f388570e50936fa
+  sig_path: tests/fixtures/install/source-skills/signed/SKILL.md.sig
+  signed_by: tests/fixtures/install/source-skills (F.09 fixture)
+- name: unsigned-missing-sig
+  path: tests/fixtures/install/source-skills/unsigned-missing-sig/SKILL.md
+  sha256: cf6658d1780fa12717c27bf9cb6827bc27d35f88d1ee820c82ef7a272664fab2
+  sig_path: tests/fixtures/install/source-skills/unsigned-missing-sig/SKILL.md.sig
+  signed_by: tests/fixtures/install/source-skills (F.09 fixture)
+- name: unsigned-mismatched-sig
+  path: tests/fixtures/install/source-skills/unsigned-mismatched-sig/SKILL.md
+  sha256: 0cd207fcd8187264aea8bbcf1245073f945b09a9aa454ade9f2448328fb1ca1c
+  sig_path: tests/fixtures/install/source-skills/unsigned-mismatched-sig/SKILL.md.sig
+  signed_by: tests/fixtures/install/source-skills (F.09 fixture)
