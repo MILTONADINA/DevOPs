@@ -15,9 +15,9 @@
 | 1 | Sandboxed code execution | `sandbox/` (devcontainer, E2B, Docker) | 1 |
 | 2 | E2B integration | `sandbox/e2b/setup.md` | 1 (docs); 2 (SDK wired) |
 | 3 | Devcontainer-MCP | `sandbox/devcontainer/devcontainer.json` | 1 |
-| 4 | Modal / Daytona / Northflank for cloud sandboxes | `sandbox/e2b/setup.md` (alternative providers section); skill in Phase 2 | 2 |
+| 4 | Modal / Daytona / Northflank for cloud sandboxes | `sandbox/e2b/setup.md` (alternative providers section); skill-pack in Phase 4 | 4 (re-targeted Session 13 — design phase skill-pack, not Phase 2 security depth) |
 | 5 | Cloudflare Workers / Vercel Edge as sandbox | `analyzer/recommendation-rules.yml` (deploy_targets detection) | 1 |
-| 6 | Nix / Devbox reproducibility | `sandbox/docker/Dockerfile.dev` (pinned tooling); Nix variant in Phase 2 | 1 + 2 |
+| 6 | Nix / Devbox reproducibility | `sandbox/docker/Dockerfile.dev` (pinned tooling); Nix variant in Phase 4 | 1 + 4 (re-targeted Session 13 — dev-environment skill belongs with Phase 4 design phase skills) |
 
 ## B. OWASP ASI 2026 (gaps 7-12)
 
@@ -64,7 +64,7 @@
 
 | # | Gap | Location | Phase |
 |---|-----|----------|-------|
-| 28 | Test-Driven Agent Development with hidden post-implementation tests | `subagents/universal/validator.md` (independent re-validation) + `subagents/universal/tester.md` | 1 (validator); 2 (hidden suite) |
+| 28 | Test-Driven Agent Development with hidden post-implementation tests | `subagents/universal/validator.md` (independent re-validation) + `subagents/universal/tester.md` | 1 (validator); 6 (hidden suite — re-targeted Session 13 to Phase 6 self-improvement, since hidden-test discipline is an eval mechanism for agent improvement, not Phase 2 security) |
 
 ## G. Model routing & cost (gaps 29-33)
 
@@ -73,8 +73,8 @@
 | 29 | Three-tier routing (Haiku/Sonnet/Opus) | `cost-controls/model-routing.yml` | 1 |
 | 30 | Per-subagent model assignment | `subagents/universal/*.md` (model: field) | 1 |
 | 31 | Advisor strategy (Opus plans, Sonnet implements) | `cost-controls/model-routing.yml` advisor_strategy section | 1 |
-| 32 | Anthropic Batch API (50% discount) | `cost-controls/model-routing.yml` batch_api section | 1 (config); 2 (wired) |
-| 33 | Prompt caching for constitution layer | `cost-controls/model-routing.yml` prompt_caching section | 1 (config); 2 (wired) |
+| 32 | Anthropic Batch API (50% discount) | `cost-controls/model-routing.yml` batch_api section | 1 (config); 4 (wired — re-targeted Session 13: cost-optimization wiring belongs with Phase 4 design phase skills, not Phase 2 security) |
+| 33 | Prompt caching for constitution layer | `cost-controls/model-routing.yml` prompt_caching section | 1 (config); 4 (wired — re-targeted Session 13: cost-optimization wiring belongs with Phase 4 design phase skills, same rationale as gap 32) |
 
 ## H. Playwright + visual diff loop (gap 34)
 
@@ -140,7 +140,7 @@
 | 51 | COPPA audit skill | `skills/universal/compliance/coppa-audit/SKILL.md` | 1 |
 | 52 | PCI scope minimization (Stripe) | `skills/stack-specific/stripe/pci-scope-minimization/SKILL.md` | 2 ✅ sealed 41e82f9 (Area D Stripe stack-specific) |
 | 53 | HIPAA audit | Phase 4 — `skills/universal/compliance/hipaa-audit/` | 4 |
-| 54 | GDPR / SOC 2 / Accessibility (WCAG 2.2 AA) | `templates/ears-spec/SPEC_TEMPLATE.md` (NFR-4); accessibility CI in Phase 2 | 1 (template); 2 (CI) |
+| 54 | GDPR / SOC 2 / Accessibility (WCAG 2.2 AA) | `templates/ears-spec/SPEC_TEMPLATE.md` (NFR-4); accessibility CI in Phase 4 | 1 (template); 4 (CI — re-targeted Session 13: accessibility CI is a design-discipline lint, not a Phase 2 security control) |
 
 ## Q. Constitution measurability (gap 55)
 

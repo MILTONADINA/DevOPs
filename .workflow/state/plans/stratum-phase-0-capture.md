@@ -20,14 +20,14 @@ Stratum at HEAD `4665d2e` (post-Session-10-Phase-A bump):
 | Documentation LOC | ~5,116 across `stratum/docs/` |
 | Test coverage | **0 tests** — only `.gitkeep` placeholders under `tests/{api,integration,unit}/` |
 | Phases shipped per Stratum's own roadmap | **0 of 7** (checkboxes all unchecked) |
-| Known defects per `stratum/CHANGELOG.md` | Streaming-response crash in capture script |
+| Streaming support in capture-session.ts | **NONE** (zero streaming code path; non-streaming `axios.post` only). The prior reference to a "streaming-response crash in CHANGELOG" was traced Session 13 to a fictional entry inside `stratum/CHANGELOG.md`'s Format Reference example block — not a real `[Unreleased]` entry. Streaming is greenfield work in P0-B (see §3). |
 | License | MIT (note: package.json name is "startum" — Stratum/Startum typo persists upstream; out of DevOPs scope) |
 | Dependencies post-PB-18 bump | fastify `^5.8.3`, uuid `^11.1.1` (was 4.x/9.x; vulnerable per Dependabot, FIX-PREVENTIVE applied) |
 | Installed state | NO lockfile, NO `node_modules/`, never `npm install`'d in this repo |
 
 **What capture-session.ts does today**: Fastify listening on port 4090, intercepts `POST /v1/messages`, calls `client.messages.countTokens()` for exact input-token measurement, forwards to real Anthropic API, captures (request, response, token_counts, elapsed_ms) per turn, writes session JSON to `data/sessions/session-<uuid>.json` (gitignored). Uses `randomUUID()` from `node:crypto` (NOT the `uuid` package — the `uuid` import is dead code).
 
-**Streaming-response crash**: CHANGELOG records that when the Anthropic API returns a streaming response (`stream: true` in request body), the script crashes. Root cause: capture handler assumes a single Response object with full body; doesn't handle Server-Sent-Events stream protocol. This is P0-B's primary deliverable.
+**Streaming support is not yet implemented (greenfield work for P0-B)**: capture-session.ts has zero streaming code path — it uses `axios.post()` against `https://api.anthropic.com/v1/messages` non-streaming only. There is no `messages.stream()` call, no SSE parser, no `text/event-stream` handling. Session 13 traced the prior reference to a "streaming crash in CHANGELOG" to a fictional entry inside `stratum/CHANGELOG.md`'s Format Reference example block (removed in Session 13 cleanup; see `stratum/CHANGELOG.md` history). P0-B is therefore greenfield streaming implementation, not a crash fix. Effort estimate revised upward (Session 13) to reflect honest reality.
 
 Source: `.workflow/state/stratum-audit/01-stratum-state.md` (authoritative; do not improvise contradictions).
 
@@ -61,49 +61,76 @@ Source: `.workflow/state/stratum-audit/01-stratum-state.md` (authoritative; do n
 
 | Sub-area | Scope | Effort (h) | Cross-deps | Branch |
 |---|---|---:|---|---|
-| **P0-A** | Test harness + mock Anthropic responses (streaming + non-streaming + error paths) | ~12 | none | `stratum-phase-0-capture-test-harness` |
-| **P0-B** | Streaming response handling — fix CHANGELOG crash; SSE stream parsing + reassembly | ~8 | P0-A | `stratum-phase-0-capture-streaming` |
+| **P0-A** | Test harness + mock Anthropic responses (**non-streaming only**; error paths included) | ~12 | none | `stratum-phase-0-capture` |
+| **P0-B** | **Streaming support implementation (greenfield)** — SSE detection, parsing, chunk passthrough, accumulated-session-JSON, comprehensive test coverage. Re-scoped Session 13 (was ~8h crash-fix; corrected to honest greenfield estimate) | ~18 | P0-A | `stratum-phase-0-capture-streaming` |
 | **P0-C** | Token counting reliability hardening (`countTokens` integration; cache for repeated counts; degrade-gracefully on countTokens API failure) | ~6 | P0-A | `stratum-phase-0-capture-token-counting` |
 | **P0-D** | Session JSON schema + semver versioning + migration scaffolding | ~4 | none | `stratum-phase-0-capture-schema` |
 | **P0-E** | Supabase storage backend wiring (append-only `sessions` write; RLS; reuse DevOPs migration patterns) | ~10 | P0-D + DevOPs schema | `stratum-phase-0-capture-storage` |
 | **P0-F** | PII redaction consumption from `observability/pii-redaction.ts` (NOT duplication) | ~6 | P0-E + `observability/pii-redaction.ts` | `stratum-phase-0-capture-pii` |
 | **P0-G** | Observability event emission (OTLP-compatible spans; baggage propagation per `observability/otel-config.yml`) | ~6 | P0-F + DevOPs event schema | `stratum-phase-0-capture-otel` |
 
-**Total: ~52h** — within the ~30-80h range tolerance (`.workflow/state/stratum-audit/04-gap-roadmap-deltas.md` Option B Phase 0 envelope assumption). If actual execution diverges >50%, STOP and surface — Option B's full-project denominator (currently 996h, with 619h Phase 3 budget) may need revision.
+**Total: ~62h** (revised Session 13 from ~52h to reflect P0-B greenfield reality). Still within the 30-80h range tolerance. The +10h delta is honest cost transparency, not scope expansion — same deliverable, accurate estimate. If actual execution diverges >50% from ~62h, STOP and surface — Option B's full-project denominator (currently 996h with 619h Phase 3 budget) may need revision.
+
+### P0-B re-scope detail (Session 13)
+
+CHANGELOG previously referenced a "streaming crash" entry inside a format-reference example block (removed Session 13). `capture-session.ts` currently uses `axios.post()` non-streaming only — zero streaming code exists. P0-B is therefore **greenfield streaming implementation**, NOT a crash fix.
+
+P0-B scope (binding):
+- Detect `stream: true` in incoming request body (or `Accept: text/event-stream` header)
+- Forward to Anthropic Messages API with streaming enabled (`@anthropic-ai/sdk` `messages.stream()` or equivalent fetch-based SSE)
+- Parse Server-Sent Events (SSE) — `event: <type>\ndata: {...}\n\n` framing per Anthropic streaming spec
+- Forward chunks to client preserving streaming semantics (proxy passthrough; do not buffer-and-respond)
+- Accumulate full session JSON from streaming chunks (`message_start` → `content_block_start` → `content_block_delta` × N → `content_block_stop` → `message_delta` → `message_stop`)
+- Handle stream errors: network drop mid-stream, malformed chunks, client-side abort (`AbortController`), partial stream, Anthropic-side error events
+- Comprehensive vitest coverage (per Q8.1): text streaming, `tool_use` streaming, multi-turn streaming, error paths, abort handling
 
 ---
 
 ## §4 — Acceptance criteria per REQ
 
-### P0-A — Test harness + mock Anthropic responses
+### P0-A — Test harness + mock Anthropic responses (non-streaming only)
 
-**Deliverable**: `stratum/tests/api/anthropic-mocks.ts` + `stratum/tests/integration/capture-roundtrip.test.ts`
+**Deliverable**: vitest-based test harness exercising capture-session.ts's existing non-streaming proxy path with comprehensive coverage. Streaming tests are **explicitly out of scope** for P0-A; they live in P0-B's coverage. The mock surface must include an explicit scope-guard that throws if a test attempts to invoke `messages.stream()`.
 
-**ACs**:
-- AC-P0-A.1 Mock Anthropic non-streaming response fixture exists at `stratum/tests/fixtures/anthropic/non-streaming.json` with realistic shape (id, content, model, role, stop_reason, type, usage)
-- AC-P0-A.2 Mock Anthropic streaming response fixture exists at `stratum/tests/fixtures/anthropic/streaming.sse` with realistic SSE event sequence (`message_start`, `content_block_start`, `content_block_delta`, `content_block_stop`, `message_delta`, `message_stop`)
-- AC-P0-A.3 Mock error responses for: 401 (invalid auth), 429 (rate limit), 500 (server error), network failure (connection-reset)
-- AC-P0-A.4 Integration test `npm run test:integration` (when Phase 0 builds out) runs capture-session.ts against the mocks via a test-only env var (e.g., `ANTHROPIC_API_BASE=http://localhost:<mock-port>`)
-- AC-P0-A.5 Test harness runs in <30s wall-clock per `npm run test:integration` invocation
+**Test runner**: vitest (per Q8.1). Migration from declared-but-unused jest scaffold is part of P0-A.
 
-**Claim evidence**: test files exist + `npm run test:integration` exit 0 against mocks + coverage report shows ≥80% branch coverage for capture-handler.
+**ACs (Session 13 revised under production-grade quality bar)**:
+- AC-P0-A.1 Mock Anthropic non-streaming response fixtures exist at `stratum/tests/fixtures/anthropic/*.json` covering: simple text, single tool_use, mixed-content (text+tool_use), multi-turn, 4xx error, 5xx error
+- AC-P0-A.2 **Streaming tests are explicitly EXCLUDED from P0-A.** The mock SDK surface MUST raise on `messages.stream()` invocation with an error message naming P0-B as the responsible scope. Streaming fixtures (e.g., `streaming.sse` referenced in prior revisions) live in P0-B's coverage, not here.
+- AC-P0-A.3 Mock error responses for: 401 (invalid auth), 429 (rate limit), 500 (server error), network failure (connection-reset), malformed-JSON response
+- AC-P0-A.4 vitest test suite invokable via `npm test` (in `stratum/`) returns exit 0 against fully-mocked Anthropic surface; no real network calls
+- AC-P0-A.5 Test harness runs in <30s wall-clock per full `npm test` invocation
+- AC-P0-A.6 Coverage thresholds (production-grade bar): `scripts/capture-session.ts` statements ≥85%, branches ≥80%, functions ≥90%, lines ≥85%
+- AC-P0-A.7 Test set covers: proxy passthrough (non-streaming), tool_use forwarding, mixed-content forwarding, session-JSON capture artifact shape, multi-turn forwarding, error paths (4xx/5xx/network/malformed), tenant isolation (default `"personal"` per Q6), token counting (per-turn `countTokens` invocation per Q2), OTel soft-dep (Q7: stderr fallback when endpoint empty/unreachable), config resolution (Q4: env-var primary), concurrent-session isolation, graceful shutdown (SIGTERM handler + in-flight drain). Total: 11 test files, ~30-40 cases
+- AC-P0-A.8 Mock `@anthropic-ai/sdk` includes: `messages.create` (configurable response from fixture loader), `messages.countTokens` (returns deterministic count via JSON-length heuristic); `messages.stream` explicitly throws per AC-P0-A.2
+- AC-P0-A.9 Mock fastify 5 request/reply shapes: `buildMockRequest`, `buildMockReply` with chainable recorders; `inject()` helper for full-lifecycle integration tests
+
+**Claim evidence**: vitest exit 0 + coverage report meeting all four thresholds + explicit AC → test-file mapping table + negative anchor (no jest, ts-jest, @types/jest in package.json; no streaming code path / streaming test in suite).
 
 **Anchor spec_ref**: this file + sub-section P0-A.
 
 ---
 
-### P0-B — Streaming response handling
+### P0-B — Streaming support implementation (greenfield)
 
-**Deliverable**: capture-session.ts handles Anthropic stream responses without crashing.
+**Deliverable**: capture-session.ts gains a complete streaming code path, from SSE detection through chunk passthrough through accumulated-session-JSON, with comprehensive vitest coverage. Re-scoped Session 13 from "fix CHANGELOG crash" (which referenced a fictional CHANGELOG entry) to "implement streaming for the first time."
 
-**ACs**:
-- AC-P0-B.1 When request body contains `stream: true`, capture handler subscribes to Anthropic's SSE stream + reassembles full response from `content_block_delta` events
-- AC-P0-B.2 Captured turn JSON carries `streaming: true` flag + the reassembled response body (same shape as non-streaming for downstream tooling)
-- AC-P0-B.3 If stream truncates mid-response (network failure, client disconnect): explicit partial-response error path; captured turn records `stream_interrupted: true` + `bytes_received` + does NOT corrupt the session JSON
-- AC-P0-B.4 Token counts on streaming responses match the post-stream `usage` field in the final `message_delta` SSE event (Anthropic publishes the canonical count there)
-- AC-P0-B.5 Closes CHANGELOG-recorded crash bug; regression test in P0-A harness covers the crash scenario
+**Test runner**: vitest (per Q8.1).
 
-**Claim evidence**: streaming-response integration test passes + manual run against a real Claude Code session demonstrates no crash.
+**ACs (Session 13 revised under production-grade quality bar)**:
+- AC-P0-B.1 Streaming detection: capture handler routes to streaming path when EITHER request body contains `stream: true` OR `Accept: text/event-stream` header is present. Non-streaming requests continue using the non-streaming path established in P0-A.
+- AC-P0-B.2 SSE forwarding: streaming chunks pass through to the client preserving streaming semantics — the client sees a streaming response, NOT a buffered-then-sent response. Use Node 18+ `ReadableStream` + fastify 5's reply-stream API. Latency-to-first-token must be ≤ Anthropic's own (overhead ≤50ms p95).
+- AC-P0-B.3 Session JSON accumulation: streaming chunks accumulate into the same `CapturedSession` shape as non-streaming. Event sequence handled: `message_start` → `content_block_start` → `content_block_delta` × N → `content_block_stop` (× M for multi-block) → `message_delta` → `message_stop`. Captured turn JSON carries `streaming: true` flag + the reassembled response (same downstream shape as non-streaming).
+- AC-P0-B.4 Token counts on streaming responses match the post-stream `usage` field in the final `message_delta` SSE event (Anthropic publishes the canonical count there). Per-turn `countTokens` (per Q2) is invoked PRE-stream for input tokens.
+- AC-P0-B.5 Stream-error handling (all explicit, fail-CLOSED on session-JSON corruption risk):
+  - Network drop mid-stream → captured turn records `stream_interrupted: true` + `bytes_received` + last-completed-event-type; partial reassembled content preserved; client receives a structured error event before close
+  - Malformed SSE chunk (non-JSON data field, missing newlines, etc.) → log to stderr; skip the chunk; continue if recoverable, abort if cumulative-malformed-count exceeds threshold (default 3)
+  - Client-side abort (`AbortController`) → upstream connection closed; session JSON marked `client_aborted: true`; no further chunks accumulated
+  - Anthropic-side error event in stream → forwarded to client; session JSON records the error
+- AC-P0-B.6 Comprehensive vitest coverage (P0-B authors all streaming tests): text-only streaming, tool_use streaming, mixed-content (text + tool_use) streaming, multi-turn streaming, abort handling, all 4 error paths from AC-P0-B.5
+- AC-P0-B.7 Streaming fixtures live at `stratum/tests/fixtures/anthropic-streams/*.sse` (SSE wire format, not JSONL). Coverage: simple-text-stream, tool-use-stream, mixed-content-stream, multi-turn-stream, abort-mid-stream, malformed-chunks, network-drop, anthropic-error-event.
+
+**Claim evidence**: streaming integration tests passing + manual smoke against a real Claude Code session demonstrates first-token latency overhead ≤50ms p95 + session JSON reassembles correctly from a captured real stream.
 
 **Anchor spec_ref**: this file + sub-section P0-B.
 
@@ -239,7 +266,15 @@ User-confirmed answers to all 7 open questions. Each carries a one-line rational
 
 **Q7 — OTel exporter dependency** → **DECIDED: soft dep with graceful degradation**. If `OTEL_EXPORTER_OTLP_ENDPOINT` is unreachable (unset, network failure, collector not running), capture-session continues with stderr-fallback log emission. Hard dep is the wrong default for a tool that runs on laptops with flaky networks. AC-P0-G.5 in §4 already encodes this; reaffirmed here.
 
-**Q8 — Test runner** → **DECIDED: jest** (Session 12 user-confirmed 2026-05-25). `stratum/package.json` already declares `jest ^29.7.0` + `ts-jest ^29.1.5` + a `jest:{}` config block (preset `ts-jest`, testEnvironment `node`, moduleNameMapper `@/*` → `src/*`). Migration to vitest costs devDep churn + config rewrite + breaks consistency with the upstream Stratum scaffold without payoff at personal-tool scope. The "vitest preferred" default from the Session 11 prompt was a greenfield default — it does not override an existing functional scaffold. **Carry-forward**: jest is also the binding test runner for Phase 1 + Phase 3 stratum specs (no per-phase test-runner divergence).
+**Q8 — Test runner** → **DECIDED: jest** (Session 12 user-confirmed 2026-05-25 under zero-churn / personal-tool prior). `stratum/package.json` already declares `jest ^29.7.0` + `ts-jest ^29.1.5` + a `jest:{}` config block (preset `ts-jest`, testEnvironment `node`, moduleNameMapper `@/*` → `src/*`). Migration to vitest costs devDep churn + config rewrite + breaks consistency with the upstream Stratum scaffold without payoff at personal-tool scope. The "vitest preferred" default from the Session 11 prompt was a greenfield default — it does not override an existing functional scaffold.
+
+> **SUPERSEDED by Q8.1 below.** Q8 is retained as audit trail; Q8.1 is the binding decision from Session 13 forward.
+
+**Q8.1 — Test runner recalibration** → **AMENDED: vitest** (Session 13 user-confirmed 2026-05-25/26 under production-grade quality bar).
+
+Rationale: Q8 baked jest under the zero-churn / personal-tool prior. Session 13 recalibrates under a production-grade prior. vitest is architecturally superior for an ESM-first TypeScript project: native ESM matches `@anthropic-ai/sdk`'s ESM-first nature; no ts-jest transformer brittleness; ~3-5× faster execution; cleaner mocking ergonomics for ESM modules; modern watch mode with file-graph-aware reruns. Migration cost (~30-60 min) is incurred ONCE before any concrete tests are authored; deferred migration would compound across 10+ test files. Q8 (jest) is RETAINED in this spec as audit trail; the BINDING test runner from Session 13 forward is **vitest**.
+
+**Carry-forward**: vitest is also the binding test runner for stratum/ Phase 1 + Phase 3 specs (no per-phase test-runner divergence). All future test-related acceptance criteria reference vitest.
 
 ### Resolution provenance
 
@@ -275,7 +310,7 @@ Apply at every Stratum Phase 0+1+3 PR before merge to main:
 - [ ] Branch flow per PB-17 outcome (PR-based for v0.3.x; no direct-push)
 - [ ] CI checks pass on PR before merge (gated on GitHub Actions billing being unblocked — Session 9/10 finding)
 - [ ] Linear history preserved (squash-merge or rebase-merge; no merge commits)
-- [ ] §7 resolutions (Q1-Q8) reflected in P0-A through P0-G acceptance criteria — no implementation diverges from binding decisions without a spec revision
+- [ ] §7 resolutions (Q1-Q8 + Q8.1) reflected in P0-A through P0-G acceptance criteria — no implementation diverges from binding decisions without a spec revision. Q8 (jest) is the audit-trail entry; Q8.1 (vitest) is the binding test runner.
 
 ---
 
@@ -284,6 +319,7 @@ Apply at every Stratum Phase 0+1+3 PR before merge to main:
 - 2026-05-25 (Session 10 Phase C) — Spec authored. Awaiting user answers on §7 open questions (Q1–Q7) before Session 11 implementation begins.
 - 2026-05-25 (Session 11 Phase A) — §7 resolved with user-confirmed Q1-Q7 decisions ("yes for both" gates). Q1 local-only Supabase; Q2 per-turn live countTokens; Q3 indefinite retention + 5/10GB stderr warning; Q4 env-var primary + config-file secondary; Q5 fastify 4→5 bundled into P0-A; Q6 multi-tenant shape + single-tenant enforcement; Q7 OTel soft dep + stderr fallback. P0-A through P0-G acceptance criteria reflect these resolutions. Session 11 also attempted PB-13 closure via release-sign.yml re-dispatch against v0.2.0 (run 26414947646); failed at scheduler in 5s with same billing annotation as Session 9 + Session 10 Phase A — billing block persists; PB-13 stays BLOCKED.
 - 2026-05-25 (Session 12 Phase A) — §7 Q8 baked: test runner = jest (existing `stratum/package.json` scaffold; no vitest migration). §9 pre-merge checklist updated to "Q1-Q8". PB-13 re-attempted ONCE per Session 12 prompt's no-retry policy: run `26416394799` failed at scheduler in 5s with 0 steps — FOURTH consecutive billing-blocked failure (Sessions 9, 10, 11, 12). Logged as PB-13.3 (third confirmed re-attempt failure post the initial Session 9 Phase F failure). Escalation: user-side spending-limit configuration at github.com/settings/billing/spending_limit. Phase B (P0-A scaffolding) deferred pending strategist resolution of two pre-flight findings: (1) `stratum/CHANGELOG.md` streaming-crash entry is fictional (lives inside the "Format Reference" example code block, not a real `[Unreleased]` entry); (2) `stratum/scripts/capture-session.ts` has no streaming code path — `axios.post('/v1/messages', body)` non-streaming only, no `messages.stream()`, no SSE handling. The crash-replication.jsonl fixture cannot be reconstructed because no crash exists yet.
+- 2026-05-25/26 (Session 13 Phase A) — Recalibration sweep under production-grade quality bar. §7 Q8.1 amendment baked: test runner = **vitest** (supersedes Q8 jest; Q8 retained as audit trail). §3 P0-B re-scoped from "fix CHANGELOG crash" (~8h) to "greenfield streaming implementation" (~18h); P0 total envelope 52h → 62h. §4 acceptance criteria clarified: P0-A streaming tests/fixtures moved to P0-B; P0-A coverage thresholds set (statements ≥85% / branches ≥80% / functions ≥90% / lines ≥85%); P0-A test-set enumerated (11 files). §1 honesty fix: removed the misleading "Known defects | Streaming-response crash" entry that traced to a fictional CHANGELOG entry; replaced with accurate "Streaming support in capture-session.ts: NONE — greenfield work for P0-B." Companion CHANGELOG cleanup: `stratum/CHANGELOG.md` format-reference example block removed (was the root cause of the Session 12 unexecutable T-B6 prompt). PB-19/PB-20/PB-22 claim-check rots fixed via methodology refactor + pure-Node rewrite. PB-21 triaged: stays coupled to PB-13 (no honest decoupling available — refactor would misrepresent signature integrity). PB-14 closed (actions/setup-node@v5 SHA bump). PB-15 closed (GAP_61 row annotation pass). PB-16 promoted to dedicated session (gating: user-side signing-key generation + GitHub upload). PB-13 NOT attempted Session 13 (gated on explicit spending-limit signal). LR refreshed: v0.2.0 ~95%, full-project ~15.7% under new ~1006h denominator.
 
 ---
 

@@ -1,6 +1,6 @@
 # DevOPs — Launch Readiness
 
-**Last refined**: 2026-05-25 (session 12 Phase A — Q8 test-runner = jest baked into spec §7; PB-13 ONE-shot retry re-failed (run 26416394799, 5s scheduler-block, FOURTH consecutive); Phase B P0-A scaffolding DEFERRED pending strategist resolution of streaming-crash fixture gap)
+**Last refined**: 2026-05-25/26 (session 13 Phase A — recalibration sweep under production-grade quality bar; Q8.1 amendment flips test runner jest → vitest; P0-B re-scoped greenfield streaming ~18h (was ~8h crash-fix on a fictional CHANGELOG entry); P0 envelope 52h → 62h; PB-19/PB-20/PB-22 validator-rot fixed via methodology refactors; PB-14/PB-15 closed; PB-16 promoted to dedicated session; PB-13 NOT attempted Session 13)
 **Methodology**: Effort-hours-weighted progress toward defined milestones — single
 methodology committed, replacing the four different figures (85% / 61% / 49% / 20-25%)
 floated in earlier conversations.
@@ -146,47 +146,63 @@ Re-scope hooks for future sessions:
 
 ---
 
-## Headline guidance (post-Session-12 Phase A — Q8 baked; PB-13 fourth scheduler-fail; Phase B deferred on fixture gap)
+## Quality bar (Session 13+ binding)
 
-- **For "is v0.2.0 shipped?"** → **YES on remote** (`v0.2.0` tag at `aca4982`); **~95%** by methodology — same 5% gap (PB-13 cosign signing refresh). Re-attempted at Session 12 Phase A per the prompt's ONE-shot no-retry policy; release-sign.yml run `26416394799` failed at scheduler in 5s with 0 steps. Billing block persists across **FOUR re-attempts** (Sessions 9, 10, 11, 12). Generic "billing fixed" signals are NOT load-bearing; the load-bearing signal is the spending-limit configuration at github.com/settings/billing/spending_limit. PB-13 stays open as long-term carry-forward; does NOT block downstream phases per Session 12 policy.
+Production-grade. No personal-tool framing. No deferring without explicit architectural justification. Validator target: 93/93 (one PB-21 coupled exception accepted explicitly). Test coverage thresholds: statements ≥85%, branches ≥80%, functions ≥90%, lines ≥85%. Polish backlog: no can-kicking — every PB triaged per-session with one of CLOSE-now / CLOSE-larger / Keep-deferred-with-architectural-reason / Promote-to-dedicated-session. "Personal-tool" framing is OUT.
+
+## Headline guidance (post-Session-13 Phase A — recalibration sweep; production-grade bar)
+
+- **For "is v0.2.0 shipped?"** → **YES on remote** (`v0.2.0` tag at `aca4982`); **~95%** — same PB-13 cosign signing refresh gap. PB-13 NOT attempted Session 13 (gated on explicit user spending-limit signal at https://github.com/settings/billing/spending_limit; four prior session-start "billing fixed" signals all turned out wrong). PB-13 stays open as a long-term carry-forward; does NOT block downstream phases.
 - **For "is Phase 2 engineering done?"** → **100%** (sealed; unchanged).
-- **For "is the Phase 0 spec ready for implementation?"** → **YES (Q1-Q8 baked)** — §7 resolved with Q1-Q7 (Session 11 Phase A) + Q8 test runner = jest (Session 12 Phase A). P0-A through P0-G acceptance criteria reflect all eight binding decisions. NEW BLOCKER surfaced Session 12 Phase A pre-flight: P0-A's streaming-fixture deliverable cannot be authored as currently specified because `stratum/CHANGELOG.md`'s streaming-crash entry is fictional (in the Format Reference example block) AND `stratum/scripts/capture-session.ts` has no streaming code path. The crash referenced in spec §3 P0-B "fix CHANGELOG crash" does not exist yet. Strategist-loop step required before Phase B begins.
-- **For "is the full vision done?"** → **~16%** (Option B locked). ~153h done end-of-Session-11 + ~2h Session 12 Phase A (Q8 spec patch + LR refresh + PB-13 forensics + claim 094) = ~155h of 996h = 15.6% → rounded **~16%**. Phase B (P0-A scaffolding ~12h) deferred; no numerator movement from implementation this session.
-- **For "what's the next load-bearing decision?"** → Strategist resolution of the streaming-crash fixture gap (option: synthesize a crash hypothesis from capture-session.ts code-path analysis once streaming support is in scope; option: defer all streaming work to a later phase with explicit "no streaming in P0" clarification; option: scope P0-B to be the FIRST streaming implementation rather than a crash fix). Until then, Phase B P0-A scaffolding can advance on non-streaming surfaces only (non-streaming proxy passthrough, tool-use response, countTokens mocking, fastify lifecycle). PB-13 closure is parallel-track via user-side spending-limit configuration; no longer blocks subsequent phases.
+- **For "is the Phase 0 spec ready for implementation?"** → **YES (Q1-Q8 + Q8.1 baked; P0-B re-scoped honestly)** — §7 resolved with Q1-Q7 (Session 11 Phase A) + Q8 jest (Session 12 Phase A, retained as audit trail) + Q8.1 vitest (Session 13 Phase A, binding from Session 13 forward). §3 P0-B re-scoped Session 13 from "fix CHANGELOG crash" (fictional) to "greenfield streaming implementation" (~16-20h; midpoint 18h baked into table). §4 acceptance criteria clarified: streaming tests moved P0-A → P0-B; production-grade coverage thresholds set on P0-A (statements ≥85%, branches ≥80%, functions ≥90%, lines ≥85%). §1 honesty fix: prior reference to a "Streaming-response crash in capture script" was traced to a fictional CHANGELOG entry (Format Reference example block) and corrected.
+- **For "is the full vision done?"** → **~15.7%** (Option B locked). ~155h done end-of-Session-12 + ~3h Session 13 Phase A (Q8.1 amendment + P0-B re-scope + §4 AC clarification + CHANGELOG cleanup + PB-19/PB-20/PB-22 fixes + PB-14/PB-15 closures + LR refresh + claim emissions) = ~158h. P0-B envelope grew from ~8h to ~18h (+10h); total project envelope grows ~996h → ~1006h. Math: **~158h / ~1006h = 15.71% → rounded ~16%**. No numerator movement from implementation work; all Session 13 effort is denominator-tightening recalibration plus genuine PB closures (PB-14 actions/setup-node@v5 SHA bump + PB-15 GAP_61 row re-targeting).
+- **For "what's the next load-bearing decision?"** → Phase B kickoff on `stratum-phase-0-capture` long-lived branch: vitest migration + comprehensive P0-A non-streaming test coverage (11 test files; mandatory tier = vitest + smoke + 3 core test files; target tier = all 11 files with coverage thresholds met). Streaming is P0-B (Session 14+). PB-13 closure is parallel-track via user-side spending-limit configuration; PB-16 closure is a parallel-track dedicated session (gating: user signing-key generation + GitHub upload); neither blocks subsequent phases.
 
-### Math (v0.2.0 ship state, post-Session-12 Phase A)
+### Math (v0.2.0 ship state, post-Session-13 Phase A)
 
 | Component | Effort (hours) | % done | Hours done |
 |---|---:|---:|---:|
 | DevOPs Phase 1 (Foundation) | 80 | 100% | 80.0 |
 | DevOPs Phase 2 (Security depth) | 57 | 100% | 57.0 |
-| Polish backlog (Sessions 9 + 10 + 11 + 12 Phase A) | ~5 actual | 14/18 PBs closed; PB-13 STILL BLOCKED (4 re-attempts) | 5.0 |
-| Release mechanics (Phase C..F + Sessions 10, 11, 12 PR-flow) | ~6 actual | 100% | 6.0 |
-| Spec authorship + §7 Q1-Q8 resolution (Session 10 Phase C + Session 11 + Session 12 Phase A) | ~7 actual | 100% (SPEC-ONLY; Q1-Q8 baked) | 7.0 |
-| **Done** | — | — | **155** |
-| **v0.2.0 envelope (engineering 137h + polish 10h + release 10h + spec/§7 7h)** | **~164** | — | — |
-| **v0.2.0 ship figure** | — | — | **155 / 164 = 94.5%** → headline **~95%** with PB-13-BLOCKED honesty cap (billing block persists; FOURTH consecutive scheduler-fail) |
+| Polish backlog (Sessions 9..13 Phase A) | ~7 actual | 16/18 PBs closed: PB-1..PB-12 + PB-14 (Session 13) + PB-15 (Session 13) + PB-17 + PB-18; PB-13 still BLOCKED (4 re-attempts); PB-16 promoted to dedicated session; PB-21 stays coupled to PB-13 | 7.0 |
+| Release mechanics (Phase C..F + Sessions 10..13 PR-flow) | ~7 actual | 100% | 7.0 |
+| Spec authorship + §7 Q1-Q8 + Q8.1 resolution + §3 P0-B re-scope + §4 AC clarification (Sessions 10..13 Phase A) | ~9 actual | 100% (SPEC-ONLY; Q1-Q8 + Q8.1 baked; P0-B re-scoped honestly) | 9.0 |
+| Validator-rot remediation (PB-19/PB-20/PB-22 methodology refactors — Session 13) | ~2 actual | 100% | 2.0 |
+| **Done** | — | — | **162** |
+| **v0.2.0 envelope (engineering 137h + polish 12h + release 11h + spec/§7 9h + remediation 2h)** | **~171** | — | — |
+| **v0.2.0 ship figure** | — | — | **162 / 171 = 94.7%** → headline **~95%** with PB-13-BLOCKED honesty cap (billing block persists; FOURTH consecutive scheduler-fail; not retried Session 13 per no-retry gating) |
 
-### Math (Full project, Option B locked) — post-Session-12
+### Math (Full project, Option B locked) — post-Session-13
 
-| Phase | Effort (h) | Done (h) |
-|---|---:|---:|
-| DevOPs Phase 1 (Foundation) | 80 | 80.0 |
-| DevOPs Phase 2 (Security depth) | 57 | 57.0 |
-| Sessions 9 + 10 + 11 + 12 release/polish/spec work | (subsumed into v0.2.0 envelope) | 18.0 |
-| DevOPs Phase 3 (Stratum closeout Option B + memory/observability depth) — implementation | 619 | 0 (spec authored + Q1-Q8 resolved = denominator-tightening, not numerator-loaded) |
-| DevOPs Phase 4 (Design phase skills) | 80 | 0 |
-| DevOPs Phase 5 (SRE & operate) | 60 | 0 |
-| DevOPs Phase 6 (Self-improvement) | 100 | 0 |
-| **Total** | **996** | **155** = **15.6%** → headline **~16%** |
+| Phase | Effort (h) | Done (h) | Notes |
+|---|---:|---:|---|
+| DevOPs Phase 1 (Foundation) | 80 | 80.0 | sealed |
+| DevOPs Phase 2 (Security depth) | 57 | 57.0 | sealed |
+| Sessions 9..13 release/polish/spec/remediation work | (subsumed into v0.2.0 envelope) | 25.0 | +2h Session 13 vs Session 12 |
+| DevOPs Phase 3 (Stratum closeout Option B + memory/observability depth) — implementation | **629** | 0 | spec/§7 baked + P0-B re-scoped honestly = denominator-tightening, not numerator-loaded. **+10h vs Session 12** (P0-B 8h → 18h to reflect greenfield streaming reality) |
+| DevOPs Phase 4 (Design phase skills) | 80 | 0 | unchanged; gains 6 PB-15 re-targeted GAP_61 rows scope-wise |
+| DevOPs Phase 5 (SRE & operate) | 60 | 0 | unchanged |
+| DevOPs Phase 6 (Self-improvement) | 100 | 0 | unchanged |
+| **Total** | **1006** | **162** = **16.1%** → headline **~16%** |
 
-### Session 12 Phase A outcomes (summary)
+### Math methodology (unchanged from prior sessions)
 
-- **Q8 (test runner = jest) baked into spec §7**: matches existing `stratum/package.json` scaffold; no vitest migration. Carry-forward decision for Phase 1 + Phase 3 specs.
-- **PB-13 retry-and-stop**: release-sign.yml run `26416394799` failed at scheduler in 5s with 0 steps — FOURTH consecutive failure (Sessions 9, 10, 11, 12). Per Session 12 policy: no further retries until user confirms spending-limit setting at github.com/settings/billing/spending_limit. PB-13 stays open but no longer blocks subsequent phases.
-- **Claim 094 emitted** (Q8 + spec patch + LR refresh). Claim 092 (PB-13 closure) again NOT emitted — premise unmet.
-- **Phase B (P0-A scaffolding) DEFERRED**: pre-flight surfaced that `stratum/CHANGELOG.md` streaming-crash entry is fictional (lives in the Format Reference example block) AND `stratum/scripts/capture-session.ts` has no streaming code path. The `crash-replication.jsonl` fixture cannot be reconstructed from CHANGELOG; no streaming crash exists yet to replicate. Per the "any spec interpretation ambiguity: STOP, surface" hard constraint, Phase B work paused pending strategist resolution.
-- **Polish backlog state**: 14/18 closed (unchanged); PB-13.3 (now PB-13.4 by retry count) escalation note appended.
+Effort-hours-weighted progress methodology. v0.2.0 envelope = DevOPs Phase 1 + Phase 2 engineering + polish + release + spec authorship + (Session 13) validator-rot remediation. Full project envelope = above + DevOPs Phases 3-6. Numerator = actual hours of work done; denominator = honest forward-looking estimate of total scope. Session 13 made the denominator more honest (P0-B 8h → 18h reflects greenfield reality) — that's denominator-tightening, not progress-padding. The numerator-loaded work (P0-A implementation) begins Phase B of Session 13 on the `stratum-phase-0-capture` long-lived branch.
+
+### Session 13 Phase A outcomes (summary — production-grade bar applied)
+
+- **Q8.1 amendment baked into spec §7**: test runner flips jest → vitest under production-grade prior. Q8 retained as audit trail. Carry-forward: vitest binding for Phase 1 + Phase 3 specs.
+- **§3 P0-B re-scoped**: "fix CHANGELOG crash" → "greenfield streaming implementation." Effort 8h → 18h. P0 envelope 52h → 62h. Honest denominator-tightening.
+- **§4 acceptance criteria clarified**: streaming tests moved P0-A → P0-B. P0-A coverage thresholds set (statements ≥85%, branches ≥80%, functions ≥90%, lines ≥85%). 11 test files enumerated for P0-A.
+- **§1 honesty fix**: removed misleading "Streaming-response crash in capture script" entry; replaced with accurate "no streaming code path yet."
+- **CHANGELOG cleanup**: `stratum/CHANGELOG.md` Format Reference example block removed (the root cause of Session 12's unexecutable T-B6 prompt). Keep-a-Changelog link is now the canonical format reference.
+- **Validator-rot remediation**: PB-19 (claim 081), PB-20 (claim 073), PB-22 (claim 093) all CLOSED via in-session methodology refactors + pure-Node rewrites. PB-21 stays coupled to PB-13 per Session 13 T-A8 triage (no honest decoupling available; refactor would misrepresent signature-integrity assertion).
+- **PB-14 CLOSED**: `actions/setup-node@v4` → `actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444  # v5.0.0` per AST08 SHA-pinning discipline.
+- **PB-15 CLOSED**: 6 GAP_61 rows re-targeted to Phase 4 (cloud sandboxes / Nix / Batch API / prompt caching / accessibility CI) or Phase 6 (TDAD hidden suite). No more "Phase: 2" hangovers.
+- **PB-16 PROMOTED to dedicated session**: gating condition is user-side signing-key generation + GitHub upload + fingerprint provision. Architectural blocker (private-key custody), not "personal-tool framing."
+- **PB-13 NOT attempted Session 13**: gated on explicit user spending-limit signal at github.com/settings/billing/spending_limit. Four prior session-start "billing fixed" signals all wrong; agent will not re-attempt under generic signal.
+- **Claims emitted Session 13 Phase A**: claim 095 (recalibration sweep — Q8.1 + P0-B + §4 + §1 + CHANGELOG), claim 096 (PB-19/PB-20/PB-22 methodology fixes), claim 097 (PB-14 SHA bump), claim 098 (PB-15 GAP_61 re-targeting). Validator target: 93/93 valid + claim 076 (PB-21 coupled to PB-13 — explicit exception).
+- **Polish backlog state**: 14/18 → 16/18 closed (PB-14 + PB-15 added to closed list). PB-13 open + BLOCKED (no Session 13 retry). PB-16 promoted to dedicated. PB-19/PB-20/PB-22 closed. PB-21 stays coupled.
 
 ### Math (v0.2.0 ship state, unchanged from Session 9)
 
