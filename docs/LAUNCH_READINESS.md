@@ -1,6 +1,6 @@
 # DevOPs — Launch Readiness
 
-**Last refined**: 2026-05-24 (session 7.5 — Option B locked; range collapses to 12% full-project)
+**Last refined**: 2026-05-25 (session 8 closure — Phase 2 SEALED; v0.2.0 engineering envelope hit)
 **Methodology**: Effort-hours-weighted progress toward defined milestones — single
 methodology committed, replacing the four different figures (85% / 61% / 49% / 20-25%)
 floated in earlier conversations.
@@ -22,31 +22,32 @@ proposal text.
 
 ```
 ═══════════════════════════════════════════════════════════════
-LAUNCH READINESS (v0.2.0):  90%  complete  (DevOPs-only)
+LAUNCH READINESS (v0.2.0):  100% engineering  (DevOPs-only)
+                            ~84% incl. polish + release (see math)
 ═══════════════════════════════════════════════════════════════
 
-ENGINEERING — DevOPs Phase 1 + Phase 2                [90% done]
+ENGINEERING — DevOPs Phase 1 + Phase 2                [SEALED]
 ├─ ✅ DevOPs Phase 1   Foundation                          100%
 │   ├─ ✅ Constitution, hooks, skills, subagents, modes
 │   ├─ ✅ Analyzer, claim-validator, memory backends
 │   └─ ✅ Observability stack with PII redaction
-├─ 🟡 DevOPs Phase 2   Security Depth                       75%
-│   ├─ ✅ Area A   Pentest stack (claims 042-049)          100%
-│   ├─ ✅ Area B   DeepTeam CI gate (claims 065-073)       100%
-│   ├─ ⬜ Area C   Prompt injection (~8.5h, A.11 unblocker)   0%
-│   ├─ ✅ Area D   Stack-specific skills (claims 055-064)  100%
-│   ├─ ✅ Area E   Sigstore signing (claims 074-080)       100%
-│   ├─ ⬜ Area F   Skill provenance (~8h, F.09 cleared)       0%
-│   ├─ ✅ Area G   Webhook idempotency (claims 053-054)    100%
-│   ├─ ✅ Area H   Renovate template (claims 050-052)      100%
-│   └─ ⬜ A.11     Phase 2 final-pass (blocked on C.05)       0%
+└─ ✅ DevOPs Phase 2   Security Depth                      100%
+    ├─ ✅ Area A   Pentest stack (claims 042-049 + 090)    100%
+    ├─ ✅ Area B   DeepTeam CI gate (claims 065-073)       100%
+    ├─ ✅ Area C   Prompt injection (claims 082-087)       100%
+    ├─ ✅ Area D   Stack-specific skills (claims 055-064)  100%
+    ├─ ✅ Area E   Sigstore signing (claims 074-080)       100%
+    ├─ ✅ Area F   Skill provenance (claims 088-089)       100%
+    ├─ ✅ Area G   Webhook idempotency (claims 053-054)    100%
+    ├─ ✅ Area H   Renovate template (claims 050-052)      100%
+    └─ ✅ A.11     Phase 2 final-pass sec-review (claim 090) 100%
 
-V0.2.0 RELEASE BLOCKERS (~15h, not counted in 90%)    [partial]
-├─ ⬜ DevOPs Area C, Area F, A.11
-├─ ⬜ Polish backlog PB-3..PB-12 (~10h)
+V0.2.0 RELEASE BLOCKERS (remaining; ~27h estimated)   [pending]
+├─ ⬜ Polish backlog PB-3..PB-10, PB-12, PB-13 (~17h)
 ├─ ⬜ governance/VERSION.md → 0.2.0
+├─ ⬜ GAP_61 + ROADMAP consolidated pre-merge edit
 ├─ ⬜ Merge phase-2-security-depth + stratum-merge → main
-└─ ⬜ Tag + signed release v0.2.0 (release-sign.yml triggers)
+└─ ⬜ Tag + signed release v0.2.0 (release-sign.yml triggers; resolves PB-13)
 
 POST-v0.2.0 (Phase 3-6, not launch-blocking)
 ├─ Phase 3   Stratum closeout + memory/observability depth
@@ -60,18 +61,39 @@ OUT OF SCOPE (personal-tool simplifications)
 ═══════════════════════════════════════════════════════════════
 ```
 
-### Math (v0.2.0)
+### Math (v0.2.0) — post-Session-8 closure
 
 | Component | Effort (hours) | % done | Hours done |
 |---|---:|---:|---:|
 | DevOPs Phase 1 (Foundation) | 80 | 100% | 80.0 |
-| DevOPs Phase 2 (Security depth) | 57 | 75% (6 of 8 areas closed) | 42.75 |
-| **Envelope** | **137** | — | **122.75** |
-| **Figure** | — | — | **122.75 / 137 = 89.6%** ≈ **90%** |
+| DevOPs Phase 2 (Security depth) | 57 | 100% (all 8 areas + A.11 + A.13 sealed) | 57.0 (plan estimate met; actuals ~+0.25h overage absorbed) |
+| **Engineering envelope** | **137** | — | **137.0** |
+| **Engineering figure** | — | — | **137.0 / 137 = 100%** ✅ |
 
-The earlier ~91% figure was the same ratio under different rounding (round-half-up after intermediate rounding). The refined figure rounds the same underlying 89.6% to 90% via round-to-nearest. Both are honest expressions of the same ratio; **90%** is the committed headline.
+Session-8 actuals: Area C ~8.5h + Area F ~7.75h + A.11/A.13 ~1.25h = ~17.5h matched the ~17h plan estimate within rounding. Phase-2 engineering envelope hit.
 
-A stricter "release-prep-inclusive" read (envelope = 167h including Areas C+F+A.11 + polish backlog + release prep) yields 73%. This is offered for transparency but is NOT the headline.
+### Methodology integrity check — the "release-prep-inclusive" read
+
+The strict engineering figure is **100%**. But v0.2.0 is **not yet released** — polish backlog + release mechanics are pending. Under the release-prep-inclusive methodology surfaced in session 7's provisional baseline:
+
+| Component | Effort (hours) | % done | Hours done |
+|---|---:|---:|---:|
+| Phase 1 + Phase 2 engineering | 137 | 100% | 137.0 |
+| Polish backlog (10 open: PB-3..PB-10, PB-12, PB-13) | ~17h estimate | 0% | 0 |
+| Release mechanics (VERSION bump + merges + tag + release-sign.yml + verify) | ~10h estimate | 0% | 0 |
+| **Release-inclusive envelope** | **~164h** | — | **137.0** |
+| **Release-inclusive figure** | — | — | **137.0 / 164 = 83.5%** ≈ **84%** |
+
+**Two honest numbers, one methodology**:
+- **"Engineering complete"** → **100%** (all Phase 2 REQs satisfied; all 90 claims valid on `phase-2-security-depth`)
+- **"v0.2.0 shipped"** → **~84%** (engineering complete; polish + release pending)
+
+The session-7-provisional baseline said *"strict release-prep-inclusive read yields 73%"* assuming Area C + Area F were unshipped (167h envelope, 122.75h done). Session 8 closed those areas, leaving only polish + release mechanics (~27h). The 84% headline is consistent with that methodology continued forward.
+
+**Headline guidance**:
+- For *"is Phase 2 engineering done?"* → **100%**.
+- For *"how close to v0.2.0 ship?"* → **~84%** (need ~27h: polish-backlog burn-down + release mechanics).
+- The session-7-baseline `90%` figure is now obsoleted by these post-closure numbers.
 
 ---
 
@@ -95,28 +117,28 @@ DevOPs Phase 4 / 5 / 6 estimates (rough order of magnitude — unchanged):
 - Phase 5 (SRE & operate): ~60h
 - Phase 6 (Self-improvement): ~100h
 
-### Full-project envelope (Option B locked)
+### Full-project envelope (Option B locked) — post-Session-8
 
 ```
 ═══════════════════════════════════════════════════════════════
-FULL PROJECT COMPLETION:  12%  (Option B locked 2026-05-24)
+FULL PROJECT COMPLETION:  14%  (Option B locked; Phase 2 sealed)
 ═══════════════════════════════════════════════════════════════
 Envelope = 80 (Phase 1) + 57 (Phase 2) + 619 (Phase 3 Option B)
          + 80 (Phase 4) + 60 (Phase 5) + 100 (Phase 6) = 996h
-Done     = 80 (Phase 1, 100%) + 42.75 (Phase 2, 75%) = 122.75h
-Complete = 122.75 / 996 = 12.3% ≈ 12%
+Done     = 80 (Phase 1, 100%) + 57 (Phase 2, 100%) = 137h
+Complete = 137 / 996 = 13.8% ≈ 14%
 ═══════════════════════════════════════════════════════════════
 ```
 
 | Phase | Effort (h) | Done (h) |
 |---|---:|---:|
 | DevOPs Phase 1 (Foundation) | 80 | 80.0 (100%) |
-| DevOPs Phase 2 (Security depth) | 57 | 42.75 (75%, 6/8 areas) |
+| DevOPs Phase 2 (Security depth) | 57 | 57.0 (100% — sealed 2026-05-25, session 8) |
 | DevOPs Phase 3 (Stratum closeout Option B + memory/observability depth) | 619 | 0 |
 | DevOPs Phase 4 (Design phase skills) | 80 | 0 |
 | DevOPs Phase 5 (SRE & operate) | 60 | 0 |
 | DevOPs Phase 6 (Self-improvement) | 100 | 0 |
-| **Total** | **996** | **122.75** = **12%** |
+| **Total** | **996** | **137** = **14%** |
 
 Re-scope hooks for future sessions:
 - **Phase 3 mid-build** (after Stratum Phase 0+1 ships, before Phase 3 starts): re-evaluate whether Stratum Phase 2 (pruner) should move into the v0.3.0 envelope based on observed token-waste telemetry. If pruner integration is fast, may absorb without altering the launch math.
@@ -124,11 +146,12 @@ Re-scope hooks for future sessions:
 
 ---
 
-## Headline guidance
+## Headline guidance (post-Session-8 closure)
 
-- **For "are we close to launching v0.2.0?"** → **90%**. Personal-use production-ready, Stratum-independent, on track.
-- **For "is the full vision done?"** → **12%** (Option B locked). 122.75h done of 996h envelope; full-project completion advances as Phase 2 closes (areas C+F+A.11) and as Phase 3 Stratum closeout work lands.
-- **For "what's the next load-bearing decision?"** → No longer Phase 3 scope (Option B locked 2026-05-24). Next is mid-Phase-3 re-scope hook: after Stratum Phase 0+1 ships, decide whether Stratum Phase 2 (pruner) should join the v0.3.0 envelope based on observed telemetry.
+- **For "is Phase 2 engineering done?"** → **100%** (sealed at `phase-2-security-depth` commit `41e82f9`; see `governance/changelog/PHASE-2-CLOSURE.md`).
+- **For "how close to v0.2.0 ship?"** → **~84%** (engineering complete; remaining ~27h = polish backlog burn-down ~17h + release mechanics ~10h).
+- **For "is the full vision done?"** → **14%** (Option B locked). 137h done of 996h envelope; advances substantially when Phase 3 Stratum closeout work begins.
+- **For "what's the next load-bearing decision?"** → Phase 3 mid-build re-scope hook (Stratum Phase 2 pruner): triggered after Stratum Phase 0+1 ships and real telemetry surfaces.
 
 ---
 
