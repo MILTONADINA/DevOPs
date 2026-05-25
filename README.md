@@ -182,6 +182,20 @@ the next time you open the project.
 
 See `docs/PLAYBOOK.md` for the full operational guide.
 
+### Windows contributors
+
+Some scripts (`scripts/devops-cli.js`, hooks) carry POSIX executable
+bits (`100755`) in the git index. On Windows + NTFS, this can surface
+as a phantom modification because the filesystem cannot represent the
+executable bit. To suppress: set `core.filemode=false` locally:
+
+```bash
+git config core.filemode false
+```
+
+Bash-based hooks run via Git Bash / WSL / mingw. PowerShell-only
+environments need the hooks invoked through `bash <hook>.sh`.
+
 ---
 
 ## Documentation
