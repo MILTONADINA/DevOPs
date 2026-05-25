@@ -1,0 +1,73 @@
+# governance/external-content-sources.yml
+#
+# Phase 2 Area C / REQ-C4 — source classification table for the
+# external-content boundary (observability/external-content-boundary.ts).
+#
+# Every payload entering agent context via the boundary MUST declare a
+# `source` matching a known origin in this file. Unknown sources are
+# rejected with a blocker per AC-C4.1.
+#
+# Baseline trust tier (1-3):
+#   1 = highest trust   (locally authored, user-driven)
+#   2 = medium trust    (curated upstream / structured tool output)
+#   3 = lowest trust    (open internet / arbitrary RAG corpus / uploads)
+#
+# Trust tier modulates downstream policy: tier-3 sources receive stricter
+# rebuff thresholds, tier-1 sources are exempt from lakera-guard.
+
+sources:
+  # Local user-controlled artefacts
+  - name: user-upload
+    trust_tier: 1
+    description: Files uploaded by the operator via the CLI or IDE attachment.
+    examples: [drag-and-drop attachment, /upload command]
+
+  - name: git-stash
+    trust_tier: 1
+    description: Content stashed in the current working tree (untracked or stashed git state).
+    examples: [stash diff, working tree snapshot]
+
+  # Structured tool outputs (MCP, native, hooks)
+  - name: mcp-tool
+    trust_tier: 2
+    description: Output from an MCP server registered in mcp-configs/.
+    examples: [stripe MCP webhook lookup, playwright MCP browse result]
+
+  - name: native-tool
+    trust_tier: 2
+    description: Output from a native (non-MCP) tool the agent runs (shell, grep, etc).
+    examples: [git log, npm test output]
+
+  # Curated knowledge bases
+  - name: rag
+    trust_tier: 3
+    description: Result from a RAG corpus or vector store query. Cannot assume curator-vetted.
+    examples: [Lyrie RAG retrieval, pinecone query result]
+
+  # Open-web / arbitrary content
+  - name: web-fetch
+    trust_tier: 3
+    description: Content retrieved from an arbitrary URL.
+    examples: [WebFetch tool result, curl/wget fetch piped into context]
+
+  - name: shannon-mcp
+    trust_tier: 3
+    description: Output from the Shannon LLM-orchestrated pentest tool (area A). RAG-like; treated as web-fetch-equivalent.
+    examples: [pentest report excerpt]
+
+  - name: pentagi-mcp
+    trust_tier: 3
+    description: Output from the PentAGI LLM-orchestrated pentest tool (area A).
+    examples: [vulnerability scan summary]
+
+  - name: pentest-ai-mcp
+    trust_tier: 3
+    description: Output from the pentest-ai LLM-orchestrated pentest tool (area A).
+    examples: [exploit suggestion]
+
+# Policy: payloads with `source` not in `sources[].name` MUST be rejected
+# by the boundary layer (AC-C4.1).
+unknown_source_policy:
+  action: reject
+  log_to: .workflow/state/events.jsonl
+  blocker_to: .workflow/state/blockers.md
