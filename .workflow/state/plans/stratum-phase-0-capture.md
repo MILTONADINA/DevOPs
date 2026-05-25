@@ -219,44 +219,32 @@ Source: `.workflow/state/stratum-audit/01-stratum-state.md` (authoritative; do n
 
 ---
 
-## §7 — Open questions (BLOCK Session 11 implementation start)
+## §7 — Resolved decisions (Session 11 user-confirmed 2026-05-25)
 
-These need user-confirmed answers before Session 11 P0-A can begin. Do NOT improvise answers; surface at Session 11 startup if any remain open.
+> Section history: this section was originally titled **§7 — Open questions** (authored Session 10 Phase C, 2026-05-25) and held 7 numbered questions Q1-Q7 blocking implementation start. Session 11 Phase A replaced the open-question state with the binding resolutions below.
 
-**Q1 — Supabase scope**:
-- (a) Local Supabase only (`supabase start` on operator's machine; no remote project) — simplest, no cloud cost
-- (b) Staging-Supabase only (a real Supabase project, free-tier, for capture proxy) — closer to Phase 1 production posture
-- (c) Both — local for dev iteration, staging for capture-in-anger
+User-confirmed answers to all 7 open questions. Each carries a one-line rationale + a `DECIDED:` prefix marking the binding choice. P0-A through P0-G acceptance criteria reflect these resolutions (cross-checked in §9 pre-merge checklist).
 
-**Q2 — Token-counting cadence**:
-- (a) Per-turn live (call `countTokens` synchronously before forwarding to Anthropic) — exact + slow; adds latency
-- (b) Batched at session-end (collect message arrays, count once at session close) — fast forward path; defers count cost
-- (c) Both — live for the current turn's `input_tokens` (already what the SDK gives back in `response.usage`), batched-recompute for cache hit-rate accounting
+**Q1 — Supabase scope** → **DECIDED: local-only**. Staging deferred to v0.4.x; adds connection-string + CI-secret sprawl that doesn't pay back at v0.3.x. Local-only via `supabase start` on the operator's machine; no remote project, no cloud cost.
 
-**Q3 — Session JSON retention policy** (for personal-tool):
-- (a) 90 days then auto-prune
-- (b) Indefinite retention
-- (c) Size-cap (e.g., keep last 1 GB of sessions; FIFO)
-- (d) Operator-controlled (config flag)
+**Q2 — Token-counting cadence** → **DECIDED: per-turn live** via `@anthropic-ai/sdk` `messages.countTokens()`. countTokens API cost is negligible at personal-tool volume; live counts surface context-window pressure mid-session. Batched recompute deferred to v0.4.x optimization if API costs ever matter.
 
-**Q4 — Anthropic API base URL override mechanism** (so the proxy is testable + the operator can route through Stratum):
-- (a) `ANTHROPIC_API_BASE` env var — convention from many Anthropic SDK wrappers
-- (b) Config file at `stratum/config.yml`
-- (c) CLI flag at proxy invocation
-- (d) Combination (env > config > flag fallback)
+**Q3 — Session JSON retention policy** → **DECIDED: indefinite, with stderr warning at 5GB cumulative and again at 10GB**. Personal-tool framing = sessions ARE the memory. Real pruning belongs in Stratum Phase 2 (KadaneDial, DEFERRED post-v0.3.0 per Option B). The size-cap warning is a *forcing function* for revisiting retention policy when sessions actually start filling disk (expected 6–12 months heavy use), NOT a fix. Surface for visibility; no retention enforcement in P0.
 
-**Q5 — PB-18 fastify 4→5 follow-through**:
-- (a) Update capture-session.ts to Fastify 5 APIs as part of P0-A (test-harness scope)
-- (b) Tag as a separate sub-task (P0-A.0 — pre-A migration)
-- (c) Run `npm install` in stratum/ at Session 11 start, observe what breaks, decide then
+**Q4 — Anthropic API base URL override mechanism** → **DECIDED: env var primary (`ANTHROPIC_BASE_URL`), config-file secondary override (`stratum.config.json` `anthropicBaseUrl` key), no CLI flag**. Matches `@anthropic-ai/sdk` convention. CLI flag would add surface area without a clear use case; env-first matches operator muscle memory for the Anthropic ecosystem.
 
-**Q6 — Tenant scope for personal-tool**:
-- (a) Single-tenant (no `organizations`/`developers` table use; just one operator, one tenant_id)
-- (b) Multi-tenant infrastructure preserved (use existing schema; one row in `organizations` for personal use) — closer to Phase 1+ posture
+**Q5 — PB-18 fastify 4→5 follow-through** → **DECIDED: bundle into P0-A**. Lockfile already has fastify ^5.8.3 (per Session 10 Phase A PB-18 closure). Test harness writes against fastify 5 from the start. A separate sub-task would mean writing throwaway fastify-4 mocks; mocking against the version we'll actually run is correct.
 
-**Q7 — OTel exporter dependency**:
-- (a) Hard dep — requires DevOPs OTel collector running locally for Phase 0 capture
-- (b) Soft dep — capture works without OTel; events log to file if collector unreachable (graceful degradation per AC-P0-G.5)
+**Q6 — Tenant scope for personal-tool** → **DECIDED: preserve multi-tenant SHAPE, single-tenant ENFORCEMENT**. Schema retains `tenant_id` column defaulting to `"personal"` (no `organizations`/`developers` row population required in P0). OTel events emit with `tenant.id` baggage (matches existing DevOPs observability pattern in `external-content-boundary.ts`). No RLS-by-tenant enforcement in v0.3.x. Preserves Phase 1+3 integration path; zero cost now; doesn't paint into a corner.
+
+**Q7 — OTel exporter dependency** → **DECIDED: soft dep with graceful degradation**. If `OTEL_EXPORTER_OTLP_ENDPOINT` is unreachable (unset, network failure, collector not running), capture-session continues with stderr-fallback log emission. Hard dep is the wrong default for a tool that runs on laptops with flaky networks. AC-P0-G.5 in §4 already encodes this; reaffirmed here.
+
+### Resolution provenance
+
+- Confirmation date: 2026-05-25
+- Confirming party: Milton Adina (user)
+- Strategist context: recommendations originated from strategist-side analysis; user confirmed all 7 verbatim ("yes for both" gates)
+- Decisions are BINDING for Phase 0 implementation (P0-A through P0-G); override requires a new spec revision + claim emission
 
 ---
 
@@ -285,12 +273,14 @@ Apply at every Stratum Phase 0+1+3 PR before merge to main:
 - [ ] Branch flow per PB-17 outcome (PR-based for v0.3.x; no direct-push)
 - [ ] CI checks pass on PR before merge (gated on GitHub Actions billing being unblocked — Session 9/10 finding)
 - [ ] Linear history preserved (squash-merge or rebase-merge; no merge commits)
+- [ ] §7 resolutions (Q1-Q7) reflected in P0-A through P0-G acceptance criteria — no implementation diverges from binding decisions without a spec revision
 
 ---
 
 ## §10 — Change log
 
 - 2026-05-25 (Session 10 Phase C) — Spec authored. Awaiting user answers on §7 open questions (Q1–Q7) before Session 11 implementation begins.
+- 2026-05-25 (Session 11 Phase A) — §7 resolved with user-confirmed Q1-Q7 decisions ("yes for both" gates). Q1 local-only Supabase; Q2 per-turn live countTokens; Q3 indefinite retention + 5/10GB stderr warning; Q4 env-var primary + config-file secondary; Q5 fastify 4→5 bundled into P0-A; Q6 multi-tenant shape + single-tenant enforcement; Q7 OTel soft dep + stderr fallback. P0-A through P0-G acceptance criteria reflect these resolutions. Session 11 also attempted PB-13 closure via release-sign.yml re-dispatch against v0.2.0 (run 26414947646); failed at scheduler in 5s with same billing annotation as Session 9 + Session 10 Phase A — billing block persists; PB-13 stays BLOCKED.
 
 ---
 
