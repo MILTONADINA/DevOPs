@@ -1,0 +1,9 @@
+{
+  "name": "supabase-fixture-project",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Analyzer fixture for REQ-D4 / AC-D4.1: a minimal Supabase project that should trigger stack-specific/supabase/rls-policies + stack-specific/supabase/rpc-functions in recommended.skills.",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.0"
+  }
+}

@@ -9,7 +9,7 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
       - run: npm install -g tsx
@@ -18,3 +18,7 @@ jobs:
         # Note: --no-rerun in CI; full --rerun in pre-merge gate
       - name: Check stale proofs
         run: tsx verification/stale-proof-detector.ts
+      - name: Lint Renovate template (REQ-H1..H6)
+        run: npm run lint:renovate
+      - name: Lint stack-specific skills (REQ-D2..D7)
+        run: npm run lint:stack-specific-skills

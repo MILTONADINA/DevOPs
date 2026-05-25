@@ -12,7 +12,8 @@
     "analyze": "./scripts/analyze.sh",
     "install:project": "./scripts/init-project.sh",
     "validate:claims": "npx --yes tsx ./verification/claim-validator.ts",
-    "test:hooks": "./hooks/test-all.sh",
+    "lint:renovate": "node ./scripts/lint-renovate.js",
+    "lint:stack-specific-skills": "node ./scripts/lint-stack-specific-skills.js",
     "test:skills": "node ./governance/skill-evals/run-evals.js"
   },
   "keywords": [
@@ -45,6 +46,12 @@
   },
   "engines": {
     "node": ">=20.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@opentelemetry/core": "^2.0.0",
+    "@opentelemetry/sdk-trace-base": "^2.0.0",
+    "tsx": "^4.19.0"
   },
   "files": [
     "AGENTS.md",

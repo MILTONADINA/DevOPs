@@ -1,0 +1,11 @@
+{
+  "name": "nextjs-fixture-project",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Analyzer fixture for REQ-D4 / AC-D4.1: a minimal Next.js project that should trigger stack-specific/nextjs/server-action-safety + check-route-types in recommended.skills.",
+  "dependencies": {
+    "next": "^15.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  }
+}
