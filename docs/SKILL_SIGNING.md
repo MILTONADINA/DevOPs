@@ -224,6 +224,65 @@ override the cadence per project.
 
 ---
 
+## Install-time verification
+
+The signing flow described above is consumed by `analyzer/install.ts` at
+install time. Every skill is verified before being copied into the target
+project's `.claude/skills/`. Per spec F (REQ-F1 through REQ-F7):
+
+### Flag matrix
+
+| Invocation | Behavior |
+|---|---|
+| `node analyzer/install.ts --target ./proj` | **Default** — verify every skill via manifest hash + cosign bundle. Unsigned/invalid → exit **2**, name the skill. |
+| `node analyzer/install.ts --target ./proj --allow-unsigned --rationale="..."` | Override path — proceed past unsigned skills; append `decision=overridden` + rationale to `.workflow/state/install.log`. **Hash check still runs** (NFR-F3 defense-in-depth). |
+| `node analyzer/install.ts --target ./proj --allow-unsigned` | **Rejected** with `--rationale="..." is required when --allow-unsigned is used` (exit 1). |
+| `node analyzer/install.ts --target ./proj --dry-run` | All verification runs; no target mutation. Stdout reports `dry-run: would copy N skills`. |
+| `node analyzer/install.ts --target ./proj --manifest ./alt.yml` | Alternate manifest (for testing or per-project trust overrides). |
+
+### Worked invocation example
+
+```bash
+# Default (recommended) — production install of DevOPs into a project
+node analyzer/install.ts --target /path/to/my-project
+# ✓ verified: skills/universal/process/karpathy-guidelines/SKILL.md
+# ✓ verified: skills/universal/security/prompt-injection-defense/SKILL.md
+# ...
+# installed=N verified=N overridden=0 skipped=0 failed=0
+# Installation complete.
+
+# Operator override (signed-by-different-key skill, post-incident scenario)
+node analyzer/install.ts --target /path/to/my-project \
+  --allow-unsigned \
+  --rationale="incident-2026-05-24: signer rotated keys mid-release; verified provenance via Slack thread #security-incident-42"
+# Decision logged to .workflow/state/install.log; hash check still gated.
+```
+
+### Defense-in-depth (NFR-F3)
+
+`--allow-unsigned` bypasses the **signature** check only. The
+**manifest-hash** check ALWAYS runs:
+
+- `governance/skill-manifest.yml` declares `sha256` per skill.
+- The installer recomputes the actual file's sha256 and compares.
+- Mismatch → reject regardless of `--allow-unsigned`.
+
+This defeats signature-replay attacks (lifting a `.sig` from a different
+file) AND content-tamper attacks (modifying a signed file post-signing).
+
+### Post-install revocation gap (DEFERRED to Phase 3)
+
+A skill that verified correctly at install time and is later compromised
+upstream remains trusted by the local installation indefinitely. There
+is no runtime re-verification and no revocation-feed ingestion at
+v0.2.0.
+
+This gap is documented in `docs/threat-models/phase-2/F-skill-provenance.md`
+Open Issue #1 and is **explicitly out of Phase 2 scope**. Phase 3 (memory
+& observability depth) is the canonical home for a runtime
+trust-bundle-refresh + revocation pipeline. Honest acknowledgment
+preserved across spec F + threat-model F + this docs section.
+
 ## See also
 
 - `governance/skill-manifest.yml` — the per-skill manifest with
