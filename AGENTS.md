@@ -214,6 +214,9 @@ agent decides which to use based on each skill's description:
 - `openapi-first` — generate code from API contracts
 - `owasp-asi-threat-model` — produce STRIDE+ASI threat models
 - `prompt-injection-defense` — sanitize external content entering context
+- `gitleaks-scan` — tier-1 secret detection (runs on every file write)
+- `semgrep-scan` — tier-2 OWASP Top 10 + security-audit rulesets (runs in CI)
+- `webhook-idempotency` — idempotency keys + replay-window for webhook handlers
 - `observability-instrument` — add OTel spans with baggage
 - `cost-attribution` — track per-client AI/cloud spend
 - `coppa-audit` — COPPA compliance review (since referenced in user stack)
