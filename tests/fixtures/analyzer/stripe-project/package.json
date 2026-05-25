@@ -1,0 +1,9 @@
+{
+  "name": "stripe-fixture-project",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Analyzer fixture for REQ-D4 / AC-D4.1: a minimal Stripe-only project (no Next.js, no Supabase) that should trigger stack-specific/stripe/webhook-idempotency + stack-specific/stripe/pci-scope-minimization in recommended.skills. Distinct from pci-dss-project (which serves REQ-A5 / claim 046) so claim 046's integration test path stays stable.",
+  "dependencies": {
+    "stripe": "^17.0.0"
+  }
+}

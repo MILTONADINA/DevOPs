@@ -20,3 +20,13 @@ goal_loop_max_iterations: 5
 
 # Tool call total cap per session (catches death-by-1000-cuts)
 total_tool_calls_per_session: 500
+
+# Phase 2 Area C / REQ-C7 — Prompt-injection detector thresholds.
+# Loaded by observability/external-content-boundary.ts and
+# hooks/universal/pre-tool/external-content-boundary.sh on every evaluation;
+# changing this file affects subsequent boundary evaluations without restart.
+prompt_injection:
+  # rebuff confidence at or above this blocks destructive tool calls (REQ-C6).
+  rebuff_block: 0.85
+  # rebuff confidence at or above this records a warn-level OTel span attribute.
+  rebuff_warn: 0.6

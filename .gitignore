@@ -1,8 +1,11 @@
 # DevOPs .gitignore
 
 # Per-project state (never committed at the workflow repo level)
-.workflow/state/
+.workflow/state/*
 .workflow/proofs/
+# Exception: plan files are reviewable artifacts that ship with the branch.
+!.workflow/state/plans/
+!.workflow/state/plans/**
 **/node_modules/
 **/__pycache__/
 **/.venv/
