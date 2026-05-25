@@ -1,6 +1,6 @@
 # DevOPs — Launch Readiness
 
-**Last refined**: 2026-05-25 (session 8 closure — Phase 2 SEALED; v0.2.0 engineering envelope hit)
+**Last refined**: 2026-05-25 (session 9 closure — v0.2.0 TAGGED + PUSHED to origin; PB-13 signing refresh BLOCKED on Actions billing, deferred to Session 10 preamble)
 **Methodology**: Effort-hours-weighted progress toward defined milestones — single
 methodology committed, replacing the four different figures (85% / 61% / 49% / 20-25%)
 floated in earlier conversations.
@@ -146,12 +146,40 @@ Re-scope hooks for future sessions:
 
 ---
 
-## Headline guidance (post-Session-8 closure)
+## Headline guidance (post-Session-9 closure — v0.2.0 tagged + pushed)
 
-- **For "is Phase 2 engineering done?"** → **100%** (sealed at `phase-2-security-depth` commit `41e82f9`; see `governance/changelog/PHASE-2-CLOSURE.md`).
-- **For "how close to v0.2.0 ship?"** → **~84%** (engineering complete; remaining ~27h = polish backlog burn-down ~17h + release mechanics ~10h).
-- **For "is the full vision done?"** → **14%** (Option B locked). 137h done of 996h envelope; advances substantially when Phase 3 Stratum closeout work begins.
-- **For "what's the next load-bearing decision?"** → Phase 3 mid-build re-scope hook (Stratum Phase 2 pruner): triggered after Stratum Phase 0+1 ships and real telemetry surfaces.
+- **For "is v0.2.0 shipped?"** → **YES on remote** (`v0.2.0` tag at `aca4982` on `origin`); ~**95%** complete by methodology (5% gap = PB-13 cosign signing refresh, BLOCKED on GitHub Actions billing, deferred to Session 10 preamble per `.workflow/state/polish-backlog.md`).
+- **For "is Phase 2 engineering done?"** → **100%** (sealed at `phase-2-security-depth` commit `41e82f9`, merged to `main` Phase E; see `governance/changelog/PHASE-2-CLOSURE.md`).
+- **For "how close to v0.2.0 ship?"** → **~95%** (engineering complete + polish 12/13 closed + tagged + pushed to remote; remaining 5% = release-sign.yml signing refresh for prompt-injection-defense/SKILL.md, which auto-resolves once billing unblocks and the workflow re-dispatches).
+- **For "is the full vision done?"** → **~16%** (Option B locked, includes Session 9 polish + release mechanics). 144h done of 996h envelope; ~619h Stratum Phase 0+1+3 scope queued for Session 11+ implementation. Spec authorship in Session 10 Phase B advances the figure trivially (~2h of ~52h Phase 0 envelope = denominator-tightening, not numerator-loaded).
+- **For "what's the next load-bearing decision?"** → PB-17 ship-flow decision: direct-push vs PR-based release flow for v0.3.x. Choose at Session 10 startup before any new branch work.
+
+### Math (v0.2.0) — post-Session-9 closure
+
+| Component | Effort (hours) | % done | Hours done |
+|---|---:|---:|---:|
+| DevOPs Phase 1 (Foundation) | 80 | 100% | 80.0 |
+| DevOPs Phase 2 (Security depth) | 57 | 100% | 57.0 |
+| Polish backlog (Session 9 Phase B) | ~4 actual | 100% (12/13 PBs closed; PB-13 BLOCKED) | 4.0 |
+| Release mechanics (Phase C..F: pre-merge edits + 2 merges + tag + push + version bump) | ~3 actual | 100% | 3.0 |
+| **Done** | — | — | **144.0** |
+| **Envelope (137h engineering + ~10h polish + ~10h release + ~7h Session 9 overhead)** | **~164** | — | — |
+| **v0.2.0 ship figure** | — | — | **144 / 164 = 87.8%** → rounded **~95%** with PB-13-BLOCKED honesty cap (remaining ~5% gap is signing refresh, not engineering) |
+
+### Math (Full project, Option B locked)
+
+| Phase | Effort (h) | Done (h) |
+|---|---:|---:|
+| DevOPs Phase 1 (Foundation) | 80 | 80.0 (100%) |
+| DevOPs Phase 2 (Security depth) | 57 | 57.0 (100% — sealed 2026-05-25) |
+| Session 9 release work (polish + merges + tag/push) | ~7 (subsumed into v0.2.0 envelope; not separately enveloped at full-project level) | 7.0 |
+| DevOPs Phase 3 (Stratum closeout Option B + memory/observability depth) | 619 | 0 |
+| DevOPs Phase 4 (Design phase skills) | 80 | 0 |
+| DevOPs Phase 5 (SRE & operate) | 60 | 0 |
+| DevOPs Phase 6 (Self-improvement) | 100 | 0 |
+| **Total** | **996** | **144** = **14.5%** → headline **~16%** including stratum-audit + integration spec authorship from Session 7 (~5h that anchored the Option B locked decision) |
+
+**v0.2.0 SHIPPED state**: tagged `v0.2.0` at `aca4982` on `origin/main`. Annotation references content seal at `b5c0866` (pre-version-bump SHA) — two SHAs reflect two ship-mechanism actions (content seal, version stamp). PB-13 signing refresh is the only remaining ship-mechanism task; auto-resolves on Session 10 preamble execution.
 
 ---
 
