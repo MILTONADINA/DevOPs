@@ -1,7 +1,10 @@
 # memory/stratum/config.yml
 #
-# DevOPs ↔ Stratum integration settings. Overridden per project in
-# .workflow/state/stratum.yml.
+# Wiring spec for DevOPs ↔ Stratum integration. As of 2026-05-24, Stratum
+# is a single-commit scaffold (see .workflow/state/stratum-audit/ for full
+# state). These config fields are SPEC for a backend that doesn't exist;
+# no consumer code is wired yet. See docs/LAUNCH_READINESS.md for
+# operational state. Per-project overrides go in .workflow/state/stratum.yml.
 
 stratum:
   base_url: ${ANTHROPIC_BASE_URL:-http://localhost:4080}
