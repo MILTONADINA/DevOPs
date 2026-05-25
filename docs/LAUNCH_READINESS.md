@@ -189,6 +189,18 @@ Production-grade. No personal-tool framing. No deferring without explicit archit
 
 Effort-hours-weighted progress methodology. v0.2.0 envelope = DevOPs Phase 1 + Phase 2 engineering + polish + release + spec authorship + (Session 13) validator-rot remediation. Full project envelope = above + DevOPs Phases 3-6. Numerator = actual hours of work done; denominator = honest forward-looking estimate of total scope. Session 13 made the denominator more honest (P0-B 8h → 18h reflects greenfield reality) — that's denominator-tightening, not progress-padding. The numerator-loaded work (P0-A implementation) begins Phase B of Session 13 on the `stratum-phase-0-capture` long-lived branch.
 
+### PB-13 retry history (persistent audit trail — preserved across LR refreshes)
+
+| Session | Date | Run ID | Conclusion | Duration | Steps | Annotation |
+|---|---|---|---:|---:|---:|---|
+| 9 Phase F | 2026-05-25 | [26411879333](https://github.com/MILTONADINA/DevOPs/actions/runs/26411879333) | failure | 3s | 0 | "recent account payments have failed or your spending limit needs to be increased" |
+| 10 Phase A (PR-triggered) | 2026-05-25 | (multiple sub-runs) | failure | <10s ea | 0 | identical billing annotation |
+| 11 Phase A | 2026-05-25 | [26414947646](https://github.com/MILTONADINA/DevOPs/actions/runs/26414947646) | failure | 5s | 0 | identical billing annotation |
+| 12 Phase A | 2026-05-25 | [26416394799](https://github.com/MILTONADINA/DevOPs/actions/runs/26416394799) | failure | 5s | 0 | identical billing annotation |
+| 13 | n/a — NOT attempted | n/a | n/a | n/a | n/a | gated on explicit spending-limit signal |
+
+**Effective closure preconditions** (Session 13 binding): user navigates to https://github.com/settings/billing/spending_limit, sets a non-zero spending limit on that specific settings page (NOT generic "billing paid"), and confirms in chat with text approximately "spending-limit set at github.com/settings/billing/spending_limit to $N". PB-13 closure happens in a dedicated session, not bundled.
+
 ### Session 13 Phase A outcomes (summary — production-grade bar applied)
 
 - **Q8.1 amendment baked into spec §7**: test runner flips jest → vitest under production-grade prior. Q8 retained as audit trail. Carry-forward: vitest binding for Phase 1 + Phase 3 specs.
