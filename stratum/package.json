@@ -26,7 +26,7 @@
     "deploy": "wrangler deploy"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.39.0",
+    "@anthropic-ai/sdk": "^0.99.0",
     "@fastify/cors": "^9.0.0",
     "@fastify/rate-limit": "^9.1.0",
     "@pinecone-database/pinecone": "^3.0.0",
