@@ -13,8 +13,10 @@
 # Required repository secret: CLAUDE_API_KEY (Anthropic API key with both Claude
 # API + Claude Code usage enabled). Configure at:
 #   https://github.com/MILTONADINA/DevOPs/settings/secrets/actions
-# The workflow exits gracefully (no false-failure) when the secret is unset; see
-# the pre-flight `if:` guard on the security-review job.
+# Until the secret is configured, the action step fails on authentication — there
+# is NO graceful secret-presence skip (the job-level `if:` only skips DRAFT PRs).
+# That auth failure is the expected bootstrap-window state and does not block PR
+# merge (this workflow's findings are advisory, not a required status check).
 #
 # Security caveat (from upstream README): this action is NOT hardened against
 # prompt-injection attacks and should only be used to review TRUSTED PRs. Repo
@@ -38,9 +40,10 @@ jobs:
   security-review:
     name: Claude semantic security review
     runs-on: ubuntu-latest
-    # Skip gracefully when CLAUDE_API_KEY is not configured. Avoids false-fail
-    # noise during the bootstrap window before the secret is added; once the
-    # secret lands, the job runs normally on every PR.
+    # Skip DRAFT PRs only (don't burn analysis cost on incomplete work). This
+    # guard does NOT check for the CLAUDE_API_KEY secret — a missing secret
+    # surfaces as an auth failure in the action step below, which is the
+    # expected bootstrap-window state and is non-blocking for merge.
     if: ${{ github.event.pull_request.draft == false }}
     timeout-minutes: 25
     steps:
