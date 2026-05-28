@@ -158,6 +158,17 @@ Production-grade. No personal-tool framing. No deferring without explicit archit
 - **For "is the full vision done?"** → **~15.7%** (Option B locked). ~155h done end-of-Session-12 + ~3h Session 13 Phase A (Q8.1 amendment + P0-B re-scope + §4 AC clarification + CHANGELOG cleanup + PB-19/PB-20/PB-22 fixes + PB-14/PB-15 closures + LR refresh + claim emissions) = ~158h. P0-B envelope grew from ~8h to ~18h (+10h); total project envelope grows ~996h → ~1006h. Math: **~158h / ~1006h = 15.71% → rounded ~16%**. No numerator movement from implementation work; all Session 13 effort is denominator-tightening recalibration plus genuine PB closures (PB-14 actions/setup-node@v5 SHA bump + PB-15 GAP_61 row re-targeting).
 - **For "what's the next load-bearing decision?"** → Phase B kickoff on `stratum-phase-0-capture` long-lived branch: vitest migration + comprehensive P0-A non-streaming test coverage (11 test files; mandatory tier = vitest + smoke + 3 core test files; target tier = all 11 files with coverage thresholds met). Streaming is P0-B (Session 14+). PB-13 closure is parallel-track via user-side spending-limit configuration; PB-16 closure is a parallel-track dedicated session (gating: user signing-key generation + GitHub upload); neither blocks subsequent phases.
 
+### Stratum P0 — Known security caveat (Session 13 closure surfaced)
+
+**`scripts/capture-session.ts` does NOT yet consume `observability/pii-redaction.ts`** at the post-Session-13-Phase-B branch state (`stratum-phase-0-capture` @ `2496c4a`). Capture artifacts written to local-filesystem `data/sessions/session-<uuid>.json` contain the **full unredacted request + response payloads**, including any PII present in user messages (8 patterns the DevOPs redactor covers: email, phone-us, ssn, cc, jwt, bearer, sk-key, aws-key).
+
+- **Blast radius**: operator's local filesystem only (no Supabase write yet — that lands in P0-E, Session 15+).
+- **Risk class**: PII-in-disk-at-rest under whatever filesystem ACLs the operator's `data/sessions/` directory carries.
+- **Mitigation status**: NONE at HEAD. P0-F (PII redaction consumption) is the binding mitigation per spec §3 + §4 P0-F ACs. Session 14+ must NOT begin P0-B without P0-F being on the explicit Session 14+ roadmap. **P0-F is security-bearing, not hygiene.**
+- **Documented in tests**: `stratum/test/capture-session/pii-redaction-passthrough.test.ts` — 6 passing tests assert the consumption-contract structure (the DevOPs redactor exists with an exported redacting function; capture-session.ts does NOT yet import it; no inline duplication); 3 todo markers document the wired-state assertions P0-F will flip.
+
+This caveat does NOT reduce v0.2.0's ~95% figure (v0.2.0 envelope ends at DevOPs Phase 2; Stratum is post-v0.2.0). It IS a load-bearing surface in the Stratum P0 roadmap and a gate on any production use of the capture proxy.
+
 ### Math (v0.2.0 ship state, post-Session-13 Phase A)
 
 | Component | Effort (hours) | % done | Hours done |
