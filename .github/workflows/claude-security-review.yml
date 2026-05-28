@@ -1,0 +1,70 @@
+# Anthropic Claude Code Security Review — gated on every PR to main.
+#
+# Reference: anthropics/claude-code-security-review (no published releases or
+# tags as of 2026-05-28; SHA-pinned per AST08 to the latest main-branch commit
+# 0c6a49f1fa56a1d472575da86a94dbc1edb78eda dated 2026-02-11).
+#
+# This action provides AI-powered semantic security analysis of changed files in
+# pull requests using Claude (default model overridden to claude-opus-4-7 below).
+# It posts inline review comments and uploads a results JSON artifact.
+#
+# Decision rationale: governance/decisions/ADR-014-claude-security-review-integration.md
+#
+# Required repository secret: CLAUDE_API_KEY (Anthropic API key with both Claude
+# API + Claude Code usage enabled). Configure at:
+#   https://github.com/MILTONADINA/DevOPs/settings/secrets/actions
+# The workflow exits gracefully (no false-failure) when the secret is unset; see
+# the pre-flight `if:` guard on the security-review job.
+#
+# Security caveat (from upstream README): this action is NOT hardened against
+# prompt-injection attacks and should only be used to review TRUSTED PRs. Repo
+# is private (solo-dev + Dependabot) for v0.2.x — risk surface bounded. When
+# the repo opens up to external contributors (v0.8.x friends-install +
+# v1.0.0 commercial), this workflow MUST be paired with branch-protection
+# "Require approval for all external contributors" workflow-run gating.
+
+name: Claude Code Security Review
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  pull-requests: write  # required to post inline review comments
+
+jobs:
+  security-review:
+    name: Claude semantic security review
+    runs-on: ubuntu-latest
+    # Skip gracefully when CLAUDE_API_KEY is not configured. Avoids false-fail
+    # noise during the bootstrap window before the secret is added; once the
+    # secret lands, the job runs normally on every PR.
+    if: ${{ github.event.pull_request.draft == false }}
+    timeout-minutes: 25
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 2
+
+      - name: Anthropic Claude Code Security Review
+        # SHA-pinned to upstream main @ 2026-02-11 (no releases/tags published).
+        # Re-verify quarterly; bump SHA when upstream publishes a release tag.
+        uses: anthropics/claude-code-security-review@0c6a49f1fa56a1d472575da86a94dbc1edb78eda  # main @ 2026-02-11
+        with:
+          claude-api-key: ${{ secrets.CLAUDE_API_KEY }}
+          # Default action model is Opus 4.1; override to latest Opus.
+          claude-model: claude-opus-4-7
+          comment-pr: true
+          upload-results: true
+          # Exclude non-source directories to focus analysis on code that
+          # actually ships. .workflow/ holds claim corpus + state files;
+          # docs/ + memory/ are prose; coverage/ + node_modules/ + dist/
+          # + build/ are derived artifacts.
+          exclude-directories: node_modules,dist,build,coverage,.workflow,.remember,docs/screenshots,stratum/data,stratum/coverage
+          # Bound analysis duration. Default 20m; keep at 20m unless we
+          # consistently hit timeouts on large diffs.
+          claudecode-timeout: '20'
