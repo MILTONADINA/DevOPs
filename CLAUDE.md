@@ -35,6 +35,11 @@ Claude Code hooks are configured via `.claude/settings.json`. The DevOPs
 installer wires the universal hooks from `~/DevOPs/hooks/universal/` into
 your project automatically.
 
+Project-specific hooks added Session 14:
+
+- `hooks/universal/pre-tool/block-sealed-refs.sh` — blocks destructive git operations against sealed refs (v0.2.0 tag, archival branches). Returns exit 2 with explanation on attempt. References blueprint §3.
+- `hooks/universal/post-tool/sync-lr-refined-date.sh` — auto-bumps `docs/LAUNCH_READINESS.md` "Last refined" date when `plan.md` is edited. Light-touch: date only, never the math sections. References blueprint §11.1 refresh triggers.
+
 ### Slash commands
 
 DevOPs ships with these slash commands:
@@ -48,12 +53,14 @@ DevOPs ships with these slash commands:
 - `/ears-spec` — convert prose requirements into EARS-formatted specs
 - `/analyze` — re-run the project analyzer
 - `/launch-readiness` — produce the canonical launch-readiness table set from markdown source-of-truth (see `slash-commands/universal/launch-readiness.md`)
+- `/borrow-idea` — research a URL/repo/feature; propose blueprint+plan delta with version assignment + effort estimate (Ideas → Artifacts workflow per blueprint §11)
+- `/emit-claim` — wrap the spec → check → log → YAML → validator → commit ritual for cleaner claim emission
 
 **Anti-fabrication binding for status reporting**: Whenever the user asks for "status", "launch readiness", "where are we", "give me a report", or invokes `/launch-readiness` — the response MUST be derived from `blueprint.md` + `plan.md` + `docs/LAUNCH_READINESS.md` + `.workflow/state/{baton,session-handoff,polish-backlog}.md` + live git/gh outputs. Never fabricate figures, version-progress numbers, validator counts, or polish-backlog states. See `blueprint.md §11.1` for the canonical format + anti-fabrication rule.
 
 ### Subagent roles
 
-DevOPs ships seven universal subagents. Spawn them via the Task tool:
+DevOPs ships nine universal subagents. Spawn them via the Task tool:
 
 - `planner` — reads spec, decomposes into atomic tasks; never writes code
 - `researcher` — investigates codebase, external docs, prior decisions
@@ -62,6 +69,8 @@ DevOPs ships seven universal subagents. Spawn them via the Task tool:
 - `reviewer` — reads diffs against spec + principles, blocks on violations
 - `security` — runs the tiered scan stack, blocks on findings above threshold
 - `validator` — independent final check; re-runs all proofs, signs the summary
+- `integrations-curator` — autonomous Ideas → Artifacts workflow executor (research URL → propose blueprint+plan delta with version + effort)
+- `librarian` — Phase 3 memory-query subagent (CONTRACT placeholder until v0.5.x; reads-only against Stratum's three-tier memory)
 
 Each subagent has its own permission scope (see `subagents/universal/*.md`).
 
