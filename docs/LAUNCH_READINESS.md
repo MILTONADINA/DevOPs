@@ -1,6 +1,6 @@
 # DevOPs — Launch Readiness
 
-**Last refined**: 2026-05-28 (Session 14 — masterpiece blueprint binding; private-now/friends-tomorrow/commercial-v1.0.0 framing; idea-additions round adds Anthropic first-party security-review + code-review integrations (v0.3.x), subagent-driven-development autonomous loops (v0.4.x, borrowed from obra/superpowers), knowledge-graph view (v0.5.x, borrowed from Lum1104/Understand-Anything), Claude Code Security reasoning-based release-gate (v0.7.x); envelope to v1.0.0 grows by ~74h to ~644h remaining)
+**Last refined**: 2026-05-28 (Session 15 — v0.3.x §2a Phase 0 code-side gaps CLOSED: Q4 base-URL env-var wiring + P0-F PII redaction wiring SECURITY-BEARING + Anthropic SDK pin bumped ^0.39.0 → ^0.99.0 + adversarial test additions (3 files / 14 tests). Surprise win: 500KB-payload adversarial test caught catastrophic backtracking in observability/pii-redaction.ts email regex; fixed with RFC-aligned bounded quantifiers + 18-test dedicated unit-test file. Claim 096 emitted + valid. Validator: 94/95 (PB-21 coupled exception unchanged). Coverage: 88.94% statements / 87.09% branches / 88.94% lines. Full stratum suite: 91 passing + 5 todo (was 59 pre-§2a). Branch `stratum-phase-0-capture` stays open; PR-to-main deferred to v0.3.0 release. Previous Session 14 work: masterpiece blueprint binding; private-now/friends-tomorrow/commercial-v1.0.0 framing; idea-additions round adds Anthropic first-party security-review + code-review integrations (v0.3.x), subagent-driven-development autonomous loops (v0.4.x, borrowed from obra/superpowers), knowledge-graph view (v0.5.x, borrowed from Lum1104/Understand-Anything), Claude Code Security reasoning-based release-gate (v0.7.x); envelope to v1.0.0 grows by ~74h to ~644h remaining)
 **Methodology**: Effort-hours-weighted progress toward defined milestones — single
 methodology committed, replacing the four different figures (85% / 61% / 49% / 20-25%)
 floated in earlier conversations.
@@ -159,7 +159,7 @@ The full sequencing is in `plan.md`; the strategic frame is in `blueprint.md`. S
 | Version | Theme | Status | Hours done | Hours remaining | Progress | Ship gate |
 |---|---|---|---:|---:|---:|---|
 | v0.2.0 | Foundation + Stratum subtree | **SHIPPED** (5% PB-13 gap) | ~155 | 0 | 100% (95% w/ PB-13) | Sealed `aca4982` |
-| v0.3.x | Phase 0 complete + Phase 1 measurement proxy + first-party Anthropic integrations | NOT STARTED | 0 | ~115 | 0% | Friend can clone + setup + see live dashboard; `/security-review` GitHub Action gates PRs |
+| v0.3.x | Phase 0 complete + Phase 1 measurement proxy + first-party Anthropic integrations | IN PROGRESS (§2a CLOSED Session 15; §2b/§2c/§2d pending) | ~8 | ~107 | ~7% | Friend can clone + setup + see live dashboard; `/security-review` GitHub Action gates PRs |
 | v0.4.x | Phase 2 KadaneDial pruner + subagent-driven-development autonomous loops | NOT STARTED | 0 | ~135 | 0% | Eval GREEN; zero Tier C regressions; 1 wk no degradation; autonomous loop pilot succeeds |
 | v0.5.x | Phase 3 three-tier memory + knowledge-graph view | NOT STARTED | 0 | ~130 | 0% | Fact-survives-50-turn; tier latencies met; `/understand-codebase` works |
 | v0.6.x | Phase 5 Git-Attestation Audit Engine | NOT STARTED | 0 | ~60 | 0% | CONFLICT in <5s; Opus escalation <1% |
@@ -167,9 +167,9 @@ The full sequencing is in `plan.md`; the strategic frame is in `blueprint.md`. S
 | v0.8.x | Polish + operator-readiness (`npm run setup` in <5 min) | NOT STARTED | 0 | ~50 | 0% | <5min cold-clone-to-running; backup tested |
 | v0.9.x | Phase 6 billing schema (no Stripe yet — forward-compat for v1.0.0) | NOT STARTED | 0 | ~30 | 0% | Postgres trigger blocks UPDATE; GDPR erasure <30s |
 | **v1.0.0** | **Commercial-ready foundation** (Stripe + invoice + multi-tenant auth + first paid invoice) | NOT STARTED | 0 | ~40 | 0% | First real invoice sent + paid by design partner |
-| **TOTAL to v1.0.0** | — | — | **155** | **~644** | **~19.4%** | — |
+| **TOTAL to v1.0.0** | — | — | **163** | **~636** | **~20.4%** | — |
 
-Math: 155h done ÷ ~799h total envelope = **~19.4% to v1.0.0**.
+Math: 163h done ÷ ~799h total envelope = **~20.4% to v1.0.0** (rounds to headline **~20%**). Session 15 added ~8h to numerator (v0.3.x §2a code-side gaps closure); envelope unchanged.
 
 Session-14 envelope adjustment vs Session-13-closure baseline (was ~570h remaining): **+74h** to accommodate borrowed patterns + Anthropic first-party integrations. All additions are version-bounded.
 
@@ -192,24 +192,25 @@ Session-14 envelope adjustment vs Session-13-closure baseline (was ~570h remaini
 
 
 
-## Headline guidance (post-Session-13 Phase A — recalibration sweep; production-grade bar)
+## Headline guidance (post-Session-15 — v0.3.x §2a code-side gaps CLOSED; production-grade bar)
 
-- **For "is v0.2.0 shipped?"** → **YES on remote** (`v0.2.0` tag at `aca4982`); **~95%** — same PB-13 cosign signing refresh gap. PB-13 NOT attempted Session 13 (gated on explicit user spending-limit signal at https://github.com/settings/billing/spending_limit; four prior session-start "billing fixed" signals all turned out wrong). PB-13 stays open as a long-term carry-forward; does NOT block downstream phases.
+- **For "is v0.2.0 shipped?"** → **YES on remote** (`v0.2.0` tag at `aca4982`); **~95%** — same PB-13 cosign signing refresh gap. PB-13 NOT attempted Sessions 13/14/15 (gated on explicit user spending-limit signal at https://github.com/settings/billing/spending_limit; four prior session-start "billing fixed" signals all turned out wrong). PB-13 stays open as a long-term carry-forward; does NOT block downstream phases.
 - **For "is Phase 2 engineering done?"** → **100%** (sealed; unchanged).
-- **For "is the Phase 0 spec ready for implementation?"** → **YES (Q1-Q8 + Q8.1 baked; P0-B re-scoped honestly)** — §7 resolved with Q1-Q7 (Session 11 Phase A) + Q8 jest (Session 12 Phase A, retained as audit trail) + Q8.1 vitest (Session 13 Phase A, binding from Session 13 forward). §3 P0-B re-scoped Session 13 from "fix CHANGELOG crash" (fictional) to "greenfield streaming implementation" (~16-20h; midpoint 18h baked into table). §4 acceptance criteria clarified: streaming tests moved P0-A → P0-B; production-grade coverage thresholds set on P0-A (statements ≥85%, branches ≥80%, functions ≥90%, lines ≥85%). §1 honesty fix: prior reference to a "Streaming-response crash in capture script" was traced to a fictional CHANGELOG entry (Format Reference example block) and corrected.
-- **For "is the full vision done?"** → **~15.7%** (Option B locked). ~155h done end-of-Session-12 + ~3h Session 13 Phase A (Q8.1 amendment + P0-B re-scope + §4 AC clarification + CHANGELOG cleanup + PB-19/PB-20/PB-22 fixes + PB-14/PB-15 closures + LR refresh + claim emissions) = ~158h. P0-B envelope grew from ~8h to ~18h (+10h); total project envelope grows ~996h → ~1006h. Math: **~158h / ~1006h = 15.71% → rounded ~16%**. No numerator movement from implementation work; all Session 13 effort is denominator-tightening recalibration plus genuine PB closures (PB-14 actions/setup-node@v5 SHA bump + PB-15 GAP_61 row re-targeting).
-- **For "what's the next load-bearing decision?"** → Phase B kickoff on `stratum-phase-0-capture` long-lived branch: vitest migration + comprehensive P0-A non-streaming test coverage (11 test files; mandatory tier = vitest + smoke + 3 core test files; target tier = all 11 files with coverage thresholds met). Streaming is P0-B (Session 14+). PB-13 closure is parallel-track via user-side spending-limit configuration; PB-16 closure is a parallel-track dedicated session (gating: user signing-key generation + GitHub upload); neither blocks subsequent phases.
+- **For "is v0.3.x §2a Phase 0 code-side gaps done?"** → **YES** (Session 15). Q4 base-URL wiring + P0-F PII redaction wiring (SECURITY-BEARING) + SDK pin bump + adversarial tests + redactor ReDoS hardening all landed under commit chain 204071e → 290fe8b → bede1cc → 4fd8917 on `stratum-phase-0-capture`. Claim 096 valid. Coverage thresholds met. Session 13 PII caveat RESOLVED.
+- **For "is the full vision done?"** → **~20%** (Option B locked, v0.3.x in progress). 155h (v0.2.0 SHIPPED) + 8h (Session 15 v0.3.x §2a + redactor bug fix) = **163h done / ~799h total envelope = 20.4% → headline ~20%**. First numerator-loaded implementation work since v0.2.0 sealing. v0.3.x ~107h remaining = §2b content corpus (~12h) + §2c Phase 0 closure (~few hours) + §2d Phase 1 measurement proxy (~80h) + §2f/§2g/§2h first-party integrations + release (~4h).
+- **For "what's the next load-bearing decision?"** → v0.3.x §2b content corpus: 5+ real Claude Code session captures, fill `stratum/docs/waste-taxonomy.md` (load-bearing #1 waste finding drives Phase 2 pruner heuristics), DyCP paper notes. This is user-side activity (operator running the now-PII-safe capture proxy through real work). Engineering side (§2d Phase 1 measurement proxy buildout) blocks on §2b content for waste-detection heuristics calibration. PB-13 closure remains parallel-track via user-side spending-limit configuration; PB-16 closure remains parallel-track dedicated session; PB-23 (scaffold typecheck cleanup) is gating precondition for §2d Phase 1 work.
 
-### Stratum P0 — Known security caveat (Session 13 closure surfaced)
+### Stratum P0 — Known security caveat (Session 13 closure surfaced — RESOLVED Session 15 §2a-2)
 
-**`scripts/capture-session.ts` does NOT yet consume `observability/pii-redaction.ts`** at the post-Session-13-Phase-B branch state (`stratum-phase-0-capture` @ `2496c4a`). Capture artifacts written to local-filesystem `data/sessions/session-<uuid>.json` contain the **full unredacted request + response payloads**, including any PII present in user messages (8 patterns the DevOPs redactor covers: email, phone-us, ssn, cc, jwt, bearer, sk-key, aws-key).
+**STATUS — RESOLVED 2026-05-28 (Session 15 v0.3.x §2a-2)**: capture-session.ts now consumes `redactValue` from `observability/pii-redaction.ts` and applies redaction to request.messages / system / tools / response.content BEFORE the capture artifact is written. FAIL-CLOSED catch path drops the turn on redactor exception + emits structured stderr citing `AC-S15-2a-2.2`. Single-source-of-truth maintained (no inline pattern duplication). Cross-subtree consumption via `@devops/*` alias (configured in `stratum/vitest.config.ts` + `stratum/tsconfig.json`). Sealed by claim 096.
 
-- **Blast radius**: operator's local filesystem only (no Supabase write yet — that lands in P0-E, Session 15+).
-- **Risk class**: PII-in-disk-at-rest under whatever filesystem ACLs the operator's `data/sessions/` directory carries.
-- **Mitigation status**: NONE at HEAD. P0-F (PII redaction consumption) is the binding mitigation per spec §3 + §4 P0-F ACs. Session 14+ must NOT begin P0-B without P0-F being on the explicit Session 14+ roadmap. **P0-F is security-bearing, not hygiene.**
-- **Documented in tests**: `stratum/test/capture-session/pii-redaction-passthrough.test.ts` — 6 passing tests assert the consumption-contract structure (the DevOPs redactor exists with an exported redacting function; capture-session.ts does NOT yet import it; no inline duplication); 3 todo markers document the wired-state assertions P0-F will flip.
+**Surprise win during §2a-4 adversarial testing**: the 500KB-payload test revealed catastrophic backtracking in the email regex (`[a-zA-Z0-9._%+-]+@...` was O(N²) on long inputs without `@`). Hardened with RFC-aligned bounded quantifiers: email local-part {1,64} (RFC 5321), email domain {1,253} (RFC 1035), JWT segments {1,4096}, Bearer/sk-key {20,4096}. Added 18-test dedicated unit-test file at `stratum/test/observability/pii-redaction.test.ts` to cement the ReDoS resilience invariant. This is the kind of latent security defect production-grade adversarial discipline is designed to surface.
 
-This caveat does NOT reduce v0.2.0's ~95% figure (v0.2.0 envelope ends at DevOPs Phase 2; Stratum is post-v0.2.0). It IS a load-bearing surface in the Stratum P0 roadmap and a gate on any production use of the capture proxy.
+Historical (pre-resolution) text retained below for audit trail:
+
+> *`scripts/capture-session.ts` does NOT yet consume `observability/pii-redaction.ts` at the post-Session-13-Phase-B branch state (`stratum-phase-0-capture` @ `2496c4a`). Capture artifacts written to local-filesystem `data/sessions/session-<uuid>.json` contain the full unredacted request + response payloads, including any PII present in user messages (8 patterns the DevOPs redactor covers: email, phone-us, ssn, cc, jwt, bearer, sk-key, aws-key). Blast radius: operator's local filesystem only. Risk class: PII-in-disk-at-rest. Mitigation status (pre-Session-15): NONE at HEAD; P0-F is the binding mitigation per spec §3 + §4 P0-F ACs.*
+
+This caveat did NOT reduce v0.2.0's ~95% figure (v0.2.0 envelope ends at DevOPs Phase 2; Stratum is post-v0.2.0). It WAS a load-bearing surface in the Stratum P0 roadmap and a gate on any production use of the capture proxy. Session 15 §2a-2 closure removes the gate.
 
 ### Math (v0.2.0 ship state, post-Session-13 Phase A)
 
@@ -251,8 +252,26 @@ Effort-hours-weighted progress methodology. v0.2.0 envelope = DevOPs Phase 1 + P
 | 11 Phase A | 2026-05-25 | [26414947646](https://github.com/MILTONADINA/DevOPs/actions/runs/26414947646) | failure | 5s | 0 | identical billing annotation |
 | 12 Phase A | 2026-05-25 | [26416394799](https://github.com/MILTONADINA/DevOPs/actions/runs/26416394799) | failure | 5s | 0 | identical billing annotation |
 | 13 | n/a — NOT attempted | n/a | n/a | n/a | n/a | gated on explicit spending-limit signal |
+| 14 | n/a — NOT attempted | n/a | n/a | n/a | n/a | identical gating; Session 14 was masterpiece-blueprint authorship, not implementation |
+| 15 | n/a — NOT attempted | n/a | n/a | n/a | n/a | identical gating; Session 15 closed v0.3.x §2a code-side gaps instead (parallel-track; non-blocking) |
 
 **Effective closure preconditions** (Session 13 binding): user navigates to https://github.com/settings/billing/spending_limit, sets a non-zero spending limit on that specific settings page (NOT generic "billing paid"), and confirms in chat with text approximately "spending-limit set at github.com/settings/billing/spending_limit to $N". PB-13 closure happens in a dedicated session, not bundled.
+
+### Session 15 outcomes (summary — production-grade bar applied; v0.3.x §2a CLOSED)
+
+- **v0.3.x §2a Phase 0 code-side gaps CLOSED — single composite claim 096 anchors all four sub-tasks**:
+  - **Task 1 — Q4 base-URL wiring** (commit 204071e). `ANTHROPIC_BASE_URL` env-var-primary override with safe default (`https://api.anthropic.com`) + fail-fast URL/protocol validation at module load. Snapshot semantics: no mid-run env mutation. Per REQ-S15-2a-1.
+  - **Task 2 — P0-F PII redaction wiring (SECURITY-BEARING)** (commit 290fe8b). capture-session.ts now consumes `redactValue` from `observability/pii-redaction.ts` (single source of truth; no pattern duplication). Redacts request.messages / system / tools / response.content BEFORE capture artifact write. FAIL-CLOSED catch path drops the turn + emits stderr citing `AC-S15-2a-2.2`. Cross-subtree consumption via `@devops/*` alias. **Resolves the Session 13 PII caveat surfaced above.**
+  - **Task 3 — Anthropic SDK pin bump** (commit bede1cc). `^0.39.0` → `^0.99.0`. ADR-0008 records verification outcome + forward-looking re-verification triggers.
+  - **Task 4 — Adversarial test additions** (commit 4fd8917). Three new test files: `injection-resilience.test.ts` (5 tests AC-S15-2a-4.1), `partial-response.test.ts` (5 tests AC-S15-2a-4.2), `oversized-payload.test.ts` (4 tests AC-S15-2a-4.3). The 500KB-payload adversarial test caught **catastrophic backtracking** in observability/pii-redaction.ts email regex (`[a-zA-Z0-9._%+-]+@...` was O(N²) on long inputs without `@`). Hardened all open quantifiers with RFC-aligned bounds. Added 18-test dedicated unit-test file at `stratum/test/observability/pii-redaction.test.ts` to cement ReDoS resilience.
+- **REQ-S15-2a-5 coverage thresholds met**: capture-session.ts statements 88.94% / branches 87.09% / lines 88.94% — all above bar (statements ≥85%, branches ≥80%, lines ≥85%). Functions 0% is documented v8+TS source-map artifact (not threshold-gated per vitest.config.ts comment).
+- **Full stratum suite**: 16 files, 91 passing + 5 todo (was 59 passing + 5 todo pre-§2a). Net +32 new tests this session. Zero regressions.
+- **Claim 096 emitted + valid**. Validator: **94/95 valid** (PB-21 PB-13-coupled exception unchanged). 5 files in commit 4fd8917; spec_ref at `specs/meta/session-15-v0.3x-2a-code-gaps.md`.
+- **Branch state**: `stratum-phase-0-capture` HEAD at `4fd8917`. 4 commits ahead of `origin/stratum-phase-0-capture`. PR-to-main + squash-merge deferred to v0.3.0 release per blueprint §3 long-lived-branch pattern.
+- **Surprise scope absorbed honestly**: redactor ReDoS bug fix + dedicated unit-test file were unplanned scope expansion driven BY the adversarial test discipline. ~6h plan estimate → ~8h actual. The +2h reflects genuine security hardening, not estimation drift. Reported transparently in §2a closure description.
+- **PB-23 filed (pre-existing stratum scaffold typecheck cleanup)**: revealed by Task 3 SDK bump verification (TS6059 rootDir mismatch + OTel + pino + Cloudflare type errors). Out of §2a scope; documented as polish-backlog item for v0.3.x §2d Phase 1 measurement proxy work (typecheck cleanup is precondition for promoting capture script to real Fastify proxy).
+- **Polish backlog state (post-Session-15)**: PB-1..PB-12 + PB-14 + PB-15 + PB-17 + PB-18 closed = 16/22 closed. Open: PB-13 (still gated on user spending-limit signal — not attempted Session 15), PB-16 (promoted to dedicated session — architectural blocker), PB-21 (coupled to PB-13), PB-23 (NEW — stratum scaffold typecheck cleanup, v0.3.x §2d). PB-19, PB-20, PB-22 closed Session 13.
+- **PB-13 NOT attempted Session 15**: gated on explicit user spending-limit signal at https://github.com/settings/billing/spending_limit. Four prior session-start "billing fixed" signals all wrong; no Session 15 retry attempted under generic signal. Stays open as long-term carry-forward.
 
 ### Session 13 Phase A outcomes (summary — production-grade bar applied)
 
