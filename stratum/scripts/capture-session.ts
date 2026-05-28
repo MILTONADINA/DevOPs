@@ -31,6 +31,35 @@ if (!ANTHROPIC_API_KEY) {
   process.exit(1);
 }
 
+// Q4 binding (Session 15 §2a-1): env-var-primary base-URL override with
+// safe default + fail-fast validation at module load (NOT at first request).
+// See specs/meta/session-15-v0.3x-2a-code-gaps.md REQ-S15-2a-1.
+const ANTHROPIC_BASE_URL = (() => {
+  const raw = process.env["ANTHROPIC_BASE_URL"] ?? "https://api.anthropic.com";
+  try {
+    const parsed = new URL(raw);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      console.error(
+        `ERROR: ANTHROPIC_BASE_URL must use http:// or https:// protocol; got: ${parsed.protocol}`,
+      );
+      console.error(`  Value: ${raw}`);
+      console.error(
+        "  Fail-fast at module load per AC-S15-2a-1.3; this is a config error, not a runtime error.",
+      );
+      process.exit(1);
+    }
+    // Strip trailing slash for consistent path concatenation.
+    return raw.replace(/\/+$/, "");
+  } catch (e) {
+    console.error(`ERROR: ANTHROPIC_BASE_URL is not a parseable URL: ${raw}`);
+    console.error(`  Parser error: ${(e as Error).message}`);
+    console.error(
+      "  Fail-fast at module load per AC-S15-2a-1.3; this is a config error, not a runtime error.",
+    );
+    process.exit(1);
+  }
+})();
+
 const CAPTURE_PORT = 4090;
 const SESSION_ID = randomUUID();
 const OUTPUT_DIR = path.join(process.cwd(), "data", "sessions");
@@ -141,7 +170,7 @@ fastify.post("/v1/messages", async (request, reply) => {
   let anthropicResponse: unknown;
   try {
     const response = await axios.post(
-      "https://api.anthropic.com/v1/messages",
+      `${ANTHROPIC_BASE_URL}/v1/messages`,
       body,
       {
         headers: {
