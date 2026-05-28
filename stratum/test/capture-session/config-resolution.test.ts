@@ -67,12 +67,11 @@ describe('config-resolution (Q4: env-var primary; Q6 default; Q7 sentinel)', () 
     expect(headers['x-api-key']).not.toBe('MUTATED-KEY-WHICH-MUST-NOT-LEAK');
   });
 
-  test('axios POST URL is the Anthropic public endpoint (capture-session.ts current behavior)', async () => {
-    // Note: capture-session.ts at HEAD hardcodes the Anthropic endpoint at
-    // line 144. Q4's env-var-primary override (ANTHROPIC_BASE_URL) is not
-    // yet wired into the forward call. P0-B's streaming work will likely
-    // touch this path; until then, assert the current hardcoded behavior
-    // honestly.
+  test('axios POST URL uses ANTHROPIC_BASE_URL env var (Q4 wired Session 15 §2a)', async () => {
+    // Q4 binding: env-var primary (ANTHROPIC_BASE_URL), with safe default of
+    // https://api.anthropic.com. test/setup.ts sets ANTHROPIC_BASE_URL to
+    // 'http://localhost:0/mock' before module load; capture-session.ts
+    // snapshots that value at module load and forwards to <BASE>/v1/messages.
     const handler = getCaptureHandler();
     setAxiosResponse(loadMockResponse('simple-text-response'), 200);
 
@@ -83,10 +82,95 @@ describe('config-resolution (Q4: env-var primary; Q6 default; Q7 sentinel)', () 
       buildMockReply()
     );
 
-    expect(captureState.axios.postCalls[0].url).toBe('https://api.anthropic.com/v1/messages');
+    // setup.ts sets ANTHROPIC_BASE_URL = 'http://localhost:0/mock'
+    expect(captureState.axios.postCalls[0].url).toBe('http://localhost:0/mock/v1/messages');
+    expect(captureState.axios.postCalls[0].url).not.toContain('api.anthropic.com');
   });
 
-  test.todo('once Q4 wiring lands: ANTHROPIC_BASE_URL env var redirects axios POST to override URL');
+  test('ANTHROPIC_BASE_URL is snapshotted at module-load (mid-run env mutation does NOT affect URL)', async () => {
+    // Determinism guard for AC-S15-2a-1.4. Mid-run env mutation must NOT
+    // change which URL axios posts to. capture-session.ts reads
+    // ANTHROPIC_BASE_URL once at module load; subsequent mutations are
+    // no-ops for the forward path.
+    const handler = getCaptureHandler();
+    setAxiosResponse(loadMockResponse('simple-text-response'), 200);
 
-  test.todo('once Q4 wiring lands: invalid base URL surfaces at config-resolution time (fail-fast), not at first request');
+    const prevBaseUrl = process.env.ANTHROPIC_BASE_URL;
+    process.env.ANTHROPIC_BASE_URL = 'http://MUTATED.example.com';
+    try {
+      await handler(
+        buildMockRequest({
+          body: { model: 'claude-opus-4-7', messages: [{ role: 'user', content: 'x' }], max_tokens: 64 },
+        }),
+        buildMockReply()
+      );
+    } finally {
+      process.env.ANTHROPIC_BASE_URL = prevBaseUrl;
+    }
+
+    // The forward URL must reflect the snapshot, not the mutated value.
+    expect(captureState.axios.postCalls[0].url).toBe('http://localhost:0/mock/v1/messages');
+    expect(captureState.axios.postCalls[0].url).not.toContain('MUTATED');
+  });
+
+});
+
+// Separate describe block for fail-fast tests: these need vi.resetModules() +
+// spyOn(process.exit) to isolate the failure path. They MUST NOT share the
+// outer describe's beforeAll-imports-capture-session pattern (which would
+// short-circuit module re-load).
+
+describe('config-resolution fail-fast on invalid base URL (Session 15 §2a AC-S15-2a-1.3)', () => {
+  test('unparseable ANTHROPIC_BASE_URL exits non-zero at module load', async () => {
+    const { vi: viLocal } = await import('vitest');
+    const exitSpy = viLocal.spyOn(process, 'exit').mockImplementation(((_code?: number) => {
+      throw new Error('__process_exit_called__');
+    }) as never);
+    const errorSpy = viLocal.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    const prevBaseUrl = process.env.ANTHROPIC_BASE_URL;
+    process.env.ANTHROPIC_BASE_URL = 'not-a-valid-url';
+
+    try {
+      viLocal.resetModules();
+      await expect(import('../../scripts/capture-session')).rejects.toThrow('__process_exit_called__');
+      expect(exitSpy).toHaveBeenCalledWith(1);
+      const errorMessages = errorSpy.mock.calls.map(c => c.join(' ')).join('\n');
+      expect(errorMessages.toLowerCase()).toMatch(/anthropic_base_url|invalid|url/);
+    } finally {
+      process.env.ANTHROPIC_BASE_URL = prevBaseUrl;
+      exitSpy.mockRestore();
+      errorSpy.mockRestore();
+      viLocal.resetModules();
+      // Re-import the module under valid env to restore canonical fastify-route registration
+      // for any tests in the same file run after this one (defensive; describe blocks are
+      // typically isolated but vi.mock state persists across them in the same file).
+      await import('../../scripts/capture-session').catch(() => undefined);
+    }
+  });
+
+  test('non-http(s) scheme (ftp://) rejected at module load', async () => {
+    const { vi: viLocal } = await import('vitest');
+    const exitSpy = viLocal.spyOn(process, 'exit').mockImplementation(((_code?: number) => {
+      throw new Error('__process_exit_called__');
+    }) as never);
+    const errorSpy = viLocal.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    const prevBaseUrl = process.env.ANTHROPIC_BASE_URL;
+    process.env.ANTHROPIC_BASE_URL = 'ftp://example.com';
+
+    try {
+      viLocal.resetModules();
+      await expect(import('../../scripts/capture-session')).rejects.toThrow('__process_exit_called__');
+      expect(exitSpy).toHaveBeenCalledWith(1);
+      const errorMessages = errorSpy.mock.calls.map(c => c.join(' ')).join('\n');
+      expect(errorMessages.toLowerCase()).toMatch(/scheme|http|protocol/);
+    } finally {
+      process.env.ANTHROPIC_BASE_URL = prevBaseUrl;
+      exitSpy.mockRestore();
+      errorSpy.mockRestore();
+      viLocal.resetModules();
+      await import('../../scripts/capture-session').catch(() => undefined);
+    }
+  });
 });

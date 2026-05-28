@@ -46,7 +46,10 @@ describe('proxy-passthrough (non-streaming happy path)', () => {
     await handler(req, reply);
 
     expect(captureState.axios.postCalls).toHaveLength(1);
-    expect(captureState.axios.postCalls[0].url).toBe('https://api.anthropic.com/v1/messages');
+    // Q4 wiring (Session 15 §2a-1): URL derived from ANTHROPIC_BASE_URL env;
+    // setup.ts sets it to 'http://localhost:0/mock'. Pre-Q4 this asserted
+    // the hardcoded 'https://api.anthropic.com/v1/messages'.
+    expect(captureState.axios.postCalls[0].url).toBe('http://localhost:0/mock/v1/messages');
     expect(captureState.axios.postCalls[0].body).toMatchObject({
       model: 'claude-opus-4-7',
       max_tokens: 64,
