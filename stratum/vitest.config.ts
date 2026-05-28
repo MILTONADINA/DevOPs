@@ -60,6 +60,12 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, 'src'),
+      // Session 15 §2a-2: `@devops/*` maps to the DevOPs repo root (parent
+      // of stratum/). Enables cross-subtree imports (e.g. capture-session.ts
+      // consuming observability/pii-redaction.ts) via a stable canonical
+      // path that vi.mock can match reliably + that mirrors the tsconfig
+      // `paths` alias used by ts-node at runtime.
+      '@devops': path.resolve(__dirname, '..'),
     },
   },
 });

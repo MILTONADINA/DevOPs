@@ -21,7 +21,8 @@
     "sourceMap": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["src/*"]
+      "@/*": ["src/*"],
+      "@devops/*": ["../*"]
     }
   },
   "include": ["src/**/*", "scripts/**/*", "evals/**/*"],

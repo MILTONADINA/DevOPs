@@ -1,23 +1,19 @@
-// Test #10 — pii-redaction-passthrough (STRUCTURAL ONLY).
+// Test #10 — pii-redaction-passthrough.
 //
-// Scope guard: this file asserts the consumption-contract structure —
-// capture-session.ts should consume DevOPs's `observability/pii-redaction.ts`
-// module rather than re-implement redaction logic inline. Behavioral
-// PII redaction tests (which patterns redact, edge cases, false-positive
-// bounds) live in P0-F (Session 15+) once the consumption is actually
-// wired.
-//
-// Current state of capture-session.ts: PII redaction is NOT yet consumed.
-// This file's assertions capture (a) the current absence honestly, and
-// (b) the future-wired-state expectations as test.todo markers so P0-F
-// inverts them cleanly. This is honest scaffold-state testing — NOT
-// fabrication of redaction behavior.
+// Session 15 §2a-2: P0-F PII redaction wiring is now LIVE (per AC-S15-2a-2.1
+// through AC-S15-2a-2.4). This file asserts both:
+//   (a) Consumption-contract structure — capture-session.ts imports from
+//       DevOPs's observability/pii-redaction.ts (not duplicated patterns)
+//   (b) Behavioral redaction — planted PII (email, JWT) is redacted in
+//       capture artifacts; non-PII metadata preserved; FAIL-CLOSED on
+//       redactor exception (turn dropped + stderr log)
 
-import { describe, test, expect, beforeAll, beforeEach } from 'vitest';
+import { describe, test, expect, beforeAll, beforeEach, vi } from 'vitest';
 import { existsSync, readFileSync } from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
+  captureState,
   getCaptureHandler,
   setAxiosResponse,
   resetMockState,
@@ -59,13 +55,13 @@ describe('pii-redaction-passthrough (P0-F consumption contract; structural-only)
     expect(hasExport).toBe(true);
   });
 
-  test('capture-session.ts at HEAD does NOT yet import from observability/pii-redaction.ts (P0-F pending)', () => {
+  test('capture-session.ts imports from observability/pii-redaction (P0-F wired Session 15 §2a-2 — AC-S15-2a-2.4)', () => {
     const captureSessionPath = path.join(devopsRoot, 'stratum', 'scripts', 'capture-session.ts');
     const source = readFileSync(captureSessionPath, 'utf-8');
-    // Honest current-state assertion: when P0-F lands, this assertion
-    // INVERTS (the import IS added). The test file's intent is to surface
-    // the consumption-contract status, not to fabricate compliance.
-    expect(source).not.toMatch(/import[\s\S]{0,200}observability\/pii-redaction/);
+    // Post-wiring assertion: the import is now present. Single source of
+    // truth for redaction patterns per spec §3 P0-F (Stratum CONSUMES,
+    // does NOT duplicate).
+    expect(source).toMatch(/import[\s\S]{0,200}observability\/pii-redaction/);
   });
 
   test('capture-session.ts at HEAD does NOT contain inline PII regex patterns (negative invariant: no duplication)', () => {
@@ -87,7 +83,7 @@ describe('pii-redaction-passthrough (P0-F consumption contract; structural-only)
     }
   });
 
-  test('current capture artifact contains raw request body (P0-F redaction not yet wired — honesty)', async () => {
+  test('planted email is redacted to [REDACTED:email] in capture artifact (P0-F wired Session 15 §2a-2)', async () => {
     const handler = getCaptureHandler();
     setAxiosResponse(loadMockResponse('simple-text-response'), 200);
 
@@ -105,15 +101,79 @@ describe('pii-redaction-passthrough (P0-F consumption contract; structural-only)
 
     const lastWrite = getLastSessionWrite()!;
     const parsedRaw = JSON.stringify(lastWrite.parsed);
-    // Current state: the email appears in the capture artifact because
-    // P0-F redaction isn't wired yet. This is the "before" state; P0-F
-    // will invert this assertion.
-    expect(parsedRaw).toContain(plantedEmail);
+    // Post-wiring assertion: the raw email MUST NOT appear in the capture
+    // artifact; the redactor pattern places `[REDACTED:email]` instead.
+    // Verbatim per observability/pii-redaction.ts redactString output format.
+    expect(parsedRaw).not.toContain(plantedEmail);
+    expect(parsedRaw).toContain('[REDACTED:email]');
   });
 
-  test.todo('once P0-F wires consumption: planted email is replaced with [REDACTED-email] in capture artifact');
+  test('planted JWT in response.content[].text is redacted to [REDACTED:jwt] (AC-S15-2a-2.1)', async () => {
+    const handler = getCaptureHandler();
+    // Construct a response fixture in-test with a JWT in content[].text
+    const plantedJwt = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4ifQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c';
+    setAxiosResponse({
+      id: 'msg_jwt_test',
+      type: 'message',
+      role: 'assistant',
+      model: 'claude-opus-4-7',
+      content: [{ type: 'text', text: `Here is your token: ${plantedJwt}. Use it carefully.` }],
+      stop_reason: 'end_turn',
+      stop_sequence: null,
+      usage: { input_tokens: 20, output_tokens: 30 },
+    }, 200);
 
-  test.todo('once P0-F wires consumption: planted JWT in response.content[].text is [REDACTED-jwt] in capture artifact');
+    await handler(
+      buildMockRequest({
+        body: {
+          model: 'claude-opus-4-7',
+          messages: [{ role: 'user', content: 'gimme a token' }],
+          max_tokens: 64,
+        },
+      }),
+      buildMockReply()
+    );
 
-  test.todo('once P0-F wires consumption: PII redactor exception triggers FAIL-CLOSED (drop turn from session, emit pii.redaction_failed OTel event)');
+    const lastWrite = getLastSessionWrite()!;
+    const parsedRaw = JSON.stringify(lastWrite.parsed);
+    expect(parsedRaw).not.toContain(plantedJwt);
+    expect(parsedRaw).toContain('[REDACTED:jwt]');
+  });
+
+  test('non-PII metadata preserved through redaction (AC-S15-2a-2.3)', async () => {
+    // model, stop_reason, usage.input_tokens etc. must NOT be redacted.
+    const handler = getCaptureHandler();
+    setAxiosResponse(loadMockResponse('simple-text-response'), 200);
+
+    await handler(
+      buildMockRequest({
+        body: { model: 'claude-opus-4-7', messages: [{ role: 'user', content: 'safe content' }], max_tokens: 64 },
+      }),
+      buildMockReply()
+    );
+
+    const lastWrite = getLastSessionWrite()!;
+    const parsed = lastWrite.parsed as {
+      requests: Array<{
+        request: { model: string; max_tokens: number };
+        response: { id: string; stop_reason: string; usage: { input_tokens: number; output_tokens: number } };
+        token_counts: { input_tokens: number };
+      }>;
+    };
+    const last = parsed.requests[parsed.requests.length - 1];
+    expect(last.request.model).toBe('claude-opus-4-7');
+    expect(last.request.max_tokens).toBe(64);
+    expect(last.response.id).toBe('msg_01ABC123simple');
+    expect(last.response.stop_reason).toBe('end_turn');
+    expect(last.response.usage.input_tokens).toBe(12);
+    expect(last.response.usage.output_tokens).toBe(8);
+  });
+
+  // AC-S15-2a-2.2 FAIL-CLOSED behavior is tested in a dedicated file
+  // (test/capture-session/pii-redaction-failclosed.test.ts) using hoisted
+  // vi.mock for clean module-mock isolation. The vi.doMock + vi.resetModules
+  // dance inside this file produced unreliable results due to relative-path
+  // resolution mismatch between test-file and capture-session imports, and
+  // double-handler-registration on resetModules. Hoisted vi.mock in a
+  // dedicated file avoids both issues.
 });

@@ -26,7 +26,18 @@ const PATTERNS = [
   { name: 'aws-key', regex: /AKIA[0-9A-Z]{16}/g },
 ];
 
-function redactString(s: string): string {
+/**
+ * Redact PII patterns from a single string.
+ *
+ * @param s - Arbitrary text potentially containing PII.
+ * @returns Same string with each match replaced by `[REDACTED:<patternName>]`.
+ *
+ * Exposed Session 15 §2a-2 to support Stratum capture-session.ts P0-F
+ * redaction wiring. The redaction logic was previously private to the
+ * piiRedactingExporter OTel wrapper. Single source of truth per spec §3 P0-F
+ * (Stratum consumes; does NOT duplicate patterns).
+ */
+export function redactString(s: string): string {
   let out = s;
   for (const { name, regex } of PATTERNS) {
     out = out.replace(regex, `[REDACTED:${name}]`);
@@ -34,7 +45,19 @@ function redactString(s: string): string {
   return out;
 }
 
-function redactValue(v: unknown): unknown {
+/**
+ * Recursively redact PII in a JSON-shaped value (string | array | object | primitive).
+ *
+ * Walks the structure and applies {@link redactString} to every leaf string.
+ * Non-string primitives, arrays, and objects are recursed; the structure is
+ * preserved.
+ *
+ * @param v - Any JSON-shaped value (request bodies, response bodies, attribute maps).
+ * @returns Same shape with leaf strings redacted.
+ *
+ * Exposed Session 15 §2a-2 alongside redactString for the same reason.
+ */
+export function redactValue(v: unknown): unknown {
   if (typeof v === 'string') return redactString(v);
   if (Array.isArray(v)) return v.map(redactValue);
   if (v && typeof v === 'object') {
