@@ -103,6 +103,70 @@ describe('pii-redaction — bounded quantifiers (ReDoS resilience)', () => {
   });
 });
 
+describe('pii-redaction — upper-bound leak prevention (§2a redo regression)', () => {
+  // These tests guard the fail-OPEN secret leak that adversarial re-verification
+  // caught: the original §2a {1,4096} upper bounds on JWT/sk-/Bearer caused
+  // over-long tokens to leak (JWT failed the whole match; sk-/Bearer left a raw
+  // overflow tail). The fix makes those patterns suffix-free greedy + unbounded.
+  // The literal anchors keep them linear, so unbounding is safe.
+
+  test('JWT with a >4096-char segment is FULLY redacted (was a total leak)', () => {
+    // A JWT whose middle segment far exceeds the old 4096 cap (Azure AD tokens
+    // with embedded x5c cert chains / large claim sets do this).
+    const jwt = 'eyJhbGciOiJIUzI1NiJ9.' + 'A'.repeat(5000) + '.c2lnbmF0dXJl';
+    const out = redactString(`auth token is ${jwt} end`);
+    expect(out).toContain('[REDACTED:jwt]');
+    // The raw token must NOT survive — no long run of the segment leaks.
+    expect(out).not.toContain('A'.repeat(100));
+    expect(out).not.toContain('eyJhbGciOiJIUzI1NiJ9');
+    // Surrounding context is preserved.
+    expect(out).toContain('auth token is ');
+    expect(out).toContain(' end');
+  });
+
+  test('sk- key longer than 4096 chars is FULLY redacted (no raw overflow tail)', () => {
+    const key = 'sk-' + 'a'.repeat(5000);
+    const out = redactString(`key=${key}`);
+    expect(out).toBe('key=[REDACTED:sk-key]');
+    // No residual raw-secret tail.
+    expect(out).not.toContain('a'.repeat(50));
+  });
+
+  test('Bearer token longer than 4096 chars is FULLY redacted (no raw overflow tail)', () => {
+    const tok = 'b'.repeat(5000);
+    const out = redactString(`Authorization: Bearer ${tok}`);
+    expect(out).toBe('Authorization: [REDACTED:bearer]');
+    expect(out).not.toContain('b'.repeat(50));
+  });
+
+  test('normal compact JWT still collapses to a single [REDACTED:jwt] marker', () => {
+    const jwt = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U';
+    expect(redactString(`token: ${jwt}`)).toBe('token: [REDACTED:jwt]');
+  });
+
+  test('ReDoS guard: 600KB of repeated "eyJ" redacts linearly in <1s', () => {
+    // The PRIOR 3-segment JWT form (eyJ[...]+\.[...]+\.[...]+) was O(N^2) on
+    // this input — each "eyJ" start backtracked hunting a required ".". The
+    // suffix-free greedy form matches the whole run in ONE pass → linear.
+    const adversarial = 'eyJ'.repeat(200_000); // ~600KB
+    const t0 = Date.now();
+    const out = redactString(adversarial);
+    const elapsed = Date.now() - t0;
+    expect(out).toBe('[REDACTED:jwt]'); // entire run consumed in one match
+    expect(elapsed).toBeLessThan(1000);
+  });
+
+  test('ReDoS guard: 100k repeated "eyJa.b" near-matches redact in <1s', () => {
+    const adversarial = 'eyJa.b'.repeat(100_000); // ~600KB of dot-laced near-JWTs
+    const t0 = Date.now();
+    const out = redactString(adversarial);
+    const elapsed = Date.now() - t0;
+    expect(out).toContain('[REDACTED:jwt]');
+    expect(out).not.toContain('eyJa.b'.repeat(10));
+    expect(elapsed).toBeLessThan(1000);
+  });
+});
+
 describe('pii-redaction — redactValue recursion', () => {
   test('redacts string leaves in nested object', () => {
     const input = {

@@ -9,30 +9,53 @@
 import type { ReadableSpan, SpanExporter } from '@opentelemetry/sdk-trace-base';
 import type { ExportResult } from '@opentelemetry/core';
 
-// Bounded quantifiers throughout. Unbounded `+` on character classes with no
-// guard creates catastrophic backtracking on long inputs that contain class
-// characters but no required suffix (e.g., 500KB of 'x' against an email
-// pattern's local-part `+` greedy match → O(N²) backtracking when the
-// terminating `@` is never found). Bounded {min,max} caps the search.
-// Caps chosen to align with practical limits:
-//   - Email local-part: 64 chars (RFC 5321 §4.5.3.1.1)
-//   - Email domain:     253 chars (RFC 1035 §2.3.4)
-//   - JWT segments:     4096 chars per segment (well above any real token)
-//   - Bearer / sk- key: 4096 chars (real tokens are 32-2048 chars)
+// Quantifier discipline (Session 15 §2a-2, hardened in the §2a redo after
+// adversarial re-verification caught a fail-OPEN secret leak).
+//
+// Catastrophic backtracking arises only when a quantified character class has
+// NO literal anchor AND is followed by a REQUIRED suffix the engine must hunt
+// for. The email local-part is the canonical case: `[...]+@…tld` has no anchor,
+// so the engine retries at every offset (O(N) start positions) and each start
+// backtracks O(N) looking for `@` → O(N²). The CORRECT fix for THAT shape is a
+// bound (email local-part {1,64} per RFC 5321 §4.5.3.1.1, domain {1,253} per
+// RFC 1035). A bound is safe there: an over-length local-part still matches
+// from a shifted offset, so at most a few leading local-part chars escape —
+// never the @domain.
+//
+// A bound is the WRONG tool for a literal-anchored, SUFFIX-FREE greedy class
+// (eyJ…, Bearer…, sk-…). Those are ALREADY linear — the literal anchor caps the
+// number of start positions and the greedy class succeeds WITHOUT backtracking
+// because nothing required follows it. Adding an upper bound there does not
+// improve time but DOES introduce a fail-OPEN leak: a token longer than the cap
+// either fails the whole (suffix-requiring) match — JWT — or leaves a raw
+// overflow tail — sk-/Bearer — so the secret reaches disk UNREDACTED. The first
+// §2a pass made exactly this mistake: bounding the JWT segments to {1,4096}
+// meant a JWT with a >4096-char segment leaked in full (reproduced in the redo).
+// So JWT/Bearer/sk- are suffix-free greedy and UNBOUNDED here: leak-free and
+// still linear. The JWT pattern matches `eyJ` + ONE greedy base64url-or-dot run,
+// consuming the whole compact token (incl. its `.` separators) in a single pass
+// — which also kills the O(N²) the prior REQUIRED-`.` 3-segment form had on
+// `eyJ`-repeated input (each `eyJ` start backtracked hunting the next dot).
 const PATTERNS = [
-  // Email — RFC 5321 bounded local-part + domain to keep redaction linear-time
+  // Email — bounded: no anchor + REQUIRED `@…tld` suffix would be O(N²); the
+  // bound makes it linear and leaks at most a few leading local-part chars.
   { name: 'email', regex: /[a-zA-Z0-9._%+-]{1,64}@[a-zA-Z0-9.-]{1,253}\.[a-zA-Z]{2,24}/g },
   // US phone
   { name: 'phone-us', regex: /\b(\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b/g },
   // SSN
   { name: 'ssn', regex: /\b\d{3}-\d{2}-\d{4}\b/g },
-  // Credit card (13-19 digits with optional separators)
+  // Credit card (13-19 digits with optional separators) — linear under \b anchors
   { name: 'cc', regex: /\b(?:\d[ -]?){13,19}\b/g },
-  // JWT — bounded each segment to avoid pathological inputs without dots
-  { name: 'jwt', regex: /eyJ[A-Za-z0-9_-]{1,4096}\.[A-Za-z0-9_-]{1,4096}\.[A-Za-z0-9_-]{1,4096}/g },
-  // Bearer / sk- / api keys — bounded to keep redaction linear-time
-  { name: 'bearer', regex: /Bearer\s+[A-Za-z0-9._\-+/=]{20,4096}/gi },
-  { name: 'sk-key', regex: /sk-[A-Za-z0-9_-]{20,4096}/g },
+  // JWT — `eyJ`-anchored, suffix-free greedy over base64url + `.`; matches the
+  // whole compact token in ONE pass. UNBOUNDED on purpose: leak-free for
+  // arbitrarily long tokens (no upper cap to fail past) and linear (no required
+  // trailing token to backtrack against). See quantifier-discipline note above.
+  { name: 'jwt', regex: /eyJ[A-Za-z0-9._-]+/g },
+  // Bearer / sk- / api keys — literal-anchored, suffix-free greedy; UNBOUNDED so
+  // an over-long token is fully redacted (no raw overflow tail) and still linear.
+  { name: 'bearer', regex: /Bearer\s+[A-Za-z0-9._\-+/=]{20,}/gi },
+  { name: 'sk-key', regex: /sk-[A-Za-z0-9_-]{20,}/g },
+  // AWS access key ID (fixed width)
   { name: 'aws-key', regex: /AKIA[0-9A-Z]{16}/g },
 ];
 
