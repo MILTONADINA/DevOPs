@@ -1,6 +1,6 @@
 # DevOPs — Launch Readiness
 
-**Last refined**: 2026-05-25/26 (session 13 Phase A — recalibration sweep under production-grade quality bar; Q8.1 amendment flips test runner jest → vitest; P0-B re-scoped greenfield streaming ~18h (was ~8h crash-fix on a fictional CHANGELOG entry); P0 envelope 52h → 62h; PB-19/PB-20/PB-22 validator-rot fixed via methodology refactors; PB-14/PB-15 closed; PB-16 promoted to dedicated session; PB-13 NOT attempted Session 13)
+**Last refined**: 2026-05-28 (Session 14 — masterpiece blueprint binding; private-now/friends-tomorrow/commercial-v1.0.0 framing; idea-additions round adds Anthropic first-party security-review + code-review integrations (v0.3.x), subagent-driven-development autonomous loops (v0.4.x, borrowed from obra/superpowers), knowledge-graph view (v0.5.x, borrowed from Lum1104/Understand-Anything), Claude Code Security reasoning-based release-gate (v0.7.x); envelope to v1.0.0 grows by ~74h to ~644h remaining)
 **Methodology**: Effort-hours-weighted progress toward defined milestones — single
 methodology committed, replacing the four different figures (85% / 61% / 49% / 20-25%)
 floated in earlier conversations.
@@ -146,9 +146,51 @@ Re-scope hooks for future sessions:
 
 ---
 
-## Quality bar (Session 13+ binding)
+## Quality bar (Session 13+ binding; Session 14 re-affirmed under masterpiece framing)
 
-Production-grade. No personal-tool framing. No deferring without explicit architectural justification. Validator target: 93/93 (one PB-21 coupled exception accepted explicitly). Test coverage thresholds: statements ≥85%, branches ≥80%, functions ≥90%, lines ≥85%. Polish backlog: no can-kicking — every PB triaged per-session with one of CLOSE-now / CLOSE-larger / Keep-deferred-with-architectural-reason / Promote-to-dedicated-session. "Personal-tool" framing is OUT.
+**Best-of-the-best at every layer, every version, every PR.** The "personal use" framing established Session 14 means: **no Stripe billing yet, repo is private now**. It does NOT mean lower quality, looser tests, or relaxed rigor. The repo is private today for **market timing** (foundation building, friends-install rollout, commercial v1.0.0 launch), NOT because of quality compromise. Every line is built as if a paying customer will run it tomorrow.
+
+Validator target: 93/93 (one PB-21 coupled exception accepted explicitly). Test coverage thresholds: statements ≥85%, branches ≥80%, functions ≥90%, lines ≥85%. Polish backlog: no can-kicking — every PB triaged per-session with one of CLOSE-now / CLOSE-larger / Keep-deferred-with-architectural-reason / Promote-to-dedicated-session.
+
+## Masterpiece roadmap to v1.0.0 (Session 14 binding)
+
+The full sequencing is in `plan.md`; the strategic frame is in `blueprint.md`. Summary table:
+
+| Version | Theme | Status | Hours done | Hours remaining | Progress | Ship gate |
+|---|---|---|---:|---:|---:|---|
+| v0.2.0 | Foundation + Stratum subtree | **SHIPPED** (5% PB-13 gap) | ~155 | 0 | 100% (95% w/ PB-13) | Sealed `aca4982` |
+| v0.3.x | Phase 0 complete + Phase 1 measurement proxy + first-party Anthropic integrations | NOT STARTED | 0 | ~115 | 0% | Friend can clone + setup + see live dashboard; `/security-review` GitHub Action gates PRs |
+| v0.4.x | Phase 2 KadaneDial pruner + subagent-driven-development autonomous loops | NOT STARTED | 0 | ~135 | 0% | Eval GREEN; zero Tier C regressions; 1 wk no degradation; autonomous loop pilot succeeds |
+| v0.5.x | Phase 3 three-tier memory + knowledge-graph view | NOT STARTED | 0 | ~130 | 0% | Fact-survives-50-turn; tier latencies met; `/understand-codebase` works |
+| v0.6.x | Phase 5 Git-Attestation Audit Engine | NOT STARTED | 0 | ~60 | 0% | CONFLICT in <5s; Opus escalation <1% |
+| v0.7.x | Phase 4 ZK-Context + AWS Nitro TEE + Claude Code Security release-gate | NOT STARTED | 0 | ~84 | 0% | Modified-PCR rejected; <15ms latency; reviewer signoff; reasoning-based scan clean |
+| v0.8.x | Polish + operator-readiness (`npm run setup` in <5 min) | NOT STARTED | 0 | ~50 | 0% | <5min cold-clone-to-running; backup tested |
+| v0.9.x | Phase 6 billing schema (no Stripe yet — forward-compat for v1.0.0) | NOT STARTED | 0 | ~30 | 0% | Postgres trigger blocks UPDATE; GDPR erasure <30s |
+| **v1.0.0** | **Commercial-ready foundation** (Stripe + invoice + multi-tenant auth + first paid invoice) | NOT STARTED | 0 | ~40 | 0% | First real invoice sent + paid by design partner |
+| **TOTAL to v1.0.0** | — | — | **155** | **~644** | **~19.4%** | — |
+
+Math: 155h done ÷ ~799h total envelope = **~19.4% to v1.0.0**.
+
+Session-14 envelope adjustment vs Session-13-closure baseline (was ~570h remaining): **+74h** to accommodate borrowed patterns + Anthropic first-party integrations. All additions are version-bounded.
+
+### Borrowed patterns (Session 14 idea-additions round)
+
+| Pattern | Source | Version | Effort |
+|---|---|---|---:|
+| Subagent-driven-development autonomous loops | [obra/superpowers](https://github.com/obra/superpowers) (MIT; pattern borrow, no code) | v0.4.x | +15h |
+| Knowledge-graph view of codebase + tours + semantic search | [Lum1104/Understand-Anything](https://github.com/Lum1104/Understand-Anything) (MIT; pattern borrow, no code) | v0.5.x | +30h |
+
+### First-party Anthropic integrations (Session 14 idea-additions round)
+
+| Integration | Source | Version | Effort |
+|---|---|---|---:|
+| `anthropics/claude-code-security-review` GitHub Action | Anthropic (built-in) | v0.3.x | +2h |
+| Claude Code `/code-review` in PR-flow docs | Anthropic (built-in) | v0.3.x | +1h |
+| Slash command name-collision check | (housekeeping) | v0.3.x | +0.5h |
+| Red/green TDD principle made explicit in constitution | [obra/superpowers](https://github.com/obra/superpowers) verbatim phrasing | v0.3.x | +1h |
+| Claude Code Security (reasoning-based, Feb 2026 GA) release-gate | Anthropic (built-in) | v0.7.x | +4h |
+
+
 
 ## Headline guidance (post-Session-13 Phase A — recalibration sweep; production-grade bar)
 
