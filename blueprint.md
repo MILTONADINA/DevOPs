@@ -398,6 +398,52 @@ This is the iteration loop established Session 14:
 - For prior-art repos: borrow patterns/ideas, not code (license + maintenance reasons). Cite the source in blueprint + relevant ADR.
 - If a new integration would push v1.0.0 past 24 months part-time, ask explicitly whether to defer.
 
+### 11.1 Launch readiness reporting — canonical format + discipline
+
+The launch-readiness output is ALWAYS derived from markdown source-of-truth. Never fabricated, never reconstructed from memory.
+
+**Sources (read-in-order)**:
+
+1. `blueprint.md` §3 + §5 — scope + version sequencing
+2. `plan.md` §11 — version table + envelope math
+3. `docs/LAUNCH_READINESS.md` — current status snapshot + history
+4. `.workflow/state/polish-backlog.md` — open/closed PBs
+5. `.workflow/state/baton.md` + `.workflow/state/session-handoff.md` — latest session state
+6. `git log` / `gh pr list --state merged` — branch + PR reality
+
+**Canonical output**: the table set produced at end of Session 14. Includes:
+
+| Table | What it shows |
+|---|---|
+| Version roadmap | v0.2.0 → v1.0.0 with status / hours done / hours remaining / progress / ship gate |
+| Session-N idea-additions (if any since last refresh) | Borrowed patterns + first-party integrations + effort per version |
+| Polish backlog state | Closed (count + list) vs Open (item-level status) |
+| Validator state | Total emitted / valid / invalid / rate |
+| Branch matrix | Active branches, archival branches, sealed tag |
+| PR history | Last N PRs with merge SHA |
+| Open carry-forward | Non-blocking items + triggers |
+| Pre-flight blockers | What gates the next version's kickoff |
+| Headline summary | Where-we-are + what's-next + total envelope math |
+
+**Refresh triggers** (when LR is updated + the table regenerated):
+
+- Every version ship (v0.x.0 tag cut)
+- Every PR merge that adds, removes, or re-estimates plan.md tasks
+- Every Ideas → Artifacts iteration that adjusts envelope
+- On user request ("show me status", "/launch-readiness", "where are we", "give me a report")
+- Every session-end (per plan.md §10b recurring tasks; baton.md captures any state delta even if LR not regenerated)
+
+**Anti-fabrication rule** (absolute):
+
+- If a number isn't in the .md sources, the report says "not yet recorded — refresh required" rather than inventing.
+- Effort estimates always cite their source line in plan.md.
+- Validator counts always cite either `npm run validate:claims -- --all` output or the documented exception (PB-21 coupled to PB-13).
+- Polish-backlog status always cites `.workflow/state/polish-backlog.md` (gitignored — local-truth-of-record per Session 9 design).
+- Branch matrix always cites `git rev-parse` / `git ls-remote` outputs, not memory.
+- PR history always cites `gh pr list` / `gh pr view` outputs, not memory.
+
+**Slash command**: `/launch-readiness` invokes the canonical generator. See `slash-commands/universal/launch-readiness.md`.
+
 ---
 
 ## 12. Companion docs

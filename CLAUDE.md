@@ -47,6 +47,9 @@ DevOPs ships with these slash commands:
 - `/threat-model` — produce a STRIDE + OWASP ASI 2026 threat model
 - `/ears-spec` — convert prose requirements into EARS-formatted specs
 - `/analyze` — re-run the project analyzer
+- `/launch-readiness` — produce the canonical launch-readiness table set from markdown source-of-truth (see `slash-commands/universal/launch-readiness.md`)
+
+**Anti-fabrication binding for status reporting**: Whenever the user asks for "status", "launch readiness", "where are we", "give me a report", or invokes `/launch-readiness` — the response MUST be derived from `blueprint.md` + `plan.md` + `docs/LAUNCH_READINESS.md` + `.workflow/state/{baton,session-handoff,polish-backlog}.md` + live git/gh outputs. Never fabricate figures, version-progress numbers, validator counts, or polish-backlog states. See `blueprint.md §11.1` for the canonical format + anti-fabrication rule.
 
 ### Subagent roles
 
