@@ -27,6 +27,7 @@
 - **JS regex no PCRE.** `[\s\S]` for multiline.
 - **Per stratum CLAUDE.md**: TypeScript strict, no `any`, JSDoc on exports, no `.unwrap()` in Rust production paths.
 - **EARS specs before non-trivial code.** Spec → claim → implementation → claim → proof.
+- **Launch readiness is ALWAYS derived from markdown source-of-truth.** When the user asks for "status", "launch readiness", "where are we", "give me a report" — the response is produced by reading `blueprint.md` + `plan.md` + `docs/LAUNCH_READINESS.md` and assembling the canonical table set defined in `blueprint.md §11`. **Never fabricate figures, version-progress numbers, validator counts, or polish-backlog states.** If a number isn't in the .md sources, surface that gap explicitly ("not yet recorded in LR; need to refresh"). The slash command `/launch-readiness` produces the canonical output (see `slash-commands/universal/launch-readiness.md`). Refresh `docs/LAUNCH_READINESS.md` at: (a) every version ship, (b) every PR merge that adds/changes plan.md tasks or effort estimates, (c) every Ideas → Artifacts iteration that adjusts the envelope.
 
 ---
 
