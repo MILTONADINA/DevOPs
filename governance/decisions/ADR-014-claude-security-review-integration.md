@@ -1,9 +1,12 @@
 # ADR-014: Wire `anthropics/claude-code-security-review` GitHub Action as PR-gating security review
 
-**Status**: Accepted (Session 15, 2026-05-28)
-**Spec ref**: `plan.md §2f` (v0.3.x first-party Anthropic integrations)
+**Spec ref**: `plan.md §2f` (v0.3.x first-party Anthropic integrations) + `specs/meta/session-15-v0.3x-2f-anthropic-integrations.md`
 **Companion artifact**: `.github/workflows/claude-security-review.yml`
 **Numbering note**: governance/decisions/ sequence starts at ADR-014 per plan.md guidance. The pre-existing `docs/decisions/0001-0007` ADRs and `stratum/docs/decisions/0008` are separate sequences (Startum-scaffold-era and stratum-subtree respectively). The 014 number is opaque (Phase-2 audit absorbed prior gap) and intentionally non-contiguous; subsequent governance/ ADRs continue from 015.
+
+## Status
+
+**Accepted** (Session 15, 2026-05-28). Landed on `main` via PR #18 at squash-merge SHA `9cfcc75`.
 
 ## Context
 
