@@ -1,8 +1,10 @@
 /**
- * Verify the Tier-2 warm-memory adapter against the LIVE Supabase project
- * (MANUAL / gated). Creates a throwaway org + session, persists one fact of each
- * of the 5 types via createWarmMemory, reads them back with queryRecent, asserts
- * the round-trip (incl. trusted-FK override), then deletes everything it created.
+ * Verify the Tier-2 warm-memory adapter + session resolver against the LIVE
+ * Supabase project (MANUAL / gated). Resolves a throwaway org + session via
+ * createSessionStore (ensureOrg + its get-branch + createSession), persists one
+ * fact of each of the 5 types via createWarmMemory, reads them back with
+ * queryRecent, exercises endSession, asserts the round-trip (incl. trusted-FK
+ * override), then deletes everything it created.
  *
  *   npm run verify-tier2
  *
@@ -15,6 +17,7 @@ import "dotenv/config";
 import { randomUUID } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 import { createWarmMemory, FACT_TABLES } from "../src/memory/warm/tier2";
+import { createSessionStore } from "../src/memory/warm/sessions";
 import type { AnyFact } from "../src/types/facts";
 
 export async function main(): Promise<number> {
@@ -32,21 +35,20 @@ export async function main(): Promise<number> {
 
   const client = createClient(url, key);
   const wm = createWarmMemory(client);
+  const sessions = createSessionStore(client);
 
-  // 1) Trusted FKs: a real organizations row + sessions row.
-  const orgRes = await client.from("organizations").insert({ name: "Tier2 Verify Org" }).select("id").single();
-  if (orgRes.error || !orgRes.data) {
-    out(`FAIL: could not create org — ${orgRes.error?.message}`);
+  // 1) Trusted FKs via the resolver (exercises ensureOrg + its get-branch + createSession).
+  let orgId: string;
+  let orgIdAgain: string;
+  let sessionId: string;
+  try {
+    orgId = await sessions.ensureOrg("Tier2 Verify Org");
+    orgIdAgain = await sessions.ensureOrg("Tier2 Verify Org"); // get-branch: same id, no duplicate
+    sessionId = await sessions.createSession({ orgId, model: "claude-opus-4-8", lambda: 0.97 });
+  } catch (err) {
+    out(`FAIL: resolver could not create org/session — ${err instanceof Error ? err.message : String(err)}`);
     return 1;
   }
-  const orgId = orgRes.data.id as string;
-  const sessRes = await client.from("sessions").insert({ org_id: orgId, model: "claude-opus-4-8" }).select("id").single();
-  if (sessRes.error || !sessRes.data) {
-    out(`FAIL: could not create session — ${sessRes.error?.message}`);
-    await client.from("organizations").delete().eq("id", orgId);
-    return 1;
-  }
-  const sessionId = sessRes.data.id as string;
 
   // 2) One fact of each type. session_id here is a LOGICAL label the trusted ctx
   //    must override with the real sessions(id) FK.
@@ -66,13 +68,20 @@ export async function main(): Promise<number> {
     const got = await wm.queryRecent(orgId, { sessionId });
     const gotTypes = new Set(got.map((f) => f.fact_type));
 
+    // Exercise endSession + confirm ended_at landed.
+    await sessions.endSession(sessionId);
+    const endedRes = await client.from("sessions").select("ended_at").eq("id", sessionId).limit(1);
+    const endedRow = ((endedRes.data ?? []) as { ended_at?: string | null }[])[0];
+
     const checks: { name: string; ok: boolean; detail: string }[] = [
+      { name: "ensureOrg get-branch returns the same org id (no duplicate)", ok: orgId === orgIdAgain, detail: `orgId===orgIdAgain (${orgId === orgIdAgain})` },
       { name: "persist wrote all 5 facts", ok: result.persisted === 5, detail: `persisted=${result.persisted}` },
       { name: "no facts skipped (all valid)", ok: result.skipped === 0, detail: `skipped=${result.skipped}` },
       { name: "no per-table DB errors", ok: result.errors.length === 0, detail: JSON.stringify(result.errors) },
       { name: "queryRecent returned all 5", ok: got.length === 5, detail: `count=${got.length}` },
       { name: "all 5 fact types round-tripped", ok: gotTypes.size === 5, detail: `types=${[...gotTypes].sort().join(",")}` },
       { name: "trusted session FK overrode the logical label", ok: got.length > 0 && got.every((f) => f.session_id === sessionId), detail: `every session_id === ${sessionId}` },
+      { name: "endSession set ended_at", ok: !!endedRow?.ended_at, detail: `ended_at=${endedRow?.ended_at ?? "null"}` },
     ];
 
     out("");
