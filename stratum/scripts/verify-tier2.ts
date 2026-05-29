@@ -18,6 +18,8 @@ import { randomUUID } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 import { createWarmMemory, FACT_TABLES } from "../src/memory/warm/tier2";
 import { createSessionStore } from "../src/memory/warm/sessions";
+import { createPruningLogStore } from "../src/memory/warm/pruning-log";
+import type { PruneDecision } from "../src/pruner/kadanedial";
 import type { AnyFact } from "../src/types/facts";
 
 export async function main(): Promise<number> {
@@ -68,6 +70,26 @@ export async function main(): Promise<number> {
     const got = await wm.queryRecent(orgId, { sessionId });
     const gotTypes = new Set(got.map((f) => f.fact_type));
 
+    // Exercise pruning-log persistence — the int4range[] spans path that can't be
+    // checked without the live TS client (the MCP proved the SQL; this proves the
+    // supabase-js encoding end-to-end).
+    const plog = createPruningLogStore(client);
+    const sampleDecision: PruneDecision = {
+      spans: [
+        [0, 1],
+        [3, 3],
+      ],
+      selectedIndices: [0, 1, 3],
+      prunedIndices: [2],
+      decayedScores: [0.9, 0.8, 0.2, 0.7],
+      normalizedScores: [0.5, 1.1, -0.6, 0.9],
+      params: { lambda: 0.97, gainShift: 0, theta: 1.0, nowSeconds: 1000 },
+      normalizationSkipped: false,
+    };
+    const pruneLogId = await plog.recordPruning(sessionId, sampleDecision);
+    const plRes = await client.from("pruning_logs").select("spans_selected").eq("id", pruneLogId).limit(1);
+    const plRow = ((plRes.data ?? []) as { spans_selected?: unknown }[])[0];
+
     // Exercise endSession + confirm ended_at landed.
     await sessions.endSession(sessionId);
     const endedRes = await client.from("sessions").select("ended_at").eq("id", sessionId).limit(1);
@@ -81,6 +103,7 @@ export async function main(): Promise<number> {
       { name: "queryRecent returned all 5", ok: got.length === 5, detail: `count=${got.length}` },
       { name: "all 5 fact types round-tripped", ok: gotTypes.size === 5, detail: `types=${[...gotTypes].sort().join(",")}` },
       { name: "trusted session FK overrode the logical label", ok: got.length > 0 && got.every((f) => f.session_id === sessionId), detail: `every session_id === ${sessionId}` },
+      { name: "recordPruning persisted a pruning_logs row (int4range[] spans)", ok: !!pruneLogId && !!plRow, detail: `id=${pruneLogId}, spans=${JSON.stringify(plRow?.spans_selected)}` },
       { name: "endSession set ended_at", ok: !!endedRow?.ended_at, detail: `ended_at=${endedRow?.ended_at ?? "null"}` },
     ];
 
@@ -94,13 +117,14 @@ export async function main(): Promise<number> {
     out(`FAIL: round-trip threw — ${err instanceof Error ? err.message : String(err)}`);
     exitCode = 1;
   } finally {
-    // 3) Clean up everything created (FK order: facts → session → org).
+    // 3) Clean up everything created (FK order: facts + pruning_logs → session → org).
     for (const table of Object.values(FACT_TABLES)) {
       await client.from(table).delete().eq("session_id", sessionId);
     }
+    await client.from("pruning_logs").delete().eq("session_id", sessionId);
     await client.from("sessions").delete().eq("id", sessionId);
     await client.from("organizations").delete().eq("id", orgId);
-    out("→ cleaned up throwaway org/session/facts.");
+    out("→ cleaned up throwaway org/session/facts/pruning-logs.");
   }
   return exitCode;
 }
