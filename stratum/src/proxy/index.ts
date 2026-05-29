@@ -11,9 +11,11 @@
  */
 
 import dotenv from "dotenv";
+import path from "node:path";
 import { logger } from "../lib/logger";
 import { buildProxy } from "./app";
 import { createDefaultMessagesDeps } from "./forward";
+import { readSessionsFromDir } from "./routes/dashboard";
 
 dotenv.config();
 
@@ -24,7 +26,11 @@ dotenv.config();
  */
 export async function start(): Promise<void> {
   const port = parseInt(process.env["PORT"] ?? "4080", 10);
-  const app = buildProxy({ messages: createDefaultMessagesDeps() });
+  const sessionsDir = path.join(process.cwd(), "data", "sessions");
+  const app = buildProxy({
+    messages: createDefaultMessagesDeps(),
+    dashboard: { readSessions: () => readSessionsFromDir(sessionsDir) },
+  });
 
   let draining = false;
   const shutdown = async (signal: string): Promise<void> => {

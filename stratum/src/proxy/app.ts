@@ -14,6 +14,7 @@ import rateLimit from "@fastify/rate-limit";
 import { logger } from "../lib/logger";
 import { healthRoute } from "./routes/health";
 import { makeMessagesRoute } from "./routes/messages";
+import { makeDashboardRoute, type DashboardDeps } from "./routes/dashboard";
 import type { MessagesDeps } from "./forward";
 
 export interface BuildProxyOptions {
@@ -36,6 +37,12 @@ export interface BuildProxyOptions {
    * the production deps via createDefaultMessagesDeps().
    */
   messages?: MessagesDeps;
+  /**
+   * Dependencies for GET /dashboard + /dashboard/api (the session reader). When
+   * omitted, the dashboard is not registered. The entry point supplies a reader
+   * over data/sessions/*.json.
+   */
+  dashboard?: DashboardDeps;
 }
 
 /**
@@ -67,6 +74,10 @@ export function buildProxy(opts: BuildProxyOptions = {}): FastifyInstance {
 
   if (opts.messages) {
     void app.register(makeMessagesRoute(opts.messages));
+  }
+
+  if (opts.dashboard) {
+    void app.register(makeDashboardRoute(opts.dashboard));
   }
 
   app.setErrorHandler((err, _req, reply) => {
