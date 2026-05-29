@@ -46,6 +46,9 @@ export function evaluateSuite(result: SuiteResult): SuiteVerdict {
     const parts: string[] = [];
     if (!s.faithfulness.passed) parts.push(`Faithfulness ${s.faithfulness.reason ?? "failed"}`);
     if (!s.answerRelevancy.passed) parts.push(`AnswerRelevancy ${s.answerRelevancy.reason ?? "failed"}`);
+    if (s.evidence && !s.evidence.passed) {
+      parts.push(`EvidenceSurvival ${(s.evidence.survival * 100).toFixed(0)}% < floor ${(s.evidence.min * 100).toFixed(0)}% (evidence dropped by pruning)`);
+    }
     failures.push(`${s.name}: ${parts.join("; ")}`);
   }
 
@@ -106,9 +109,10 @@ export function renderReport(result: SuiteResult, verdict: SuiteVerdict): string
       // Diagnostic (ADR-0016): a sub-floor baseline is an answerer/judge ceiling,
       // not a pruning pass/fail — flag it so it is never read as a clean result.
       const diag = s.faithfulness.baselineBelowFloor || s.answerRelevancy.baselineBelowFloor ? "  [baseline<floor: answerer/judge ceiling]" : "";
+      const evid = s.evidence ? `  Evid: ${(s.evidence.survival * 100).toFixed(0)}%${s.evidence.passed ? "" : "✗"}` : "";
       lines.push(
         `  ${s.name.padEnd(width)}  Faithfulness: ${fmt(s.faithfulness.prunedScore)}  ` +
-          `AnswerRelevancy: ${fmt(s.answerRelevancy.prunedScore)}  ${mark}${flag}${diag}`,
+          `AnswerRelevancy: ${fmt(s.answerRelevancy.prunedScore)}${evid}  ${mark}${flag}${diag}`,
       );
     }
   }

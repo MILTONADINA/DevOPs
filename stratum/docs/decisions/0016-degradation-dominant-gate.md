@@ -1,7 +1,7 @@
 # ADR-0016: The Eval Gate is Degradation-Dominant; Absolute Floors are Pruning-Attributable Only
 
 **Date:** 2026-05-29
-**Status:** Accepted (PB-43 implemented here; the evidence-survival co-gate, PB-39, is specified here and implemented next)
+**Status:** Accepted — PB-43 (degradation-dominant metrics) AND PB-39 (evidence-survival co-gate) both implemented + tested (2026-05-29)
 
 ## Context
 
@@ -50,7 +50,7 @@ calibrated config (ADR-0015) STILL FAILS **11/18** under the new logic (only one
 scenario — faith 0.85/0.85, zero degradation — correctly flips from fail to pass), and
 every real degradation (e.g. conv-41#12 faith 0.50/1.00) still fails.
 
-### PB-39 — evidence-survival co-gate (specified here; implemented next)
+### PB-39 — evidence-survival co-gate (implemented)
 
 Degradation-dominant metrics alone still permit the ADR-0014 false-PASS (a bluffing
 pruner scores ≈ baseline). So for datasets that ship gold evidence (LoCoMo,

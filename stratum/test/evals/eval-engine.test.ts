@@ -100,6 +100,48 @@ describe("gateScenario", () => {
   });
 });
 
+describe("evidence-survival co-gate (ADR-0016 / PB-39)", () => {
+  const good = { faithfulness: 0.95, answerRelevancy: 0.92 };
+  const mkE = (survival?: number): ScenarioResult => ({
+    tier: "A",
+    name: "LoCoMo#x",
+    pruned: good,
+    baseline: good,
+    ...(survival === undefined ? {} : { evidenceSurvival: survival }),
+  });
+
+  test("good metrics but evidence DROPPED → scenario FAILS (catches the bluff metrics miss)", () => {
+    // conv-41#14 shape: faith/relev fine, but 0% of gold evidence survived.
+    const v = gateScenario(mkE(0.0), DEFAULT_THRESHOLDS);
+    expect(v.evidence?.passed).toBe(false);
+    expect(v.passed).toBe(false);
+  });
+
+  test("good metrics + evidence retained → PASS", () => {
+    const v = gateScenario(mkE(1.0), DEFAULT_THRESHOLDS);
+    expect(v.evidence?.passed).toBe(true);
+    expect(v.passed).toBe(true);
+  });
+
+  test("floor is inclusive (survival == floor passes)", () => {
+    const v = gateScenario(mkE(DEFAULT_THRESHOLDS.evidenceSurvivalMin), DEFAULT_THRESHOLDS);
+    expect(v.evidence?.passed).toBe(true);
+  });
+
+  test("absent evidenceSurvival → co-gate skipped (backward compatible)", () => {
+    const v = gateScenario(mkE(undefined), DEFAULT_THRESHOLDS);
+    expect(v.evidence).toBeUndefined();
+    expect(v.passed).toBe(true);
+  });
+
+  test("evidence-only failure fails the suite + names the reason", () => {
+    const result: SuiteResult = { scenarios: [gateScenario(mkE(0.1), DEFAULT_THRESHOLDS)], golden: [] };
+    const verdict = evaluateSuite(result);
+    expect(verdict.passed).toBe(false);
+    expect(verdict.failures[0]).toMatch(/EvidenceSurvival/);
+  });
+});
+
 describe("checkGoldenQuery", () => {
   const q: GoldenQuery = {
     id: "gc-001",

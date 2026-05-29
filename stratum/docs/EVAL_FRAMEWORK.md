@@ -55,9 +55,12 @@ pruner's selection. For any dataset that ships gold evidence (LoCoMo does),
 **this co-gates** the LLM metrics — a pruning change must not tank evidence
 survival even if Faithfulness/Relevancy look fine.
 
-**Threshold:** treated as a hard signal at review time (the 1.4% result is an
-unambiguous FAIL); a numeric floor is a v0.4.x calibration item tracked with the
-λ-horizon work (ADR-0011 / ADR-0014). It is NOT used to auto-tune λ (over-fitting).
+**Threshold:** a formal suite co-gate (ADR-0016 / PB-39): a scenario carrying an
+`evidenceSurvival` value fails if it is below `evidenceSurvivalMin` (default **0.80**
+— lose ≤20% of answer evidence). The floor is a documented, tunable v0.4.x
+calibration item — NOT used to auto-tune λ (over-fitting). It runs alongside the
+degradation-dominant metric gate, so the suite neither false-PASSes a bluffing pruner
+(this co-gate) nor false-FAILs on hard-question baseline ceilings (the metric gate).
 
 ---
 

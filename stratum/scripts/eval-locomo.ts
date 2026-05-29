@@ -228,6 +228,7 @@ export async function main(): Promise<number> {
     name: `${o.conv}#${i}`,
     pruned: o.byLambda[0]!.pruned,
     baseline: o.baseline,
+    evidenceSurvival: o.byLambda[0]!.evidenceSurvival, // PB-39 co-gate (ADR-0016)
   }));
   const scenarios = scenarioResults.map((r) => gateScenario(r, DEFAULT_THRESHOLDS));
   const suite = { scenarios, golden: [] };

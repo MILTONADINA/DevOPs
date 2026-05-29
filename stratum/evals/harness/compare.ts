@@ -31,12 +31,23 @@ export interface MetricVerdict {
   baselineBelowFloor?: boolean;
 }
 
-/** A scenario passes iff BOTH metrics pass. */
+/** Evidence-survival co-gate verdict (ADR-0016 / PB-39); present only for gold-evidence datasets. */
+export interface EvidenceVerdict {
+  /** Fraction of gold-evidence turns that survived pruning, [0,1]. */
+  survival: number;
+  /** The floor it had to clear. */
+  min: number;
+  passed: boolean;
+}
+
+/** A scenario passes iff BOTH metrics pass AND (if present) the evidence co-gate passes. */
 export interface ScenarioVerdict {
   tier: Tier;
   name: string;
   faithfulness: MetricVerdict;
   answerRelevancy: MetricVerdict;
+  /** Evidence-survival co-gate — present only when the scenario carries `evidenceSurvival`. */
+  evidence?: EvidenceVerdict;
   passed: boolean;
 }
 
@@ -120,13 +131,22 @@ export function gateScenario(result: ScenarioResult, thresholds: MetricThreshold
     thresholds.answerRelevancyMin,
     thresholds.maxDegradation,
   );
-  return {
+  // Evidence-survival co-gate (ADR-0016 / PB-39) — only when the scenario carries
+  // a gold-evidence survival value. Deterministic; catches a pruner that drops the
+  // evidence but bluffs a plausible answer (which the metrics alone can miss).
+  const evidence: EvidenceVerdict | undefined =
+    result.evidenceSurvival === undefined
+      ? undefined
+      : { survival: result.evidenceSurvival, min: thresholds.evidenceSurvivalMin, passed: result.evidenceSurvival >= thresholds.evidenceSurvivalMin };
+  const verdict: ScenarioVerdict = {
     tier: result.tier,
     name: result.name,
     faithfulness,
     answerRelevancy,
-    passed: faithfulness.passed && answerRelevancy.passed,
+    passed: faithfulness.passed && answerRelevancy.passed && (evidence?.passed ?? true),
   };
+  if (evidence) verdict.evidence = evidence;
+  return verdict;
 }
 
 /** Degradation delta (pruned − baseline) for both metrics — for compare/report. */

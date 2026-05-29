@@ -20,12 +20,23 @@ export interface MetricThresholds {
   answerRelevancyMin: number;
   /** Max acceptable degradation vs the full-context baseline (0.05 = 5%). */
   maxDegradation: number;
+  /**
+   * Evidence-survival floor (ADR-0016 / PB-39): for datasets with gold evidence,
+   * the fraction of a scenario's gold-evidence turns that must survive pruning.
+   * A conservative retrieval-completeness bar (lose ≤20% of answer evidence) that
+   * stops the gate false-PASSing a pruner which dropped the evidence but bluffed a
+   * plausible answer (ADR-0014). Only applied when a ScenarioResult carries an
+   * `evidenceSurvival` value. A v0.4.x calibration item — tunable, not used to
+   * auto-tune λ.
+   */
+  evidenceSurvivalMin: number;
 }
 
 export const DEFAULT_THRESHOLDS: MetricThresholds = {
   faithfulnessMin: 0.9,
   answerRelevancyMin: 0.88,
   maxDegradation: 0.05,
+  evidenceSurvivalMin: 0.8,
 };
 
 /** The two metrics that matter, for one response (pruned OR baseline). */
@@ -45,6 +56,13 @@ export interface ScenarioResult {
   pruned: MetricScores;
   /** Scores with full (un-pruned) context — the baseline. */
   baseline: MetricScores;
+  /**
+   * Fraction of this scenario's gold-evidence turns that survived pruning, in
+   * [0,1] (deterministic — no judge). Present only for datasets with gold
+   * evidence (e.g. LoCoMo); when present, it co-gates the scenario (ADR-0016 /
+   * PB-39). Omitted ⇒ the evidence co-gate is skipped for this scenario.
+   */
+  evidenceSurvival?: number;
 }
 
 /** A Tier-C golden query: a deterministic must-survive-pruning fact check. */
