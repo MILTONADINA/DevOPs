@@ -1,0 +1,93 @@
+# Stratum — Memory & Eval Commands (v0.4.x / v0.5.x)
+
+Operator guide for the three-tier memory + the pruning-eval tooling. Each command
+is marked **FREE** (local ONNX encoder + free-tier Supabase only — no Anthropic
+spend) or **NEEDS CREDITS** (calls the Claude judge/extractor — costs Anthropic API
+credits).
+
+> The Phase-1 measurement proxy is documented separately in `PERSONAL_USE.md`.
+> Pruning is **not** wired into the request path (constitution / ADR-0009) — it
+> ships only after the judged Tier-A eval passes.
+
+---
+
+## Setup
+
+```bash
+cd stratum && npm install
+```
+
+Add to `stratum/.env` (gitignored — never commit):
+
+```
+SUPABASE_URL=https://<project>.supabase.co        # free-tier project is fine
+SUPABASE_SERVICE_KEY=sb_secret_...                # service-role key (bypasses RLS)
+ANTHROPIC_API_KEY=sk-ant-...                       # ONLY for the NEEDS-CREDITS commands
+```
+
+The schema lives in `supabase/migrations/` (already applied to the live project).
+The ONNX embedding model (~23 MB) downloads once to the gitignored `models/` on the
+first command that encodes.
+
+---
+
+## Memory commands
+
+| Command | Cost | What it does |
+|---|---|---|
+| `npm run verify-tier2` | **FREE** | Tier-2 warm-memory adapter round-trip against live Supabase (insert → read → cleanup). Skips cleanly without Supabase creds. |
+| `npm run promote` | **FREE** | Nightly Tier-2 → Tier-3 promotion: unpromoted facts → graph entities/edges + vectors (offline encoder), marks `promoted_to_t3`. Env: `PROMOTE_OLDER_THAN_DAYS` (default 30; `0` = all), `PROMOTE_LIMIT` (500), `PROMOTE_ORG_ID` (default: all orgs). Idempotent. |
+| `npm run understand-codebase -- --org "<name>" --entity <name>` | **FREE** | `/understand-codebase` query: an entity's status (superseded / supersedes / deprecated / referenced) from the Tier-3 graph. |
+| `npm run understand-codebase -- --org "<name>" --query "<text>" [--k N]` | **FREE** | Semantic search over the vector store (local query encoding); resolves each hit to its typed-fact content. Combinable with `--entity`. Use `--org-id <uuid>` to skip the name lookup. |
+| `npm run bench:tiers` | **FREE** | Tier-latency benchmark vs the documented targets (Tier-1 hot sub-ms, pruner p99 < 20ms, Tier-2 p95 < 80ms, Tier-3 p95 < 200ms). Tier-2/3 run only with Supabase creds (seed throwaway org → measure → delete). |
+| `npm run smoke:memory` | **NEEDS CREDITS** | Full pipeline END-TO-END: real Claude-Haiku extraction → warm persist → Tier-3 promote → recall. Proves ingestion; self-cleans. |
+
+Ingestion (turning real sessions into facts via the extractor) is the one
+**NEEDS CREDITS** part of the memory loop — everything that stores, promotes,
+queries, or benchmarks *existing* facts is FREE.
+
+---
+
+## Eval / pruning-gate commands
+
+The accuracy gate decides whether pruning may ship (constitution: <5% Faithfulness
+degradation + evidence survival, on published Tier-A benchmarks). The **judged**
+runs need credits (a Claude judge scores each answer); the **survival** sweeps are
+FREE (evidence survival is a deterministic function of the prune decision).
+
+| Command | Cost | What it does |
+|---|---|---|
+| `npm run eval:locomo:survival` | **FREE** | LoCoMo evidence-survival sweep (local ONNX only): absolute-λ vs scale-invariant decay, all conversations. |
+| `npm run eval:longmemeval:survival` | **FREE** | Same, on LongMemEval (the 2nd long-horizon benchmark). |
+| `npm run eval:locomo` | **NEEDS CREDITS** | Judged LoCoMo Tier-A gate (real encoder + Claude judge): faithfulness/relevancy + evidence co-gate. Env: `LOCOMO_CONVERSATIONS`, `LOCOMO_QUESTIONS`, `LOCOMO_LAMBDAS`, `LOCOMO_DECAY_HORIZON_FRAC` (scale-invariant decay, ADR-0015). |
+| `npm run eval:longmemeval` | **NEEDS CREDITS** | Judged LongMemEval Tier-A gate. Env: `LONGMEMEVAL_QUESTIONS`, `LONGMEMEVAL_LAMBDAS`, `LONGMEMEVAL_DECAY_HORIZON_FRAC`. |
+| `npm run eval:tierb` | **NEEDS CREDITS** | Judged dev-set (Tier-B) accuracy gate. |
+
+All judged runs are **sampled + cost-bounded** and print an upper-bound model-call
+count before running; they never fabricate a score (gated-skip without a key/data).
+
+### Tier-A datasets (fetched on demand; gitignored — see ADR-0014)
+
+```bash
+# LoCoMo (CC BY-NC 4.0 — NonCommercial; do NOT redistribute):
+git clone --depth 1 https://github.com/snap-research/locomo .tmp/locomo
+mkdir -p evals/datasets/locomo && cp .tmp/locomo/data/locomo10.json evals/datasets/locomo/
+
+# LongMemEval (MIT) — from Hugging Face:
+mkdir -p evals/datasets/longmemeval
+curl -sL -o evals/datasets/longmemeval/longmemeval_s.json \
+  https://huggingface.co/datasets/xiaowu0162/longmemeval-cleaned/resolve/main/longmemeval_s_cleaned.json
+curl -sL -o evals/datasets/longmemeval/longmemeval_oracle.json \
+  https://huggingface.co/datasets/xiaowu0162/longmemeval-cleaned/resolve/main/longmemeval_oracle.json
+```
+
+---
+
+## Current ship status (v0.4.x)
+
+The judged gate at the documented λ=0.97 is **RED** (it decays weeks-old evidence to
+~2% survival). Scale-invariant decay (ADR-0015, `*_DECAY_HORIZON_FRAC`) recovers
+~93% evidence survival on both LoCoMo + LongMemEval (FREE survival sweeps) and is
+wired default-OFF into the shadow `ContextManager`. The judged ship-decision run on
+the calibrated config (NEEDS CREDITS) is the remaining gate before pruning can move
+from shadow into the request path. See ADR-0014/0015/0016 + `docs/EVAL_FRAMEWORK.md`.
