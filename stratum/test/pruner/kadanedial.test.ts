@@ -167,26 +167,31 @@ describe("float-drift edge cases (regression)", () => {
 describe("trimCarriedTurns (opt-in span-edge refinement)", () => {
   const mk = (sims: number[]): HistoryTurn[] => sims.map((s, i) => ({ similarity: s, timestampSeconds: NOW - i * 3600 }));
 
-  test("trimmed selection is a SUBSET of untrimmed (only removes, never adds)", () => {
-    const turns = mk([0.9, 0.2, 0.85, 0.15, 0.8]);
-    const base = selectRelevantTurns(turns, params({ theta: 0.5 }));
-    const trimmed = selectRelevantTurns(turns, params({ theta: 0.5, trimCarriedTurns: true }));
-    for (const i of trimmed.selectedIndices) expect(base.selectedIndices).toContain(i);
+  // This input yields a REAL multi-turn span [0,2] whose interior turn 1 has a
+  // negative individual gain (carried by neighbors) — so the trim ACTUALLY
+  // removes turn 1. (An earlier all-singleton input made these tests vacuous.)
+  const CARRIED = mk([0.95, 0.3, 0.9, 0.25, 0.88, 0.2]);
+
+  test("trim STRICTLY removes a carried turn — subset, and smaller than untrimmed", () => {
+    const base = selectRelevantTurns(CARRIED, params({ theta: 0.5 }));
+    const trimmed = selectRelevantTurns(CARRIED, params({ theta: 0.5, trimCarriedTurns: true }));
+    for (const i of trimmed.selectedIndices) expect(base.selectedIndices).toContain(i); // subset
+    expect(trimmed.selectedIndices.length).toBeLessThan(base.selectedIndices.length); // actually removed ≥1 (not vacuous)
   });
 
   test("every kept turn individually clears the gain bar when trimming", () => {
-    const turns = mk([0.95, 0.3, 0.9, 0.25, 0.88, 0.2]);
-    const d = selectRelevantTurns(turns, params({ theta: 0.5, trimCarriedTurns: true }));
+    const d = selectRelevantTurns(CARRIED, params({ theta: 0.5, trimCarriedTurns: true }));
     for (const i of d.selectedIndices) {
       expect((d.normalizedScores[i] ?? 0) - DEFAULT_KADANEDIAL.gainShift).toBeGreaterThan(0);
     }
   });
 
-  test("default (trim off) leaves selection unchanged", () => {
-    const turns = mk([0.9, 0.2, 0.85]);
-    const off = selectRelevantTurns(turns, params({ theta: 0.5 }));
-    const explicitOff = selectRelevantTurns(turns, params({ theta: 0.5, trimCarriedTurns: false }));
-    expect(off.selectedIndices).toEqual(explicitOff.selectedIndices);
+  test("default (trim off) == explicit off, and DIFFERS from trim on (on an input where trim fires)", () => {
+    const off = selectRelevantTurns(CARRIED, params({ theta: 0.5 }));
+    const explicitOff = selectRelevantTurns(CARRIED, params({ theta: 0.5, trimCarriedTurns: false }));
+    const on = selectRelevantTurns(CARRIED, params({ theta: 0.5, trimCarriedTurns: true }));
+    expect(off.selectedIndices).toEqual(explicitOff.selectedIndices); // default == off
+    expect(on.selectedIndices).not.toEqual(off.selectedIndices); // on actually changes the result
   });
 });
 

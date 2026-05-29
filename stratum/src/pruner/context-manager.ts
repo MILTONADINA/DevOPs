@@ -75,7 +75,7 @@ export function createContextManager(encoder: BiEncoder, opts: ContextManagerOpt
     },
     async select(query: string, nowMs: number): Promise<{ decision: PruneDecision; selectedTurns: HotTurn[] }> {
       const [queryVec] = await encoder.encode([query]);
-      hot.sweep(); // drop turns outside the window before selecting
+      hot.sweep(nowMs); // evict against the SAME clock prune() decays with (no skew)
       const live = hot.recent();
       if (!queryVec || live.length === 0) {
         return { decision: prune(queryVec ?? new Float32Array(encoder.dimension), [], { ...dial, nowSeconds: nowMs / 1000 }), selectedTurns: [] };

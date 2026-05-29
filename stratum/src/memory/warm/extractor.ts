@@ -107,14 +107,27 @@ export function parseExtractedFacts(
     return [];
   }
   if (!Array.isArray(parsed)) return [];
+  // SYSTEM-CONTROLLED fields the model must NEVER supply: identity, provenance,
+  // verification flags, and relationship FKs. A spread of {...candidate, ...system}
+  // only protects fields the system explicitly re-sets — so STRIP the whole set
+  // from the untrusted candidate first, then assign trusted values. Otherwise a
+  // malicious/compromised extraction model forges developer_id (authorship),
+  // commit_hash (the Git-attestation anchor, only conditionally overridden
+  // before), or supersedes_id (marks an arbitrary real decision superseded).
+  const SYSTEM_FIELDS = ["id", "created_at", "session_id", "commit_hash", "developer_id", "supersedes_id", "is_verified", "is_suppressed"];
   const out: AnyFact[] = [];
   for (const candidate of parsed) {
     if (typeof candidate !== "object" || candidate === null) continue;
+    const content: Record<string, unknown> = { ...(candidate as Record<string, unknown>) };
+    for (const k of SYSTEM_FIELDS) delete content[k];
     const merged = {
-      ...(candidate as Record<string, unknown>),
+      ...content,
       id: ctx.mintId(),
       created_at: ctx.now(),
       session_id: ctx.session_id,
+      // Always set commit_hash from trusted ctx (undefined if no commit) so a
+      // model-supplied value can never leak through; developer_id/supersedes_id
+      // stay stripped (resolved server-side later, never from model output).
       ...(ctx.commit_hash !== undefined ? { commit_hash: ctx.commit_hash } : {}),
       is_verified: false,
       is_suppressed: false,

@@ -21,23 +21,24 @@ correctness one (the answer stays faithful because the needed fact is also kept)
 — but the eval gate is intentionally RED on it, correctly blocking ship until
 addressed.
 
-Two candidate fixes were implemented and **empirically ruled out** (not assumed):
+Candidate fixes were measured (`npm run sweep-params`). **CORRECTION (after a
+too-coarse first λ grid wrongly implied "not tunable"):** only ONE of the two
+failures is structural.
 
-1. **θ / λ tuning** — `npm run sweep-params` (deterministic golden over a 6×3
-   grid): **no (θ, λ) cell beats 9/11.** Raising θ *drops needed facts*
-   (θ=1.5 → 4/11); lowering λ drops legitimately-old facts. θ=1.0 is already
-   optimal. The 2 failures fail at **every** cell ⇒ the limit is structural, not
-   parametric.
-2. **Per-turn gain-floor trim** (`trimCarriedTurns`, opt-in, implemented +
-   unit-tested) — drops selected turns whose own normalized gain ≤ g. Measured
-   via the sweep: **still 9/11.** The kept turns are NOT negative-gain "carried"
-   turns — they are *positive-gain, genuinely on-topic* (the Lambda plan is
-   topical for "where deploying"; decay flattens the old RS256 fact so an
-   off-topic recent turn is z-comparable). A relevance floor cannot distinguish
-   them.
+1. **θ / λ tuning** — of the two, **tb-dormant is PARAMETRIC**: at the default
+   λ=0.97 the 80h-old answer turn decays below a 10h-old noise turn (peak shifts
+   to the noise); it **recovers at λ≥0.98** (λ=0.99,θ=1.0 → **10/11**). Raising θ
+   instead drops needed facts (θ=1.5 → ~4–6/11). **tb-negation is STRUCTURAL** —
+   it fails at **every** (θ,λ) cell, so the best golden-axis cell is 10/11.
+   (The λ default is NOT retuned on an 11-scenario dev set — that is Tier-A's job;
+   the data only shows λ-sensitivity, not a new default.)
+2. **Per-turn gain-floor trim** (`trimCarriedTurns`, opt-in, default-OFF) — does
+   NOT fix tb-negation: its kept turn is *positive-gain, genuinely on-topic* (the
+   stale Lambda plan is topical for "where deploying"), not a negative-gain
+   "carried" turn a relevance floor could drop.
 
-So the over-retention is **supersession + decay/relevance interaction**: a newer
-turn invalidates an older *topical* one, which cosine similarity + temporal decay
+So the residual (tb-negation) is **supersession**: a newer turn invalidates an
+older *topical* one, which cosine similarity + temporal decay
 cannot detect on their own.
 
 ## Decision
@@ -76,10 +77,11 @@ negative-gain case it *does* address.
 
 ## Alternatives Considered
 
-- **θ / λ tuning** — ruled out by the parameter sweep (no cell > 9/11; tuning
-  regresses other scenarios). See Context.
-- **Per-turn gain-floor trim** — implemented + measured out (still 9/11; the kept
-  turns are positive-gain). See Context.
+- **θ / λ tuning** — RESOLVES tb-dormant (parametric: λ≥0.98 → 10/11) but NOT
+  tb-negation (fails at every cell). Best golden-axis cell is 10/11. λ is not
+  retuned here (Tier-A's job). See Context.
+- **Per-turn gain-floor trim** — implemented + measured out for tb-negation
+  (positive-gain on-topic turn, not a negative-gain carried turn). See Context.
 - **Relax the goldens / mark the 2 scenarios non-critical** — rejected: that is
   the eval-vacuity an adversarial review already caught once; the gate SHOULD be
   red while a real limitation exists.

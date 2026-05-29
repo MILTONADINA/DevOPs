@@ -46,4 +46,15 @@ describe("ShadowContextManager (encoder + Tier-1 + pruner integration)", () => {
     // only the in-window relevant turn survives
     expect(selectedTurns.map((t) => t.content)).toEqual(["Use the database for sessions too."]);
   });
+
+  test("eviction uses select's nowMs, not the hot clock (no clock skew)", async () => {
+    // hot clock fixed at NOW; a relevant turn ingested 30s before NOW; 60s window.
+    const cm = createContextManager(fakeEncoder, { hot: createHotMemory({ windowMs: 60_000, now: () => NOW }) });
+    await cm.ingest({ role: "user", content: "We use the database Supabase.", timestampMs: NOW - 30_000 });
+    // select 40s LATER: by nowMs the turn is 70s old (> 60s window) → must be evicted.
+    // Pre-fix, sweep() used the hot clock (turn 30s old → kept → leaked); post-fix it
+    // sweeps against nowMs → evicted, so select returns nothing.
+    const { selectedTurns } = await cm.select("database?", NOW + 40_000);
+    expect(selectedTurns).toEqual([]);
+  });
 });

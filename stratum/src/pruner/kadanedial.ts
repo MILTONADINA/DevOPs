@@ -35,22 +35,25 @@
  * scenarios keep ANSWER FAITHFULNESS at 1.0, but 2/11 fail the strict "drop the
  * stale/noise turn" golden — a PRECISION cost, not a correctness one. The
  * eval:tierb gate is intentionally RED on this until addressed.
- *   PARAMETER SWEEP RESULT (npm run sweep-params, 2026-05-29): the over-retention
- *   is NOT θ/λ-tunable — no (θ,λ) cell beats 9/11; raising θ DROPS needed facts
- *   (θ=1.5 → 4/11) and lowering λ drops legitimately-old facts; θ=1.0 is already
- *   optimal on this set. The 2 failures fail at EVERY cell ⇒ STRUCTURAL, not
- *   parametric.
- *   CANDIDATE-FIX RESULT (trimCarriedTurns, npm run sweep-params): the opt-in
- *   per-turn gain-floor trim was implemented + measured — it does NOT fix the 2
- *   cases (still 9/11). They are NOT negative-gain "carried" turns; they are
- *   positive-gain, genuinely-on-topic turns (the superseded "AWS Lambda" plan is
- *   topical for "where deploying"; temporal decay flattens the 80h-old RS256
- *   fact so an off-topic recent turn's z-score is comparable). So the real cause
- *   is SUPERSESSION (a newer turn invalidating an older topical one) +
- *   decay/relevance interaction — needing a mechanism beyond similarity+decay
- *   (e.g. supersession edges from Tier-3, or a recency-conditioned relevance),
- *   to be designed + validated against the published Tier-A datasets. The trim
- *   stays as a sound default-OFF refinement for the negative-gain case it DOES
+ *   PARAMETER SWEEP RESULT (npm run sweep-params, CORRECTED 2026-05-29 after a
+ *   too-coarse first grid [0.97,0.9,0.8] wrongly implied "not tunable"): of the
+ *   two failures, ONLY ONE is structural.
+ *     • tb-dormant is PARAMETRIC (a λ decay-floor effect): at the default λ=0.97
+ *       the 80h-old answer turn decays BELOW a 10h-old noise turn, so the span
+ *       peak shifts to the noise. It RECOVERS at λ≥0.98 (λ=0.99,θ=1.0 → 10/11).
+ *     • tb-negation is genuinely STRUCTURAL (supersession): the stale "AWS Lambda"
+ *       plan precedes the correct "Cloudflare Workers" turn, so any contiguous
+ *       span containing the correct turn also drags in the stale one. It fails at
+ *       EVERY (θ,λ) cell. The best golden-axis cell is 10/11 (tb-negation remains).
+ *     Raising θ instead drops needed facts (θ=1.5 → ~4–6/11). The fix targets the
+ *     STRUCTURAL case (tb-negation); the λ default is NOT changed here (a 11-
+ *     scenario dev set must not retune the documented λ=0.97 — that is Tier-A's job).
+ *   CANDIDATE-FIX RESULT (trimCarriedTurns, opt-in default-OFF): measured — does
+ *   NOT fix either case (the kept turns are positive-gain on-topic, not negative-
+ *   gain "carried" turns). So the structural fix for tb-negation needs a mechanism
+ *   beyond similarity+decay — supersession edges from Tier-3, or recency-
+ *   conditioned relevance (ADR-0011) — designed + validated against Tier-A. The
+ *   trim stays a sound default-OFF refinement for the negative-gain case it DOES
  *   address. Tracked as a v0.4.x calibration item.
  * ──────────────────────────────────────────────────────────────────────────
  */

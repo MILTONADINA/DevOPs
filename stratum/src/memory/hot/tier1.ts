@@ -36,8 +36,12 @@ export interface Tier1Options {
 export interface HotMemory {
   /** Append a turn, then evict any now-stale turns (calling onEvict for each). */
   add(turn: HotTurn): void;
-  /** Force an eviction sweep at the current time (e.g. on a timer). */
-  sweep(): void;
+  /**
+   * Force an eviction sweep. Pass `atMs` to evict against a specific time
+   * (e.g. the caller's clock for deterministic batch/replay) instead of the
+   * store's own clock — so eviction and a separately-supplied decay time agree.
+   */
+  sweep(atMs?: number): void;
   /** In-window turns, oldest → newest (the pruner's history input). */
   recent(): HotTurn[];
   /** Number of in-window turns. */
@@ -59,8 +63,8 @@ export function createHotMemory(opts: Tier1Options = {}): HotMemory {
   // Turns are kept in ascending timestamp order; eviction is always from the front.
   const turns: HotTurn[] = [];
 
-  function evictStale(): void {
-    const cutoff = now() - windowMs;
+  function evictStale(atMs?: number): void {
+    const cutoff = (atMs ?? now()) - windowMs;
     let i = 0;
     while (i < turns.length && (turns[i]?.timestamp ?? Infinity) < cutoff) i++;
     if (i > 0) {
@@ -86,8 +90,8 @@ export function createHotMemory(opts: Tier1Options = {}): HotMemory {
       }
       evictStale();
     },
-    sweep(): void {
-      evictStale();
+    sweep(atMs?: number): void {
+      evictStale(atMs);
     },
     recent(): HotTurn[] {
       return turns.slice();

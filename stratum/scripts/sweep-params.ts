@@ -22,7 +22,10 @@ import { checkGoldenQuery } from "../evals/harness/golden";
 
 const NOW = 1_700_000_000;
 const THETAS = [0.5, 0.75, 1.0, 1.5, 2.0, 2.5];
-const LAMBDAS = [0.97, 0.9, 0.8];
+// Sample the gentle-decay region densely: an earlier coarse grid [0.97,0.9,0.8]
+// skipped 0.98/0.99 and wrongly suggested "no cell beats 9/11 / not tunable".
+// λ=0.99 recovers tb-dormant (its old answer turn stops decaying below the noise).
+const LAMBDAS = [0.995, 0.99, 0.98, 0.97, 0.95, 0.9, 0.8];
 
 interface Encoded {
   scenario: DevScenario;
@@ -67,17 +70,23 @@ export async function main(): Promise<number> {
     for (const theta of THETAS) {
       const pass = encoded.filter((e) => goldenPass(e, lambda, theta)).length;
       cells.push(`${pass}/${encoded.length}`.padStart(7));
-      if (pass > best.pass) best = { lambda, theta, pass };
+      // Break ties toward the HIGHER θ (less retention) so the reported cell is
+      // the least-retaining golden-equivalent, not the noisiest.
+      if (pass > best.pass || (pass === best.pass && theta > best.theta)) best = { lambda, theta, pass };
     }
-    out(`λ=${lambda.toFixed(2)}  ${cells.join("")}`);
+    out(`λ=${lambda.toFixed(3)}  ${cells.join("")}`);
   }
   out("");
   out(`Default (λ=${DEFAULT_KADANEDIAL.lambda}, θ=${DEFAULT_KADANEDIAL.theta}): ${encoded.filter((e) => goldenPass(e, DEFAULT_KADANEDIAL.lambda, DEFAULT_KADANEDIAL.theta)).length}/${encoded.length}`);
-  out(`Best cell on this dev set: λ=${best.lambda}, θ=${best.theta} → ${best.pass}/${encoded.length}`);
+  // GOLDEN-AXIS ONLY: this ranks cells by the deterministic golden (substring)
+  // check, NOT the LLM-judged faithfulness/answer-relevancy the real gate also
+  // applies. A lower-θ cell can tie on golden while retaining more noise (worse
+  // faithfulness). Treat as a calibration POINTER, not a tuning recommendation.
+  out(`Best golden-axis cell (NOT judge-validated): λ=${best.lambda}, θ=${best.theta} → ${best.pass}/${encoded.length}`);
 
   // Per-scenario pass under the best cell (which scenarios still fail there).
   const fails = encoded.filter((e) => !goldenPass(e, best.lambda, best.theta)).map((e) => e.scenario.id);
-  out(`At the best cell, still failing: ${fails.length ? fails.join(", ") : "(none)"}`);
+  out(`At that cell, still failing: ${fails.length ? fails.join(", ") : "(none)"}`);
 
   // Candidate STRUCTURAL fix: the opt-in per-turn trim (trimCarriedTurns).
   out("");
@@ -91,7 +100,7 @@ export async function main(): Promise<number> {
       cells.push(`${pass}/${encoded.length}`.padStart(7));
       if (pass > bestTrim.pass) bestTrim = { lambda, theta, pass };
     }
-    out(`λ=${lambda.toFixed(2)}  ${cells.join("")}`);
+    out(`λ=${lambda.toFixed(3)}  ${cells.join("")}`);
   }
   const trimDefault = encoded.filter((e) => goldenPass(e, DEFAULT_KADANEDIAL.lambda, DEFAULT_KADANEDIAL.theta, true)).length;
   const trimFails = encoded.filter((e) => !goldenPass(e, DEFAULT_KADANEDIAL.lambda, DEFAULT_KADANEDIAL.theta, true)).map((e) => e.scenario.id);

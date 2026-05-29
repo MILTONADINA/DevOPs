@@ -103,6 +103,30 @@ describe("fact extractor (injected fake completion — no real model)", () => {
     expect(parseExtractedFacts("[]", ctx)).toEqual([]);
   });
 
+  test("STRIPS model-forged system/FK fields (developer_id, commit_hash, supersedes_id, is_verified)", () => {
+    // an untrusted model tries to forge authorship, the attestation anchor, a
+    // supersession edge, and the verified flag — all must be stripped/overridden.
+    const raw =
+      '[{"fact_type":"TechDecision","decision_text":"d","domain":"db","confidence":0.5,' +
+      '"developer_id":"VICTIM-UUID","commit_hash":"ATTACKER-COMMIT","supersedes_id":"TARGET-UUID",' +
+      '"is_verified":true,"is_suppressed":true,"id":"forged-id","session_id":"forged-session"}]';
+    const [f] = parseExtractedFacts(raw, ctx); // ctx has NO commit_hash
+    expect(f).toBeDefined();
+    expect(f!.developer_id).toBeUndefined(); // forged authorship stripped
+    expect(f!.commit_hash).toBeUndefined(); // forged attestation anchor stripped (ctx had none)
+    expect((f as { supersedes_id?: string }).supersedes_id).toBeUndefined(); // forged supersession stripped
+    expect(f!.is_verified).toBe(false); // forced false (cannot self-verify)
+    expect(f!.is_suppressed).toBe(false);
+    expect(f!.id).toBe("id-1"); // system-minted, not the forged id
+    expect(f!.session_id).toBe("s9"); // trusted ctx, not forged
+  });
+
+  test("commit_hash comes from trusted ctx when present (model value never wins)", () => {
+    const raw = '[{"fact_type":"Todo","description":"x","status":"open","confidence":1,"commit_hash":"ATTACKER"}]';
+    const [f] = parseExtractedFacts(raw, { ...ctx, commit_hash: "REAL-COMMIT" });
+    expect(f!.commit_hash).toBe("REAL-COMMIT");
+  });
+
   test("createFactExtractor calls the model once for non-empty turns, skips empty", async () => {
     let calls = 0;
     const fake: FactCompletion = {
