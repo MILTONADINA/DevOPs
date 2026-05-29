@@ -15,6 +15,7 @@
 
 import { randomUUID } from "node:crypto";
 import type { AnyFact, FactType } from "../../types/facts";
+import { CHANGE_TYPES, POLICY_TYPES, TODO_STATUSES } from "../../types/facts";
 import { validateFact } from "./schemas";
 
 /** Single-shot completion seam (the extraction model). Tests inject a fake. */
@@ -56,9 +57,9 @@ export function extractionPrompt(input: ExtractInput): string {
     "JSON array (no prose). NEVER summarize — emit typed records only. Allowed " +
     `fact_type values: ${FACT_TYPES.join(", ")}. Each object: {\"fact_type\":<one of those>, ` +
     'plus that type\'s fields, "confidence":0..1}. Type fields — FunctionChange: ' +
-    "{old_name, new_name?, change_type:deprecated|renamed|signature_changed, file_path?, language?}; " +
+    `{old_name, new_name?, change_type:${CHANGE_TYPES.join("|")}, file_path?, language?}; ` +
     "TechDecision: {decision_text, domain, rationale?}; PolicyUpdate: {policy_name, old_value?, " +
-    "new_value, policy_type:security|compliance|process}; Todo: {description, status:open|done|cancelled}; " +
+    `new_value, policy_type:${POLICY_TYPES.join("|")}}; Todo: {description, status:${TODO_STATUSES.join("|")}}; ` +
     "VariableChange: {var_name, old_value?, new_value, context?}. If there are no durable facts, return [].\n\n" +
     `CONVERSATION:\n${transcript}`
   );

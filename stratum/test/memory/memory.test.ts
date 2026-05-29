@@ -7,6 +7,7 @@ import { createHotMemory, type HotTurn } from "../../src/memory/hot/tier1";
 import { validateFact } from "../../src/memory/warm/schemas";
 import { parseExtractedFacts, createFactExtractor, extractionPrompt, type FactCompletion } from "../../src/memory/warm/extractor";
 import type { AnyFact } from "../../src/types/facts";
+import { CHANGE_TYPES, POLICY_TYPES, TODO_STATUSES } from "../../src/types/facts";
 
 const T0 = 1_700_000_000_000; // fixed base ms
 
@@ -156,5 +157,15 @@ describe("fact extractor (injected fake completion — no real model)", () => {
     expect(p).toMatch(/JSON array/);
     expect(p).toMatch(/NEVER summarize/i);
     expect(p).toContain("deprecate getUser");
+  });
+
+  test("PB-37: prompt + Zod stay coupled to the single-source enum constants (no drift)", () => {
+    const p = extractionPrompt({ session_id: "s", turns: [] });
+    // The prompt advertises EXACTLY the constant values (it is built from them).
+    for (const v of [...CHANGE_TYPES, ...POLICY_TYPES, ...TODO_STATUSES]) expect(p).toContain(v);
+    // Zod (also built from the constants) accepts each value + FAIL-CLOSED rejects an out-of-range one.
+    const fc = { id: "f1", created_at: "2026-05-29T00:00:00Z", session_id: "s", confidence: 0.9, is_verified: false, is_suppressed: false, fact_type: "FunctionChange", old_name: "g" };
+    for (const ct of CHANGE_TYPES) expect(validateFact({ ...fc, change_type: ct })).not.toBeNull();
+    expect(validateFact({ ...fc, change_type: "moved" })).toBeNull(); // not a CHANGE_TYPE
   });
 });

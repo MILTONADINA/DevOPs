@@ -12,6 +12,7 @@
 
 import { z } from "zod";
 import type { AnyFact } from "../../types/facts";
+import { CHANGE_TYPES, POLICY_TYPES, TODO_STATUSES } from "../../types/facts";
 
 const baseFields = {
   id: z.string().min(1),
@@ -29,7 +30,7 @@ export const functionChangeSchema = z.object({
   fact_type: z.literal("FunctionChange"),
   old_name: z.string().min(1),
   new_name: z.string().optional(),
-  change_type: z.enum(["deprecated", "renamed", "signature_changed"]),
+  change_type: z.enum(CHANGE_TYPES),
   file_path: z.string().optional(),
   language: z.string().optional(),
 });
@@ -49,7 +50,7 @@ export const policyUpdateSchema = z.object({
   policy_name: z.string().min(1),
   old_value: z.string().optional(),
   new_value: z.string().min(1),
-  policy_type: z.enum(["security", "compliance", "process"]),
+  policy_type: z.enum(POLICY_TYPES),
   effective_date: z.string().optional(),
 });
 
@@ -57,7 +58,7 @@ export const todoSchema = z.object({
   ...baseFields,
   fact_type: z.literal("Todo"),
   description: z.string().min(1),
-  status: z.enum(["open", "done", "cancelled"]),
+  status: z.enum(TODO_STATUSES),
   due_date: z.string().optional(),
   assigned_to: z.string().optional(),
 });
