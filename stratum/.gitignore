@@ -25,6 +25,12 @@ supabase/docker-compose.yml
 # Eval results (too large to commit)
 evals/results/
 
+# Tier-A external benchmark datasets (licensed / large; fetched on demand, NOT
+# committed — see ADR-0014). The synthetic Tier-B jsonl IS committed (it's ours).
+evals/datasets/locomo/
+evals/datasets/mtbench/
+evals/datasets/scm4llms/
+
 # ONNX model cache (fetched on demand; not committed — see ADR-0010)
 models/
 .cache/

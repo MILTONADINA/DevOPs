@@ -11,12 +11,16 @@
  * STATUS: algorithm implemented + unit-tested on SYNTHETIC data with
  * hand-computed expectations. The accuracy EVAL (Faithfulness/Answer-Relevancy
  * vs full-context baseline — the project's definition of "correct" per
- * docs/EVAL_FRAMEWORK.md + stratum CLAUDE.md) is DEFERRED: it requires the §2b
- * capture corpus + the Tier-A datasets (LoCoMo/MT-Bench+/SCM4LLMs), which do
- * not exist yet. This code is NOT wired into the proxy and pruning is NOT
- * enabled anywhere — it is preparatory v0.4.x core, built ahead of the phase
- * gate at the user's explicit direction. Do NOT enable pruning in the request
- * path until the eval passes (<5% Faithfulness degradation).
+ * docs/EVAL_FRAMEWORK.md + stratum CLAUDE.md) has now RUN against a published
+ * Tier-A benchmark (LoCoMo, `npm run eval:locomo`, ADR-0014) and is **RED** at
+ * the documented λ=0.97: only **1.4% of gold evidence survives** (22.8h
+ * half-life crushes LoCoMo's weeks-old evidence), and the λ sweep shows λ=1.0
+ * (no decay) recovers 84% evidence at 47% reduction. λ is NOT retuned from this
+ * sample (ADR-0011 discipline / forbidden over-fitting). This code is NOT wired
+ * into the proxy and pruning is NOT enabled anywhere — it is preparatory v0.4.x
+ * core. Do NOT enable pruning in the request path until the gate passes
+ * (<5% Faithfulness degradation AND evidence survival holds). MT-Bench+/SCM4LLMs
+ * Tier-A loaders are still pending.
  *
  * SPEC DEVIATIONS (documented): docs/ALGORITHM.md's KadaneDial pseudocode (a)
  * references `span_start` without ever assigning it, and (b) does not seed
@@ -221,7 +225,8 @@ export function selectRelevantTurns(turns: HistoryTurn[], params: KadaneDialPara
   return { spans, selectedIndices, prunedIndices, decayedScores, normalizedScores: normalized, params, normalizationSkipped: skipped };
 }
 
-/** Half-life in hours for a given λ: −1 / log2(λ). */
+/** Half-life in hours for a given λ: −1 / log2(λ). λ≥1 = no decay → Infinity. */
 export function halfLifeHours(lambda: number): number {
+  if (lambda >= 1) return Infinity; // no decay (log2(1)=0 would yield −Infinity)
   return -1 / Math.log2(lambda);
 }

@@ -28,6 +28,30 @@ A pruning run that removes too much leaves the AI with insufficient information 
 **Tool:** DeepEval `AnswerRelevancyMetric`
 **Threshold:** Score > 0.88 (degradation vs. full-context baseline < 5%)
 
+### 3. Evidence Survival (co-gate for long-horizon datasets) — ADDED 2026-05-29
+
+> Of the turns the dataset pins as containing the answer (gold `evidence`), what
+> fraction survived pruning?
+
+The first real Tier-A run (LoCoMo, ADR-0014) showed Faithfulness + Answer
+Relevancy are **insufficient on their own** for long-horizon memory: a pruner
+that retained only **1.4%** of evidence scored *higher* than the full-context
+baseline on both metrics. Reason: feeding the answerer the entire 400–700-turn
+conversation **dilutes** its answer, while a recent-only pruned context yields a
+crisp answer that is faithful-to-what-was-kept but **not grounded in the actual
+evidence** (plausible bluffing from recency). LLM-judged fluency rewarded the
+wrong thing.
+
+**Evidence survival** is deterministic (no judge), gold-anchored, and ungameable:
+resolve each QA's `evidence` dialogue-ids to turn indices, intersect with the
+pruner's selection. For any dataset that ships gold evidence (LoCoMo does),
+**this co-gates** the LLM metrics — a pruning change must not tank evidence
+survival even if Faithfulness/Relevancy look fine.
+
+**Threshold:** treated as a hard signal at review time (the 1.4% result is an
+unambiguous FAIL); a numeric floor is a v0.4.x calibration item tracked with the
+λ-horizon work (ADR-0011 / ADR-0014). It is NOT used to auto-tune λ (over-fitting).
+
 ---
 
 ## Eval Datasets
@@ -43,6 +67,13 @@ Used to validate that our implementation of KadaneDial is correct and that the C
 | SCM4LLMs | Structured conversation memory | 60+ turns | Entity tracking |
 
 These are fixed datasets from the paper. Do not modify them. If results diverge from the paper's reported numbers, investigate the implementation, not the dataset.
+
+**Status (2026-05-29):** LoCoMo is integrated + RUN — `npm run eval:locomo`
+(loader `evals/harness/locomo.ts`, sampled + cost-bounded; data CC-BY-NC,
+gitignored, not redistributed). Result at the documented λ=0.97: **RED** —
+1.4% evidence survival, 92% context reduction; the λ sweep shows λ=1.0 recovers
+84% evidence at 47% reduction. Pruning stays OUT of the request path. Full
+analysis: **ADR-0014**. MT-Bench+ / SCM4LLMs loaders are still pending.
 
 ### Tier B — CQ Developer Workload Dataset
 

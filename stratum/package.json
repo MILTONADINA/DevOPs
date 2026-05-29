@@ -24,6 +24,7 @@
     "verify-tier2": "tsx scripts/verify-tier2.ts",
     "eval:dev": "tsx scripts/eval-dev.ts",
     "eval:tierb": "tsx scripts/eval-tierb.ts",
+    "eval:locomo": "tsx scripts/eval-locomo.ts",
     "shadow-prune": "tsx scripts/shadow-prune.ts",
     "sweep-params": "tsx scripts/sweep-params.ts",
     "smoke:live": "tsx scripts/smoke-live.ts",

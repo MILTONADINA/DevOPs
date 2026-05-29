@@ -200,4 +200,8 @@ describe("halfLifeHours", () => {
     expect(halfLifeHours(0.5)).toBeCloseTo(1, 10);
     expect(halfLifeHours(0.97)).toBeCloseTo(22.757, 2);
   });
+  test("λ≥1 → Infinity (no decay; not −Infinity)", () => {
+    expect(halfLifeHours(1)).toBe(Infinity);
+    expect(halfLifeHours(1.5)).toBe(Infinity);
+  });
 });
