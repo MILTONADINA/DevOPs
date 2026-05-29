@@ -142,12 +142,16 @@ export function makeFakeSupabase(
   }
 
   function makeDelete(table: string): unknown {
+    // Mirror makeUpdate: accumulate filters via chained .eq(); apply on await (then).
     const filters: Row = {};
     const builder = {
       eq(col: string, val: unknown) {
         filters[col] = val;
+        return builder;
+      },
+      then(onFulfilled: (v: { data: null; error: null }) => void): void {
         store[table] = rowsOf(table).filter((row) => !matchesEq(row, filters));
-        return Promise.resolve({ data: null, error: null });
+        onFulfilled({ data: null, error: null });
       },
     };
     return builder;

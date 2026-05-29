@@ -23,20 +23,23 @@ const td = (overrides: Record<string, unknown>): Record<string, unknown> => ({
 });
 
 describe("Tier-2 promotion lifecycle", () => {
-  test("queryUnpromoted returns only promoted_to_t3=false facts, oldest-first", async () => {
-    // Seed in REVERSE chronological insertion order so the oldest-first assertion is
-    // sensitive to the actual ordering (the fake's order() sorts faithfully now): if
-    // the sort were dropped, the output would be [new, old], failing this test.
+  test("queryUnpromoted excludes promoted facts + returns oldest-first ACROSS tables", async () => {
+    // Two tables with INTERLEAVED timestamps so the cross-table merge-sort is
+    // load-bearing: the correct oldest-first order interleaves tech_decisions and
+    // todos, so if the impl merge-sort were dropped the output would be in
+    // table-iteration order ([d-old, d-new, todo-mid]) — failing this assertion.
+    const todoRow = (o: Record<string, unknown>) => ({ org_id: "o1", session_id: "s1", confidence: 0.8, is_verified: false, is_suppressed: false, promoted_to_t3: false, status: "open", ...o });
     const { client } = makeFakeSupabase({
       tech_decisions: [
-        td({ id: "new-unpromoted", created_at: "2026-05-03T00:00:00Z", decision_text: "new" }),
-        td({ id: "already-promoted", created_at: "2026-05-02T00:00:00Z", decision_text: "done", promoted_to_t3: true }),
-        td({ id: "old-unpromoted", created_at: "2026-05-01T00:00:00Z", decision_text: "old" }),
+        td({ id: "d-new", created_at: "2026-05-05T00:00:00Z", decision_text: "new" }),
+        td({ id: "d-promoted", created_at: "2026-05-02T00:00:00Z", decision_text: "done", promoted_to_t3: true }),
+        td({ id: "d-old", created_at: "2026-05-01T00:00:00Z", decision_text: "old" }),
       ],
+      todos: [todoRow({ id: "todo-mid", created_at: "2026-05-03T00:00:00Z", description: "mid" })],
     });
     const wm = createWarmMemory(client);
     const facts = await wm.queryUnpromoted("o1");
-    expect(facts.map((f) => f.id)).toEqual(["old-unpromoted", "new-unpromoted"]); // promoted excluded; oldest-first
+    expect(facts.map((f) => f.id)).toEqual(["d-old", "todo-mid", "d-new"]); // promoted excluded; oldest-first across tables
   });
 
   test("markPromoted is org-scoped: a colliding id in ANOTHER org is NOT marked", async () => {

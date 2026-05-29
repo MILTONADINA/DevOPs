@@ -135,9 +135,10 @@ describe("createWarmMemory.queryRecent (fake client)", () => {
   const rowOf = (overrides: Record<string, unknown>) => ({ id: "11111111-1111-1111-1111-111111111111", created_at: "2026-05-29T00:00:00Z", org_id: "org-uuid", session_id: "s1", confidence: 0.8, is_verified: false, is_suppressed: false, promoted_to_t3: false, ...overrides });
 
   test("merges across tables, newest-first, caps at limit", async () => {
-    // Tables iterate function_changes→tech_decisions→…→todos; if the newest-first
-    // sort were dropped the merge would NOT put the 05-28 Todo first — so this
-    // assertion is sensitive to the ordering (the fake's order() now sorts faithfully).
+    // Sensitive to the impl's cross-table MERGE-sort (tier2.ts): tables iterate
+    // function_changes→tech_decisions→todos, so without the newest-first merge the
+    // 05-28 Todo would NOT be first → this assertion fails. (Per-table order() isn't
+    // exercised here — one row per table — so this checks the merge, not the fake sort.)
     const { client } = makeFakeSupabase({
       tech_decisions: [rowOf({ created_at: "2026-05-20T00:00:00Z", decision_text: "old", domain: "d" })],
       todos: [rowOf({ created_at: "2026-05-28T00:00:00Z", description: "newest", status: "open" })],

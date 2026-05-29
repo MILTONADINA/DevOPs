@@ -42,6 +42,12 @@ const FACT_TYPES: FactType[] = ["FunctionChange", "TechDecision", "PolicyUpdate"
 /**
  * Build the extraction prompt: durable STRUCTURED facts only, never prose
  * summaries; return a JSON array (possibly empty).
+ *
+ * ENUM COUPLING (keep in sync — there is no compile-time link): the enum values
+ * embedded below (change_type / policy_type / status) MUST match BOTH the Zod
+ * schemas in ./schemas.ts AND the DB CHECK constraints (supabase/migrations —
+ * narrowed in 20260529160000). If you widen an enum, update all three together,
+ * or a value will round-trip-fail (prompt can't emit it, or the DB/Zod drops it).
  */
 export function extractionPrompt(input: ExtractInput): string {
   const transcript = input.turns.map((t) => `${t.role}: ${t.content}`).join("\n");
