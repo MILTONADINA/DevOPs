@@ -10,8 +10,107 @@
  * tested hermetically via app.inject() without real network or SDK calls.
  */
 
-import type { FastifyInstance, FastifyPluginCallback } from "fastify";
-import type { MessagesBody, MessagesDeps } from "../forward";
+import type { FastifyInstance, FastifyPluginCallback, FastifyReply, FastifyRequest } from "fastify";
+import { PassThrough } from "node:stream";
+import type { MessagesBody, MessagesDeps, TokenCountResult } from "../forward";
+import { isStreamingRequest } from "../stream-forward";
+import { createSseParser, accumulateAnthropicStream } from "../sse";
+
+const ESTIMATED_FALLBACK: TokenCountResult = {
+  input_tokens: 0,
+  token_count_method: "estimated",
+  message_breakdown: [],
+};
+
+/** Build the redacted-by-store request shape from the inbound body. */
+function captureRequest(body: MessagesBody): {
+  model: string;
+  messages: unknown;
+  system?: unknown;
+  tools?: unknown;
+  max_tokens: number;
+} {
+  return {
+    model: body.model,
+    messages: body.messages,
+    ...(body.system !== undefined ? { system: body.system } : {}),
+    ...(body.tools !== undefined ? { tools: body.tools } : {}),
+    max_tokens: body.max_tokens,
+  };
+}
+
+/**
+ * Streaming branch: forward with SSE, tee each chunk to the client while
+ * accumulating the event stream, then capture the (redacted) accumulated turn.
+ */
+async function handleStreaming(
+  body: MessagesBody,
+  request: FastifyRequest,
+  reply: FastifyReply,
+  deps: MessagesDeps,
+  start: number,
+): Promise<FastifyReply> {
+  let sf;
+  try {
+    sf = await deps.forwardStream(body, deps.apiKey);
+  } catch (e) {
+    return reply.status(502).send({
+      type: "error",
+      error: { type: "upstream_unreachable", message: (e as Error).message },
+    });
+  }
+  if (sf.status >= 400 || !sf.stream) {
+    return reply.status(sf.status).send(sf.data);
+  }
+
+  const tokens = await deps.countTokens(body).catch(() => ESTIMATED_FALLBACK);
+  const upstream = sf.stream;
+
+  const out = new PassThrough();
+  void reply.header("content-type", "text/event-stream");
+  void reply.header("cache-control", "no-cache");
+  void reply.header("connection", "keep-alive");
+
+  // Pump runs concurrently with Fastify piping `out` to the client.
+  void (async () => {
+    const parser = createSseParser();
+    const events = [];
+    try {
+      for await (const chunk of upstream) {
+        if (out.destroyed) break; // client went away
+        out.write(chunk);
+        events.push(...parser.push(chunk));
+      }
+      events.push(...parser.flush());
+    } catch (e) {
+      // Mid-stream upstream failure: emit an SSE error event so the client sees it.
+      if (!out.destroyed) {
+        out.write(
+          `event: error\ndata: ${JSON.stringify({
+            type: "error",
+            error: { type: "upstream_stream_error", message: (e as Error).message },
+          })}\n\n`,
+        );
+      }
+    } finally {
+      // Capture the accumulated turn (redaction + FAIL-CLOSED inside the store).
+      // Done BEFORE out.end() so the artifact is written before the response
+      // completes. A client abort still captures what was forwarded.
+      const { message } = accumulateAnthropicStream(events);
+      deps.capture.record({
+        request: captureRequest(body),
+        response: message,
+        inputTokens: tokens.input_tokens,
+        tokenCountMethod: tokens.token_count_method,
+        messageBreakdown: tokens.message_breakdown,
+        elapsedMs: Date.now() - start,
+      });
+      out.end();
+    }
+  })();
+
+  return reply.send(out);
+}
 
 /**
  * Build the /v1/messages Fastify plugin bound to the given deps.
@@ -30,6 +129,13 @@ export function makeMessagesRoute(deps: MessagesDeps): FastifyPluginCallback {
           type: "error",
           error: { type: "invalid_request_error", message: "missing required field: messages[]" },
         });
+      }
+
+      // Streaming branch: when the client asks for SSE (body.stream or Accept
+      // header), forward as a stream + tee/accumulate/capture.
+      const accept = request.headers["accept"];
+      if (isStreamingRequest(body, typeof accept === "string" ? accept : undefined)) {
+        return handleStreaming(body, request, reply, deps, start);
       }
 
       // Exact token count (best-effort; method is flagged honestly downstream).
@@ -60,13 +166,7 @@ export function makeMessagesRoute(deps: MessagesDeps): FastifyPluginCallback {
 
       // Capture the turn (redaction + FAIL-CLOSED happen inside the store).
       deps.capture.record({
-        request: {
-          model: body.model,
-          messages: body.messages,
-          ...(body.system !== undefined ? { system: body.system } : {}),
-          ...(body.tools !== undefined ? { tools: body.tools } : {}),
-          max_tokens: body.max_tokens,
-        },
+        request: captureRequest(body),
         response: forwarded.data,
         inputTokens: tokens.input_tokens,
         tokenCountMethod: tokens.token_count_method,

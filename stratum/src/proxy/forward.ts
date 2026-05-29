@@ -17,6 +17,7 @@ import { getAnthropicClient } from "../lib/anthropic";
 import { createCaptureStore, type CaptureStore } from "./capture";
 import { withRetry } from "./retry";
 import { createTokenCounter } from "./token-count";
+import { forwardStreamToAnthropic, type StreamForwardResult } from "./stream-forward";
 import type Anthropic from "@anthropic-ai/sdk";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
@@ -47,6 +48,8 @@ export interface TokenCountResult {
 /** Deps the /v1/messages route needs — injectable so tests avoid real network. */
 export interface MessagesDeps {
   forward: (body: MessagesBody, apiKey: string) => Promise<ForwardResult>;
+  /** Streaming forward (axios responseType:'stream'); used when the client asks for SSE. */
+  forwardStream: (body: MessagesBody, apiKey: string) => Promise<StreamForwardResult>;
   countTokens: (body: MessagesBody) => Promise<TokenCountResult>;
   capture: CaptureStore;
   apiKey: string;
@@ -158,6 +161,7 @@ export function createDefaultMessagesDeps(): MessagesDeps {
   return {
     apiKey,
     forward,
+    forwardStream: (body, key) => forwardStreamToAnthropic(body, key, baseUrl),
     countTokens: (body) => counter.count(body),
     capture: createCaptureStore({ sessionId, outputFile }),
   };
