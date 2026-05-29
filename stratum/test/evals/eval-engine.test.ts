@@ -148,7 +148,10 @@ describe("evaluateSuite + renderReport", () => {
     const verdict = evaluateSuite(result);
     expect(verdict.passed).toBe(false);
     expect(verdict.criticalGoldenFailures).toBe(1);
-    expect(verdict.actionRequired).toMatch(/critical fact/i);
+    // goldenCritFail both misses a required anchor AND leaks a forbidden one →
+    // the action hint is direction-aware (DROPPED = too aggressive; KEPT = too lenient).
+    expect(verdict.actionRequired).toMatch(/DROPPED/);
+    expect(verdict.actionRequired).toMatch(/KEPT/);
   });
 
   test("non-critical golden miss is surfaced but does not fail the suite", () => {

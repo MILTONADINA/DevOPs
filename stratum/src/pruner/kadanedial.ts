@@ -25,6 +25,19 @@
  * value. The single-turn edge case ("return that turn if its decayed
  * similarity exceeds the gain threshold") uses g (not θ) as the bar, so a
  * single turn is gated on adjusted>0, handled explicitly in selectRelevantTurns.
+ *
+ * KNOWN LIMITATION (found by the Tier-B eval, 2026-05-29): KadaneDial selects
+ * CONTIGUOUS spans, so a low-relevance turn ADJACENT to a high-relevance peak is
+ * retained inside the span (its negative gain doesn't pull the running sum below
+ * the gate before the peak). On the Tier-B dev set this over-retains the turn
+ * next to the answer (e.g. keeps a superseded "AWS Lambda" plan beside the
+ * correct "Cloudflare Workers", and an off-topic turn beside the answer): 11/11
+ * scenarios keep ANSWER FAITHFULNESS at 1.0, but 2/11 fail the strict "drop the
+ * stale/noise turn" golden — a PRECISION cost, not a correctness one. The
+ * eval:tierb gate is intentionally RED on this until calibrated. Candidate
+ * refinements (defer to Tier-A calibration, do NOT over-fit synthetic): raise θ
+ * so edge turns fall below the gate, or add a per-turn relevance floor that
+ * trims low-gain turns at span edges. Tracked as a v0.4.x calibration item.
  * ──────────────────────────────────────────────────────────────────────────
  */
 

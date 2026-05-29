@@ -67,11 +67,18 @@ export function evaluateSuite(result: SuiteResult): SuiteVerdict {
   return verdict;
 }
 
-/** Derive a remediation hint from the first failure (generic, not fabricated). */
+/** Derive a DIRECTION-AWARE remediation hint (missing fact vs leaked noise differ). */
 function deriveAction(result: SuiteResult): string {
-  if (criticalFailures(result.golden) > 0) {
-    return "A critical fact was dropped by pruning — pruning is too aggressive. Raise θ, raise λ (less time decay), or pin critical facts.";
+  const missing = result.golden.filter((g) => g.query.critical && !g.passed && g.missing.length > 0).map((g) => g.query.id);
+  const leaked = result.golden.filter((g) => g.query.critical && !g.passed && g.leaked.length > 0).map((g) => g.query.id);
+  const hints: string[] = [];
+  if (missing.length) {
+    hints.push(`[${missing.join(", ")}] a REQUIRED fact was DROPPED (pruning too aggressive) → LOWER θ or RAISE λ (less time decay) / pin the fact`);
   }
+  if (leaked.length) {
+    hints.push(`[${leaked.join(", ")}] a must-drop turn was KEPT (pruning too lenient — over-retention) → RAISE θ so low-relevance turns fall below the span gate`);
+  }
+  if (hints.length) return hints.join("; ");
   const firstFail = result.scenarios.find((s) => !s.passed);
   if (firstFail) {
     const metric = !firstFail.faithfulness.passed ? "Faithfulness" : "Answer Relevancy";
@@ -116,7 +123,8 @@ export function renderReport(result: SuiteResult, verdict: SuiteVerdict): string
   if (verdict.passed) {
     lines.push("RESULT: PASS — all scenarios within threshold; no critical golden failures.");
   } else {
-    lines.push(`RESULT: FAIL — ${verdict.failures[0]}`);
+    lines.push(`RESULT: FAIL — ${verdict.failures.length} failure(s):`);
+    for (const f of verdict.failures) lines.push(`  • ${f}`);
     if (verdict.actionRequired) lines.push(`Action required: ${verdict.actionRequired}`);
   }
   return lines.join("\n");

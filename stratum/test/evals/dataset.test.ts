@@ -45,7 +45,7 @@ describe("tier-b.jsonl fixture integrity", () => {
   test("every shipped scenario is well-formed + critical with ≥3 turns", () => {
     const file = join(process.cwd(), "evals", "datasets", "developer", "tier-b.jsonl");
     const scenarios = parseDevScenarios(readFileSync(file, "utf8"));
-    expect(scenarios.length).toBeGreaterThanOrEqual(5);
+    expect(scenarios.length).toBeGreaterThanOrEqual(10);
     for (const s of scenarios) {
       expect(s.turns.length).toBeGreaterThanOrEqual(3); // a buried fact needs noise around it
       expect(s.golden.contains.length).toBeGreaterThanOrEqual(1); // a fact must survive

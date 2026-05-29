@@ -61,13 +61,16 @@ describe("Tier-B pruning behavior (deterministic, fake encoder)", () => {
     expect(checkGoldenQuery(o.prunedText, toGoldenQuery(scn)).passed).toBe(true);
   });
 
-  test("a keep-EVERYTHING pruner is caught by the tightened golden (would leak the must-drop token)", () => {
-    // The over-leniency guard the tightened notContains adds: if pruning kept all
-    // turns, the forbidden token survives → golden fails. Proven directly here.
-    for (const id of ["tb-multiproject", "tb-staleconfig", "tb-toolbloat", "tb-deprecation", "tb-migration"]) {
-      const scn = scenario(id);
+  test("EVERY scenario has a working over-leniency guard: a keep-everything pruner fails its golden", () => {
+    // For each scenario, a keep-all prune leaks its must-drop notContains token →
+    // golden fails. This also validates that every authored notContains token is
+    // genuinely PRESENT in the turns (a mis-authored/absent token would let
+    // keep-all pass and fail this assertion).
+    const all = loadDevScenarios(TIERB);
+    expect(all.length).toBeGreaterThanOrEqual(11);
+    for (const scn of all) {
       const keepAllText = scn.turns.map((t) => t.text).join("\n");
-      expect(checkGoldenQuery(keepAllText, toGoldenQuery(scn)).passed).toBe(false);
+      expect(checkGoldenQuery(keepAllText, toGoldenQuery(scn)).passed, `${scn.id} keep-all must fail golden`).toBe(false);
     }
   });
 });
