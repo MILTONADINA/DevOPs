@@ -23,6 +23,14 @@ jobs:
       - uses: gitleaks/gitleaks-action@dcedce43c6f43de0b836d1fe38946645c9c638dc  # v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # gitleaks-action posts a PR comment by default. On pull_request events
+          # the default GITHUB_TOKEN is read-only, so the comment POST returns
+          # 403 "Resource not accessible by integration" and fails the job —
+          # surfaced once billing let CI run on PRs again (Session 16). Disabling
+          # comments keeps the token minimal-permission (no pull-requests:write
+          # needed); the scan still runs and the check status still gates on any
+          # real secret leak. Findings are visible in the job log + check result.
+          GITLEAKS_ENABLE_COMMENTS: "false"
 
   semgrep:
     runs-on: ubuntu-latest
