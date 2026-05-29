@@ -202,6 +202,7 @@ fastify.post("/v1/messages", async (request, reply) => {
   // Write session to disk after every turn (safe against crashes)
   fs.writeFileSync(OUTPUT_FILE, JSON.stringify(session, null, 2));
 
+  // nosemgrep: javascript.express.security.audit.xss.direct-response-write.direct-response-write -- FALSE POSITIVE: transparent JSON proxy. Forwards the upstream Anthropic API response (Fastify sends it as application/json) to the Claude Code CLI client; never HTML rendered in a browser, so no XSS surface. The "user input" is the upstream provider's own JSON, not attacker markup.
   reply.send(anthropicResponse);
 });
 
