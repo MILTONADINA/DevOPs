@@ -48,12 +48,12 @@ export async function main(): Promise<number> {
   }
 
   // For each (λ, θ): count scenarios whose pruned context passes the golden check.
-  const goldenPass = (e: Encoded, lambda: number, theta: number): boolean => {
+  const goldenPass = (e: Encoded, lambda: number, theta: number, trim = false): boolean => {
     const history: HistoryEmbedding[] = e.scenario.turns.map((t, i) => ({
       embedding: e.turnVecs[i]!,
       timestampSeconds: NOW - t.ageHours * 3600,
     }));
-    const decision = prune(e.queryVec, history, { lambda, gainShift: DEFAULT_KADANEDIAL.gainShift, theta, nowSeconds: NOW });
+    const decision = prune(e.queryVec, history, { lambda, gainShift: DEFAULT_KADANEDIAL.gainShift, theta, nowSeconds: NOW, trimCarriedTurns: trim });
     const prunedText = decision.selectedIndices.map((i) => e.scenario.turns[i]!.text).join("\n");
     return checkGoldenQuery(prunedText, toGoldenQuery(e.scenario)).passed;
   };
@@ -78,6 +78,25 @@ export async function main(): Promise<number> {
   // Per-scenario pass under the best cell (which scenarios still fail there).
   const fails = encoded.filter((e) => !goldenPass(e, best.lambda, best.theta)).map((e) => e.scenario.id);
   out(`At the best cell, still failing: ${fails.length ? fails.join(", ") : "(none)"}`);
+
+  // Candidate STRUCTURAL fix: the opt-in per-turn trim (trimCarriedTurns).
+  out("");
+  out("With per-turn trim (trimCarriedTurns=true) — the candidate structural fix:");
+  out(`        ${THETAS.map((t) => `θ=${t}`.padStart(7)).join("")}`);
+  let bestTrim = { lambda: 0, theta: 0, pass: -1 };
+  for (const lambda of LAMBDAS) {
+    const cells: string[] = [];
+    for (const theta of THETAS) {
+      const pass = encoded.filter((e) => goldenPass(e, lambda, theta, true)).length;
+      cells.push(`${pass}/${encoded.length}`.padStart(7));
+      if (pass > bestTrim.pass) bestTrim = { lambda, theta, pass };
+    }
+    out(`λ=${lambda.toFixed(2)}  ${cells.join("")}`);
+  }
+  const trimDefault = encoded.filter((e) => goldenPass(e, DEFAULT_KADANEDIAL.lambda, DEFAULT_KADANEDIAL.theta, true)).length;
+  const trimFails = encoded.filter((e) => !goldenPass(e, DEFAULT_KADANEDIAL.lambda, DEFAULT_KADANEDIAL.theta, true)).map((e) => e.scenario.id);
+  out(`trim @ default (λ=${DEFAULT_KADANEDIAL.lambda}, θ=${DEFAULT_KADANEDIAL.theta}): ${trimDefault}/${encoded.length}  (still failing: ${trimFails.length ? trimFails.join(", ") : "none"})`);
+  out(`trim best cell: λ=${bestTrim.lambda}, θ=${bestTrim.theta} → ${bestTrim.pass}/${encoded.length}`);
   out("");
   out("DATA ONLY — characterizes the synthetic dev set to inform calibration. NOT a");
   out("committed default: real λ/θ tuning requires the published Tier-A datasets;");

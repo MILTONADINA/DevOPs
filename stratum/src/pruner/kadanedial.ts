@@ -39,10 +39,19 @@
  *   is NOT θ/λ-tunable — no (θ,λ) cell beats 9/11; raising θ DROPS needed facts
  *   (θ=1.5 → 4/11) and lowering λ drops legitimately-old facts; θ=1.0 is already
  *   optimal on this set. The 2 failures fail at EVERY cell ⇒ STRUCTURAL, not
- *   parametric. The real fix is an algorithm refinement — a per-turn relevance
- *   filter that trims low-gain turns INSIDE a selected span (and/or supersession
- *   detection) — to be designed + validated against the published Tier-A
- *   datasets, NOT over-fit to 11 synthetic scenarios. Tracked as a v0.4.x item.
+ *   parametric.
+ *   CANDIDATE-FIX RESULT (trimCarriedTurns, npm run sweep-params): the opt-in
+ *   per-turn gain-floor trim was implemented + measured — it does NOT fix the 2
+ *   cases (still 9/11). They are NOT negative-gain "carried" turns; they are
+ *   positive-gain, genuinely-on-topic turns (the superseded "AWS Lambda" plan is
+ *   topical for "where deploying"; temporal decay flattens the 80h-old RS256
+ *   fact so an off-topic recent turn's z-score is comparable). So the real cause
+ *   is SUPERSESSION (a newer turn invalidating an older topical one) +
+ *   decay/relevance interaction — needing a mechanism beyond similarity+decay
+ *   (e.g. supersession edges from Tier-3, or a recency-conditioned relevance),
+ *   to be designed + validated against the published Tier-A datasets. The trim
+ *   stays as a sound default-OFF refinement for the negative-gain case it DOES
+ *   address. Tracked as a v0.4.x calibration item.
  * ──────────────────────────────────────────────────────────────────────────
  */
 
@@ -63,6 +72,14 @@ export interface KadaneDialParams {
   theta: number;
   /** Current Unix timestamp (seconds). */
   nowSeconds: number;
+  /**
+   * OPT-IN refinement (default off): after span selection, drop selected turns
+   * whose own normalized gain is ≤ g — i.e. low-relevance turns "carried" inside
+   * a span by a high-relevance neighbor (the contiguous-span over-retention found
+   * by the Tier-B eval; see header). Off by default so behavior is unchanged;
+   * activation as a default awaits Tier-A faithfulness validation (constitution).
+   */
+  trimCarriedTurns?: boolean;
 }
 
 export const DEFAULT_KADANEDIAL = { lambda: 0.97, gainShift: 0.0, theta: 1.0 } as const;
@@ -184,6 +201,15 @@ export function selectRelevantTurns(turns: HistoryTurn[], params: KadaneDialPara
 
   const selected = new Set<number>();
   for (const [s, e] of spans) for (let i = s; i <= e; i++) selected.add(i);
+  // OPT-IN trim (default off): drop selected turns whose own normalized gain is
+  // ≤ g — low-relevance turns carried inside a span by a neighbor. Addresses the
+  // contiguous-span over-retention (see header); off by default → behavior
+  // unchanged + Tier-A-validation-pending before it can become the default.
+  if (params.trimCarriedTurns) {
+    for (const i of [...selected]) {
+      if ((normalized[i] ?? 0) - params.gainShift <= 0) selected.delete(i);
+    }
+  }
   const selectedIndices = [...selected].sort((a, b) => a - b);
   const prunedIndices = turns.map((_, i) => i).filter((i) => !selected.has(i));
 

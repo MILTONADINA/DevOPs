@@ -163,6 +163,33 @@ describe("float-drift edge cases (regression)", () => {
   });
 });
 
+// Opt-in over-retention refinement (default off; Tier-A-validation-pending).
+describe("trimCarriedTurns (opt-in span-edge refinement)", () => {
+  const mk = (sims: number[]): HistoryTurn[] => sims.map((s, i) => ({ similarity: s, timestampSeconds: NOW - i * 3600 }));
+
+  test("trimmed selection is a SUBSET of untrimmed (only removes, never adds)", () => {
+    const turns = mk([0.9, 0.2, 0.85, 0.15, 0.8]);
+    const base = selectRelevantTurns(turns, params({ theta: 0.5 }));
+    const trimmed = selectRelevantTurns(turns, params({ theta: 0.5, trimCarriedTurns: true }));
+    for (const i of trimmed.selectedIndices) expect(base.selectedIndices).toContain(i);
+  });
+
+  test("every kept turn individually clears the gain bar when trimming", () => {
+    const turns = mk([0.95, 0.3, 0.9, 0.25, 0.88, 0.2]);
+    const d = selectRelevantTurns(turns, params({ theta: 0.5, trimCarriedTurns: true }));
+    for (const i of d.selectedIndices) {
+      expect((d.normalizedScores[i] ?? 0) - DEFAULT_KADANEDIAL.gainShift).toBeGreaterThan(0);
+    }
+  });
+
+  test("default (trim off) leaves selection unchanged", () => {
+    const turns = mk([0.9, 0.2, 0.85]);
+    const off = selectRelevantTurns(turns, params({ theta: 0.5 }));
+    const explicitOff = selectRelevantTurns(turns, params({ theta: 0.5, trimCarriedTurns: false }));
+    expect(off.selectedIndices).toEqual(explicitOff.selectedIndices);
+  });
+});
+
 describe("halfLifeHours", () => {
   test("λ=0.5 → 1 hour; λ=0.97 → ~23h", () => {
     expect(halfLifeHours(0.5)).toBeCloseTo(1, 10);
