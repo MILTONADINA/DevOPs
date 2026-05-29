@@ -109,7 +109,7 @@ export function attestFact(fact: AnyFact, changes: CodeChange[]): AttestationRes
 
   if (fact.fact_type === "FunctionChange") {
     // 1) Find a commit that CONFIRMS the asserted change.
-    const confirm = changes.find((c) => {
+    let confirm = changes.find((c) => {
       if (c.entity !== fact.old_name) return false;
       switch (fact.change_type) {
         case "renamed":
@@ -122,6 +122,13 @@ export function attestFact(fact: AnyFact, changes: CodeChange[]): AttestationRes
           return false;
       }
     });
+    // The indexer does not infer symbol renames; a rename surfaces in diffs as
+    // delete-old + add-new. Treat that pair as rename confirmation (the add is the evidence).
+    if (!confirm && fact.change_type === "renamed" && fact.new_name !== undefined) {
+      const delOld = changes.find((c) => c.entity === fact.old_name && c.changeType === "deleted");
+      const addNew = changes.find((c) => c.entity === fact.new_name && c.changeType === "added");
+      if (delOld && addNew) confirm = addNew;
+    }
 
     // 2) Determine the symbol whose CURRENT existence the fact asserts, and check
     //    whether a LATER change contradicts that (Historical Drift).

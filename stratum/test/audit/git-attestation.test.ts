@@ -68,6 +68,15 @@ describe("attestFact — FunctionChange", () => {
   test("signature_changed: CONFIRMED by a modify", () => {
     expect(attestFact(fnFact({ change_type: "signature_changed" }), [change({ entity: "getUser", changeType: "modified", timestampSeconds: 1000 })]).status).toBe("CONFIRMED");
   });
+
+  test("renamed CONFIRMED via the diff-level signature (delete-old + add-new) the indexer emits", () => {
+    // The indexer doesn't infer symbol renames; a rename is deleted getUser + added fetchUser.
+    const r = attestFact(fnFact({ new_name: "fetchUser", change_type: "renamed" }), [
+      change({ entity: "getUser", changeType: "deleted", timestampSeconds: 1000 }),
+      change({ entity: "fetchUser", changeType: "added", commitHash: "addc", timestampSeconds: 1000 }),
+    ]);
+    expect(r.status).toBe("CONFIRMED");
+  });
 });
 
 describe("attestFact — VariableChange + non-code", () => {
