@@ -13,14 +13,17 @@
  * "fact-survives-50-turn" acceptance criterion.
  *
  * Composes the verified pieces over injectable seams (Tier-1 hot, FactExtractor,
- * WarmMemory). No encoder is needed here — that is the pruner's (ContextManager's)
- * concern, not warm-fact recall. Tier-3 (Neo4j/Pinecone) semantic recall layers on
- * top later (gated on those accounts); this is the deterministic hot+warm path.
+ * WarmMemory). The deterministic hot+warm path needs no encoder. Tier-3 SEMANTIC
+ * recall is now an OPT-IN layer: pass a VectorStore + (offline ONNX) encoder in deps
+ * and recall({query}) also returns vector-search neighbours resolved to facts — no
+ * Anthropic, on the Supabase/pgvector store (ADR-0013). Omit them for hot+warm only.
  */
 
 import { createHotMemory, type HotMemory, type HotTurn, type Tier1Options } from "./hot/tier1";
 import type { FactExtractor } from "./warm/extractor";
 import type { WarmMemory } from "./warm/tier2";
+import type { VectorStore } from "./cold/vectors";
+import type { BiEncoder } from "../pruner/encoder";
 import type { AnyFact } from "../types/facts";
 
 /** Trusted DB foreign keys this manager's session writes under. */
@@ -41,6 +44,12 @@ export interface IngestTurn {
 export interface RecallResult {
   hotTurns: HotTurn[];
   facts: AnyFact[];
+  /**
+   * Tier-3 SEMANTIC recall: vector-search neighbours resolved to their typed facts,
+   * most-similar first. Present only when a `query` is given AND a vector store +
+   * encoder are configured (deps). Uses the OFFLINE encoder — no Anthropic.
+   */
+  relevantFacts?: AnyFact[];
 }
 
 export interface MemoryManager {
@@ -58,12 +67,14 @@ export interface MemoryManager {
    */
   flush(): Promise<void>;
   /**
-   * Read the current hot window + the durable facts from warm memory.
-   * @param opts - max facts to return (default per WarmMemory.queryRecent).
-   * @returns the hot turns + the warm facts (newest-first).
-   * @throws {Error} if the warm read fails.
+   * Read the current hot window + the durable facts from warm memory; optionally
+   * also semantic neighbours for a query (Tier-3 vector search → resolved facts).
+   * @param opts - `limit` (recent warm facts), `query` (semantic recall — needs a
+   *   vector store + encoder in deps), `k` (max semantic neighbours, default 5).
+   * @returns hot turns + warm facts (newest-first) + (if a query) relevant facts.
+   * @throws {Error} if the warm read or a configured semantic step fails.
    */
-  recall(opts?: { limit?: number }): Promise<RecallResult>;
+  recall(opts?: { limit?: number; query?: string; k?: number }): Promise<RecallResult>;
   /** The underlying hot memory (for inspection / metrics). */
   hot: HotMemory;
 }
@@ -74,6 +85,13 @@ export interface MemoryManagerDeps {
   context: MemoryContext;
   /** Hot-memory options (window / clock); onEvict is supplied internally. */
   hotOptions?: Omit<Tier1Options, "onEvict">;
+  /**
+   * OPT-IN Tier-3 semantic recall. When BOTH are set, `recall({query})` also returns
+   * `relevantFacts` — vector-search neighbours resolved to facts. The encoder is the
+   * LOCAL ONNX one (no Anthropic); omit both for the deterministic hot+warm path only.
+   */
+  vectors?: VectorStore;
+  encoder?: BiEncoder;
 }
 
 /**
@@ -125,12 +143,30 @@ export function createMemoryManager(deps: MemoryManagerDeps): MemoryManager {
       hot.sweep();
       await drain();
     },
-    async recall(opts: { limit?: number } = {}): Promise<RecallResult> {
+    async recall(opts: { limit?: number; query?: string; k?: number } = {}): Promise<RecallResult> {
       const facts = await deps.warm.queryRecent(deps.context.orgId, {
         sessionId: deps.context.sessionId,
         ...(opts.limit !== undefined ? { limit: opts.limit } : {}),
       });
-      return { hotTurns: hot.recent(), facts };
+      const result: RecallResult = { hotTurns: hot.recent(), facts };
+
+      // Tier-3 semantic recall (opt-in): encode the query offline → vector search →
+      // resolve the content-free hits to their typed facts, preserving similarity order.
+      if (opts.query !== undefined && deps.vectors && deps.encoder) {
+        const [qVec] = await deps.encoder.encode([opts.query]);
+        if (qVec) {
+          const matches = await deps.vectors.search(deps.context.orgId, Array.from(qVec), opts.k ?? 5);
+          const refs = matches.map((m) => m.sourceRef).filter((r): r is string => typeof r === "string" && r.length > 0);
+          const byId = await deps.warm.getFactsByRefs(deps.context.orgId, refs);
+          const relevantFacts: AnyFact[] = [];
+          for (const m of matches) {
+            const f = m.sourceRef ? byId.get(m.sourceRef) : undefined;
+            if (f) relevantFacts.push(f);
+          }
+          result.relevantFacts = relevantFacts;
+        }
+      }
+      return result;
     },
   };
 }

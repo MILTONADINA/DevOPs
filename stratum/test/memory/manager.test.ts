@@ -10,6 +10,8 @@ import { createWarmMemory, type WarmMemory } from "../../src/memory/warm/tier2";
 import { createFactExtractor, type FactCompletion } from "../../src/memory/warm/extractor";
 import { makeFakeSupabase } from "./fake-supabase";
 import type { AnyFact } from "../../src/types/facts";
+import type { VectorStore } from "../../src/memory/cold/vectors";
+import type { BiEncoder } from "../../src/pruner/encoder";
 
 describe("MemoryManager — fact survives 50 turns", () => {
   test("a decision evicted from hot memory is recalled from warm 50 turns later", async () => {
@@ -108,6 +110,9 @@ describe("MemoryManager — fact survives 50 turns", () => {
       async markPromoted() {
         return 0;
       },
+      async getFactsByRefs() {
+        return new Map();
+      },
     };
     const extractor = createFactExtractor(
       { complete: (p: string) => Promise.resolve(p.includes("RS256") ? '[{"fact_type":"TechDecision","decision_text":"use RS256","domain":"auth","confidence":0.9}]' : "[]") },
@@ -125,5 +130,37 @@ describe("MemoryManager — fact survives 50 turns", () => {
     await manager.flush();
     expect(persisted).toHaveLength(1);
     expect((persisted[0] as { decision_text?: string }).decision_text).toContain("RS256");
+  });
+});
+
+describe("MemoryManager — Tier-3 semantic recall (opt-in)", () => {
+  const noExtract = createFactExtractor({ complete: () => Promise.resolve("[]") }, { now: () => "2026-05-29T00:00:00Z", mintId: () => "x" });
+
+  test("a query returns vector neighbours resolved to typed facts (offline encoder)", async () => {
+    const { client } = makeFakeSupabase({
+      tech_decisions: [
+        { id: "f-1", created_at: "2026-05-29T00:00:00Z", org_id: "org-1", session_id: "sess-1", confidence: 0.9, is_verified: false, is_suppressed: false, promoted_to_t3: true, decision_text: "use Cloudflare Workers", domain: "infra" },
+      ],
+    });
+    const warm = createWarmMemory(client);
+    const vectors: VectorStore = {
+      upsert: () => Promise.resolve(0),
+      search: () => Promise.resolve([{ id: "v1", sourceType: "fact", sourceRef: "f-1", similarity: 0.88 }]),
+    };
+    const encoder: BiEncoder = { dimension: 384, encode: (texts) => Promise.resolve(texts.map(() => new Float32Array(384))) };
+    const manager = createMemoryManager({ extractor: noExtract, warm, context: { orgId: "org-1", sessionId: "sess-1" }, vectors, encoder });
+
+    const { relevantFacts } = await manager.recall({ query: "where do we deploy?" });
+    expect(relevantFacts).toBeDefined();
+    expect(relevantFacts!.map((f) => (f as { decision_text?: string }).decision_text)).toEqual(["use Cloudflare Workers"]);
+  });
+
+  test("a query WITHOUT a configured vector store + encoder → no relevantFacts (backward compatible)", async () => {
+    const { client } = makeFakeSupabase();
+    const warm = createWarmMemory(client);
+    const manager = createMemoryManager({ extractor: noExtract, warm, context: { orgId: "o", sessionId: "s" } });
+    const r = await manager.recall({ query: "anything" });
+    expect(r.relevantFacts).toBeUndefined();
+    expect(r.hotTurns).toEqual([]); // still returns the deterministic hot+warm shape
   });
 });
