@@ -21,6 +21,7 @@
     "import-sessions": "tsx scripts/import-sessions.ts",
     "analyze-waste": "tsx scripts/analyze-waste.ts",
     "verify-encoder": "tsx scripts/verify-encoder.ts",
+    "eval:dev": "tsx scripts/eval-dev.ts",
     "smoke:live": "tsx scripts/smoke-live.ts",
     "smoke:judge": "tsx scripts/smoke-judge.ts",
     "promote": "tsx scripts/promote-tier2-to-tier3.ts",
