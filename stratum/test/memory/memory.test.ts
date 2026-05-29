@@ -5,6 +5,7 @@
 import { describe, test, expect } from "vitest";
 import { createHotMemory, type HotTurn } from "../../src/memory/hot/tier1";
 import { validateFact } from "../../src/memory/warm/schemas";
+import { parseExtractedFacts, createFactExtractor, extractionPrompt, type FactCompletion } from "../../src/memory/warm/extractor";
 import type { AnyFact } from "../../src/types/facts";
 
 const T0 = 1_700_000_000_000; // fixed base ms
@@ -73,5 +74,56 @@ describe("Zod fact validation (validate-or-discard)", () => {
     expect(validateFact({ ...base, fact_type: "Nonsense", x: 1 })).toBeNull();
     expect(validateFact(null)).toBeNull();
     expect(validateFact("not a fact")).toBeNull();
+  });
+});
+
+describe("fact extractor (injected fake completion — no real model)", () => {
+  const ctx = { session_id: "s9", now: () => "2026-05-29T00:00:00Z", mintId: () => "id-1" };
+
+  test("parseExtractedFacts validates, assigns system fields, discards invalid", () => {
+    const raw =
+      'sure: [{"fact_type":"TechDecision","decision_text":"use Postgres","domain":"db","confidence":0.9},' +
+      '{"fact_type":"Nonsense"},' +
+      '{"fact_type":"Todo","description":"ship","status":"open","confidence":0.8}] (done)';
+    const facts = parseExtractedFacts(raw, ctx);
+    expect(facts).toHaveLength(2); // the Nonsense entry is discarded
+    expect(facts[0]).toMatchObject({
+      fact_type: "TechDecision",
+      session_id: "s9",
+      id: "id-1",
+      created_at: "2026-05-29T00:00:00Z",
+      is_verified: false,
+      is_suppressed: false,
+    });
+  });
+
+  test("non-array / no JSON / empty array → []", () => {
+    expect(parseExtractedFacts("no json here", ctx)).toEqual([]);
+    expect(parseExtractedFacts('{"fact_type":"Todo"}', ctx)).toEqual([]); // object, not array
+    expect(parseExtractedFacts("[]", ctx)).toEqual([]);
+  });
+
+  test("createFactExtractor calls the model once for non-empty turns, skips empty", async () => {
+    let calls = 0;
+    const fake: FactCompletion = {
+      complete: () => {
+        calls++;
+        return Promise.resolve('[{"fact_type":"Todo","description":"x","status":"open","confidence":1}]');
+      },
+    };
+    const ex = createFactExtractor(fake, { now: ctx.now, mintId: ctx.mintId });
+    const facts = await ex.extract({ session_id: "s9", turns: [{ role: "user", content: "todo: x" }] });
+    expect(facts).toHaveLength(1);
+    expect(facts[0]!.fact_type).toBe("Todo");
+    expect(calls).toBe(1);
+    expect(await ex.extract({ session_id: "s9", turns: [] })).toEqual([]);
+    expect(calls).toBe(1); // empty turns → no model call
+  });
+
+  test("extractionPrompt demands structured-only output + embeds the transcript", () => {
+    const p = extractionPrompt({ session_id: "s", turns: [{ role: "user", content: "deprecate getUser" }] });
+    expect(p).toMatch(/JSON array/);
+    expect(p).toMatch(/NEVER summarize/i);
+    expect(p).toContain("deprecate getUser");
   });
 });
