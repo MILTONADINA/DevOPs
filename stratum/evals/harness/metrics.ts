@@ -130,28 +130,59 @@ function clamp01(n: number): number {
  * @returns the {@link MetricScores}.
  * @throws {Error} if the scores cannot be parsed or the nonce mismatches.
  */
+/**
+ * Extract top-level balanced `{...}` substrings, respecting JSON string literals
+ * so that braces inside a value (e.g. a `reason` mentioning `interface{}`) do
+ * NOT split the object. (A regex like /\{[^{}]*\}/ does split them — that was a
+ * real false-reject regression.)
+ */
+function extractJsonObjects(raw: string): string[] {
+  const out: string[] = [];
+  let depth = 0;
+  let start = -1;
+  let inStr = false;
+  let esc = false;
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (ch === "\\") esc = true;
+      else if (ch === '"') inStr = false;
+      continue;
+    }
+    if (ch === '"') inStr = true;
+    else if (ch === "{") {
+      if (depth === 0) start = i;
+      depth++;
+    } else if (ch === "}" && depth > 0) {
+      depth--;
+      if (depth === 0 && start >= 0) {
+        out.push(raw.slice(start, i + 1));
+        start = -1;
+      }
+    }
+  }
+  return out;
+}
+
 export function parseJudgeScores(raw: string, expectedNonce?: string): MetricScores {
-  // Prefer the LAST JSON object (the model's final answer), but if a nonce is
-  // required, scan all candidate objects and require the nonce to match — so an
-  // injected object earlier in the text cannot win.
-  const candidates = raw.match(/\{[^{}]*\}/g) ?? (raw.includes("{") ? [raw.slice(raw.indexOf("{"))] : []);
+  // String-aware balanced-brace extraction (a `reason` value may contain braces).
+  // Choose the LAST nonce-matching object — the model's final verdict — when a
+  // nonce is required; an earlier echoed/injected object (which cannot carry the
+  // secret nonce anyway) does not win.
+  const candidates = extractJsonObjects(raw);
   if (candidates.length === 0) throw new Error(`judge reply has no JSON object: ${raw.slice(0, 120)}`);
 
-  const tryParse = (s: string): { faithfulness?: unknown; answer_relevancy?: unknown; answerRelevancy?: unknown; nonce?: unknown } | null => {
-    try {
-      return JSON.parse(s) as Record<string, unknown>;
-    } catch {
-      return null;
-    }
-  };
-
-  // Choose the object to trust: with a nonce, the one whose nonce matches; else the last parseable one.
   let obj: { faithfulness?: unknown; answer_relevancy?: unknown; answerRelevancy?: unknown; nonce?: unknown } | null = null;
   for (const c of candidates) {
-    const parsed = tryParse(c);
-    if (!parsed) continue;
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = JSON.parse(c) as Record<string, unknown>;
+    } catch {
+      continue;
+    }
     if (expectedNonce !== undefined) {
-      if (parsed.nonce === expectedNonce) { obj = parsed; break; }
+      if (parsed.nonce === expectedNonce) obj = parsed; // keep LAST matching (no break)
     } else {
       obj = parsed; // keep last parseable
     }

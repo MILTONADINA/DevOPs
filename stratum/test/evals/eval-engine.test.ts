@@ -222,6 +222,18 @@ describe("LLM-as-judge (injected fake completion — no real API)", () => {
     expect(parseJudgeScores(raw, "secret-123")).toEqual({ faithfulness: 0.2, answerRelevancy: 0.3 });
   });
 
+  test("parseJudgeScores accepts a reason string containing braces (code-context regression)", () => {
+    // the judge prompt MANDATES a reason; in a code eval it may cite `interface{}` etc.
+    const raw = '{"nonce":"N","faithfulness":0.9,"answer_relevancy":0.85,"reason":"Answer correctly uses interface{} and {foo: 1}."}';
+    expect(parseJudgeScores(raw, "N")).toEqual({ faithfulness: 0.9, answerRelevancy: 0.85 });
+  });
+
+  test("parseJudgeScores keeps the LAST nonce-matching object (model's final verdict, not an echo)", () => {
+    // a self-revising / echo-then-verdict reply where BOTH objects carry the nonce
+    const raw = 'Draft: {"nonce":"N","faithfulness":0.9,"answer_relevancy":0.9}. Final verdict: {"nonce":"N","faithfulness":0.2,"answer_relevancy":0.15,"reason":"hallucinated"}';
+    expect(parseJudgeScores(raw, "N")).toEqual({ faithfulness: 0.2, answerRelevancy: 0.15 });
+  });
+
   test("createLlmJudge round-trips through the nonce (fake echoes the prompt nonce)", async () => {
     // a faithful fake reads the per-call nonce from the judge prompt and echoes it
     const honestFake: LlmCompletion = {
