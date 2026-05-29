@@ -246,6 +246,7 @@ fastify.post("/v1/messages", async (request, reply) => {
     // Send the forwarded response back to the client; the dropped turn is
     // only the CAPTURE artifact, not the user's response. The client should
     // still get their LLM reply.
+    // nosemgrep: javascript.express.security.audit.xss.direct-response-write.direct-response-write -- FALSE POSITIVE: transparent JSON proxy. This forwards the upstream Anthropic API response (sent by Fastify as application/json) to the Claude Code CLI client; it is never HTML rendered in a browser, so there is no XSS surface. The "user input" the rule warns about is the upstream provider's own JSON response, not attacker-controlled markup.
     reply.send(anthropicResponse);
     return;
   }
@@ -291,6 +292,7 @@ fastify.post("/v1/messages", async (request, reply) => {
   // Forward the ORIGINAL (un-redacted) Anthropic response to the client.
   // Redaction is a capture-artifact concern; the client expects the real
   // response. This is the proxy's purpose: pass-through with observation.
+  // nosemgrep: javascript.express.security.audit.xss.direct-response-write.direct-response-write -- FALSE POSITIVE: transparent JSON proxy. This forwards the upstream Anthropic API response (sent by Fastify as application/json) to the Claude Code CLI client; it is never HTML rendered in a browser, so there is no XSS surface. The "user input" the rule warns about is the upstream provider's own JSON response, not attacker-controlled markup.
   reply.send(anthropicResponse);
 });
 
