@@ -25,6 +25,11 @@ export type EntityKind = "Function" | "Commit" | "Decision" | "Developer" | "Pol
  * Edge types. NOTE: CLAUDE.md spells the supersession edge "SUPERCEDES"; this uses
  * the correct English "SUPERSEDES", consistent with `tech_decisions.supersedes_id`
  * + ADR-0011 (see ADR-0013).
+ *
+ * DIRECTION (standard; see migration 20260529140000): an edge points
+ * `from_entity --EDGE--> to_entity`. For **SUPERSEDES**, `from` is the SUPERSEDING
+ * (newer/current) entity and `to` is the SUPERSEDED (stale) one — i.e.
+ * "`from` supersedes `to`". `findSuperseded` returns the `to` side as `superseded`.
  */
 export type EdgeType = "SUPERSEDES" | "DEPRECATED_BY" | "REFERENCED_IN" | "AUTHORED_BY" | "APPLIES_TO";
 
@@ -37,7 +42,9 @@ export interface EnsureEntityInput {
 
 export interface AddEdgeInput {
   orgId: string;
+  /** Source node. For SUPERSEDES, the SUPERSEDING (newer) entity. */
   fromEntity: string;
+  /** Target node. For SUPERSEDES, the SUPERSEDED (stale) entity. */
   toEntity: string;
   edgeType: EdgeType;
   sessionId?: string;

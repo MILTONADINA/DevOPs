@@ -57,13 +57,24 @@ Defer the fix to a dedicated, Tier-A-validated change (do NOT over-fit the 11
 synthetic scenarios). The proposed approach, to be validated against the published
 Tier-A datasets (LoCoMo / MT-Bench+ / SCM4LLMs) before activation:
 
-1. **Supersession edges from Tier-3 (primary).** The Neo4j knowledge graph
-   already models `SUPERSEDES` edges (Decision→Decision) and `DEPRECATED_BY`
-   (Function). When a selected turn's entity has an outgoing supersession edge to
-   another entity present in (or more recent than) the context, suppress the
-   superseded turn. This is deterministic + explainable and reuses the audit
-   graph rather than guessing from embeddings. Gated on the Neo4j adapter
-   (v0.5.x, account).
+1. **Supersession edges from Tier-3 (primary).** The knowledge graph models
+   `SUPERSEDES` edges (Decision→Decision) and `DEPRECATED_BY` (Function). When a
+   selected turn's entity is superseded by another entity present in (or more recent
+   than) the context, suppress the superseded turn. This is deterministic +
+   explainable and reuses the audit graph rather than guessing from embeddings.
+   **STATUS — now IMPLEMENTABLE (Session 17):** Tier-3 was built on Supabase
+   (ADR-0013) instead of Neo4j (no account) — `knowledge_entities` + `knowledge_edges`
+   + the `find_superseded(org, names[])` SQL fn (live-verified via MCP), exposed by
+   `KnowledgeGraph.findSuperseded` (`src/memory/cold/graph.ts`). The suppression step
+   itself is built + unit-tested as the PURE, DEFAULT-OFF `suppressSuperseded`
+   (`src/pruner/supersession.ts`): given the `find_superseded` pairs, it drops a
+   selected turn whose entity is superseded by an entity also present — orthogonal to
+   λ, so it resolves `tb-negation` WITHOUT trading off `tb-dormant` (verified on the
+   synthetic tb-negation shape in `test/pruner/supersession.test.ts`).
+   **ACTIVATION REMAINS Tier-A-GATED**: it is wired NOWHERE in the request path; the
+   <5% Faithfulness validation on the published Tier-A datasets is still required
+   before it becomes a pruner default (constitution + ADR-0009). What is gated is no
+   longer "a Neo4j account" but "the Tier-A eval run".
 2. **Recency-conditioned relevance (fallback, no graph).** For two turns whose
    similarity to the query is within ε of each other AND that are
    topically-near each other (high pairwise similarity), prefer the more recent
