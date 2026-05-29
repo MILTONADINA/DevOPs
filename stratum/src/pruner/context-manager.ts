@@ -49,6 +49,17 @@ export interface ContextManagerOptions {
   hot?: HotMemory;
   /** Dial overrides (λ / g / θ). Defaults to DEFAULT_KADANEDIAL. */
   dial?: DialOverrides;
+  /**
+   * OPT-IN (default off): SCALE-INVARIANT temporal decay (ADR-0015). When set, the
+   * decay horizon is this FRACTION of the live window's OWN span (computed per
+   * select()), instead of the fixed per-hour λ — so a turn from "the previous
+   * session" decays the same whether the dialogue spans hours or weeks. Validated
+   * on LoCoMo + LongMemEval (gold-evidence survival ~2% → ~93%; ADR-0015). Off ⇒
+   * the documented per-hour λ (behaviour unchanged). SHADOW + Tier-A-gated before
+   * it can become a default (constitution / ADR-0014); the judged ship-decision
+   * run is the gate.
+   */
+  decayHorizonFraction?: number;
 }
 
 /**
@@ -60,11 +71,13 @@ export interface ContextManagerOptions {
  */
 export function createContextManager(encoder: BiEncoder, opts: ContextManagerOptions = {}): ContextManager {
   const hot = opts.hot ?? createHotMemory();
+  const decayHorizonFraction = opts.decayHorizonFraction;
   const dial: Omit<KadaneDialParams, "nowSeconds"> = {
     lambda: opts.dial?.lambda ?? DEFAULT_KADANEDIAL.lambda,
     gainShift: opts.dial?.gainShift ?? DEFAULT_KADANEDIAL.gainShift,
     theta: opts.dial?.theta ?? DEFAULT_KADANEDIAL.theta,
     ...(opts.dial?.trimCarriedTurns !== undefined ? { trimCarriedTurns: opts.dial.trimCarriedTurns } : {}),
+    ...(opts.dial?.decayHorizonSeconds !== undefined ? { decayHorizonSeconds: opts.dial.decayHorizonSeconds } : {}),
   };
 
   return {
@@ -83,7 +96,15 @@ export function createContextManager(encoder: BiEncoder, opts: ContextManagerOpt
       // Turns without an embedding (shouldn't happen post-ingest) are skipped.
       const indexed = live.map((t, i) => ({ t, i })).filter((x) => x.t.embedding);
       const history: HistoryEmbedding[] = indexed.map((x) => ({ embedding: x.t.embedding!, timestampSeconds: x.t.timestamp / 1000 }));
-      const decision = prune(queryVec, history, { ...dial, nowSeconds: nowMs / 1000 });
+      // Scale-invariant decay (ADR-0015, default-off): horizon = fraction × the
+      // window's own span (seconds). history is ascending by timestamp (Tier-1
+      // keeps order), so span = last − first. ≥2 turns needed for a span.
+      const params: KadaneDialParams = { ...dial, nowSeconds: nowMs / 1000 };
+      if (decayHorizonFraction !== undefined && history.length > 1) {
+        const spanSeconds = history[history.length - 1]!.timestampSeconds - history[0]!.timestampSeconds;
+        params.decayHorizonSeconds = Math.max(1, decayHorizonFraction * spanSeconds);
+      }
+      const decision = prune(queryVec, history, params);
       const selectedTurns = decision.selectedIndices.map((di) => indexed[di]!.t);
       return { decision, selectedTurns };
     },

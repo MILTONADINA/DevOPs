@@ -47,6 +47,27 @@ describe("ShadowContextManager (encoder + Tier-1 + pruner integration)", () => {
     expect(selectedTurns.map((t) => t.content)).toEqual(["Use the database for sessions too."]);
   });
 
+  test("scale-invariant decay (ADR-0015): decayHorizonFraction sets a span-relative horizon", async () => {
+    // Window large enough that nothing is evicted; turns span 10h.
+    const cm = createContextManager(fakeEncoder, {
+      hot: createHotMemory({ windowMs: 1000 * 3_600_000, now: () => NOW }),
+      decayHorizonFraction: 0.5,
+    });
+    await cm.ingest({ role: "user", content: "We chose Supabase.", timestampMs: NOW - 10 * 3_600_000 }); // 10h ago
+    await cm.ingest({ role: "user", content: "Use the database.", timestampMs: NOW });
+    const { decision } = await cm.select("database?", NOW);
+    // span = 10h = 36000s; horizon = 0.5 × span = 18000s (threaded into prune params).
+    expect(decision.params.decayHorizonSeconds).toBeCloseTo(18_000, 0);
+  });
+
+  test("without decayHorizonFraction, decay stays per-hour (no horizon override)", async () => {
+    const cm = createContextManager(fakeEncoder, { hot: createHotMemory({ windowMs: 1000 * 3_600_000, now: () => NOW }) });
+    await cm.ingest({ role: "user", content: "We chose Supabase.", timestampMs: NOW - 10 * 3_600_000 });
+    await cm.ingest({ role: "user", content: "Use the database.", timestampMs: NOW });
+    const { decision } = await cm.select("database?", NOW);
+    expect(decision.params.decayHorizonSeconds).toBeUndefined();
+  });
+
   test("eviction uses select's nowMs, not the hot clock (no clock skew)", async () => {
     // hot clock fixed at NOW; a relevant turn ingested 30s before NOW; 60s window.
     const cm = createContextManager(fakeEncoder, { hot: createHotMemory({ windowMs: 60_000, now: () => NOW }) });
