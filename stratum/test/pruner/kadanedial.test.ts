@@ -132,6 +132,37 @@ describe("selectRelevantTurns — full pipeline + decision log", () => {
   });
 });
 
+// Regression tests for float-drift defects found by adversarial verification.
+describe("float-drift edge cases (regression)", () => {
+  test("σ=0 with equal DECIMAL similarities → skipped (was z-normalized to [-1,-1,-1], dropping all)", () => {
+    const z = zScoreNormalize([0.4, 0.4, 0.4]); // 0.4+0.4+0.4 = 1.2000000000000002 → std≈5e-17, not 0
+    expect(z.skipped).toBe(true);
+    expect(z.normalized).toEqual([0.4, 0.4, 0.4]);
+  });
+
+  test("equal-decimal-similarity turns are KEPT, not all pruned", () => {
+    const turns: HistoryTurn[] = [
+      { similarity: 0.4, timestampSeconds: NOW },
+      { similarity: 0.4, timestampSeconds: NOW },
+      { similarity: 0.4, timestampSeconds: NOW },
+    ];
+    const d = selectRelevantTurns(turns, params({ lambda: 1 }));
+    expect(d.normalizationSkipped).toBe(true);
+    expect(d.selectedIndices).toEqual([0, 1, 2]); // before fix: [] (all dropped)
+  });
+
+  test("2-turn θ=1 boundary: the most-relevant turn survives float drift (was dropped)", () => {
+    // population z of 2 distinct values is mathematically [+1,-1]; float yields
+    // [0.9999999999999998, -1.0000000000000002], which < θ=1 dropped both pre-fix.
+    const turns: HistoryTurn[] = [
+      { similarity: -0.2, timestampSeconds: NOW },
+      { similarity: -0.5, timestampSeconds: NOW },
+    ];
+    const d = selectRelevantTurns(turns, params()); // DEFAULT θ=1
+    expect(d.selectedIndices).toEqual([0]); // before fix: []
+  });
+});
+
 describe("halfLifeHours", () => {
   test("λ=0.5 → 1 hour; λ=0.97 → ~23h", () => {
     expect(halfLifeHours(0.5)).toBeCloseTo(1, 10);

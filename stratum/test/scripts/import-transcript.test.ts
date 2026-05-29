@@ -69,4 +69,30 @@ describe("convertTranscript", () => {
     expect(convertTranscript([]).turns).toEqual([]);
     expect(convertTranscript([rec({ type: "user", message: { content: "x" } })]).turns).toEqual([]);
   });
+
+  test("dedups multiple records sharing a message.id (one logical response → one turn, counted once)", () => {
+    // Claude Code emits one API response as many records (per content block),
+    // all repeating the SAME id + usage. Counting each inflated totals ~3x.
+    const usage = { input_tokens: 6, cache_read_input_tokens: 1000, output_tokens: 971 };
+    const lines = [
+      rec({ type: "user", message: { content: "q" } }),
+      rec({ type: "assistant", message: { id: "msg_1", model: "m", usage, content: [{ type: "thinking" }] } }),
+      rec({ type: "assistant", message: { id: "msg_1", model: "m", usage, content: [{ type: "text" }] } }),
+      rec({ type: "assistant", message: { id: "msg_1", model: "m", usage, content: [{ type: "tool_use" }] } }),
+      rec({ type: "assistant", message: { id: "msg_2", model: "m", usage: { input_tokens: 5, output_tokens: 7 } } }),
+    ];
+    const { turns, assistantRecords } = convertTranscript(lines);
+    expect(assistantRecords).toBe(4); // raw record count (informational)
+    expect(turns).toHaveLength(2); // ONE turn per unique message.id
+    expect(turns[0]!.inputTokens).toBe(1006); // counted ONCE (6 + 1000 cache), not 3x
+    expect(turns[1]!.inputTokens).toBe(5);
+  });
+
+  test("records without an id are not deduped (treated as distinct)", () => {
+    const lines = [
+      rec({ type: "assistant", message: { model: "m", usage: { input_tokens: 3, output_tokens: 4 } } }),
+      rec({ type: "assistant", message: { model: "m", usage: { input_tokens: 3, output_tokens: 4 } } }),
+    ];
+    expect(convertTranscript(lines).turns).toHaveLength(2);
+  });
 });

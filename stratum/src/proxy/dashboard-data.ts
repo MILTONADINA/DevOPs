@@ -76,18 +76,35 @@ export function buildDashboardData(sessions: CaptureSession[], rates: CostRates 
 
   // Aggregate waste findings across sessions, merged by type (summed estimate).
   const byType = new Map<string, WasteFinding>();
+  const sessionsWithType = new Map<string, number>();
   for (const s of sessions) {
     for (const f of runWasteDetectors(s)) {
+      sessionsWithType.set(f.type, (sessionsWithType.get(f.type) ?? 0) + 1);
       const prev = byType.get(f.type);
       if (prev) {
         prev.token_estimate += f.token_estimate;
-        prev.severity = f.token_estimate + prev.token_estimate >= 5000 ? "high" : prev.severity;
+        // Severity from the SUMMED total (prev.token_estimate is already summed;
+        // the old `f + prev` double-counted).
+        prev.severity = prev.token_estimate >= 5000 ? "high" : prev.token_estimate >= 1000 ? "medium" : prev.severity;
       } else {
         byType.set(f.type, { ...f, location: "across sessions" });
       }
     }
   }
-  const waste = [...byType.values()].sort((a, b) => b.token_estimate - a.token_estimate);
+  // Re-derive the description for multi-session aggregates: a summed token figure
+  // must NOT be paired with one session's per-detector specifics (e.g. a single
+  // session's block count) — that was a self-contradiction. Per-session detail
+  // stays in the single-session path.
+  const waste = [...byType.values()]
+    .map((f) => {
+      const n = sessionsWithType.get(f.type) ?? 1;
+      if (n <= 1) return f;
+      return {
+        ...f,
+        description: `~${f.token_estimate} estimated re-sent/redundant tokens for "${f.type}", aggregated across ${n} sessions (HEURISTIC — see src/proxy/waste.ts; calibrate against the §2b corpus).`,
+      };
+    })
+    .sort((a, b) => b.token_estimate - a.token_estimate);
 
   return {
     note: "Phase 1 measurement. Token counts are exact where token_count_method=exact; $ and waste estimates are ROUGH heuristics — calibrate against the §2b corpus.",

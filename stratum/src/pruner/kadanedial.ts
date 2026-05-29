@@ -78,7 +78,11 @@ export function zScoreNormalize(values: number[]): { normalized: number[]; skipp
   const mean = values.reduce((a, b) => a + b, 0) / n;
   const variance = values.reduce((a, b) => a + (b - mean) * (b - mean), 0) / n;
   const std = Math.sqrt(variance);
-  if (std === 0) return { normalized: [...values], skipped: true };
+  // Near-zero σ, not exact: equal DECIMAL similarities (e.g. duplicate turns →
+  // bit-identical cosines) sum with float drift to std≈5e-17, not 0. An exact
+  // `=== 0` guard misses that case and z-normalizes [x,x,x] to [-1,-1,-1],
+  // dropping ALL turns. Treat near-zero σ as the spec's σ=0 passthrough.
+  if (std < 1e-9) return { normalized: [...values], skipped: true };
   return { normalized: values.map((v) => (v - mean) / std), skipped: false };
 }
 
@@ -114,14 +118,17 @@ export function kadaneDialSpans(scores: number[], gainShift: number, theta: numb
         spanEnd = i;
       }
       if (currentSum <= 0) {
-        if (maxSum >= theta) spans.push([currentStart, spanEnd]);
+        if (maxSum >= theta - 1e-9) spans.push([currentStart, spanEnd]);
         currentStart = null;
         currentSum = 0;
         maxSum = 0;
       }
     }
   }
-  if (currentStart !== null && maxSum >= theta) spans.push([currentStart, spanEnd]);
+  // θ comparison with tolerance: a 2-element population z-score peaks at a
+  // mathematical 1.0 that float arithmetic can render as 0.9999999999998 < θ,
+  // which would wrongly discard the most-relevant turn of a 2-turn history.
+  if (currentStart !== null && maxSum >= theta - 1e-9) spans.push([currentStart, spanEnd]);
   return spans;
 }
 

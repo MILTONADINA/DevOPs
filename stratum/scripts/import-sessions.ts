@@ -7,17 +7,20 @@
  * waiting for fresh proxied sessions. Reuses the proven FAIL-CLOSED redaction +
  * flush path (src/proxy/capture.ts) — no unredacted content reaches disk.
  *
- * FIDELITY: Claude Code transcripts record each API call's RESPONSE as an
- * `assistant` record carrying the real `message.usage` (input/output +
- * cache_read/cache_creation) and `message.model` — so token counts are EXACT
- * (API-reported), not estimated. The "request" we reconstruct per turn is the
- * immediately-preceding user input (the new content that turn); the true
- * processed context size is preserved in token_counts.input_tokens (= reported
- * input + cache_read + cache_creation — the context-tax signal). max_tokens and
- * exact system/tools separation are NOT recorded in the transcript (set 0 /
- * omitted, documented). This is a bootstrap source for waste-pattern discovery,
- * NOT a substitute for live proxy measurement (which also captures max_tokens +
- * precise request envelopes + latency).
+ * FIDELITY: Claude Code transcripts record each API call's RESPONSE as
+ * `assistant` record(s) carrying the real `message.usage` (input/output +
+ * cache_read/cache_creation) and `message.model`. Each per-record value is
+ * API-reported (exact); aggregates are exact ONLY because convertTranscript
+ * DEDUPES by message.id — Claude Code emits one logical response as multiple
+ * records (one per content block) all repeating the same id+usage, so counting
+ * once per unique id is required to avoid ~2–4x inflation. The "request" we
+ * reconstruct per turn is the immediately-preceding user input (the new content
+ * that turn); the true processed context size is in token_counts.input_tokens
+ * (= reported input + cache_read + cache_creation — the context-tax signal).
+ * max_tokens and exact system/tools separation are NOT recorded in the
+ * transcript (set 0 / omitted, documented). A bootstrap source for waste-pattern
+ * discovery, NOT a substitute for live proxy measurement (which also captures
+ * max_tokens + precise request envelopes + latency).
  *
  * Usage:
  *   npm run import-sessions -- <file-or-dir> [<file-or-dir> ...]
@@ -25,7 +28,8 @@
  */
 
 import { readFileSync, writeFileSync, readdirSync, mkdirSync, existsSync, statSync } from "node:fs";
-import { join, basename } from "node:path";
+import { join, basename, resolve, sep } from "node:path";
+import { createHash } from "node:crypto";
 import { homedir } from "node:os";
 
 import { createCaptureStore, type RecordTurnInput } from "../src/proxy/capture";
@@ -74,6 +78,7 @@ function num(v: number | undefined): number {
  */
 export function convertTranscript(lines: string[]): ConvertedTranscript {
   const turns: RecordTurnInput[] = [];
+  const seenIds = new Set<string>();
   let sessionId = "";
   let lastUserContent: unknown = "";
   let lastUserTimeMs = 0;
@@ -101,6 +106,16 @@ export function convertTranscript(lines: string[]): ConvertedTranscript {
     if (rec.type === "assistant" && rec.message) {
       assistantRecords++;
       const m = rec.message;
+      // Claude Code emits MULTIPLE assistant records per logical API response —
+      // one per content block (thinking / text / each tool_use) — all sharing
+      // the SAME message.id and the SAME message.usage. Count each response's
+      // usage ONCE (first record per id); otherwise totals + the context-tax
+      // signal inflate ~2–4x. Records lacking an id can't be deduped (treated
+      // as distinct).
+      if (m.id !== undefined) {
+        if (seenIds.has(m.id)) continue;
+        seenIds.add(m.id);
+      }
       const usage = m.usage ?? {};
       const reportedInput = num(usage.input_tokens);
       const cacheRead = num(usage.cache_read_input_tokens);
@@ -134,13 +149,28 @@ export function convertTranscript(lines: string[]): ConvertedTranscript {
 }
 
 /** Write one transcript file → one capture artifact. Returns a summary. */
-function importFile(file: string, outDir: string): { sessionId: string; recorded: number; dropped: number; outFile: string } {
+function importFile(file: string, outDir: string, written: Set<string>): { sessionId: string; recorded: number; dropped: number; outFile: string } {
   const lines = readFileSync(file, "utf8").split(/\r?\n/);
   const { sessionId: parsedId, turns } = convertTranscript(lines);
-  const sessionId = parsedId || basename(file).replace(/\.jsonl$/i, "");
+  const rawId = parsedId || basename(file).replace(/\.jsonl$/i, "");
+  // SANITIZE: rawId may come from an untrusted transcript field (rec.sessionId).
+  // Strip anything but [A-Za-z0-9._-] so it can't inject path separators / `..`,
+  // then assert the resolved path stays inside outDir (defense-in-depth).
+  const sessionId = rawId.replace(/[^A-Za-z0-9._-]/g, "_") || "session";
   // `session-` prefix so readSessionsFromDir (dashboard + analyze-waste) picks
   // it up as a corpus session; `imported-` marks the provenance.
-  const outFile = join(outDir, `session-imported-${sessionId}.json`);
+  let outFile = join(outDir, `session-imported-${sessionId}.json`);
+  if (!resolve(outFile).startsWith(resolve(outDir) + sep)) {
+    throw new Error(`refusing to write outside ${outDir}: ${outFile}`);
+  }
+  // COLLISION GUARD: two transcripts sharing an id/basename would silently
+  // overwrite (losing a session's turns). Disambiguate with a short hash of the
+  // source path rather than clobbering.
+  if (written.has(outFile)) {
+    const h = createHash("sha256").update(file).digest("hex").slice(0, 8);
+    outFile = join(outDir, `session-imported-${sessionId}-${h}.json`);
+  }
+  written.add(outFile);
 
   // capture.ts flushes the whole (growing) session on every record() — fine for
   // the live proxy (one turn at a time), but O(n²) disk I/O for a bulk import.
@@ -198,9 +228,10 @@ export function main(argv: string[] = []): number {
   out(`Importing ${files.length} transcript(s) → ${outDir}`);
   let totalTurns = 0;
   let totalDropped = 0;
+  const written = new Set<string>();
   for (const f of files) {
     try {
-      const r = importFile(f, outDir);
+      const r = importFile(f, outDir, written);
       totalTurns += r.recorded;
       totalDropped += r.dropped;
       out(`  ${basename(f)} → ${r.recorded} turns${r.dropped ? `, ${r.dropped} dropped (FAIL-CLOSED redaction)` : ""}  [${r.sessionId}]`);
