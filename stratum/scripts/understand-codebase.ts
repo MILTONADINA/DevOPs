@@ -18,10 +18,12 @@ import "dotenv/config";
 import { join } from "node:path";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { createKnowledgeGraph } from "../src/memory/cold/graph";
-import { createVectorStore } from "../src/memory/cold/vectors";
+import { createVectorStore, type VectorMatch } from "../src/memory/cold/vectors";
+import { createWarmMemory } from "../src/memory/warm/tier2";
 import { createOnnxEncoder } from "../src/pruner/encoder";
+import { factToText } from "../src/memory/promote";
 import { understandEntity, type UnderstandOptions } from "../src/memory/understand";
-import { renderUnderstanding, renderMatches } from "../src/memory/understand-render";
+import { renderUnderstanding, renderMatches, type ContentByRef } from "../src/memory/understand-render";
 
 export interface ParsedArgs {
   org?: string;
@@ -136,6 +138,17 @@ export async function main(argv: string[] = process.argv.slice(2), deps: Underst
 
     const graph = createKnowledgeGraph(client);
     const vectors = createVectorStore(client);
+    const warm = createWarmMemory(client);
+
+    // Resolve content-free vector hits → their typed-fact content (factToText).
+    const contentFor = async (matches: VectorMatch[]): Promise<ContentByRef> => {
+      const refs = matches.map((m) => m.sourceRef).filter((r): r is string => typeof r === "string" && r.length > 0);
+      const map: ContentByRef = new Map();
+      if (refs.length === 0) return map;
+      const facts = await warm.getFactsByRefs(orgId, refs);
+      for (const [id, fact] of facts) map.set(id, factToText(fact));
+      return map;
+    };
 
     // Encode the semantic query locally (free; no Anthropic) when provided.
     let queryEmbedding: number[] | undefined;
@@ -159,10 +172,11 @@ export async function main(argv: string[] = process.argv.slice(2), deps: Underst
         opts.relatedK = args.k;
       }
       const u = await understandEntity(graph, orgId, args.entity, opts);
-      out(renderUnderstanding(u));
+      const content = u.related ? await contentFor(u.related) : undefined;
+      out(renderUnderstanding(u, content));
     } else if (queryEmbedding) {
       const matches = await vectors.search(orgId, queryEmbedding, args.k);
-      out(renderMatches(args.query as string, matches));
+      out(renderMatches(args.query as string, matches, await contentFor(matches)));
     }
     return 0;
   } catch (e) {

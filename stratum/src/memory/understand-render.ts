@@ -16,13 +16,20 @@ function names(list: string[]): string {
   return list.length ? list.join(", ") : "—";
 }
 
-function renderRelated(related: VectorMatch[]): string[] {
+/** ref → resolved fact content (factToText), for content-free vector hits. */
+export type ContentByRef = Map<string, string>;
+
+function matchLine(m: VectorMatch, content?: ContentByRef): string {
+  const ref = m.sourceRef ?? "?";
+  const resolved = m.sourceRef ? content?.get(m.sourceRef) : undefined;
+  const tail = resolved ? ` — ${resolved}` : "";
+  return `${m.sourceType}:${ref}  (similarity ${m.similarity.toFixed(2)})${tail}`;
+}
+
+function renderRelated(related: VectorMatch[], content?: ContentByRef): string[] {
   if (related.length === 0) return ["  Related (semantic): —"];
   const lines = ["  Related (semantic):"];
-  for (const m of related) {
-    const ref = m.sourceRef ?? "?";
-    lines.push(`    • ${m.sourceType}:${ref}  (similarity ${m.similarity.toFixed(2)})`);
-  }
+  for (const m of related) lines.push(`    • ${matchLine(m, content)}`);
   return lines;
 }
 
@@ -30,9 +37,10 @@ function renderRelated(related: VectorMatch[]): string[] {
  * Render an entity's understanding as a status report.
  *
  * @param u - the {@link EntityUnderstanding} from understandEntity.
+ * @param content - optional ref → fact-content map to enrich semantic neighbours.
  * @returns a multi-line human-readable report.
  */
-export function renderUnderstanding(u: EntityUnderstanding): string {
+export function renderUnderstanding(u: EntityUnderstanding, content?: ContentByRef): string {
   const lines: string[] = [`Entity: ${u.name}`];
   lines.push(`  Status: ${u.isSuperseded ? "SUPERSEDED" : "current"}`);
   if (u.isSuperseded) lines.push(`  Superseded by: ${names(u.supersededBy)}`);
@@ -43,19 +51,24 @@ export function renderUnderstanding(u: EntityUnderstanding): string {
   const hasGraph = u.isSuperseded || u.supersedes.length > 0 || u.deprecatedBy.length > 0 || u.referencedBy.length > 0;
   if (!hasGraph) lines.push("  (no graph relations recorded for this entity)");
 
-  if (u.related !== undefined) lines.push(...renderRelated(u.related));
+  if (u.related !== undefined) lines.push(...renderRelated(u.related, content));
   return lines.join("\n");
 }
 
-/** Render a bare semantic-search result set (query-only mode, no entity). */
-export function renderMatches(query: string, matches: VectorMatch[]): string {
+/**
+ * Render a bare semantic-search result set (query-only mode, no entity).
+ *
+ * @param query - the search text.
+ * @param matches - the vector hits.
+ * @param content - optional ref → fact-content map (resolves content-free hits).
+ * @returns a multi-line human-readable report.
+ */
+export function renderMatches(query: string, matches: VectorMatch[], content?: ContentByRef): string {
   const lines = [`Semantic search: "${query}"`];
   if (matches.length === 0) {
     lines.push("  (no neighbours found — the vector index may be empty for this org)");
     return lines.join("\n");
   }
-  for (const m of matches) {
-    lines.push(`  • ${m.sourceType}:${m.sourceRef ?? "?"}  (similarity ${m.similarity.toFixed(2)})`);
-  }
+  for (const m of matches) lines.push(`  • ${matchLine(m, content)}`);
   return lines.join("\n");
 }

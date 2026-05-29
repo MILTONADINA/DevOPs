@@ -73,3 +73,38 @@ describe("Tier-2 promotion lifecycle", () => {
     expect(await wm.queryUnpromoted("o1")).toEqual([]);
   });
 });
+
+describe("getFactsByRefs (content-free vector-hit → typed-fact resolution)", () => {
+  const todoRow = (o: Record<string, unknown>) => ({ created_at: "2026-05-01T00:00:00Z", org_id: "o1", session_id: "s1", confidence: 0.8, is_verified: false, is_suppressed: false, promoted_to_t3: false, status: "open", ...o });
+
+  test("resolves facts by id ACROSS tables, org-scoped; unknown ids absent", async () => {
+    const { client } = makeFakeSupabase({
+      tech_decisions: [td({ id: "d1", decision_text: "use Supabase" })],
+      todos: [todoRow({ id: "todo1", description: "ship adapter" })],
+    });
+    const map = await createWarmMemory(client).getFactsByRefs("o1", ["d1", "todo1", "missing"]);
+    expect(map.size).toBe(2);
+    expect(map.get("d1")?.fact_type).toBe("TechDecision");
+    expect(map.get("todo1")?.fact_type).toBe("Todo");
+    expect(map.has("missing")).toBe(false);
+  });
+
+  test("does NOT resolve a same-id row from another org (org-scoped)", async () => {
+    const { client } = makeFakeSupabase({
+      tech_decisions: [td({ id: "t1", org_id: "o1", decision_text: "o1-decision" }), td({ id: "t1", org_id: "o2", decision_text: "o2-decision" })],
+    });
+    const map = await createWarmMemory(client).getFactsByRefs("o1", ["t1"]);
+    expect(map.size).toBe(1);
+    expect((map.get("t1") as { decision_text?: string }).decision_text).toBe("o1-decision");
+  });
+
+  test("empty refs → empty map (no query)", async () => {
+    const { client } = makeFakeSupabase();
+    expect((await createWarmMemory(client).getFactsByRefs("o1", [])).size).toBe(0);
+  });
+
+  test("throws (no silent partial) when a table read fails", async () => {
+    const { client } = makeFakeSupabase({}, { selectError: new Set(["tech_decisions"]) });
+    await expect(createWarmMemory(client).getFactsByRefs("o1", ["x"])).rejects.toThrow(/getFactsByRefs failed.*tech_decisions/);
+  });
+});

@@ -128,6 +128,17 @@ export interface WarmMemory {
    * @throws {Error} if an update fails.
    */
   markPromoted(facts: AnyFact[], orgId: string): Promise<number>;
+  /**
+   * Resolve facts by their ids across all fact tables, org-scoped — the READ side of
+   * content-free vector recall: the vector store holds only embeddings + a fact-id
+   * pointer (source_ref), so a semantic hit is resolved to its structured fact here.
+   *
+   * @param orgId - the owning organization.
+   * @param refs - fact ids to resolve (e.g. vector hits' source_refs).
+   * @returns id → fact for those found (cross-org / unknown ids are absent).
+   * @throws {Error} if any underlying table read fails.
+   */
+  getFactsByRefs(orgId: string, refs: string[]): Promise<Map<string, AnyFact>>;
 }
 
 /**
@@ -293,6 +304,29 @@ export function createWarmMemory(client: SupabaseClient): WarmMemory {
         marked++;
       }
       return marked;
+    },
+
+    async getFactsByRefs(orgId: string, refs: string[]): Promise<Map<string, AnyFact>> {
+      const out = new Map<string, AnyFact>();
+      if (refs.length === 0) return out;
+      const tables = Object.values(FACT_TABLES);
+      const results = await Promise.all(
+        tables.map(async (table) => {
+          const { data, error } = await client.from(table).select("*").eq("org_id", orgId).in("id", refs);
+          return { table, data, error };
+        }),
+      );
+      const failed = results.filter((r) => r.error);
+      if (failed.length > 0) {
+        throw new Error(`Tier-2 getFactsByRefs failed: ${failed.map((r) => `${r.table}: ${r.error?.message}`).join("; ")}`);
+      }
+      for (const { table, data } of results) {
+        for (const row of (data ?? []) as Record<string, unknown>[]) {
+          const fact = rowToFact(table, row);
+          if (fact) out.set(fact.id, fact);
+        }
+      }
+      return out;
     },
   };
 }

@@ -55,6 +55,13 @@ describe("renderUnderstanding", () => {
   test("empty related list renders the em-dash, not a crash", () => {
     expect(renderUnderstanding({ ...base, related: [] })).toContain("Related (semantic): —");
   });
+
+  test("related neighbours show resolved fact content when a content map is supplied", () => {
+    const related: VectorMatch[] = [{ id: "v1", sourceType: "fact", sourceRef: "f-1", similarity: 0.8 }];
+    const content = new Map([["f-1", "function getUser → fetchUser (renamed)"]]);
+    const r = renderUnderstanding({ ...base, related }, content);
+    expect(r).toContain("fact:f-1  (similarity 0.80) — function getUser → fetchUser (renamed)");
+  });
 });
 
 describe("renderMatches (query-only mode)", () => {
@@ -69,6 +76,17 @@ describe("renderMatches (query-only mode)", () => {
   });
   test("empty result set is reported, not silent", () => {
     expect(renderMatches("q", [])).toContain("no neighbours found");
+  });
+  test("resolves content-free hits to fact content when a content map is supplied", () => {
+    const matches: VectorMatch[] = [
+      { id: "v1", sourceType: "fact", sourceRef: "f-9", similarity: 0.91 },
+      { id: "v2", sourceType: "fact", sourceRef: "f-unknown", similarity: 0.5 },
+    ];
+    const content = new Map([["f-9", "decision: use Supabase [db]"]]);
+    const r = renderMatches("where do we deploy?", matches, content);
+    expect(r).toContain("fact:f-9  (similarity 0.91) — decision: use Supabase [db]"); // resolved
+    expect(r).toContain("fact:f-unknown  (similarity 0.50)"); // unresolved → bare, no trailing dash content
+    expect(r).not.toContain("f-unknown  (similarity 0.50) —");
   });
 });
 
@@ -101,9 +119,18 @@ describe("parseArgs", () => {
 // Minimal Supabase stub driving exactly the calls the CLI makes:
 //   .from("organizations").select("id").eq("name",_).limit(1)  → { data: org, error }
 //   .rpc("entity_status"|"match_memory_vectors", _)             → { data, error }
-function fakeClient(opts: { org?: { id: string }[]; entityStatus?: unknown[]; matches?: unknown[] }): SupabaseClient {
+function fakeClient(opts: { org?: { id: string }[]; entityStatus?: unknown[]; matches?: unknown[]; facts?: unknown[] }): SupabaseClient {
   return {
-    from: () => ({ select: () => ({ eq: () => ({ limit: () => Promise.resolve({ data: opts.org ?? [], error: null }) }) }) }),
+    from: () => ({
+      select: () => ({
+        eq: () => ({
+          // org lookup: .eq("name").limit(1) → org rows
+          limit: () => Promise.resolve({ data: opts.org ?? [], error: null }),
+          // getFactsByRefs: .eq("org_id").in("id", refs) → fact rows (awaited, no .limit())
+          in: () => Promise.resolve({ data: opts.facts ?? [], error: null }),
+        }),
+      }),
+    }),
     rpc: (fn: string) => Promise.resolve({ data: fn === "entity_status" ? opts.entityStatus ?? [] : opts.matches ?? [], error: null }),
   } as unknown as SupabaseClient;
 }

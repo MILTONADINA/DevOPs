@@ -91,8 +91,27 @@ export function makeFakeSupabase(
   function makeQuery(table: string): unknown {
     const eqFilters: Row = {};
     const ltFilters: Row = {};
+    const inFilters: Record<string, Set<unknown>> = {};
     let sortCol: string | null = null;
     let sortAsc = true;
+    // Shared filter + sort + optional cap (limit() caps; awaiting the builder doesn't).
+    const compute = (n?: number): { data: Row[] | null; error: { message: string } | null } => {
+      if (faults.selectError?.has(table)) return { data: null, error: { message: `select failed: ${table}` } };
+      let r = rowsOf(table).filter(
+        (row) => matchesEq(row, eqFilters) && matchesLt(row, ltFilters) && Object.entries(inFilters).every(([c, set]) => set.has(row[c])),
+      );
+      if (sortCol !== null) {
+        const c = sortCol;
+        r = [...r].sort((a, b) => {
+          const av = a[c] as string | number;
+          const bv = b[c] as string | number;
+          if (av < bv) return sortAsc ? -1 : 1;
+          if (av > bv) return sortAsc ? 1 : -1;
+          return 0;
+        });
+      }
+      return { data: n !== undefined ? r.slice(0, n) : r, error: null };
+    };
     const builder = {
       eq(col: string, val: unknown) {
         eqFilters[col] = val;
@@ -102,25 +121,21 @@ export function makeFakeSupabase(
         ltFilters[col] = val;
         return builder;
       },
+      in(col: string, vals: unknown[]) {
+        inFilters[col] = new Set(vals);
+        return builder;
+      },
       order(col: string, opts?: { ascending?: boolean }) {
         sortCol = col;
         sortAsc = !(opts && opts.ascending === false);
         return builder;
       },
       limit(n: number) {
-        if (faults.selectError?.has(table)) return Promise.resolve({ data: null, error: { message: `select failed: ${table}` } });
-        let r = rowsOf(table).filter((row) => matchesEq(row, eqFilters) && matchesLt(row, ltFilters));
-        if (sortCol !== null) {
-          const c = sortCol;
-          r = [...r].sort((a, b) => {
-            const av = a[c] as string | number;
-            const bv = b[c] as string | number;
-            if (av < bv) return sortAsc ? -1 : 1;
-            if (av > bv) return sortAsc ? 1 : -1;
-            return 0;
-          });
-        }
-        return Promise.resolve({ data: r.slice(0, n), error: null });
+        return Promise.resolve(compute(n));
+      },
+      // Thenable: awaiting the chain WITHOUT .limit() (e.g. select().eq().in()) resolves here.
+      then(onFulfilled: (v: { data: Row[] | null; error: { message: string } | null }) => void): void {
+        onFulfilled(compute());
       },
     };
     return builder;
