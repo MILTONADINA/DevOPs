@@ -138,7 +138,9 @@ function importFile(file: string, outDir: string): { sessionId: string; recorded
   const lines = readFileSync(file, "utf8").split(/\r?\n/);
   const { sessionId: parsedId, turns } = convertTranscript(lines);
   const sessionId = parsedId || basename(file).replace(/\.jsonl$/i, "");
-  const outFile = join(outDir, `imported-${sessionId}.json`);
+  // `session-` prefix so readSessionsFromDir (dashboard + analyze-waste) picks
+  // it up as a corpus session; `imported-` marks the provenance.
+  const outFile = join(outDir, `session-imported-${sessionId}.json`);
 
   // capture.ts flushes the whole (growing) session on every record() — fine for
   // the live proxy (one turn at a time), but O(n²) disk I/O for a bulk import.

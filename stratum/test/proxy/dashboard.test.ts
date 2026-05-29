@@ -77,6 +77,22 @@ describe("buildDashboardData", () => {
     expect(d.top_waste_type).toBeNull();
     expect(d.waste).toEqual([]);
   });
+
+  test("old/partial artifact missing numeric fields → coerced to 0 (no NaN)", () => {
+    // e.g. a pre-`dropped_turns` capture: the field is absent.
+    const legacy = {
+      session_id: "legacy-1",
+      started_at: "2026-05-28T10:14:15Z",
+      total_turns: 5,
+      total_input_tokens: 60,
+      total_output_tokens: 40,
+      requests: [],
+    } as unknown as CaptureSession;
+    const d = buildDashboardData([legacy]);
+    expect(d.total_dropped_turns).toBe(0); // was NaN before the guard
+    expect(Number.isNaN(d.total_dropped_turns)).toBe(false);
+    expect(d.total_input_tokens).toBe(60);
+  });
 });
 
 describe("dashboard route", () => {

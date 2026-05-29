@@ -19,6 +19,7 @@
     "test:all": "npm run typecheck && npm run lint && npm run test && npm run test:eval",
     "capture": "tsx scripts/capture-session.ts",
     "import-sessions": "tsx scripts/import-sessions.ts",
+    "analyze-waste": "tsx scripts/analyze-waste.ts",
     "smoke:live": "tsx scripts/smoke-live.ts",
     "smoke:judge": "tsx scripts/smoke-judge.ts",
     "promote": "tsx scripts/promote-tier2-to-tier3.ts",

@@ -56,14 +56,17 @@ function estimateCostUsd(inputTok: number, outputTok: number, rates: CostRates):
  * @returns the {@link DashboardData} for rendering / the JSON API.
  */
 export function buildDashboardData(sessions: CaptureSession[], rates: CostRates = DEFAULT_RATES): DashboardData {
+  // Coerce missing/non-numeric fields to 0: older or partial artifacts (e.g.
+  // pre-`dropped_turns` captures) must not poison the aggregate with NaN.
+  const n = (v: unknown): number => (typeof v === "number" && Number.isFinite(v) ? v : 0);
   const summaries: SessionSummary[] = sessions.map((s) => ({
     session_id: s.session_id,
     started_at: s.started_at,
     ended_at: s.ended_at,
-    turns: s.total_turns,
-    dropped_turns: s.dropped_turns,
-    input_tokens: s.total_input_tokens,
-    output_tokens: s.total_output_tokens,
+    turns: n(s.total_turns),
+    dropped_turns: n(s.dropped_turns),
+    input_tokens: n(s.total_input_tokens),
+    output_tokens: n(s.total_output_tokens),
   }));
 
   const total_turns = summaries.reduce((a, s) => a + s.turns, 0);
