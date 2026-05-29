@@ -26,6 +26,7 @@
     "eval:tierb": "tsx scripts/eval-tierb.ts",
     "eval:locomo": "tsx scripts/eval-locomo.ts",
     "eval:locomo:survival": "tsx scripts/eval-locomo-survival.ts",
+    "eval:longmemeval:survival": "tsx scripts/eval-longmemeval-survival.ts",
     "shadow-prune": "tsx scripts/shadow-prune.ts",
     "sweep-params": "tsx scripts/sweep-params.ts",
     "smoke:live": "tsx scripts/smoke-live.ts",

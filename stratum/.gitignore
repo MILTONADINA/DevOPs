@@ -30,6 +30,7 @@ evals/results/
 evals/datasets/locomo/
 evals/datasets/mtbench/
 evals/datasets/scm4llms/
+evals/datasets/longmemeval/
 
 # ONNX model cache (fetched on demand; not committed — see ADR-0010)
 models/
