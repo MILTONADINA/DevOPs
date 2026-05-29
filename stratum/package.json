@@ -19,6 +19,7 @@
     "test:all": "npm run typecheck && npm run lint && npm run test && npm run test:eval",
     "capture": "tsx scripts/capture-session.ts",
     "import-sessions": "tsx scripts/import-sessions.ts",
+    "smoke:live": "tsx scripts/smoke-live.ts",
     "promote": "tsx scripts/promote-tier2-to-tier3.ts",
     "db:start": "npx supabase start",
     "db:stop": "npx supabase stop",
