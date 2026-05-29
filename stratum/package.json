@@ -33,6 +33,7 @@
     "smoke:live": "tsx scripts/smoke-live.ts",
     "smoke:judge": "tsx scripts/smoke-judge.ts",
     "smoke:memory": "tsx scripts/smoke-memory.ts",
+    "bench:tiers": "tsx scripts/bench-tiers.ts",
     "promote": "tsx scripts/promote-tier2-to-tier3.ts",
     "understand-codebase": "tsx scripts/understand-codebase.ts",
     "db:start": "npx supabase start",
