@@ -75,6 +75,46 @@ duration`, with λ=0.5, so the half-life is k× the whole span.)
    (judged) + the survival sweep to confirm the Faithfulness/Relevancy gate AND
    evidence survival both clear before any request-path wiring.
 
+## Validation (judged gate — 2026-05-29)
+
+The calibrated config (`LOCOMO_DECAY_HORIZON_FRAC=1.0 LOCOMO_LAMBDAS=0.5`, scale-
+invariant h=1.0·span) was run through the FULL judged `eval:locomo` (real ONNX +
+Haiku, same 3 conv × 6 q as the ADR-0014 RED baseline) — the decisive test of
+whether the retention fix also holds Faithfulness/Answer-Relevancy:
+
+| config | evidence survival | ctx reduction | Faithfulness pruned/base (Δ) | Answer-Relevancy pruned/base (Δ) | scenarios pass |
+|---|---|---|---|---|---|
+| λ=0.97 per-hour (default) | 1.4% | 92% | 0.994 / 0.944 (−0.050) | 0.975 / 0.738 (−0.237) | 15/18 |
+| **scale-invariant h=1.00·span** | **87.5%** | 38% | 0.914 / 0.942 (**+0.028**) | 0.841 / 0.749 (−0.091) | **10/18** |
+
+Findings:
+- **The calibration works for what matters: evidence retention 1.4%→87.5%**, while
+  aggregate Faithfulness degradation is **+0.028 (within the <5% bar)** and
+  Answer-Relevancy is *better* than baseline (less context dilution). By the
+  constitution's actual criterion (<5% degradation), the AGGREGATE passes.
+- **Yet it passes FEWER scenarios (10 vs 15)** — and that is mostly NOT pruning
+  damage. The per-scenario gate also enforces ABSOLUTE floors (Faithfulness ≥0.90,
+  Answer-Relevancy ≥0.88) on the PRUNED score regardless of the baseline. Several
+  failures are floor trips where **baseline == pruned** (e.g. faith 0.85/0.85) or
+  where the baseline ITSELF is below the floor (the "October 2023 setback" question:
+  faith 0.50/0.70, relev 0.30/0.40 — the FULL-context answer is already poor). The
+  gate is conflating "did pruning hurt?" (degradation) with "is the answer good in
+  absolute terms?" (a question/answerer/judge-quality property the pruner doesn't
+  control). A few are real (conv-41#12 faith 0.50/1.00).
+- **Compounds ADR-0014 Finding 2 from the other side:** there, absolute floors let a
+  1.4%-evidence pruner *pass* (it bluffed crisply); here, they make a 87.5%-evidence
+  pruner *fail* on questions the baseline can't answer either. → the gate must be
+  **degradation-DOMINANT** (the constitution's stated bar), with absolute floors only
+  meaningful relative to the baseline, and run at a larger sample with repeat-and-
+  average to damp judge noise (N=18 baseline relevancy swings 0.0–1.0). Tracked
+  PB-39/PB-42/PB-43.
+
+**Verdict: still RED — do NOT ship.** But the RED is no longer "the pruner destroys
+the answer"; it is "the pruner retains the evidence and matches baseline within
+tolerance, but the GATE is too strict/noisy to certify it." The remaining work is
+gate refinement + a larger run + a second benchmark (PB-41 LongMemEval) before a
+ship decision — NOT abandoning the calibration, which is validated as effective.
+
 ## Consequences
 
 - Pruning stays out of the request path (ADR-0014 unchanged); this adds a

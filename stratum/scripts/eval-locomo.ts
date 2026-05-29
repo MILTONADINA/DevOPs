@@ -50,6 +50,12 @@ function envInt(name: string, def: number): number {
   const n = Number.parseInt(v, 10);
   return Number.isFinite(n) && n > 0 ? n : def;
 }
+function envFloat(name: string, def: number): number {
+  const v = process.env[name];
+  if (!v) return def;
+  const n = Number.parseFloat(v);
+  return Number.isFinite(n) && n > 0 ? n : def;
+}
 function envFloatList(name: string, def: number[]): number[] {
   const v = process.env[name];
   if (!v) return def;
@@ -103,6 +109,7 @@ async function runQuestion(
   lambdas: number[],
   answerer: Answerer,
   judge: Judge,
+  decayHorizonSeconds?: number,
 ): Promise<QuestionOutcome> {
   const fullText = renderTurns(conv.turns);
   const ev = resolveEvidence(conv, q);
@@ -116,8 +123,10 @@ async function runQuestion(
   const cache = new Map<string, MetricScores>();
   const byLambda: LambdaOutcome[] = [];
 
+  // Scale-invariant decay (ADR-0015) when a horizon is supplied; else per-hour λ.
+  const horizon = decayHorizonSeconds && decayHorizonSeconds > 0 ? { decayHorizonSeconds } : {};
   for (const lambda of lambdas) {
-    const decision = prune(queryVec, history, { lambda, gainShift: DEFAULT_KADANEDIAL.gainShift, theta: DEFAULT_KADANEDIAL.theta, nowSeconds });
+    const decision = prune(queryVec, history, { lambda, gainShift: DEFAULT_KADANEDIAL.gainShift, theta: DEFAULT_KADANEDIAL.theta, nowSeconds, ...horizon });
     const sel = decision.selectedIndices;
     const selSet = new Set(sel);
     const prunedText = renderTurns(conv.turns, sel);
@@ -160,6 +169,9 @@ export async function main(): Promise<number> {
   const cats = envIntList("LOCOMO_CATEGORIES", [1, 2, 3, 4]);
   const lambdas = envFloatList("LOCOMO_LAMBDAS", [DEFAULT_KADANEDIAL.lambda]);
   const gateLambda = lambdas[0]!;
+  // ADR-0015 scale-invariant decay: when >0, decayHorizonSeconds = frac × the
+  // conversation's own span (per-hour absolute decay otherwise). 0 = unset.
+  const horizonFrac = envFloat("LOCOMO_DECAY_HORIZON_FRAC", 0);
 
   const conversations = loadLocomo(file).slice(0, nConv);
   const plan = conversations.map((c) => ({ c, qs: sampleQuestions(c, { maxQuestions: nQ, categories: cats }) }));
@@ -170,6 +182,7 @@ export async function main(): Promise<number> {
   out("=".repeat(64));
   out(`Conversations: ${conversations.length}/10   Questions/conv: ${nQ} (cats ${cats.join(",")})   Sampled questions: ${totalQ}`);
   out(`λ characterized: [${lambdas.join(", ")}]   GATE λ = ${gateLambda} (half-life ${halfLifeHours(gateLambda).toFixed(1)}h)`);
+  out(horizonFrac > 0 ? `Decay: SCALE-INVARIANT (ADR-0015) — horizon = ${horizonFrac}×span per conversation` : "Decay: absolute per-hour (documented default)");
   out(`Thresholds: Faithfulness ≥ ${DEFAULT_THRESHOLDS.faithfulnessMin}, Answer-Relevancy ≥ ${DEFAULT_THRESHOLDS.answerRelevancyMin}, max degradation ${DEFAULT_THRESHOLDS.maxDegradation}`);
   out(`Upper-bound model calls: ${callBudget} (Claude Haiku; pruned calls deduped by selection).`);
   out("Note: cat-5 (adversarial/unanswerable) is excluded — it tests refusal, not memory retention.");
@@ -186,11 +199,14 @@ export async function main(): Promise<number> {
       continue;
     }
     out(`→ ${c.sampleId}: ${c.turns.length} turns / ${c.questions.length} qa → encoding turns + ${qs.length} queries (real ONNX)…`);
-    const nowSeconds = (c.turns[c.turns.length - 1]?.timestampSeconds ?? 0) + 3600; // query asked ~1h after the last session
+    const lastTs = c.turns[c.turns.length - 1]?.timestampSeconds ?? 0;
+    const firstTs = c.turns[0]?.timestampSeconds ?? 0;
+    const nowSeconds = lastTs + 3600; // query asked ~1h after the last session
+    const decayHorizonSeconds = horizonFrac > 0 ? horizonFrac * Math.max(1, lastTs - firstTs) : undefined;
     const turnVecs = await encoder.encode(c.turns.map((t) => t.text));
     const queryVecs = await encoder.encode(qs.map((q) => q.query));
     for (let i = 0; i < qs.length; i++) {
-      const o = await runQuestion(c, qs[i]!, queryVecs[i]!, turnVecs, nowSeconds, lambdas, answerer, judge);
+      const o = await runQuestion(c, qs[i]!, queryVecs[i]!, turnVecs, nowSeconds, lambdas, answerer, judge, decayHorizonSeconds);
       outcomes.push(o);
       const gl = o.byLambda[0]!;
       out(
