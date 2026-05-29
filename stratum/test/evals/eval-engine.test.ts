@@ -8,7 +8,14 @@ import { gateMetric, gateScenario } from "../../evals/harness/compare";
 import { checkGoldenQuery, criticalFailures } from "../../evals/harness/golden";
 import { evaluateSuite, renderReport, type SuiteResult } from "../../evals/harness/report";
 import { runScenario, runSuite, type ScenarioInput } from "../../evals/harness/runner";
-import { createClaudeAnswerer, createLlmJudge, type Answerer, type Judge } from "../../evals/harness/metrics";
+import {
+  createClaudeAnswerer,
+  createLlmJudge,
+  parseJudgeScores,
+  type Answerer,
+  type Judge,
+  type LlmCompletion,
+} from "../../evals/harness/metrics";
 import { DEFAULT_THRESHOLDS, type GoldenQuery, type ScenarioResult } from "../../evals/harness/types";
 
 const { faithfulnessMin, answerRelevancyMin, maxDegradation } = DEFAULT_THRESHOLDS;
@@ -188,11 +195,36 @@ describe("runner orchestration (injected fakes)", () => {
   });
 });
 
-describe("gated metric sources", () => {
-  test("createLlmJudge().score rejects (never fabricates scores)", async () => {
-    await expect(createLlmJudge().score({ query: "q", context: "c", answer: "a" })).rejects.toThrow(/GATED|ANTHROPIC_API_KEY/);
+describe("LLM-as-judge (injected fake completion — no real API)", () => {
+  const fakeLlm = (reply: string): LlmCompletion => ({ complete: () => Promise.resolve(reply) });
+
+  test("parseJudgeScores extracts + clamps scores from embedded JSON", () => {
+    expect(parseJudgeScores('noise {"faithfulness": 1.2, "answer_relevancy": -0.1, "reason": "x"} tail')).toEqual({
+      faithfulness: 1, // clamped from 1.2
+      answerRelevancy: 0, // clamped from -0.1
+    });
   });
-  test("createClaudeAnswerer().generate rejects until configured", async () => {
-    await expect(createClaudeAnswerer().generate("q", "c")).rejects.toThrow(/GATED|ANTHROPIC_API_KEY/);
+
+  test("parseJudgeScores accepts the answerRelevancy alias", () => {
+    expect(parseJudgeScores('{"faithfulness": 0.5, "answerRelevancy": 0.6}')).toEqual({ faithfulness: 0.5, answerRelevancy: 0.6 });
+  });
+
+  test("parseJudgeScores throws (never invents a number) on bad output", () => {
+    expect(() => parseJudgeScores("the answer looks great!")).toThrow(/no JSON/);
+    expect(() => parseJudgeScores('{"faithfulness": "high", "answer_relevancy": 0.9}')).toThrow(/numeric/);
+  });
+
+  test("createLlmJudge parses the model's JSON into clamped scores", async () => {
+    const judge = createLlmJudge(fakeLlm('{"faithfulness": 0.91, "answer_relevancy": 0.87, "reason": "grounded"}'));
+    expect(await judge.score({ query: "q", context: "c", answer: "a" })).toEqual({ faithfulness: 0.91, answerRelevancy: 0.87 });
+  });
+
+  test("createClaudeAnswerer sends a prompt carrying the query + context", async () => {
+    let seen = "";
+    const capture: LlmCompletion = { complete: (p) => { seen = p; return Promise.resolve("we chose Supabase"); } };
+    const answer = await createClaudeAnswerer(capture).generate("which db?", "DECISION: use Supabase");
+    expect(answer).toBe("we chose Supabase");
+    expect(seen).toContain("which db?");
+    expect(seen).toContain("Supabase");
   });
 });

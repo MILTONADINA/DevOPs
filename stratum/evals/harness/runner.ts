@@ -129,16 +129,18 @@ export async function main(argv: string[] = []): Promise<number> {
 
   out("CQ Eval Suite — GATED (accuracy run not yet runnable)");
   out("=====================================================");
-  out(`  datasets present:  ${haveData ? "yes" : "NO  (only .gitkeep in evals/datasets/*)"}`);
-  out(`  judge API key:     ${haveJudge ? "yes" : "NO  (set ANTHROPIC_API_KEY)"}`);
-  out(`  Answerer/Judge impl: NO  (evals/harness/metrics.ts factories throw — Phase 2 gated)`);
-  out(`  ONNX encoder:      NO  (model artifact absent — see src/pruner/encoder.ts)`);
+  out(`  judge API key:        ${haveJudge ? "yes" : "NO  (set ANTHROPIC_API_KEY)"}`);
+  out(`  LLM judge + answerer: IMPLEMENTED  (Claude Haiku — evals/harness/metrics.ts)`);
+  out(`  gate engine:          IMPLEMENTED  (compare/golden/report — unit-tested)`);
+  out(`  datasets present:     ${haveData ? "yes" : "NO  (only .gitkeep in evals/datasets/*)"}`);
+  out(`  dataset loaders:      NO  (Tier-A/B/C parsers — pending the real dataset files)`);
+  out(`  ONNX encoder:         NO  (model artifact absent → no real pruned contexts)`);
   out("");
-  out("The DETERMINISTIC gate engine (compare / golden / report) IS implemented");
-  out("and unit-tested — run `npm test` (test/evals/). To run the ACCURACY suite,");
-  out("supply: (1) ANTHROPIC_API_KEY, (2) the Tier-A/B/C datasets, (3) a real");
-  out("Answerer+Judge in metrics.ts, (4) the ONNX model for the encoder.");
-  out(`Refusing to emit fabricated scores. Exiting 0 (gated, not a failure).${flags}`);
+  out("The gate engine + the LLM judge ARE implemented + unit-tested (npm test →");
+  out("test/evals/). Remaining to run the ACCURACY suite: (1) the Tier-A/B/C dataset");
+  out("files in evals/datasets/, (2) loaders for them, (3) the ONNX model for the");
+  out("encoder (real embeddings → pruned contexts). Refusing to emit fabricated");
+  out(`scores. Exiting 0 (gated, not a failure).${flags}`);
   return 0;
 }
 
