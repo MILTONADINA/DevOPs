@@ -79,6 +79,14 @@ export interface QueryRecentOptions {
   sessionId?: string;
 }
 
+/** Options for {@link WarmMemory.queryUnpromoted}. */
+export interface QueryUnpromotedOptions {
+  /** Only facts created strictly before this ISO timestamp (e.g. now − 30d). */
+  olderThanIso?: string;
+  /** Max facts to return (oldest-first). Default 100. */
+  limit?: number;
+}
+
 export interface WarmMemory {
   /**
    * Persist validated facts to their warm-memory tables.
@@ -98,6 +106,26 @@ export interface WarmMemory {
    *   a silent partial would look like "no memory" and mislead the caller).
    */
   queryRecent(orgId: string, opts?: QueryRecentOptions): Promise<AnyFact[]>;
+  /**
+   * Read facts NOT yet promoted to Tier-3 (`promoted_to_t3 = false`), oldest-first —
+   * the nightly Tier-2 → Tier-3 promotion job's input.
+   *
+   * @param orgId - the organization.
+   * @param opts - optional age cutoff (`olderThanIso`) + limit.
+   * @returns unpromoted facts (oldest-first), capped at opts.limit.
+   * @throws {Error} if any underlying table read fails.
+   */
+  queryUnpromoted(orgId: string, opts?: QueryUnpromotedOptions): Promise<AnyFact[]>;
+  /**
+   * Mark facts promoted (`promoted_to_t3 = true`) after Tier-3 promotion — NEVER
+   * deletes (the append-only audit trail per CLAUDE.md). Routed to each fact's table
+   * by fact_type + id.
+   *
+   * @param facts - the facts to mark.
+   * @returns the number of rows marked.
+   * @throws {Error} if an update fails.
+   */
+  markPromoted(facts: AnyFact[]): Promise<number>;
 }
 
 /**
@@ -222,6 +250,44 @@ export function createWarmMemory(client: SupabaseClient): WarmMemory {
       // Merge across tables, newest-first, then cap.
       facts.sort((a, b) => (a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : 0));
       return facts.slice(0, limit);
+    },
+
+    async queryUnpromoted(orgId: string, opts: QueryUnpromotedOptions = {}): Promise<AnyFact[]> {
+      const limit = opts.limit ?? 100;
+      const tables = Object.values(FACT_TABLES);
+      const results = await Promise.all(
+        tables.map(async (table) => {
+          let q = client.from(table).select("*").eq("org_id", orgId).eq("promoted_to_t3", false);
+          if (opts.olderThanIso !== undefined) q = q.lt("created_at", opts.olderThanIso);
+          const { data, error } = await q.order("created_at", { ascending: true }).limit(limit);
+          return { table, data, error };
+        }),
+      );
+      const failed = results.filter((r) => r.error);
+      if (failed.length > 0) {
+        throw new Error(`Tier-2 queryUnpromoted failed: ${failed.map((r) => `${r.table}: ${r.error?.message}`).join("; ")}`);
+      }
+      const facts: AnyFact[] = [];
+      for (const { table, data } of results) {
+        for (const row of (data ?? []) as Record<string, unknown>[]) {
+          const fact = rowToFact(table, row);
+          if (fact) facts.push(fact);
+        }
+      }
+      // Oldest-first (promote the longest-resident facts first), then cap.
+      facts.sort((a, b) => (a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0));
+      return facts.slice(0, limit);
+    },
+
+    async markPromoted(facts: AnyFact[]): Promise<number> {
+      let marked = 0;
+      for (const fact of facts) {
+        const table = tableForFactType(fact.fact_type);
+        const { error } = await client.from(table).update({ promoted_to_t3: true }).eq("id", fact.id);
+        if (error) throw new Error(`markPromoted failed (${table}/${fact.id}): ${error.message}`);
+        marked++;
+      }
+      return marked;
     },
   };
 }
