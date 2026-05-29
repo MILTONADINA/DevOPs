@@ -15,6 +15,13 @@ import { PassThrough } from "node:stream";
 import type { MessagesBody, MessagesDeps, TokenCountResult } from "../forward";
 import { isStreamingRequest } from "../stream-forward";
 import { createSseParser, accumulateAnthropicStream } from "../sse";
+import { emitTurnTelemetry } from "../telemetry";
+
+/** Extract output_tokens from a response/usage object (0 if absent). */
+function outputTokensOf(response: unknown): number {
+  const u = (response as { usage?: { output_tokens?: number } } | null)?.usage;
+  return typeof u?.output_tokens === "number" ? u.output_tokens : 0;
+}
 
 const ESTIMATED_FALLBACK: TokenCountResult = {
   input_tokens: 0,
@@ -97,7 +104,7 @@ async function handleStreaming(
       // Done BEFORE out.end() so the artifact is written before the response
       // completes. A client abort still captures what was forwarded.
       const { message } = accumulateAnthropicStream(events);
-      deps.capture.record({
+      const recorded = deps.capture.record({
         request: captureRequest(body),
         response: message,
         inputTokens: tokens.input_tokens,
@@ -105,6 +112,20 @@ async function handleStreaming(
         messageBreakdown: tokens.message_breakdown,
         elapsedMs: Date.now() - start,
       });
+      emitTurnTelemetry(
+        {
+          "stratum.session_id": deps.capture.getSession().session_id,
+          "stratum.turn_number": deps.capture.getSession().total_turns,
+          "stratum.model": body.model,
+          "stratum.input_tokens": tokens.input_tokens,
+          "stratum.output_tokens": outputTokensOf(message),
+          "stratum.token_count_method": tokens.token_count_method,
+          "stratum.elapsed_ms": Date.now() - start,
+          "stratum.streaming": true,
+          "stratum.dropped": !recorded,
+        },
+        deps.telemetry,
+      );
       out.end();
     }
   })();
@@ -165,7 +186,7 @@ export function makeMessagesRoute(deps: MessagesDeps): FastifyPluginCallback {
       }
 
       // Capture the turn (redaction + FAIL-CLOSED happen inside the store).
-      deps.capture.record({
+      const recorded = deps.capture.record({
         request: captureRequest(body),
         response: forwarded.data,
         inputTokens: tokens.input_tokens,
@@ -173,6 +194,20 @@ export function makeMessagesRoute(deps: MessagesDeps): FastifyPluginCallback {
         messageBreakdown: tokens.message_breakdown,
         elapsedMs: Date.now() - start,
       });
+      emitTurnTelemetry(
+        {
+          "stratum.session_id": deps.capture.getSession().session_id,
+          "stratum.turn_number": deps.capture.getSession().total_turns,
+          "stratum.model": body.model,
+          "stratum.input_tokens": tokens.input_tokens,
+          "stratum.output_tokens": outputTokensOf(forwarded.data),
+          "stratum.token_count_method": tokens.token_count_method,
+          "stratum.elapsed_ms": Date.now() - start,
+          "stratum.streaming": false,
+          "stratum.dropped": !recorded,
+        },
+        deps.telemetry,
+      );
 
       // nosemgrep: javascript.express.security.audit.xss.direct-response-write.direct-response-write -- FALSE POSITIVE: transparent JSON proxy. Forwards the upstream Anthropic response (Fastify sends it as application/json) to the Claude Code CLI client; never HTML rendered in a browser, so no XSS surface. The "user input" is the upstream provider's own JSON, not attacker markup.
       return reply.send(forwarded.data);

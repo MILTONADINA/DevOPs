@@ -18,6 +18,7 @@ import { createCaptureStore, type CaptureStore } from "./capture";
 import { withRetry } from "./retry";
 import { createTokenCounter } from "./token-count";
 import { forwardStreamToAnthropic, type StreamForwardResult } from "./stream-forward";
+import { resolveTelemetrySink, type TelemetrySink } from "./telemetry";
 import type Anthropic from "@anthropic-ai/sdk";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
@@ -53,6 +54,8 @@ export interface MessagesDeps {
   countTokens: (body: MessagesBody) => Promise<TokenCountResult>;
   capture: CaptureStore;
   apiKey: string;
+  /** Per-turn telemetry sink (Q7 soft-dep). Default: structured-log fallback. */
+  telemetry?: TelemetrySink;
 }
 
 /**
@@ -164,5 +167,6 @@ export function createDefaultMessagesDeps(): MessagesDeps {
     forwardStream: (body, key) => forwardStreamToAnthropic(body, key, baseUrl),
     countTokens: (body) => counter.count(body),
     capture: createCaptureStore({ sessionId, outputFile }),
+    telemetry: resolveTelemetrySink(),
   };
 }
