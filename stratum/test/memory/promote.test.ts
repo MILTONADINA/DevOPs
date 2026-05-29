@@ -4,8 +4,10 @@
 // find_superseded + the ADR-0011 suppression consume.
 
 import { describe, test, expect } from "vitest";
-import { factToGraphOps, promoteFactsToGraph } from "../../src/memory/promote";
+import { factToGraphOps, promoteFactsToGraph, factToText, promoteFactsToVectors } from "../../src/memory/promote";
 import type { KnowledgeGraph, EnsureEntityInput, AddEdgeInput, Supersession } from "../../src/memory/cold/graph";
+import type { VectorStore, VectorRecord } from "../../src/memory/cold/vectors";
+import type { BiEncoder } from "../../src/pruner/encoder";
 import type { AnyFact, FunctionChangeFact, TechDecisionFact, PolicyUpdateFact, TodoFact } from "../../src/types/facts";
 
 const base = { id: "f1", created_at: "2026-05-29T00:00:00Z", session_id: "s1", confidence: 0.9, is_verified: false, is_suppressed: false } as const;
@@ -96,5 +98,66 @@ describe("promoteFactsToGraph", () => {
   test("empty facts → zero ops", async () => {
     const { graph } = fakeGraph();
     expect(await promoteFactsToGraph(graph, [], { orgId: "o1" })).toEqual({ entities: 0, edges: 0 });
+  });
+});
+
+// A fake 384-d encoder (no model load) + a recording vector store.
+const DIM = 384;
+function fakeEncoder(): BiEncoder {
+  return {
+    dimension: DIM,
+    async encode(texts: string[]): Promise<Float32Array[]> {
+      // distinct deterministic vectors per input (a 1 at a rolling slot)
+      return texts.map((_t, i) => {
+        const v = new Float32Array(DIM);
+        v[i % DIM] = 1;
+        return v;
+      });
+    },
+  };
+}
+function recordingVectors(): { vectors: VectorStore; upserted: VectorRecord[] } {
+  const upserted: VectorRecord[] = [];
+  const vectors: VectorStore = {
+    async upsert(records: VectorRecord[]): Promise<number> {
+      upserted.push(...records);
+      return records.length;
+    },
+    async search() {
+      return [];
+    },
+  };
+  return { vectors, upserted };
+}
+
+describe("factToText", () => {
+  test("derives embeddable text per fact type", () => {
+    expect(factToText({ ...base, fact_type: "FunctionChange", old_name: "getUser", new_name: "fetchUser", change_type: "renamed" })).toBe("function getUser → fetchUser (renamed)");
+    expect(factToText({ ...base, fact_type: "TechDecision", decision_text: "use CF Workers", domain: "deploy" })).toBe("decision: use CF Workers [deploy]");
+    expect(factToText({ ...base, fact_type: "Todo", description: "ship it", status: "open" })).toBe("todo: ship it");
+  });
+});
+
+describe("promoteFactsToVectors", () => {
+  test("encodes fact text (offline) and upserts content-free records (embedding + source_ref)", async () => {
+    const { vectors, upserted } = recordingVectors();
+    const facts: AnyFact[] = [
+      { ...base, id: "fa", fact_type: "TechDecision", decision_text: "use CF Workers", domain: "deploy" },
+      { ...base, id: "fb", fact_type: "Todo", description: "ship it", status: "open" },
+    ];
+    const n = await promoteFactsToVectors(fakeEncoder(), vectors, facts, { orgId: "o1", sessionId: "s1" });
+    expect(n).toBe(2);
+    expect(upserted).toHaveLength(2);
+    expect(upserted[0]!.sourceType).toBe("fact");
+    expect(upserted[0]!.sourceRef).toBe("fa"); // pointer, not content
+    expect(upserted[0]!.embedding).toHaveLength(DIM);
+    expect(upserted[0]!.orgId).toBe("o1");
+    expect((upserted[0] as { content?: unknown }).content).toBeUndefined(); // content-free
+  });
+
+  test("empty facts → 0 (no encode/upsert)", async () => {
+    const { vectors, upserted } = recordingVectors();
+    expect(await promoteFactsToVectors(fakeEncoder(), vectors, [], { orgId: "o1" })).toBe(0);
+    expect(upserted).toHaveLength(0);
   });
 });

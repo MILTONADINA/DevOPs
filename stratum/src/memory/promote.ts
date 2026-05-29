@@ -18,6 +18,8 @@
 
 import type { AnyFact } from "../types/facts";
 import type { KnowledgeGraph, EntityKind, EdgeType } from "./cold/graph";
+import type { VectorStore, VectorSourceType } from "./cold/vectors";
+import type { BiEncoder } from "../pruner/encoder";
 
 /** Graph operations derived from a fact, expressed by entity NAME (resolved on apply). */
 export interface GraphOps {
@@ -100,4 +102,82 @@ export async function promoteFactsToGraph(graph: KnowledgeGraph, facts: AnyFact[
     }
   }
   return { entities, edges };
+}
+
+/**
+ * The embeddable text for a fact — its semantic content, used to build the vector
+ * recall index. This is the typed fact's own text (the same distilled form already
+ * in Tier-2), NOT raw conversation; only its embedding + a pointer are stored.
+ *
+ * @param fact - the fact.
+ * @returns a short text representation for encoding.
+ */
+export function factToText(fact: AnyFact): string {
+  switch (fact.fact_type) {
+    case "FunctionChange":
+      return `function ${fact.old_name}${fact.new_name !== undefined ? ` → ${fact.new_name}` : ""} (${fact.change_type})`;
+    case "TechDecision":
+      return `decision: ${fact.decision_text} [${fact.domain}]`;
+    case "PolicyUpdate":
+      return `policy ${fact.policy_name}: ${fact.new_value}`;
+    case "Todo":
+      return `todo: ${fact.description}`;
+    case "VariableChange":
+      return `variable ${fact.var_name} = ${fact.new_value}`;
+  }
+}
+
+/**
+ * Promote facts into the vector store: encode each fact's text (OFFLINE ONNX
+ * encoder — no API key) and upsert the embedding + a pointer (source_ref = fact id).
+ * CONTENT-FREE per the constitution — only the embedding + pointer are stored, never
+ * the text. This fills the semantic-recall index that /understand-codebase neighbours
+ * and Tier-3 vector search read.
+ *
+ * @param encoder - the bi-encoder (real ONNX runs locally; tests inject a fake).
+ * @param vectors - the target vector store.
+ * @param facts - the validated facts to index.
+ * @param ctx - trusted org/session FKs.
+ * @returns the number of vectors upserted.
+ * @throws {Error} if encoding or the upsert fails.
+ */
+export async function promoteFactsToVectors(encoder: BiEncoder, vectors: VectorStore, facts: AnyFact[], ctx: PromoteContext): Promise<number> {
+  if (facts.length === 0) return 0;
+  const embeddings = await encoder.encode(facts.map(factToText));
+  const records = facts
+    .map((fact, i) => {
+      const emb = embeddings[i];
+      return {
+        orgId: ctx.orgId,
+        sourceType: "fact" as VectorSourceType,
+        sourceRef: fact.id,
+        embedding: emb ? Array.from(emb) : [],
+        ...(ctx.sessionId !== undefined ? { sessionId: ctx.sessionId } : {}),
+      };
+    })
+    .filter((r) => r.embedding.length > 0);
+  return vectors.upsert(records);
+}
+
+/** The promotion targets (any subset; vectors need an encoder too). */
+export interface Promoters {
+  graph?: KnowledgeGraph;
+  vectors?: VectorStore;
+  encoder?: BiEncoder;
+}
+
+/**
+ * Promote facts to whichever Tier-3 stores are provided — the graph (entities/edges)
+ * and/or the vector index. The orchestrator the nightly promote job calls.
+ *
+ * @param p - the available promoters (graph / vectors + encoder).
+ * @param facts - the validated facts.
+ * @param ctx - trusted org/session FKs.
+ * @returns counts of entities, edges, and vectors written.
+ * @throws {Error} if an underlying write fails.
+ */
+export async function promoteFacts(p: Promoters, facts: AnyFact[], ctx: PromoteContext): Promise<{ entities: number; edges: number; vectors: number }> {
+  const graphResult = p.graph ? await promoteFactsToGraph(p.graph, facts, ctx) : { entities: 0, edges: 0 };
+  const vectors = p.vectors && p.encoder ? await promoteFactsToVectors(p.encoder, p.vectors, facts, ctx) : 0;
+  return { entities: graphResult.entities, edges: graphResult.edges, vectors };
 }
