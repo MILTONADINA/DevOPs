@@ -115,6 +115,33 @@ tolerance, but the GATE is too strict/noisy to certify it." The remaining work i
 gate refinement + a larger run + a second benchmark (PB-41 LongMemEval) before a
 ship decision — NOT abandoning the calibration, which is validated as effective.
 
+## Cross-benchmark validation (LongMemEval — PB-41, 2026-05-29)
+
+To check the finding is not LoCoMo-specific (over-fitting), the FREE survival sweep
+was repeated on **LongMemEval** (xiaowu0162, MIT; the second long-horizon benchmark,
+loader `evals/harness/longmemeval.ts`), 20 haystack questions, turn-level gold
+evidence (`has_answer`):
+
+| decay model | LoCoMo evidence survival | LongMemEval evidence survival |
+|---|---|---|
+| abs λ=0.97 (per-hour default) | 1.4% | 38.3% |
+| abs λ=0.999 (per-hour) | 41% | 94.2% |
+| abs λ=1.0 (no decay) | 84.5% | 98.3% |
+| **scale-invariant h=1.00·span** | **92.5%** | **93.3%** |
+| scale-invariant h=0.50·span | 82.7% | 93.3% |
+| scale-invariant h=0.25·span | 62.7% | 86.7% |
+
+**The finding generalizes — and the case for scale-invariance is now stronger than on
+LoCoMo alone:** the documented λ=0.97 collapses evidence survival on BOTH benchmarks
+(1.4% / 38.3%), and crucially **no single ABSOLUTE λ is horizon-robust** — λ=0.999
+gives 41% on LoCoMo but 94% on LongMemEval, because their conversation spans differ.
+Only **scale-invariant h=1.00·span is consistent across both (~93%)**, because it
+adapts the half-life to each conversation's own duration. That is exactly what a
+tier-aware long-term-memory recall path needs, and it is not an artifact of one
+dataset's horizon. (This is the FREE deterministic survival signal; the judged
+Faithfulness/Relevancy on LongMemEval + a larger noise-damped sample, PB-42, remain
+for the ship decision.)
+
 ## Consequences
 
 - Pruning stays out of the request path (ADR-0014 unchanged); this adds a
