@@ -26,10 +26,20 @@ export type EntityKind = "Function" | "Commit" | "Decision" | "Developer" | "Pol
  * the correct English "SUPERSEDES", consistent with `tech_decisions.supersedes_id`
  * + ADR-0011 (see ADR-0013).
  *
- * DIRECTION (standard; see migration 20260529140000): an edge points
- * `from_entity --EDGE--> to_entity`. For **SUPERSEDES**, `from` is the SUPERSEDING
- * (newer/current) entity and `to` is the SUPERSEDED (stale) one — i.e.
- * "`from` supersedes `to`". `findSuperseded` returns the `to` side as `superseded`.
+ * DIRECTION — read each edge as the English sentence "`from` EDGE `to`". The
+ * subject (`from`) is named by the edge type; directions are NOT uniform across
+ * edge types, so they are pinned here to avoid ambiguity:
+ *   • SUPERSEDES   — "from supersedes to": from = SUPERSEDING (new), to = SUPERSEDED
+ *                    (stale). `findSuperseded` returns the `to` side as `superseded`.
+ *                    (see migration 20260529140000.)
+ *   • DEPRECATED_BY — "from is deprecated by to": from = the DEPRECATED entity,
+ *                    to = the DEPRECATOR. So an entity's deprecators are its
+ *                    OUTGOING DEPRECATED_BY edges (what `understandEntity` reads).
+ *   • REFERENCED_IN — "from is referenced in to": from = the referenced entity,
+ *                    to = the referencing site. An entity's referrers are its
+ *                    INCOMING REFERENCED_IN edges.
+ *   • AUTHORED_BY   — "from is authored by to": from = artifact, to = developer.
+ *   • APPLIES_TO    — "from applies to to": from = policy, to = target.
  */
 export type EdgeType = "SUPERSEDES" | "DEPRECATED_BY" | "REFERENCED_IN" | "AUTHORED_BY" | "APPLIES_TO";
 
@@ -129,6 +139,7 @@ export function createKnowledgeGraph(client: SupabaseClient): KnowledgeGraph {
       const existing = await client
         .from("knowledge_edges")
         .select("id")
+        .eq("org_id", input.orgId) // org-scope the existence check (no cross-tenant read)
         .eq("from_entity", input.fromEntity)
         .eq("to_entity", input.toEntity)
         .eq("edge_type", input.edgeType)

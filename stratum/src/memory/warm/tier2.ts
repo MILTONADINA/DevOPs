@@ -119,13 +119,15 @@ export interface WarmMemory {
   /**
    * Mark facts promoted (`promoted_to_t3 = true`) after Tier-3 promotion — NEVER
    * deletes (the append-only audit trail per CLAUDE.md). Routed to each fact's table
-   * by fact_type + id.
+   * by fact_type + id, and SCOPED to `orgId` so a stray id from another org can
+   * never be marked (cross-tenant safety; the service-role key bypasses RLS).
    *
    * @param facts - the facts to mark.
+   * @param orgId - the trusted owning organization (rows are matched on id AND org_id).
    * @returns the number of rows marked.
    * @throws {Error} if an update fails.
    */
-  markPromoted(facts: AnyFact[]): Promise<number>;
+  markPromoted(facts: AnyFact[], orgId: string): Promise<number>;
 }
 
 /**
@@ -196,9 +198,12 @@ export function createWarmMemory(client: SupabaseClient): WarmMemory {
   return {
     async persist(facts: AnyFact[], ctx: PersistContext): Promise<PersistResult> {
       // Re-validate (defense in depth) and group surviving rows by table so each
-      // table is one batch insert. All rows in a batch share the trusted FKs, so
+      // table is one batch upsert. All rows in a batch share the trusted FKs, so
       // a batch failure is systemic (bad FK / connection) and applies to the
-      // whole group — making per-table error attribution accurate.
+      // whole group — making per-table error attribution accurate. We UPSERT on the
+      // primary key (id, minted by the extractor) rather than insert, so a retry
+      // after a transient failure (see MemoryManager.drain) is idempotent — it
+      // cannot create duplicate fact rows.
       const byTable = new Map<string, Record<string, unknown>[]>();
       let skipped = 0;
       for (const fact of facts) {
@@ -215,7 +220,7 @@ export function createWarmMemory(client: SupabaseClient): WarmMemory {
       let persisted = 0;
       const errors: { table: string; message: string }[] = [];
       for (const [table, rows] of byTable) {
-        const { error } = await client.from(table).insert(rows);
+        const { error } = await client.from(table).upsert(rows, { onConflict: "id" });
         if (error) errors.push({ table, message: error.message });
         else persisted += rows.length;
       }
@@ -279,11 +284,11 @@ export function createWarmMemory(client: SupabaseClient): WarmMemory {
       return facts.slice(0, limit);
     },
 
-    async markPromoted(facts: AnyFact[]): Promise<number> {
+    async markPromoted(facts: AnyFact[], orgId: string): Promise<number> {
       let marked = 0;
       for (const fact of facts) {
         const table = tableForFactType(fact.fact_type);
-        const { error } = await client.from(table).update({ promoted_to_t3: true }).eq("id", fact.id);
+        const { error } = await client.from(table).update({ promoted_to_t3: true }).eq("id", fact.id).eq("org_id", orgId);
         if (error) throw new Error(`markPromoted failed (${table}/${fact.id}): ${error.message}`);
         marked++;
       }

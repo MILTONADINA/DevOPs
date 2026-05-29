@@ -5,7 +5,6 @@
 // scripts/verify-tier2.ts (gated on SUPABASE_SERVICE_KEY).
 
 import { describe, test, expect } from "vitest";
-import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   FACT_TABLES,
   TABLE_FACT_TYPES,
@@ -14,6 +13,7 @@ import {
   rowToFact,
   createWarmMemory,
 } from "../../src/memory/warm/tier2";
+import { makeFakeSupabase } from "./fake-supabase";
 import type { AnyFact, TechDecisionFact, FunctionChangeFact, TodoFact } from "../../src/types/facts";
 
 const base = { id: "11111111-1111-1111-1111-111111111111", created_at: "2026-05-29T00:00:00Z", session_id: "logical-session", confidence: 0.9, is_verified: false, is_suppressed: false } as const;
@@ -82,82 +82,52 @@ describe("rowToFact (read projection)", () => {
   });
 });
 
-// ── Fake Supabase client (chainable, no `this`) ────────────────────────────────
-function makeFakeClient(
-  store: Record<string, Record<string, unknown>[]> = {},
-  faults: { insertError?: Set<string>; selectError?: Set<string> } = {},
-): { client: SupabaseClient; inserted: Record<string, Record<string, unknown>[]> } {
-  const inserted: Record<string, Record<string, unknown>[]> = {};
-  const client = {
-    from(table: string) {
-      return {
-        insert(rows: Record<string, unknown>[]) {
-          inserted[table] = [...(inserted[table] ?? []), ...rows];
-          return Promise.resolve({ data: null, error: faults.insertError?.has(table) ? { message: `insert failed: ${table}` } : null });
-        },
-        select(_cols: string) {
-          const filters: Record<string, unknown> = {};
-          const builder = {
-            eq(col: string, val: unknown) {
-              filters[col] = val;
-              return builder;
-            },
-            order(_c: string, _o: unknown) {
-              return builder;
-            },
-            limit(n: number) {
-              if (faults.selectError?.has(table)) return Promise.resolve({ data: null, error: { message: `select failed: ${table}` } });
-              let rows = store[table] ?? [];
-              for (const [c, v] of Object.entries(filters)) rows = rows.filter((r) => r[c] === v);
-              return Promise.resolve({ data: rows.slice(0, n), error: null });
-            },
-          };
-          return builder;
-        },
-      };
-    },
-  };
-  return { client: client as unknown as SupabaseClient, inserted };
-}
-
 describe("createWarmMemory.persist (fake client)", () => {
-  test("groups by table, batch-inserts, counts persisted; trusted FKs applied", async () => {
-    const { client, inserted } = makeFakeClient();
+  test("groups by table, upserts, counts persisted; trusted FKs applied", async () => {
+    const { client, store } = makeFakeSupabase();
     const wm = createWarmMemory(client);
     const result = await wm.persist([td, fc], ctx);
     expect(result.persisted).toBe(2);
     expect(result.skipped).toBe(0);
     expect(result.errors).toEqual([]);
-    expect(inserted["tech_decisions"]).toHaveLength(1);
-    expect(inserted["function_changes"]).toHaveLength(1);
-    expect(inserted["tech_decisions"]![0]!["org_id"]).toBe("org-uuid");
-    expect(inserted["tech_decisions"]![0]!["session_id"]).toBe("real-session-uuid");
+    expect(store["tech_decisions"]).toHaveLength(1);
+    expect(store["function_changes"]).toHaveLength(1);
+    expect(store["tech_decisions"]![0]!["org_id"]).toBe("org-uuid");
+    expect(store["tech_decisions"]![0]!["session_id"]).toBe("real-session-uuid");
+  });
+
+  test("upsert is idempotent on id — re-persisting the same fact does NOT duplicate (drain-retry safety)", async () => {
+    const { client, store } = makeFakeSupabase();
+    const wm = createWarmMemory(client);
+    await wm.persist([td], ctx);
+    await wm.persist([td], ctx); // retry with the same fact id
+    expect(store["tech_decisions"]).toHaveLength(1); // upsert on id, not a second row
   });
 
   test("FAIL-CLOSED: invalid facts are skipped, not written", async () => {
-    const { client, inserted } = makeFakeClient();
+    const { client, store } = makeFakeSupabase();
     const wm = createWarmMemory(client);
     const bad = { ...td, confidence: 1.5 } as AnyFact; // out of [0,1]
     const result = await wm.persist([td, bad], ctx);
     expect(result.persisted).toBe(1);
     expect(result.skipped).toBe(1);
-    expect(inserted["tech_decisions"]).toHaveLength(1); // only the valid one
+    expect(store["tech_decisions"]).toHaveLength(1); // only the valid one
   });
 
-  test("records a per-table error when an insert fails (other tables still persist)", async () => {
-    const { client } = makeFakeClient({}, { insertError: new Set(["tech_decisions"]) });
+  test("records a per-table error when a write fails (other tables still persist)", async () => {
+    const { client } = makeFakeSupabase({}, { insertError: new Set(["tech_decisions"]) });
     const wm = createWarmMemory(client);
     const result = await wm.persist([td, fc], ctx);
     expect(result.persisted).toBe(1); // function_changes succeeded
-    expect(result.errors).toEqual([{ table: "tech_decisions", message: "insert failed: tech_decisions" }]);
+    expect(result.errors).toEqual([{ table: "tech_decisions", message: "upsert failed: tech_decisions" }]);
   });
 
   test("empty input → nothing written", async () => {
-    const { client, inserted } = makeFakeClient();
+    const { client, store } = makeFakeSupabase();
     const wm = createWarmMemory(client);
     const result = await wm.persist([], ctx);
     expect(result).toEqual({ persisted: 0, skipped: 0, errors: [] });
-    expect(Object.keys(inserted)).toHaveLength(0);
+    expect(Object.keys(store)).toHaveLength(0);
   });
 });
 
@@ -165,12 +135,14 @@ describe("createWarmMemory.queryRecent (fake client)", () => {
   const rowOf = (overrides: Record<string, unknown>) => ({ id: "11111111-1111-1111-1111-111111111111", created_at: "2026-05-29T00:00:00Z", org_id: "org-uuid", session_id: "s1", confidence: 0.8, is_verified: false, is_suppressed: false, promoted_to_t3: false, ...overrides });
 
   test("merges across tables, newest-first, caps at limit", async () => {
-    const store = {
+    // Tables iterate function_changes→tech_decisions→…→todos; if the newest-first
+    // sort were dropped the merge would NOT put the 05-28 Todo first — so this
+    // assertion is sensitive to the ordering (the fake's order() now sorts faithfully).
+    const { client } = makeFakeSupabase({
       tech_decisions: [rowOf({ created_at: "2026-05-20T00:00:00Z", decision_text: "old", domain: "d" })],
       todos: [rowOf({ created_at: "2026-05-28T00:00:00Z", description: "newest", status: "open" })],
       function_changes: [rowOf({ created_at: "2026-05-25T00:00:00Z", old_name: "g", change_type: "deprecated" })],
-    };
-    const { client } = makeFakeClient(store);
+    });
     const wm = createWarmMemory(client);
     const facts = await wm.queryRecent("org-uuid", { limit: 2 });
     expect(facts).toHaveLength(2);
@@ -180,10 +152,9 @@ describe("createWarmMemory.queryRecent (fake client)", () => {
   });
 
   test("filters by sessionId when provided", async () => {
-    const store = {
-      todos: [rowOf({ session_id: "s1", description: "mine", status: "open" }), rowOf({ session_id: "s2", description: "other", status: "open" })],
-    };
-    const { client } = makeFakeClient(store);
+    const { client } = makeFakeSupabase({
+      todos: [rowOf({ id: "id-a", session_id: "s1", description: "mine", status: "open" }), rowOf({ id: "id-b", session_id: "s2", description: "other", status: "open" })],
+    });
     const wm = createWarmMemory(client);
     const facts = await wm.queryRecent("org-uuid", { sessionId: "s1" });
     expect(facts).toHaveLength(1);
@@ -191,7 +162,7 @@ describe("createWarmMemory.queryRecent (fake client)", () => {
   });
 
   test("throws when a table read fails (no silent partial)", async () => {
-    const { client } = makeFakeClient({}, { selectError: new Set(["todos"]) });
+    const { client } = makeFakeSupabase({}, { selectError: new Set(["todos"]) });
     const wm = createWarmMemory(client);
     await expect(wm.queryRecent("org-uuid")).rejects.toThrow(/queryRecent failed.*todos/);
   });

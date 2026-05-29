@@ -24,11 +24,14 @@ const td = (overrides: Record<string, unknown>): Record<string, unknown> => ({
 
 describe("Tier-2 promotion lifecycle", () => {
   test("queryUnpromoted returns only promoted_to_t3=false facts, oldest-first", async () => {
+    // Seed in REVERSE chronological insertion order so the oldest-first assertion is
+    // sensitive to the actual ordering (the fake's order() sorts faithfully now): if
+    // the sort were dropped, the output would be [new, old], failing this test.
     const { client } = makeFakeSupabase({
       tech_decisions: [
-        td({ id: "old-unpromoted", created_at: "2026-05-01T00:00:00Z", decision_text: "old" }),
-        td({ id: "already-promoted", created_at: "2026-05-02T00:00:00Z", decision_text: "done", promoted_to_t3: true }),
         td({ id: "new-unpromoted", created_at: "2026-05-03T00:00:00Z", decision_text: "new" }),
+        td({ id: "already-promoted", created_at: "2026-05-02T00:00:00Z", decision_text: "done", promoted_to_t3: true }),
+        td({ id: "old-unpromoted", created_at: "2026-05-01T00:00:00Z", decision_text: "old" }),
       ],
     });
     const wm = createWarmMemory(client);
@@ -36,14 +39,21 @@ describe("Tier-2 promotion lifecycle", () => {
     expect(facts.map((f) => f.id)).toEqual(["old-unpromoted", "new-unpromoted"]); // promoted excluded; oldest-first
   });
 
-  test("markPromoted sets promoted_to_t3=true on each fact's table row (by fact_type→table + id)", async () => {
-    const { client, store } = makeFakeSupabase({ tech_decisions: [td({ id: "t1", promoted_to_t3: false })] });
+  test("markPromoted sets promoted_to_t3=true on the matching org's row only (by fact_type→table + id + org)", async () => {
+    const { client, store } = makeFakeSupabase({
+      tech_decisions: [
+        td({ id: "t1", org_id: "o1", promoted_to_t3: false }),
+        td({ id: "t1-other-org", org_id: "o2", promoted_to_t3: false }), // same-ish id, different org
+      ],
+    });
     const wm = createWarmMemory(client);
     const facts: AnyFact[] = [
       { id: "t1", created_at: "2026-05-01T00:00:00Z", session_id: "s1", confidence: 0.9, is_verified: false, is_suppressed: false, fact_type: "TechDecision", decision_text: "d", domain: "db" },
     ];
-    expect(await wm.markPromoted(facts)).toBe(1);
-    expect(store["tech_decisions"]![0]!["promoted_to_t3"]).toBe(true);
+    expect(await wm.markPromoted(facts, "o1")).toBe(1);
+    const rows = store["tech_decisions"]!;
+    expect(rows.find((r) => r["id"] === "t1")!["promoted_to_t3"]).toBe(true); // o1 row marked
+    expect(rows.find((r) => r["id"] === "t1-other-org")!["promoted_to_t3"]).toBe(false); // o2 row untouched (org-scoped)
   });
 
   test("queryUnpromoted throws (no silent partial) when a table read fails", async () => {

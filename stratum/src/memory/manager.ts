@@ -95,10 +95,23 @@ export function createMemoryManager(deps: MemoryManagerDeps): MemoryManager {
 
   async function drain(): Promise<void> {
     if (evictedBuffer.length === 0) return;
-    const turns = evictedBuffer.splice(0, evictedBuffer.length); // take + clear atomically
-    const facts = await deps.extractor.extract({ session_id: deps.context.sessionId, turns });
-    if (facts.length > 0) {
-      await deps.warm.persist(facts, { orgId: deps.context.orgId, sessionId: deps.context.sessionId });
+    const turns = evictedBuffer.splice(0, evictedBuffer.length); // take the batch
+    let facts: AnyFact[];
+    try {
+      facts = await deps.extractor.extract({ session_id: deps.context.sessionId, turns });
+    } catch (err) {
+      evictedBuffer.unshift(...turns); // extraction failed → re-queue; never lose evicted turns
+      throw err;
+    }
+    if (facts.length === 0) return;
+    // persist() does NOT throw — it returns per-table errors. If any table failed,
+    // the facts are NOT durably stored, so re-queue the turns for the next drain
+    // (rather than silently dropping them) and fail loud. persist upserts on id, so
+    // a retry that re-persists already-stored facts is idempotent (no duplicates).
+    const result = await deps.warm.persist(facts, { orgId: deps.context.orgId, sessionId: deps.context.sessionId });
+    if (result.errors.length > 0) {
+      evictedBuffer.unshift(...turns);
+      throw new Error(`MemoryManager.drain: warm persist failed, turns re-queued: ${result.errors.map((e) => `${e.table}: ${e.message}`).join("; ")}`);
     }
   }
 
