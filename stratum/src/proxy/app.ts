@@ -12,6 +12,8 @@ import Fastify, { type FastifyInstance } from "fastify";
 import cors from "@fastify/cors";
 import { logger } from "../lib/logger";
 import { healthRoute } from "./routes/health";
+import { makeMessagesRoute } from "./routes/messages";
+import type { MessagesDeps } from "./forward";
 
 export interface BuildProxyOptions {
   /**
@@ -19,6 +21,13 @@ export interface BuildProxyOptions {
    * the injected app minimal.
    */
   cors?: boolean;
+  /**
+   * Dependencies for POST /v1/messages (forward + token-count + capture). When
+   * omitted, the route is NOT registered (health-only mode — used by health
+   * tests and any deploy that wires deps separately). The entry point supplies
+   * the production deps via createDefaultMessagesDeps().
+   */
+  messages?: MessagesDeps;
 }
 
 /**
@@ -36,7 +45,10 @@ export function buildProxy(opts: BuildProxyOptions = {}): FastifyInstance {
   }
 
   void app.register(healthRoute);
-  // POST /v1/messages is registered in the next §2d increment.
+
+  if (opts.messages) {
+    void app.register(makeMessagesRoute(opts.messages));
+  }
 
   app.setErrorHandler((err, _req, reply) => {
     const e = err as Error;

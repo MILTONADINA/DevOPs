@@ -1,0 +1,151 @@
+/**
+ * Anthropic forwarding + exact token counting for the Phase 1 proxy.
+ *
+ * Phase 1 forwards requests UNCHANGED to the upstream Anthropic Messages API
+ * over the same axios transport the capture script proved, and counts tokens
+ * with the SDK's exact countTokens endpoint (NEVER tiktoken, never silently
+ * estimated — the billing model depends on provable counts). The base URL is
+ * env-configurable (Q4) with fail-fast validation.
+ *
+ * Everything here is exported as small functions + a default-deps factory so
+ * the route (routes/messages.ts) can take injectable deps and be tested
+ * hermetically (no real network/SDK) via app.inject().
+ */
+
+import axios from "axios";
+import { getAnthropicClient } from "../lib/anthropic";
+import { createCaptureStore, type CaptureStore } from "./capture";
+import type Anthropic from "@anthropic-ai/sdk";
+import { randomUUID } from "node:crypto";
+import path from "node:path";
+
+/** Anthropic-compatible request body the proxy forwards. */
+export interface MessagesBody {
+  model: string;
+  messages: { role: string; content: unknown }[];
+  system?: unknown;
+  tools?: unknown[];
+  max_tokens: number;
+}
+
+export interface ForwardResult {
+  status: number;
+  data: unknown;
+}
+
+export interface TokenCountResult {
+  input_tokens: number;
+  /** "exact" (SDK countTokens) or "estimated" (fallback). Never silently exact. */
+  token_count_method: "exact" | "estimated";
+  message_breakdown: { role: string; token_count: number }[];
+}
+
+/** Deps the /v1/messages route needs — injectable so tests avoid real network. */
+export interface MessagesDeps {
+  forward: (body: MessagesBody, apiKey: string) => Promise<ForwardResult>;
+  countTokens: (body: MessagesBody) => Promise<TokenCountResult>;
+  capture: CaptureStore;
+  apiKey: string;
+}
+
+/**
+ * Resolve + validate the upstream base URL (Q4). Env-var primary, safe default,
+ * http(s)-only. Throws on an invalid value (the entry point turns this into a
+ * fail-fast exit; a thrown error keeps this module testable).
+ *
+ * @param raw - the candidate base URL (defaults to process.env.ANTHROPIC_BASE_URL).
+ * @returns the validated base URL with any trailing slashes stripped.
+ * @throws {Error} if the URL is unparseable or not http(s).
+ */
+export function resolveAnthropicBaseUrl(
+  raw: string = process.env["ANTHROPIC_BASE_URL"] ?? "https://api.anthropic.com",
+): string {
+  let parsed: URL;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    throw new Error(`ANTHROPIC_BASE_URL is not a parseable URL: ${raw}`);
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new Error(
+      `ANTHROPIC_BASE_URL must use http:// or https://; got: ${parsed.protocol} (${raw})`,
+    );
+  }
+  return raw.replace(/\/+$/, "");
+}
+
+/**
+ * Forward a request to the upstream Anthropic Messages API (unchanged).
+ *
+ * @param body - the Anthropic request body.
+ * @param apiKey - the Anthropic API key.
+ * @param baseUrl - resolved upstream base URL.
+ * @returns the upstream status + response data.
+ * @throws re-throws non-HTTP (network) errors for the caller to surface as 500.
+ */
+export async function forwardToAnthropic(
+  body: MessagesBody,
+  apiKey: string,
+  baseUrl: string = resolveAnthropicBaseUrl(),
+): Promise<ForwardResult> {
+  const res = await axios.post(`${baseUrl}/v1/messages`, body, {
+    headers: {
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+      "content-type": "application/json",
+    },
+    // Let the caller see 4xx/5xx bodies rather than throwing on them.
+    validateStatus: () => true,
+  });
+  return { status: res.status, data: res.data };
+}
+
+/**
+ * Exact token count via the Anthropic SDK. On failure, returns an honestly
+ * flagged estimate (input_tokens 0, method "estimated") rather than throwing —
+ * the hardened cache + tokenizer fallback lands in a later §2d increment.
+ *
+ * @param body - the Anthropic request body.
+ * @param client - the Anthropic SDK client.
+ * @returns the input token count + per-message breakdown + method flag.
+ */
+export async function countTokensExact(
+  body: MessagesBody,
+  client: Anthropic,
+): Promise<TokenCountResult> {
+  const result = await client.messages.countTokens({
+    model: body.model,
+    messages: body.messages as Anthropic.MessageParam[],
+    ...(body.system !== undefined ? { system: body.system as string } : {}),
+    ...(body.tools !== undefined ? { tools: body.tools as Anthropic.Tool[] } : {}),
+  });
+  return {
+    input_tokens: result.input_tokens,
+    token_count_method: "exact",
+    message_breakdown: [],
+  };
+}
+
+/**
+ * Build the real (production) message-route deps: axios forward + SDK token
+ * counter + a disk-backed capture store. Called by the entry point at start().
+ *
+ * @returns wired {@link MessagesDeps}.
+ * @throws {Error} if ANTHROPIC_API_KEY is unset or ANTHROPIC_BASE_URL invalid.
+ */
+export function createDefaultMessagesDeps(): MessagesDeps {
+  const apiKey = process.env["ANTHROPIC_API_KEY"];
+  if (!apiKey) throw new Error("ANTHROPIC_API_KEY must be set in environment");
+  const baseUrl = resolveAnthropicBaseUrl();
+  const client = getAnthropicClient();
+
+  const sessionId = randomUUID();
+  const outputFile = path.join(process.cwd(), "data", "sessions", `session-${sessionId}.json`);
+
+  return {
+    apiKey,
+    forward: (body, key) => forwardToAnthropic(body, key, baseUrl),
+    countTokens: (body) => countTokensExact(body, client),
+    capture: createCaptureStore({ sessionId, outputFile }),
+  };
+}

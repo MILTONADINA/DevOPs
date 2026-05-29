@@ -13,6 +13,7 @@
 import dotenv from "dotenv";
 import { logger } from "../lib/logger";
 import { buildProxy } from "./app";
+import { createDefaultMessagesDeps } from "./forward";
 
 dotenv.config();
 
@@ -23,7 +24,7 @@ dotenv.config();
  */
 export async function start(): Promise<void> {
   const port = parseInt(process.env["PORT"] ?? "4080", 10);
-  const app = buildProxy();
+  const app = buildProxy({ messages: createDefaultMessagesDeps() });
 
   let draining = false;
   const shutdown = async (signal: string): Promise<void> => {
