@@ -60,20 +60,29 @@ unambiguous FAIL); a numeric floor is a v0.4.x calibration item tracked with the
 
 Used to validate that our implementation of KadaneDial is correct and that the CQ-Extended variant does not regress vs. base DyCP.
 
-| Dataset | Description | Turns | Focus |
+| Dataset | Description | Turns | Fits the pruning evidence-survival gate? |
 |---|---|---|---|
-| LoCoMo | Long conversation memory | 100+ turns | Fact recall |
-| MT-Bench+ | Multi-turn reasoning | 80+ turns | Reasoning coherence |
-| SCM4LLMs | Structured conversation memory | 60+ turns | Entity tracking |
+| **LoCoMo** | Long-term conversational memory; multi-session, timestamped, gold `evidence` dia-ids | 369–689 turns over 19–32 sessions / **weeks** | ✅ **YES** — long horizon + gold evidence anchors. Integrated + run. |
+| ~~MT-Bench+ / MT-Bench-101~~ | Multi-turn response-QUALITY benchmark (13 tasks, subjective judging) | **≤7 turns, single session, no timestamps** | ❌ NO — too short to stress long-horizon memory; no gold evidence to measure survival against. (Apache-2.0; mtbench101/mt-bench-101.) |
+| ~~SCM4LLMs~~ | A self-controlled-memory **FRAMEWORK codebase**, not a dataset | n/a | ❌ NO — ships **no eval dataset** (the authors state one doesn't exist; "validated solely through manual verification"). |
 
-These are fixed datasets from the paper. Do not modify them. If results diverge from the paper's reported numbers, investigate the implementation, not the dataset.
+**Tier-A triage (2026-05-29):** the blueprint's original Tier-A list was inaccurate
+— verified by inspecting each repo (Session 18). Only **LoCoMo** is a long-horizon,
+evidence-anchored conversational-memory benchmark; the other two named sources do
+not fit (above). The correct PEERS for breadth (to avoid over-fitting calibration to
+one benchmark) are other long-horizon memory benchmarks with gold evidence —
+**LongMemEval** (xiaowu0162/LongMemEval; 500 Qs over long histories, evidence-marked
+sessions; the recommended second benchmark) and **MSC / Multi-Session Chat**. Tracked
+as PB-41. Do not modify a fetched dataset; if results diverge from a paper's numbers,
+investigate the implementation, not the data.
 
 **Status (2026-05-29):** LoCoMo is integrated + RUN — `npm run eval:locomo`
 (loader `evals/harness/locomo.ts`, sampled + cost-bounded; data CC-BY-NC,
 gitignored, not redistributed). Result at the documented λ=0.97: **RED** —
 1.4% evidence survival, 92% context reduction; the λ sweep shows λ=1.0 recovers
 84% evidence at 47% reduction. Pruning stays OUT of the request path. Full
-analysis: **ADR-0014**. MT-Bench+ / SCM4LLMs loaders are still pending.
+analysis: **ADR-0014**. The second-benchmark loader (LongMemEval/MSC, per the
+Tier-A triage above — NOT MT-Bench+/SCM4LLMs, which don't fit) is pending (PB-41).
 
 ### Tier B — CQ Developer Workload Dataset
 
