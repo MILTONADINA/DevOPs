@@ -28,6 +28,13 @@ A pruning run that removes too much leaves the AI with insufficient information 
 **Tool:** DeepEval `AnswerRelevancyMetric`
 **Threshold:** Score > 0.88 (degradation vs. full-context baseline < 5%)
 
+**Gating semantics (ADR-0016, 2026-05-29):** the gate is **degradation-dominant** —
+a metric fails on `(baseline − pruned) ≥ 5%`, OR when pruning drops a *floor-clearing*
+baseline below the floor. When BOTH pruned and baseline are sub-floor, the floor miss
+is an answerer/judge ceiling (a hard question), recorded as a diagnostic, NOT a pruning
+fail. This matches the constitution's stated criterion (degradation) and stops the gate
+mis-attributing task-difficulty to pruning.
+
 ### 3. Evidence Survival (co-gate for long-horizon datasets) — ADDED 2026-05-29
 
 > Of the turns the dataset pins as containing the answer (gold `evidence`), what

@@ -103,9 +103,12 @@ export function renderReport(result: SuiteResult, verdict: SuiteVerdict): string
     for (const s of inTier) {
       const mark = s.passed ? "✓" : "✗";
       const flag = s.passed ? "" : "  ← BELOW THRESHOLD";
+      // Diagnostic (ADR-0016): a sub-floor baseline is an answerer/judge ceiling,
+      // not a pruning pass/fail — flag it so it is never read as a clean result.
+      const diag = s.faithfulness.baselineBelowFloor || s.answerRelevancy.baselineBelowFloor ? "  [baseline<floor: answerer/judge ceiling]" : "";
       lines.push(
         `  ${s.name.padEnd(width)}  Faithfulness: ${fmt(s.faithfulness.prunedScore)}  ` +
-          `AnswerRelevancy: ${fmt(s.answerRelevancy.prunedScore)}  ${mark}${flag}`,
+          `AnswerRelevancy: ${fmt(s.answerRelevancy.prunedScore)}  ${mark}${flag}${diag}`,
       );
     }
   }

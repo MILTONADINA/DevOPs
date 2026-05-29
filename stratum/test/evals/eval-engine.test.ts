@@ -45,6 +45,44 @@ describe("gateMetric", () => {
     const v = gateMetric("answerRelevancy", answerRelevancyMin, answerRelevancyMin, answerRelevancyMin, maxDegradation);
     expect(v.passed).toBe(true);
   });
+
+  // ADR-0016 degradation-dominant attribution — cases use the ACTUAL scores
+  // observed in the calibrated LoCoMo run, to prove the gate attributes
+  // floor failures to pruning correctly (and not to baseline-quality ceilings).
+  describe("degradation-dominant attribution (ADR-0016)", () => {
+    test("baseline ALSO below floor + zero degradation → PASS (not pruning's fault) + diagnostic", () => {
+      // conv-26#2: faith 0.85 pruned / 0.85 baseline — equal, both < 0.90.
+      const v = gateMetric("faithfulness", 0.85, 0.85, faithfulnessMin, maxDegradation);
+      expect(v.passed).toBe(true);
+      expect(v.baselineBelowFloor).toBe(true);
+      expect(v.reason).toBeUndefined();
+    });
+
+    test("baseline below floor BUT pruning degraded it further → FAIL on degradation", () => {
+      // conv-26#5: faith 0.50 pruned / 0.70 baseline — both < 0.90, but Δ=0.20 ≥ 0.05.
+      const v = gateMetric("faithfulness", 0.5, 0.7, faithfulnessMin, maxDegradation);
+      expect(v.passed).toBe(false);
+      expect(v.baselineBelowFloor).toBe(true);
+      expect(v.reason).toMatch(/degradation/);
+      expect(v.reason).not.toMatch(/dropped below floor/); // floor miss is NOT attributed to pruning
+    });
+
+    test("pruning dropped a floor-clearing baseline below the floor → FAIL (attributed to pruning)", () => {
+      // conv-30#9: faith 0.85 pruned / 0.95 baseline — baseline cleared 0.90, pruned didn't.
+      const v = gateMetric("faithfulness", 0.85, 0.95, faithfulnessMin, maxDegradation);
+      expect(v.passed).toBe(false);
+      expect(v.baselineBelowFloor).toBeUndefined();
+      expect(v.reason).toMatch(/dropped below floor/);
+    });
+
+    test("large real degradation still fails (gate is not weakened)", () => {
+      // conv-41#12: faith 0.50 pruned / 1.00 baseline — Δ=0.50.
+      const v = gateMetric("faithfulness", 0.5, 1.0, faithfulnessMin, maxDegradation);
+      expect(v.passed).toBe(false);
+      expect(v.reason).toMatch(/degradation/);
+      expect(v.reason).toMatch(/dropped below floor/); // baseline cleared, pruned didn't → also attributed
+    });
+  });
 });
 
 describe("gateScenario", () => {
