@@ -21,6 +21,7 @@
     "import-sessions": "tsx scripts/import-sessions.ts",
     "analyze-waste": "tsx scripts/analyze-waste.ts",
     "verify-encoder": "tsx scripts/verify-encoder.ts",
+    "verify-tier2": "tsx scripts/verify-tier2.ts",
     "eval:dev": "tsx scripts/eval-dev.ts",
     "eval:tierb": "tsx scripts/eval-tierb.ts",
     "shadow-prune": "tsx scripts/shadow-prune.ts",
