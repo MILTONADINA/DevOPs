@@ -6,9 +6,10 @@
 
 import { describe, test, expect } from "vitest";
 import { createMemoryManager } from "../../src/memory/manager";
-import { createWarmMemory } from "../../src/memory/warm/tier2";
+import { createWarmMemory, type WarmMemory } from "../../src/memory/warm/tier2";
 import { createFactExtractor, type FactCompletion } from "../../src/memory/warm/extractor";
 import { makeFakeSupabase } from "./fake-supabase";
+import type { AnyFact } from "../../src/types/facts";
 
 describe("MemoryManager — fact survives 50 turns", () => {
   test("a decision evicted from hot memory is recalled from warm 50 turns later", async () => {
@@ -84,5 +85,45 @@ describe("MemoryManager — fact survives 50 turns", () => {
     clockMs = 2_000_000;
     await manager.flush();
     expect((store["tech_decisions"] ?? []).length).toBe(1);
+  });
+
+  test("drain FAILS LOUD + re-queues (no fact loss) on persist error; retry succeeds", async () => {
+    // A WarmMemory whose persist FAILS the first time, succeeds the second — proves
+    // the evicted turn is NOT dropped (the pre-fix bug) but re-queued for retry.
+    let persistCalls = 0;
+    const persisted: AnyFact[] = [];
+    const warm: WarmMemory = {
+      async persist(facts) {
+        persistCalls++;
+        if (persistCalls === 1) return { persisted: 0, skipped: 0, errors: [{ table: "tech_decisions", message: "transient" }] };
+        persisted.push(...facts);
+        return { persisted: facts.length, skipped: 0, errors: [] };
+      },
+      async queryRecent() {
+        return [];
+      },
+      async queryUnpromoted() {
+        return [];
+      },
+      async markPromoted() {
+        return 0;
+      },
+    };
+    const extractor = createFactExtractor(
+      { complete: (p: string) => Promise.resolve(p.includes("RS256") ? '[{"fact_type":"TechDecision","decision_text":"use RS256","domain":"auth","confidence":0.9}]' : "[]") },
+      { now: () => "2026-05-29T00:00:00Z", mintId: () => "dddddddd-dddd-dddd-dddd-dddddddddddd" },
+    );
+    let clockMs = 0;
+    const manager = createMemoryManager({ extractor, warm, context: { orgId: "o", sessionId: "s" }, hotOptions: { windowMs: 1000, now: () => clockMs } });
+
+    await manager.ingest({ role: "user", content: "Decision: use RS256.", timestamp: 0 });
+    clockMs = 5000; // ages turn 0 out of the 1s window
+    await expect(manager.flush()).rejects.toThrow(/persist failed/i); // FAIL-LOUD, not silent loss
+    expect(persisted).toHaveLength(0); // nothing durably stored on the failed attempt
+
+    // The evicted turn was RE-QUEUED, not lost: the retry drain now succeeds.
+    await manager.flush();
+    expect(persisted).toHaveLength(1);
+    expect((persisted[0] as { decision_text?: string }).decision_text).toContain("RS256");
   });
 });

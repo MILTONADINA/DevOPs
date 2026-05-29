@@ -39,11 +39,13 @@ describe("Tier-2 promotion lifecycle", () => {
     expect(facts.map((f) => f.id)).toEqual(["old-unpromoted", "new-unpromoted"]); // promoted excluded; oldest-first
   });
 
-  test("markPromoted sets promoted_to_t3=true on the matching org's row only (by fact_type→table + id + org)", async () => {
+  test("markPromoted is org-scoped: a colliding id in ANOTHER org is NOT marked", async () => {
+    // Both rows share id "t1" — they differ only by org. Without the .eq('org_id')
+    // filter, marking by id alone would touch BOTH; this asserts only the o1 row flips.
     const { client, store } = makeFakeSupabase({
       tech_decisions: [
-        td({ id: "t1", org_id: "o1", promoted_to_t3: false }),
-        td({ id: "t1-other-org", org_id: "o2", promoted_to_t3: false }), // same-ish id, different org
+        td({ id: "t1", org_id: "o1", session_id: "s-o1", promoted_to_t3: false }),
+        td({ id: "t1", org_id: "o2", session_id: "s-o2", promoted_to_t3: false }), // SAME id, different org
       ],
     });
     const wm = createWarmMemory(client);
@@ -52,8 +54,8 @@ describe("Tier-2 promotion lifecycle", () => {
     ];
     expect(await wm.markPromoted(facts, "o1")).toBe(1);
     const rows = store["tech_decisions"]!;
-    expect(rows.find((r) => r["id"] === "t1")!["promoted_to_t3"]).toBe(true); // o1 row marked
-    expect(rows.find((r) => r["id"] === "t1-other-org")!["promoted_to_t3"]).toBe(false); // o2 row untouched (org-scoped)
+    expect(rows.find((r) => r["org_id"] === "o1")!["promoted_to_t3"]).toBe(true); // o1 row marked
+    expect(rows.find((r) => r["org_id"] === "o2")!["promoted_to_t3"]).toBe(false); // o2 row untouched (org-scoped)
   });
 
   test("queryUnpromoted throws (no silent partial) when a table read fails", async () => {
