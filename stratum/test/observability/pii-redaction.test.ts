@@ -11,6 +11,22 @@
 import { describe, test, expect } from 'vitest';
 import { redactString, redactValue } from '../../../observability/pii-redaction';
 
+// ReDoS-resilience timing helpers. These tests guard against CATASTROPHIC
+// backtracking, whose failure mode on these ~500-600KB inputs is a HANG (O(N²)/
+// exponential = seconds-to-minutes). The REAL catcher is the per-test TIMEOUT; the
+// wall-clock bound is a GENEROUS backstop. It was widened from a tight 1s — which
+// flaked under heavy parallel test load (the linear path is ~300ms in isolation but
+// jittered to ~1.2s under 53-file load; PB-40) — to a value far below the
+// catastrophic regime yet well above load jitter. The load-independent signal is
+// the correctness assertion: a backtracking regex cannot produce the clean result.
+const REDOS_BACKSTOP_MS = 5_000;
+const REDOS_TIMEOUT_MS = 10_000;
+const elapsedMs = (fn: () => void): number => {
+  const t0 = Date.now();
+  fn();
+  return Date.now() - t0;
+};
+
 describe('pii-redaction — pattern detection', () => {
   test('email is redacted', () => {
     expect(redactString('contact me at user@example.com please')).toBe(
@@ -62,17 +78,18 @@ describe('pii-redaction — pattern detection', () => {
 });
 
 describe('pii-redaction — bounded quantifiers (ReDoS resilience)', () => {
-  test('500KB of non-PII input completes in <1s (catastrophic backtracking prevented)', () => {
+  test('500KB of non-PII input completes without catastrophic backtracking', () => {
     // Session 15 §2a-2 regression test for the email-regex backtracking bug.
-    // Pre-fix: `[a-zA-Z0-9._%+-]+@...` was O(N²) on long no-`@` inputs.
+    // Pre-fix: `[a-zA-Z0-9._%+-]+@...` was O(N²) on long no-`@` inputs (would HANG).
     // Post-fix: bounded `{1,64}` makes it linear-time.
     const input = 'x'.repeat(500_000);
-    const t0 = Date.now();
-    const out = redactString(input);
-    const elapsed = Date.now() - t0;
-    expect(out).toBe(input);  // no PII patterns match → input unchanged
-    expect(elapsed).toBeLessThan(1000);
-  });
+    let out = '';
+    const elapsed = elapsedMs(() => {
+      out = redactString(input);
+    });
+    expect(out).toBe(input); // no PII patterns match → input unchanged (proves linear completion)
+    expect(elapsed).toBeLessThan(REDOS_BACKSTOP_MS);
+  }, REDOS_TIMEOUT_MS);
 
   test('email with realistic 64-char local part still detected', () => {
     // RFC 5321 max local part = 64 chars
@@ -94,13 +111,14 @@ describe('pii-redaction — bounded quantifiers (ReDoS resilience)', () => {
   test('200KB string with one embedded email: email IS redacted, surrounding bulk preserved', () => {
     const padding = 'x'.repeat(100_000);
     const input = `${padding} user@example.com ${padding}`;
-    const t0 = Date.now();
-    const out = redactString(input);
-    const elapsed = Date.now() - t0;
+    let out = '';
+    const elapsed = elapsedMs(() => {
+      out = redactString(input);
+    });
     expect(out).toContain('[REDACTED:email]');
     expect(out).not.toContain('user@example.com');
-    expect(elapsed).toBeLessThan(1000);
-  });
+    expect(elapsed).toBeLessThan(REDOS_BACKSTOP_MS);
+  }, REDOS_TIMEOUT_MS);
 });
 
 describe('pii-redaction — upper-bound leak prevention (§2a redo regression)', () => {
@@ -144,27 +162,27 @@ describe('pii-redaction — upper-bound leak prevention (§2a redo regression)',
     expect(redactString(`token: ${jwt}`)).toBe('token: [REDACTED:jwt]');
   });
 
-  test('ReDoS guard: 600KB of repeated "eyJ" redacts linearly in <1s', () => {
-    // The PRIOR 3-segment JWT form (eyJ[...]+\.[...]+\.[...]+) was O(N^2) on
-    // this input — each "eyJ" start backtracked hunting a required ".". The
-    // suffix-free greedy form matches the whole run in ONE pass → linear.
-    const adversarial = 'eyJ'.repeat(200_000); // ~600KB
-    const t0 = Date.now();
-    const out = redactString(adversarial);
-    const elapsed = Date.now() - t0;
-    expect(out).toBe('[REDACTED:jwt]'); // entire run consumed in one match
-    expect(elapsed).toBeLessThan(1000);
-  });
+  test('ReDoS guard: 600KB of repeated "eyJ" redacts in one linear pass', () => {
+    // The PRIOR 3-segment JWT form (eyJ[...]+\.[...]+\.[...]+) was O(N^2) on this
+    // input — each "eyJ" start backtracked hunting a required ".". The suffix-free
+    // greedy form matches the whole run in ONE pass → linear.
+    let out = '';
+    const elapsed = elapsedMs(() => {
+      out = redactString('eyJ'.repeat(200_000)); // ~600KB
+    });
+    expect(out).toBe('[REDACTED:jwt]'); // entire run consumed in one match (a backtracker can't)
+    expect(elapsed).toBeLessThan(REDOS_BACKSTOP_MS);
+  }, REDOS_TIMEOUT_MS);
 
-  test('ReDoS guard: 100k repeated "eyJa.b" near-matches redact in <1s', () => {
-    const adversarial = 'eyJa.b'.repeat(100_000); // ~600KB of dot-laced near-JWTs
-    const t0 = Date.now();
-    const out = redactString(adversarial);
-    const elapsed = Date.now() - t0;
+  test('ReDoS guard: 100k repeated "eyJa.b" near-matches redact in one linear pass', () => {
+    let out = '';
+    const elapsed = elapsedMs(() => {
+      out = redactString('eyJa.b'.repeat(100_000)); // ~600KB of dot-laced near-JWTs
+    });
     expect(out).toContain('[REDACTED:jwt]');
     expect(out).not.toContain('eyJa.b'.repeat(10));
-    expect(elapsed).toBeLessThan(1000);
-  });
+    expect(elapsed).toBeLessThan(REDOS_BACKSTOP_MS);
+  }, REDOS_TIMEOUT_MS);
 });
 
 describe('pii-redaction — redactValue recursion', () => {
