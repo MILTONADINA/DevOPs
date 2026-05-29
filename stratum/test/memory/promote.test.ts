@@ -65,6 +65,9 @@ function fakeGraph(): { graph: KnowledgeGraph; entities: { id: string; kind: str
     async findSuperseded(): Promise<Supersession[]> {
       return [];
     },
+    async entityStatus(): Promise<[]> {
+      return [];
+    },
   };
   return { graph, entities, edges };
 }

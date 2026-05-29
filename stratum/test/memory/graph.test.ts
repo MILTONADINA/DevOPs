@@ -66,4 +66,21 @@ describe("Tier-3 knowledge graph (Supabase adapter)", () => {
     const g = createKnowledgeGraph(client);
     await expect(g.ensureEntity({ orgId: "o1", kind: "Decision", name: "x" })).rejects.toThrow(/ensureEntity select failed/);
   });
+
+  test("entityStatus maps the rpc result (other_name → otherName; direction/edgeType)", async () => {
+    const { client } = makeFakeSupabase({}, {}, {
+      entity_status: (args) =>
+        args["entity_name"] === "fetchUser"
+          ? [
+              { direction: "incoming", edge_type: "SUPERSEDES", other_name: "archiveUser" },
+              { direction: "outgoing", edge_type: "SUPERSEDES", other_name: "getUser" },
+            ]
+          : [],
+    });
+    const g = createKnowledgeGraph(client);
+    expect(await g.entityStatus("o1", "fetchUser")).toEqual([
+      { direction: "incoming", edgeType: "SUPERSEDES", otherName: "archiveUser" },
+      { direction: "outgoing", edgeType: "SUPERSEDES", otherName: "getUser" },
+    ]);
+  });
 });

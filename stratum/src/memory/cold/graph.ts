@@ -56,6 +56,18 @@ export interface Supersession {
   supersededBy: string;
 }
 
+/**
+ * One edge touching an entity (from {@link KnowledgeGraph.entityStatus}).
+ * `outgoing` = the entity is the edge's `from`; `incoming` = the entity is the `to`.
+ * For SUPERSEDES: outgoing → the entity supersedes `otherName`; incoming → the entity
+ * is superseded by `otherName`.
+ */
+export interface EntityStatusEdge {
+  direction: "outgoing" | "incoming";
+  edgeType: EdgeType;
+  otherName: string;
+}
+
 export interface KnowledgeGraph {
   /**
    * Create-or-get a node by (org, kind, name); returns its id.
@@ -76,6 +88,14 @@ export interface KnowledgeGraph {
    * @throws {Error} if the query fails.
    */
   findSuperseded(orgId: string, entityNames: string[]): Promise<Supersession[]>;
+  /**
+   * All edges touching an entity (powers /understand-codebase).
+   * @param orgId - the owning organization.
+   * @param name - the entity name.
+   * @returns its edges (direction + type + the other entity), empty if none/unknown.
+   * @throws {Error} if the query fails.
+   */
+  entityStatus(orgId: string, name: string): Promise<EntityStatusEdge[]>;
 }
 
 /**
@@ -136,6 +156,16 @@ export function createKnowledgeGraph(client: SupabaseClient): KnowledgeGraph {
       return ((data ?? []) as { superseded: string; superseded_by: string }[]).map((r) => ({
         superseded: r.superseded,
         supersededBy: r.superseded_by,
+      }));
+    },
+
+    async entityStatus(orgId: string, name: string): Promise<EntityStatusEdge[]> {
+      const { data, error } = await client.rpc("entity_status", { match_org: orgId, entity_name: name });
+      if (error) throw new Error(`entityStatus failed: ${error.message}`);
+      return ((data ?? []) as { direction: string; edge_type: string; other_name: string }[]).map((r) => ({
+        direction: r.direction === "incoming" ? "incoming" : "outgoing",
+        edgeType: r.edge_type as EdgeType,
+        otherName: r.other_name,
       }));
     },
   };
