@@ -84,7 +84,7 @@ export default defineConfig({
       // of stratum/). Enables cross-subtree imports (e.g. capture-session.ts
       // consuming observability/pii-redaction.ts) via a stable canonical
       // path that vi.mock can match reliably + that mirrors the tsconfig
-      // `paths` alias used by ts-node at runtime.
+      // `paths` alias used by tsx at runtime.
       '@devops': path.resolve(__dirname, '..'),
     },
   },

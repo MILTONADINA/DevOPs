@@ -30,9 +30,9 @@ import dotenv from "dotenv";
 //
 // Cross-subtree import via @devops/* alias: observability/ is at DevOPs root;
 // capture-session.ts is at stratum/scripts/. The alias is configured in
-// stratum/tsconfig.json `paths` (ts-node honors at runtime for `npm run
-// capture`) and stratum/vitest.config.ts `resolve.alias` (vitest honors at
-// test time, allowing reliable vi.mock matching).
+// stratum/tsconfig.json `paths` (tsx honors at runtime for `npm run capture`)
+// and stratum/vitest.config.ts `resolve.alias` (vitest honors at test time,
+// allowing reliable vi.mock matching).
 import { redactValue as devopsRedactValue } from "@devops/observability/pii-redaction";
 
 dotenv.config();

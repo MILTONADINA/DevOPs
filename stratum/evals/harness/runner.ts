@@ -116,7 +116,9 @@ async function datasetsPresent(datasetsDir: string): Promise<boolean> {
  * @returns process exit code (0 — gated-skip is not a failure).
  */
 export async function main(argv: string[] = []): Promise<number> {
-  const datasetsDir = join(__dirname, "..", "datasets");
+  // process.cwd() (not __dirname — undefined under the ESM runtime): `npm run
+  // test:eval` always executes from the package root.
+  const datasetsDir = join(process.cwd(), "evals", "datasets");
   const haveData = await datasetsPresent(datasetsDir);
   const haveJudge = judgeConfigured();
   const flags = argv.length ? ` (flags seen: ${argv.join(" ")})` : "";
@@ -140,9 +142,12 @@ export async function main(argv: string[] = []): Promise<number> {
   return 0;
 }
 
-// Run only when executed directly (not when imported by tests). `require` is
-// undefined under an ESM loader, so the typeof guard never throws.
-if (typeof require !== "undefined" && require.main === module) {
+// Run only when executed directly (not when imported by tests). Uses argv[1]
+// rather than `require.main`/`import.meta` so it is robust across runtimes
+// (tsx ESM has no `require`; `import.meta` won't typecheck under module:commonjs)
+// and false under vitest (whose argv[1] is the vitest binary, not this file).
+const entryPath = process.argv[1] ?? "";
+if (entryPath.endsWith("runner.ts") || entryPath.endsWith("runner.js")) {
   void main(process.argv.slice(2)).then((code) => {
     process.exitCode = code;
   });

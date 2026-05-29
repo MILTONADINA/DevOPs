@@ -34,16 +34,20 @@ LOG_LEVEL=info
 ## 2. Start the proxy
 
 ```bash
-npm run dev        # runs src/proxy/index.ts via ts-node; listens on 127.0.0.1:$PORT
+npm run dev        # runs src/proxy/index.ts via tsx; listens on 127.0.0.1:$PORT
 ```
 
-You should see `CQ Proxy running (Phase 1 measurement)`.
+You should see `CQ Proxy running (Phase 1 measurement)`. Verify with
+`curl http://127.0.0.1:4080/health` → `{"status":"ok",...}`.
 
-> **Why `npm run dev` (ts-node) and not a built `dist/`?** The proxy consumes
-> the shared PII redactor from the repo-root `observability/` subtree via the
+> **Why `npm run dev` (tsx) and not a built `dist/`?** The proxy consumes the
+> shared PII redactor from the repo-root `observability/` subtree via the
 > `@devops/*` path alias, which `tsc`'s `dist` emit can't span (tracked as
-> PB-29). `ts-node` resolves the alias at runtime, so `npm run dev` is the
-> supported Phase-1 run mode. `npm run build` runs a full typecheck.
+> PB-29). `tsx` resolves both the alias (via tsconfig `paths`) and extensionless
+> ESM imports at runtime, so `npm run dev` is the supported Phase-1 run mode.
+> (`ts-node` could not — under `"type":"module"` on Node 24 it failed module
+> resolution; the runtime runner was switched to `tsx` for exactly this, PB-30.)
+> `npm run build` runs a full typecheck.
 
 ---
 
