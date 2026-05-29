@@ -34,10 +34,15 @@
  * correct "Cloudflare Workers", and an off-topic turn beside the answer): 11/11
  * scenarios keep ANSWER FAITHFULNESS at 1.0, but 2/11 fail the strict "drop the
  * stale/noise turn" golden — a PRECISION cost, not a correctness one. The
- * eval:tierb gate is intentionally RED on this until calibrated. Candidate
- * refinements (defer to Tier-A calibration, do NOT over-fit synthetic): raise θ
- * so edge turns fall below the gate, or add a per-turn relevance floor that
- * trims low-gain turns at span edges. Tracked as a v0.4.x calibration item.
+ * eval:tierb gate is intentionally RED on this until addressed.
+ *   PARAMETER SWEEP RESULT (npm run sweep-params, 2026-05-29): the over-retention
+ *   is NOT θ/λ-tunable — no (θ,λ) cell beats 9/11; raising θ DROPS needed facts
+ *   (θ=1.5 → 4/11) and lowering λ drops legitimately-old facts; θ=1.0 is already
+ *   optimal on this set. The 2 failures fail at EVERY cell ⇒ STRUCTURAL, not
+ *   parametric. The real fix is an algorithm refinement — a per-turn relevance
+ *   filter that trims low-gain turns INSIDE a selected span (and/or supersession
+ *   detection) — to be designed + validated against the published Tier-A
+ *   datasets, NOT over-fit to 11 synthetic scenarios. Tracked as a v0.4.x item.
  * ──────────────────────────────────────────────────────────────────────────
  */
 

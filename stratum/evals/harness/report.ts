@@ -76,7 +76,7 @@ function deriveAction(result: SuiteResult): string {
     hints.push(`[${missing.join(", ")}] a REQUIRED fact was DROPPED (pruning too aggressive) → LOWER θ or RAISE λ (less time decay) / pin the fact`);
   }
   if (leaked.length) {
-    hints.push(`[${leaked.join(", ")}] a must-drop turn was KEPT (pruning too lenient — over-retention) → RAISE θ so low-relevance turns fall below the span gate`);
+    hints.push(`[${leaked.join(", ")}] a must-drop turn was KEPT (over-retention) → if it sits in a contiguous span next to the answer, θ/λ tuning will NOT help (sweep-params confirms raising θ drops needed facts); needs a per-turn relevance filter inside spans and/or supersession detection`);
   }
   if (hints.length) return hints.join("; ");
   const firstFail = result.scenarios.find((s) => !s.passed);
