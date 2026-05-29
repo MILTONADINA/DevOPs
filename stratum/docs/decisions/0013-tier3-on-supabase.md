@@ -33,10 +33,14 @@ Neo4j/Pinecone adapter implements unchanged:
    Supabase implementation is `createKnowledgeGraph(client)`. `findSuperseded` is the
    ADR-0011 query. Verified live via the Supabase MCP (entities + a SUPERSEDES edge +
    the supersession query) + unit-tested against a fake client.
-2. **Vectors (next increment).** The `pgvector` extension + a `memory_vectors` table
-   (384-d, matching the all-MiniLM-L6-v2 encoder) + a `match_*` similarity function,
-   behind a `VectorStore` interface. Serves the semantic-recall / `/understand-codebase`
-   path Pinecone was specified for.
+2. **Vectors (done — migration `20260529130000_tier3_vectors.sql`).** The `pgvector`
+   extension + a `memory_vectors` table (384-d, matching the all-MiniLM-L6-v2 encoder;
+   HNSW + cosine ops) + a `match_memory_vectors` similarity function, behind the
+   `VectorStore` interface (`src/memory/cold/vectors.ts`). Serves the semantic-recall /
+   `/understand-codebase` path Pinecone was specified for. **Content-free** (embedding +
+   `source_type`/`source_ref` pointer only — no plaintext content, per the "encrypted
+   only" rule). Verified live via MCP (orthogonal 384-d vectors → cosine ranking
+   1.0/0.0) + unit-tested. The `VectorStore` seam is what a Pinecone adapter implements.
 
 **Spelling:** CLAUDE.md writes the edge `SUPERCEDES`; this standardizes on the correct
 English **`SUPERSEDES`**, consistent with `tech_decisions.supersedes_id` + ADR-0011.
