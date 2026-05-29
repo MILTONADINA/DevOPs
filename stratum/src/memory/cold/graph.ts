@@ -1,0 +1,135 @@
+/**
+ * Tier-3 cold memory — knowledge graph (Supabase relational implementation).
+ *
+ * Per ADR-0013, the blueprint's Tier-3 graph (Neo4j) is implemented on the live
+ * Supabase project as relational `knowledge_entities` + `knowledge_edges` tables
+ * (migration 20260529120000), because no Neo4j account is available. This module
+ * is the {@link KnowledgeGraph} SEAM: a future Neo4j adapter implements the same
+ * interface and drops in unchanged — the pruner + recall consume the interface,
+ * not Postgres.
+ *
+ * The load-bearing query is {@link KnowledgeGraph.findSuperseded} — the ADR-0011
+ * pruner fix: given the entities in the current context, which are SUPERSEDED (by
+ * a newer entity) so the pruner can suppress the stale turn. It runs server-side
+ * via the `find_superseded` SQL function (the join lives in SQL; verified live via
+ * the Supabase MCP). `org_id` / `session_id` are trusted FKs supplied by the
+ * caller, never derived from untrusted content (the ADR-0012 forgery model).
+ */
+
+import type { SupabaseClient } from "@supabase/supabase-js";
+
+/** Knowledge-graph node kinds (CLAUDE.md node types + Project). */
+export type EntityKind = "Function" | "Commit" | "Decision" | "Developer" | "Policy" | "Project";
+
+/**
+ * Edge types. NOTE: CLAUDE.md spells the supersession edge "SUPERCEDES"; this uses
+ * the correct English "SUPERSEDES", consistent with `tech_decisions.supersedes_id`
+ * + ADR-0011 (see ADR-0013).
+ */
+export type EdgeType = "SUPERSEDES" | "DEPRECATED_BY" | "REFERENCED_IN" | "AUTHORED_BY" | "APPLIES_TO";
+
+export interface EnsureEntityInput {
+  orgId: string;
+  kind: EntityKind;
+  name: string;
+  sessionId?: string;
+}
+
+export interface AddEdgeInput {
+  orgId: string;
+  fromEntity: string;
+  toEntity: string;
+  edgeType: EdgeType;
+  sessionId?: string;
+}
+
+/** A supersession the pruner acts on: `superseded` is invalidated by `supersededBy`. */
+export interface Supersession {
+  superseded: string;
+  supersededBy: string;
+}
+
+export interface KnowledgeGraph {
+  /**
+   * Create-or-get a node by (org, kind, name); returns its id.
+   * @throws {Error} if the select or insert fails.
+   */
+  ensureEntity(input: EnsureEntityInput): Promise<string>;
+  /**
+   * Create-or-get a typed edge between two nodes; returns its id.
+   * @throws {Error} if the select or insert fails.
+   */
+  addEdge(input: AddEdgeInput): Promise<string>;
+  /**
+   * ADR-0011 supersession lookup: of `entityNames`, which have an outgoing
+   * SUPERSEDES edge, and to what.
+   * @param orgId - the owning organization.
+   * @param entityNames - entity names present in the current context.
+   * @returns the supersessions among those names (empty if none).
+   * @throws {Error} if the query fails.
+   */
+  findSuperseded(orgId: string, entityNames: string[]): Promise<Supersession[]>;
+}
+
+/**
+ * Create a Supabase-backed knowledge graph.
+ *
+ * @param client - a configured Supabase client (service-role key; bypasses RLS).
+ * @returns a {@link KnowledgeGraph}.
+ */
+export function createKnowledgeGraph(client: SupabaseClient): KnowledgeGraph {
+  return {
+    async ensureEntity(input: EnsureEntityInput): Promise<string> {
+      const existing = await client
+        .from("knowledge_entities")
+        .select("id")
+        .eq("org_id", input.orgId)
+        .eq("kind", input.kind)
+        .eq("name", input.name)
+        .limit(1);
+      if (existing.error) throw new Error(`ensureEntity select failed: ${existing.error.message}`);
+      const first = ((existing.data ?? []) as { id: string }[])[0];
+      if (first) return first.id;
+
+      const row: Record<string, unknown> = { org_id: input.orgId, kind: input.kind, name: input.name };
+      if (input.sessionId !== undefined) row["session_id"] = input.sessionId;
+      const created = await client.from("knowledge_entities").insert(row).select("id").single();
+      if (created.error || !created.data) throw new Error(`ensureEntity insert failed: ${created.error?.message ?? "no row returned"}`);
+      return (created.data as { id: string }).id;
+    },
+
+    async addEdge(input: AddEdgeInput): Promise<string> {
+      const existing = await client
+        .from("knowledge_edges")
+        .select("id")
+        .eq("from_entity", input.fromEntity)
+        .eq("to_entity", input.toEntity)
+        .eq("edge_type", input.edgeType)
+        .limit(1);
+      if (existing.error) throw new Error(`addEdge select failed: ${existing.error.message}`);
+      const first = ((existing.data ?? []) as { id: string }[])[0];
+      if (first) return first.id;
+
+      const row: Record<string, unknown> = {
+        org_id: input.orgId,
+        from_entity: input.fromEntity,
+        to_entity: input.toEntity,
+        edge_type: input.edgeType,
+      };
+      if (input.sessionId !== undefined) row["session_id"] = input.sessionId;
+      const created = await client.from("knowledge_edges").insert(row).select("id").single();
+      if (created.error || !created.data) throw new Error(`addEdge insert failed: ${created.error?.message ?? "no row returned"}`);
+      return (created.data as { id: string }).id;
+    },
+
+    async findSuperseded(orgId: string, entityNames: string[]): Promise<Supersession[]> {
+      if (entityNames.length === 0) return [];
+      const { data, error } = await client.rpc("find_superseded", { match_org: orgId, names: entityNames });
+      if (error) throw new Error(`findSuperseded failed: ${error.message}`);
+      return ((data ?? []) as { superseded: string; superseded_by: string }[]).map((r) => ({
+        superseded: r.superseded,
+        supersededBy: r.superseded_by,
+      }));
+    },
+  };
+}

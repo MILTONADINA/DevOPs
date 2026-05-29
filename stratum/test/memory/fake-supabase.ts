@@ -24,7 +24,11 @@ export interface FakeDb {
 
 type Row = Record<string, unknown>;
 
-export function makeFakeSupabase(seed: Record<string, Row[]> = {}, faults: FakeFaults = {}): FakeDb {
+export function makeFakeSupabase(
+  seed: Record<string, Row[]> = {},
+  faults: FakeFaults = {},
+  rpcHandlers: Record<string, (args: Record<string, unknown>) => unknown> = {},
+): FakeDb {
   const store: Record<string, Row[]> = {};
   for (const [k, v] of Object.entries(seed)) store[k] = v.map((r) => ({ ...r }));
   let idSeq = 0;
@@ -128,6 +132,11 @@ export function makeFakeSupabase(seed: Record<string, Row[]> = {}, faults: FakeF
           return makeDelete(table);
         },
       };
+    },
+    rpc(fn: string, args: Record<string, unknown>) {
+      const handler = rpcHandlers[fn];
+      if (!handler) return Promise.resolve({ data: null, error: { message: `no rpc handler: ${fn}` } });
+      return Promise.resolve({ data: handler(args), error: null });
     },
   };
 
