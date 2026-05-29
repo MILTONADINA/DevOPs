@@ -278,7 +278,14 @@ export async function main(): Promise<number> {
 
 const entryPath = process.argv[1] ?? "";
 if (entryPath.endsWith("eval-locomo.ts") || entryPath.endsWith("eval-locomo.js")) {
-  void main().then((code) => {
-    process.exitCode = code;
-  });
+  main()
+    .then((code) => {
+      process.exitCode = code;
+    })
+    .catch((e: unknown) => {
+      // Clean exit on a runtime/API error (e.g. depleted API credits) — not an
+      // unhandled rejection (which crashes with a libuv assertion + exit 9).
+      process.stderr.write(`eval-locomo failed: ${e instanceof Error ? e.message : String(e)}\n`);
+      process.exitCode = 1;
+    });
 }
