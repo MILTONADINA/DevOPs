@@ -23,6 +23,7 @@
     "verify-encoder": "tsx scripts/verify-encoder.ts",
     "eval:dev": "tsx scripts/eval-dev.ts",
     "eval:tierb": "tsx scripts/eval-tierb.ts",
+    "shadow-prune": "tsx scripts/shadow-prune.ts",
     "smoke:live": "tsx scripts/smoke-live.ts",
     "smoke:judge": "tsx scripts/smoke-judge.ts",
     "promote": "tsx scripts/promote-tier2-to-tier3.ts",

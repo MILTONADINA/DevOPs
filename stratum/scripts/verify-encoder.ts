@@ -35,12 +35,17 @@ export async function main(): Promise<number> {
   const simClose = cosineSimilarity(a, b);
   const simFar = cosineSimilarity(a, c);
 
+  // Robustness: a large batch that includes a HUGE input must not OOM (the
+  // attention tensor is batch × seq²; the encoder micro-batches + caps length).
+  const big = await enc.encode([...Array.from({ length: 40 }, () => "lorem ipsum dolor"), "Z".repeat(200_000)]);
+
   const checks: { name: string; ok: boolean; detail: string }[] = [
     { name: "embedding dimension is 384", ok: a.length === EMBEDDING_DIM, detail: `dim=${a.length}` },
     { name: "embeddings are L2-normalized (‖v‖≈1)", ok: Math.abs(norm - 1) < 1e-3, detail: `‖a‖=${norm.toFixed(4)}` },
     { name: "similar pair scores higher than unrelated", ok: simClose > simFar, detail: `close=${simClose.toFixed(3)} > far=${simFar.toFixed(3)}` },
     { name: "similar pair is meaningfully high (>0.5)", ok: simClose > 0.5, detail: `close=${simClose.toFixed(3)}` },
     { name: "unrelated pair is low (<0.5)", ok: simFar < 0.5, detail: `far=${simFar.toFixed(3)}` },
+    { name: "large batch with a 200K-char input does not OOM", ok: big.length === 41 && (big[40]?.length ?? 0) === EMBEDDING_DIM, detail: `vecs=${big.length}, lastDim=${big[40]?.length ?? 0}` },
   ];
 
   out("");

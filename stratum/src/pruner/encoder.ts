@@ -100,13 +100,28 @@ export function createOnnxEncoder(opts: OnnxEncoderOptions = {}): BiEncoder {
     return extractorPromise;
   };
 
+  // all-MiniLM-L6-v2 embeds only its first ~256 tokens; an un-capped huge input
+  // (e.g. a 100K-char tool result) builds an O(seq²) attention matrix that OOMs
+  // ONNX Runtime. ~1200 chars ≈ the model's 256-token window, so capping costs
+  // no signal the model would have used anyway.
+  const MAX_INPUT_CHARS = 1200;
+  // Micro-batch: the attention tensor is batch × heads × seq² (padded to the
+  // batch's longest). A 200-wide batch at seq≈512 alloc ≈ 2.5 GB → OOM. 16 keeps
+  // it well bounded regardless of how many texts a caller passes at once.
+  const BATCH = 16;
+
   return {
     dimension: EMBEDDING_DIM,
     async encode(texts: string[]): Promise<Float32Array[]> {
       if (texts.length === 0) return [];
       const extractor = await getExtractor();
-      const out = await extractor(texts, { pooling: "mean", normalize: true });
-      return out.tolist().map((v) => Float32Array.from(v));
+      const out: Float32Array[] = [];
+      for (let i = 0; i < texts.length; i += BATCH) {
+        const capped = texts.slice(i, i + BATCH).map((t) => (t.length > MAX_INPUT_CHARS ? t.slice(0, MAX_INPUT_CHARS) : t));
+        const res = await extractor(capped, { pooling: "mean", normalize: true });
+        for (const v of res.tolist()) out.push(Float32Array.from(v));
+      }
+      return out;
     },
   };
 }
