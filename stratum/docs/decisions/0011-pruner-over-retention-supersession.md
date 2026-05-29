@@ -21,24 +21,34 @@ correctness one (the answer stays faithful because the needed fact is also kept)
 — but the eval gate is intentionally RED on it, correctly blocking ship until
 addressed.
 
-Candidate fixes were measured (`npm run sweep-params`). **CORRECTION (after a
-too-coarse first λ grid wrongly implied "not tunable"):** only ONE of the two
-failures is structural.
+Candidate fixes were measured (`npm run sweep-params`). **This conclusion was
+overstated TWICE before being read straight off the matrix** (first "not tunable
+/ structural", then "tb-negation fails at every cell" — both false). The accurate
+finding: **the two hard scenarios have OPPOSING λ requirements**, so no single
+(θ,λ) reaches 11/11; the max anywhere is **10/11**.
 
-1. **θ / λ tuning** — of the two, **tb-dormant is PARAMETRIC**: at the default
-   λ=0.97 the 80h-old answer turn decays below a 10h-old noise turn (peak shifts
-   to the noise); it **recovers at λ≥0.98** (λ=0.99,θ=1.0 → **10/11**). Raising θ
-   instead drops needed facts (θ=1.5 → ~4–6/11). **tb-negation is STRUCTURAL** —
-   it fails at **every** (θ,λ) cell, so the best golden-axis cell is 10/11.
-   (The λ default is NOT retuned on an 11-scenario dev set — that is Tier-A's job;
-   the data only shows λ-sensitivity, not a new default.)
+1. **θ / λ tuning** — both failures are individually λ-recoverable, but in
+   opposite directions:
+   - **tb-dormant** passes ONLY at **λ≥0.99** (gentle decay: the 80h answer must
+     not sink below a 10h noise turn); fails at λ≤0.98.
+   - **tb-negation** passes ONLY at **λ≤0.95** (heavy decay drops the stale 30h
+     "AWS Lambda" turn so the contiguous span no longer reaches it); fails at
+     λ≥0.97 (the stale turn is positive-gain + on-topic + adjacent there).
+   Satisfying one fails the other (and low-λ recovery of tb-negation newly fails
+   tb-migration). **No scenario fails at every cell**, so neither is "structural"
+   in the strict sense — but λ alone cannot satisfy both. Raising θ instead drops
+   needed facts. The λ default is NOT retuned on an 11-scenario dev set (Tier-A's
+   job); the data shows a λ TENSION, not a new default.
 2. **Per-turn gain-floor trim** (`trimCarriedTurns`, opt-in, default-OFF) — does
-   NOT fix tb-negation: its kept turn is *positive-gain, genuinely on-topic* (the
+   NOT help at the default λ: the kept turn is *positive-gain, on-topic* (the
    stale Lambda plan is topical for "where deploying"), not a negative-gain
    "carried" turn a relevance floor could drop.
 
-So the residual (tb-negation) is **supersession**: a newer turn invalidates an
-older *topical* one, which cosine similarity + temporal decay
+The motivation for **supersession** is therefore the λ TENSION, not strict
+unrecoverability: a mechanism orthogonal to decay (drop a turn a newer one
+invalidates, regardless of λ) could reach 11/11 WITHOUT trading tb-dormant
+against tb-negation. A newer turn invalidates an older *topical* one, which
+cosine similarity + temporal decay
 cannot detect on their own.
 
 ## Decision
@@ -77,9 +87,9 @@ negative-gain case it *does* address.
 
 ## Alternatives Considered
 
-- **θ / λ tuning** — RESOLVES tb-dormant (parametric: λ≥0.98 → 10/11) but NOT
-  tb-negation (fails at every cell). Best golden-axis cell is 10/11. λ is not
-  retuned here (Tier-A's job). See Context.
+- **θ / λ tuning** — both hard scenarios are individually λ-recoverable but with
+  OPPOSING needs (tb-dormant λ≥0.99, tb-negation λ≤0.95), so no single λ exceeds
+  10/11; satisfying one fails the other. λ is not retuned here (Tier-A's job). See Context.
 - **Per-turn gain-floor trim** — implemented + measured out for tb-negation
   (positive-gain on-topic turn, not a negative-gain carried turn). See Context.
 - **Relax the goldens / mark the 2 scenarios non-critical** — rejected: that is

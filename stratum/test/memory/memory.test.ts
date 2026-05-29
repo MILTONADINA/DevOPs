@@ -127,6 +127,13 @@ describe("fact extractor (injected fake completion — no real model)", () => {
     expect(f!.commit_hash).toBe("REAL-COMMIT");
   });
 
+  test("STRIPS forged Todo.assigned_to (also a developers FK)", () => {
+    const raw = '[{"fact_type":"Todo","description":"fix auth","status":"open","confidence":0.9,"assigned_to":"VICTIM-DEVELOPER-UUID"}]';
+    const [f] = parseExtractedFacts(raw, ctx);
+    expect(f).toBeDefined();
+    expect((f as { assigned_to?: string }).assigned_to).toBeUndefined(); // forged task-assignment stripped
+  });
+
   test("createFactExtractor calls the model once for non-empty turns, skips empty", async () => {
     let calls = 0;
     const fake: FactCompletion = {

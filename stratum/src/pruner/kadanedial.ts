@@ -35,26 +35,28 @@
  * scenarios keep ANSWER FAITHFULNESS at 1.0, but 2/11 fail the strict "drop the
  * stale/noise turn" golden — a PRECISION cost, not a correctness one. The
  * eval:tierb gate is intentionally RED on this until addressed.
- *   PARAMETER SWEEP RESULT (npm run sweep-params, CORRECTED 2026-05-29 after a
- *   too-coarse first grid [0.97,0.9,0.8] wrongly implied "not tunable"): of the
- *   two failures, ONLY ONE is structural.
- *     • tb-dormant is PARAMETRIC (a λ decay-floor effect): at the default λ=0.97
- *       the 80h-old answer turn decays BELOW a 10h-old noise turn, so the span
- *       peak shifts to the noise. It RECOVERS at λ≥0.98 (λ=0.99,θ=1.0 → 10/11).
- *     • tb-negation is genuinely STRUCTURAL (supersession): the stale "AWS Lambda"
- *       plan precedes the correct "Cloudflare Workers" turn, so any contiguous
- *       span containing the correct turn also drags in the stale one. It fails at
- *       EVERY (θ,λ) cell. The best golden-axis cell is 10/11 (tb-negation remains).
- *     Raising θ instead drops needed facts (θ=1.5 → ~4–6/11). The fix targets the
- *     STRUCTURAL case (tb-negation); the λ default is NOT changed here (a 11-
- *     scenario dev set must not retune the documented λ=0.97 — that is Tier-A's job).
+ *   PARAMETER SWEEP RESULT (npm run sweep-params; this conclusion was itself
+ *   overstated TWICE before being verified against the matrix — first "not
+ *   tunable / structural", then "tb-negation fails at every cell"; BOTH false):
+ *   the two hard scenarios have OPPOSING λ requirements, so no single (θ,λ)
+ *   reaches 11/11 — the max anywhere is 10/11.
+ *     • tb-dormant passes ONLY at λ≥0.99 (gentle decay: the 80h-old answer must
+ *       not decay below a 10h noise turn). It FAILS at λ≤0.98.
+ *     • tb-negation passes ONLY at λ≤0.95 (heavy decay drops the stale 30h "AWS
+ *       Lambda" turn so the contiguous span no longer reaches it). It FAILS at
+ *       λ≥0.97 (where the stale turn stays positive-gain + on-topic + adjacent).
+ *     So NEITHER is structurally-unrecoverable — each is individually
+ *     λ-recoverable — but they pull λ in OPPOSITE directions; satisfying one
+ *     fails the other (and low-λ recovery of tb-negation newly fails tb-migration).
+ *     No scenario fails at every cell. Raising θ instead drops needed facts.
  *   CANDIDATE-FIX RESULT (trimCarriedTurns, opt-in default-OFF): measured — does
- *   NOT fix either case (the kept turns are positive-gain on-topic, not negative-
- *   gain "carried" turns). So the structural fix for tb-negation needs a mechanism
- *   beyond similarity+decay — supersession edges from Tier-3, or recency-
- *   conditioned relevance (ADR-0011) — designed + validated against Tier-A. The
- *   trim stays a sound default-OFF refinement for the negative-gain case it DOES
- *   address. Tracked as a v0.4.x calibration item.
+ *   NOT help at the default λ (the kept turns are positive-gain on-topic, not
+ *   negative-gain "carried"). The right fix is a mechanism ORTHOGONAL to decay —
+ *   supersession (drop a turn a newer one invalidates, regardless of λ) — which
+ *   could reach 11/11 WITHOUT the λ tension; designed in ADR-0011, to be validated
+ *   against Tier-A (an 11-scenario dev set cannot justify retuning the documented
+ *   λ=0.97, which is therefore unchanged). The trim stays a sound default-OFF
+ *   refinement for the negative-gain case it DOES address. v0.4.x calibration item.
  * ──────────────────────────────────────────────────────────────────────────
  */
 

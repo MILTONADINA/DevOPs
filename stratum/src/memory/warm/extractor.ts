@@ -113,8 +113,13 @@ export function parseExtractedFacts(
   // from the untrusted candidate first, then assign trusted values. Otherwise a
   // malicious/compromised extraction model forges developer_id (authorship),
   // commit_hash (the Git-attestation anchor, only conditionally overridden
-  // before), or supersedes_id (marks an arbitrary real decision superseded).
-  const SYSTEM_FIELDS = ["id", "created_at", "session_id", "commit_hash", "developer_id", "supersedes_id", "is_verified", "is_suppressed"];
+  // before), supersedes_id (marks a real decision superseded), or assigned_to
+  // (Todo → developers(id) FK — assign a task to an arbitrary developer).
+  // These are EVERY identity/provenance/verification/FK field across all 5 fact
+  // types (id/created_at/session_id/commit_hash/developer_id are BaseFact;
+  // supersedes_id is TechDecision; assigned_to is Todo — both developer/decision
+  // FKs). Resolution of FKs is a trusted server-side step, never model output.
+  const SYSTEM_FIELDS = ["id", "created_at", "session_id", "commit_hash", "developer_id", "supersedes_id", "assigned_to", "is_verified", "is_suppressed"];
   const out: AnyFact[] = [];
   for (const candidate of parsed) {
     if (typeof candidate !== "object" || candidate === null) continue;
