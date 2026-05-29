@@ -160,6 +160,32 @@ hallucination rate drops to ~zero on verifiable categories (tests, diffs, scans)
 **No-verbal-claims rule:** Phrases like "I've implemented X", "tests pass",
 "deployed successfully" are NOT claims unless they ship with a proof artifact.
 
+### 5.1 Red/Green TDD (the proof comes first)
+
+**Write the failing test before the implementation. Red, then green.**
+
+Proof-of-Work's natural front end: the test that *fails* against absent/broken
+code, then *passes* once the code is right, is the strongest proof a change does
+what it claims — and it makes the proof exist *before* the work, not after.
+
+**Rules:**
+
+- For any feature or bugfix, write the test(s) first and confirm they FAIL
+  (red) for the expected reason before writing implementation. Then make them
+  pass (green). A test that has never been seen to fail proves nothing.
+- A bug is reproduced by a failing test before it is fixed.
+- Tests assert observable behavior/output, not internal incidentals — and must
+  be non-vacuous (a test that passes on absent or corrupted code is a defect,
+  per the proof-scrutiny discipline).
+- This is required discipline (rigid), not advisory: it is the front half of
+  Principle 5, so the same "no claim, no merge" gate applies.
+
+**Working when:** new behavior arrives with a test that was demonstrably red
+before it went green; coverage thresholds hold; no vacuous tests pass review.
+
+> Borrowed (pattern, not code) from [obra/superpowers](https://github.com/obra/superpowers)
+> (MIT) — made explicit here so every subagent inherits it. Added v0.3.x §2g.
+
 **Working when:** All session-end summaries show 100% verified-claim rate. Track
 in `governance/telemetry/proof-rate.jsonl`. Any session below 100% is a defect.
 
