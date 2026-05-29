@@ -21,6 +21,15 @@
  * core. Do NOT enable pruning in the request path until the gate passes
  * (<5% Faithfulness degradation AND evidence survival holds). MT-Bench+/SCM4LLMs
  * Tier-A loaders are still pending.
+ *   CALIBRATION (ADR-0015, free corpus-wide survival sweep `eval:locomo:survival`,
+ *   10 conv / 120 q, deterministic — no API): the fixed per-HOUR λ is the wrong
+ *   PRIOR for long-horizon recall — λ=0.97 retains 2% of EARLY gold evidence,
+ *   λ=1.0 (no decay) 89%. Temporal decay is a recency prior whose value is
+ *   TIER-dependent (hot/intra-day = strong, warm/cold recall = relevance-dominant).
+ *   New DEFAULT-OFF `decayHorizonSeconds` makes decay scale-invariant (half-life
+ *   relative to the conversation's own span): h=1.00·span recovers evidence
+ *   survival 3.8%→92.5% at 39% reduction. Default per-hour λ=0.97 UNCHANGED;
+ *   activation of the new mode is Tier-A-gated (judged eval:locomo + PB-41).
  *
  * SPEC DEVIATIONS (documented): docs/ALGORITHM.md's KadaneDial pseudocode (a)
  * references `span_start` without ever assigning it, and (b) does not seed
@@ -89,6 +98,18 @@ export interface KadaneDialParams {
    * activation as a default awaits Tier-A faithfulness validation (constitution).
    */
   trimCarriedTurns?: boolean;
+  /**
+   * OPT-IN (default off → fixed per-HOUR decay): the time unit (seconds) the
+   * decay exponent is measured in. Decay becomes λ^((now − t_i)/decayHorizonSeconds);
+   * unset ⇒ 3600 (the documented per-hour λ, behaviour unchanged). Setting it to a
+   * fraction of the CONVERSATION'S OWN span makes decay SCALE-INVARIANT — a turn
+   * from "the previous session" decays the same whether the dialogue spans hours
+   * or weeks. Motivated by the Tier-A LoCoMo finding (ADR-0014): the fixed 22.8h
+   * half-life retained only 1.4% of weeks-old gold evidence. Off by default;
+   * activation as a default is Tier-A-gated (evidence-survival + Faithfulness),
+   * same discipline as {@link trimCarriedTurns} (constitution / ADR-0011).
+   */
+  decayHorizonSeconds?: number;
 }
 
 export const DEFAULT_KADANEDIAL = { lambda: 0.97, gainShift: 0.0, theta: 1.0 } as const;
@@ -110,9 +131,20 @@ export interface PruneDecision {
   normalizationSkipped: boolean;
 }
 
-/** Apply temporal decay: R_i = S_raw_i × λ^((now − t_i)/3600). */
-export function applyTemporalDecay(turns: HistoryTurn[], lambda: number, nowSeconds: number): number[] {
-  return turns.map((t) => t.similarity * Math.pow(lambda, (nowSeconds - t.timestampSeconds) / 3600));
+/**
+ * Apply temporal decay: R_i = S_raw_i × λ^((now − t_i)/horizonSeconds).
+ *
+ * @param turns - history turns (similarity + timestamp).
+ * @param lambda - decay factor per horizon-unit, (0,1].
+ * @param nowSeconds - current Unix timestamp.
+ * @param horizonSeconds - the time unit the exponent is measured in (default 3600
+ *   = per hour, the documented behaviour). A span-relative value makes decay
+ *   scale-invariant (see {@link KadaneDialParams.decayHorizonSeconds}).
+ * @returns the decayed scores R_i.
+ */
+export function applyTemporalDecay(turns: HistoryTurn[], lambda: number, nowSeconds: number, horizonSeconds = 3600): number[] {
+  const unit = horizonSeconds > 0 ? horizonSeconds : 3600; // guard: non-positive ⇒ per-hour
+  return turns.map((t) => t.similarity * Math.pow(lambda, (nowSeconds - t.timestampSeconds) / unit));
 }
 
 /** Population z-score. σ = 0 → returns the input unchanged (spec edge case). */
@@ -184,7 +216,7 @@ export function kadaneDialSpans(scores: number[], gainShift: number, theta: numb
  * @returns the {@link PruneDecision} (selected + pruned indices + scores + params).
  */
 export function selectRelevantTurns(turns: HistoryTurn[], params: KadaneDialParams): PruneDecision {
-  const decayedScores = applyTemporalDecay(turns, params.lambda, params.nowSeconds);
+  const decayedScores = applyTemporalDecay(turns, params.lambda, params.nowSeconds, params.decayHorizonSeconds ?? 3600);
 
   // Edge cases (docs/ALGORITHM.md §Implementation Notes → Edge Cases):
   //  - empty history → no spans.

@@ -36,6 +36,14 @@ describe("applyTemporalDecay — R_i = S_raw × λ^((now−t)/3600)", () => {
     const [r] = applyTemporalDecay([{ similarity: 0.5, timestampSeconds: NOW - 999 * 3600 }], 1, NOW);
     expect(r).toBe(0.5);
   });
+  test("decayHorizonSeconds rescales the exponent (scale-invariant decay, PB-38)", () => {
+    // 1h-old turn, λ=0.5: per-hour ⇒ 0.5^1; horizon=2h ⇒ 0.5^0.5 ≈ 0.707.
+    const turn = [{ similarity: 1, timestampSeconds: NOW - 3600 }];
+    expect(applyTemporalDecay(turn, 0.5, NOW)[0]).toBeCloseTo(0.5, 10); // default per-hour
+    expect(applyTemporalDecay(turn, 0.5, NOW, 7200)[0]).toBeCloseTo(Math.SQRT1_2, 10); // horizon = 2h
+    // non-positive horizon guards back to per-hour (never divide-by-zero).
+    expect(applyTemporalDecay(turn, 0.5, NOW, 0)[0]).toBeCloseTo(0.5, 10);
+  });
 });
 
 describe("zScoreNormalize — population z-score, σ=0 passthrough", () => {
@@ -192,6 +200,23 @@ describe("trimCarriedTurns (opt-in span-edge refinement)", () => {
     const on = selectRelevantTurns(CARRIED, params({ theta: 0.5, trimCarriedTurns: true }));
     expect(off.selectedIndices).toEqual(explicitOff.selectedIndices); // default == off
     expect(on.selectedIndices).not.toEqual(off.selectedIndices); // on actually changes the result
+  });
+});
+
+describe("decayHorizonSeconds — scale-invariant decay (ADR-0015)", () => {
+  // A far-past but highly-relevant turn (0) amid recent low-relevance noise (1,2).
+  const turns = [
+    { similarity: 0.9, timestampSeconds: NOW - 1000 * 3600 }, // ~42 days old, on-topic
+    { similarity: 0.1, timestampSeconds: NOW - 2 * 3600 },
+    { similarity: 0.1, timestampSeconds: NOW - 1 * 3600 },
+  ];
+  test("per-hour λ=0.97 DROPS the old relevant turn (fixed half-life crushes it)", () => {
+    const d = selectRelevantTurns(turns, { lambda: 0.97, gainShift: 0, theta: 1, nowSeconds: NOW });
+    expect(d.selectedIndices).not.toContain(0);
+  });
+  test("span-relative horizon KEEPS the old relevant turn (decay rescaled to the span)", () => {
+    const d = selectRelevantTurns(turns, { lambda: 0.5, gainShift: 0, theta: 1, nowSeconds: NOW, decayHorizonSeconds: 1000 * 3600 });
+    expect(d.selectedIndices).toContain(0);
   });
 });
 
