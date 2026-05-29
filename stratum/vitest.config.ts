@@ -24,8 +24,28 @@ export default defineConfig({
       // and will be covered by their own sub-area tests (P0-D + P0-E in
       // Sessions 14+). Narrowing here prevents 0%-coverage scripts from
       // polluting the P0-A coverage report.
-      include: ['scripts/capture-session.ts'],
-      exclude: ['test/**', '**/*.d.ts', '**/*.test.ts'],
+      // Coverage gate scope (§2d hardening, Session 16): the Phase-1 capture
+      // script + the Phase-1 proxy LOGIC. Excluded below are (a) I/O-boundary
+      // files that make live HTTP/process calls (exercised via e2e, not unit
+      // tests — their pure helpers ARE unit-tested separately) and (b) future-
+      // phase scaffold stubs (Phase 2+/3+/4) that are not in v0.3.x §2d scope.
+      include: ['scripts/capture-session.ts', 'src/proxy/**/*.ts'],
+      exclude: [
+        'test/**',
+        '**/*.d.ts',
+        '**/*.test.ts',
+        // I/O boundary — live HTTP / process lifecycle; e2e, not unit:
+        'src/proxy/index.ts', // entry: listen + graceful shutdown
+        'src/proxy/forward.ts', // createDefaultMessagesDeps + real axios forward (helpers tested in forward-helpers.test.ts)
+        'src/proxy/stream-forward.ts', // real axios responseType:stream (isStreamingRequest tested in forward-helpers.test.ts)
+        // Future-phase scaffold stubs (NOT v0.3.x §2d scope):
+        'src/proxy/worker.ts', // Phase 2+ Cloudflare Worker entry
+        'src/proxy/tee/**', // Phase 4 ZK/TEE
+        'src/proxy/routes/billing.ts', // Phase 6
+        'src/proxy/routes/config.ts', // Phase 3+
+        'src/proxy/routes/memory.ts', // Phase 3+
+        'src/proxy/routes/sessions.ts', // Phase 3+
+      ],
       // Production-grade thresholds (Session 13 spec §4 AC-P0-A.6).
       //
       // FUNCTIONS THRESHOLD ASYMMETRY (honest documentation):

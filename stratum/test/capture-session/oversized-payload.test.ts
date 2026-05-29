@@ -61,12 +61,20 @@ describe('oversized-payload (AC-S15-2a-4.3: large payload handling)', () => {
     ).resolves.not.toThrow();
     const elapsed = Date.now() - t0;
 
-    // Sane upper bound: 500KB through 8 regex passes + JSON.stringify
-    // should complete in well under 3 seconds. Performance regression budget.
-    expect(elapsed).toBeLessThan(3000);
+    // Tightened bound (PB-28): 500KB through the redactor + JSON.stringify
+    // measures ~600-800ms; 1500ms gives headroom while still catching a real
+    // perf regression (was a loose 3000ms).
+    expect(elapsed).toBeLessThan(1500);
 
-    // The capture artifact write succeeded
+    // The capture artifact write succeeded AND the 500KB payload survived into
+    // it intact (PB-28: previously only asserted not-throw + writes>0 — a
+    // regression that dropped/truncated the body would have passed silently).
     expect(captureState.fs.writes.length).toBeGreaterThan(0);
+    const parsed = getLastSessionWrite()!.parsed as {
+      requests: Array<{ request: { messages: Array<{ content: string }> } }>;
+    };
+    const captured = parsed.requests[parsed.requests.length - 1]!.request.messages[0]!.content;
+    expect(captured.length).toBe(500_000); // no PII in 'x'*N → redactor leaves it intact
   });
 
   test('response with ~10K-token-equivalent text (40K chars) handled', async () => {
