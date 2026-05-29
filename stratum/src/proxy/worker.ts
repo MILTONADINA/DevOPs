@@ -1,8 +1,13 @@
+/// <reference types="@cloudflare/workers-types" />
 /**
  * CQ Proxy — Cloudflare Worker Entry Point (Phase 2+)
  *
  * Production edge proxy deployed to Cloudflare Workers.
  * Uses Durable Objects for session state management.
+ *
+ * The triple-slash reference above pulls the Cloudflare Workers global types
+ * (DurableObjectNamespace, ExecutionContext, etc.) for this file only, without
+ * widening the global type surface of the Node-side proxy build.
  */
 
 export interface Env {

@@ -1,0 +1,26 @@
+{
+  // Typecheck-only config (PB-23 fix, Session 16).
+  //
+  // The build config (tsconfig.json) emits ONLY src/** to dist/ with
+  // rootDir=./src — that is the deployable proxy/pruner/memory/etc. The
+  // scripts/ and evals/ trees are ts-node tooling (npm run capture / promote /
+  // test:eval) that is NEVER built to dist, so they are out of the build
+  // include. This config typechecks EVERYTHING (src + scripts + evals) without
+  // emitting, so `npm run typecheck` covers the whole tree.
+  //
+  // rootDir is widened to ".." (the DevOPs repo root) because scripts/
+  // capture-session.ts imports @devops/observability/pii-redaction (resolved
+  // via the @devops/* -> ../* path alias to a file OUTSIDE stratum/). With
+  // noEmit there is no output-structure concern, and a root of ".." contains
+  // both stratum/ and observability/, so no TS6059 "not under rootDir" fires.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": "..",
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": false
+  },
+  "include": ["src/**/*", "scripts/**/*", "evals/**/*"],
+  "exclude": ["node_modules", "dist", "rust"]
+}

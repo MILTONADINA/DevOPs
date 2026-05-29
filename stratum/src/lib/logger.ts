@@ -9,10 +9,12 @@
 
 import pino from "pino";
 
+// `transport` is included ONLY in development. Under exactOptionalPropertyTypes,
+// pino's LoggerOptions.transport must not be assigned `undefined` explicitly, so
+// we conditionally spread the key in rather than setting it to undefined.
 export const logger = pino({
   level: process.env["LOG_LEVEL"] ?? "info",
-  transport:
-    process.env["NODE_ENV"] === "development"
-      ? { target: "pino-pretty" }
-      : undefined,
+  ...(process.env["NODE_ENV"] === "development"
+    ? { transport: { target: "pino-pretty" } }
+    : {}),
 });

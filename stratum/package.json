@@ -11,7 +11,7 @@
     "start": "node dist/proxy/index.js",
     "lint": "eslint src --ext .ts && prettier --check src",
     "lint:fix": "eslint src --ext .ts --fix && prettier --write src",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
@@ -43,6 +43,7 @@
     "zod": "^3.22.4"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260528.1",
     "@types/node": "^20.11.0",
     "@types/uuid": "^11.0.0",
     "@typescript-eslint/eslint-plugin": "^7.0.0",

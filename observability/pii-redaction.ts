@@ -1,13 +1,12 @@
 // observability/pii-redaction.ts
 //
-// Inline PII redaction at the OTel exporter. PII never reaches the
-// observability backend.
+// Pure, dependency-free PII redaction. Consumed by the OTel SpanExporter
+// wrapper (./otel-exporter.ts) AND by Stratum's capture-session.ts (P0-F).
+// Keeping this module free of any external import lets cross-subtree consumers
+// typecheck it without transitively pulling @opentelemetry (PB-23, §2a-redo).
 //
 // Coverage: emails, phone numbers (US/intl), SSN, credit card, JWT, OAuth
-// access tokens, IP addresses (optional), arbitrary key:value secret patterns.
-
-import type { ReadableSpan, SpanExporter } from '@opentelemetry/sdk-trace-base';
-import type { ExportResult } from '@opentelemetry/core';
+// access tokens, arbitrary key:value secret patterns.
 
 // Quantifier discipline (Session 15 §2a-2, hardened in the §2a redo after
 // adversarial re-verification caught a fail-OPEN secret leak).
@@ -99,25 +98,4 @@ export function redactValue(v: unknown): unknown {
     return o;
   }
   return v;
-}
-
-export function piiRedactingExporter(base: SpanExporter): SpanExporter {
-  return {
-    export(spans: ReadableSpan[], cb: (r: ExportResult) => void) {
-      const redacted = spans.map(span => ({
-        ...span,
-        attributes: Object.fromEntries(
-          Object.entries(span.attributes ?? {}).map(([k, v]) => [k, redactValue(v)]),
-        ),
-        events: span.events?.map(e => ({
-          ...e,
-          attributes: Object.fromEntries(
-            Object.entries(e.attributes ?? {}).map(([k, v]) => [k, redactValue(v)]),
-          ),
-        })),
-      })) as ReadableSpan[];
-      return base.export(redacted, cb);
-    },
-    shutdown() { return base.shutdown(); },
-  };
 }
