@@ -38,11 +38,14 @@ describe("encoder math", () => {
   });
 });
 
-describe("createOnnxEncoder — gated on the model artifact", () => {
-  test("throws a clear, actionable error until the model is provided", async () => {
-    await expect(createOnnxEncoder({ modelPath: "/models/all-MiniLM-L6-v2-int8.onnx" })).rejects.toThrow(
-      /model artifact required|ONNX encoder unavailable/,
-    );
+describe("createOnnxEncoder — real ONNX encoder (model load is lazy; no network here)", () => {
+  test("constructs a BiEncoder (dimension 384) without loading the model", () => {
+    const enc = createOnnxEncoder();
+    expect(enc.dimension).toBe(384);
+    expect(typeof enc.encode).toBe("function");
+  });
+  test("encode([]) short-circuits to [] (no model load / no network)", async () => {
+    expect(await createOnnxEncoder().encode([])).toEqual([]);
   });
 });
 

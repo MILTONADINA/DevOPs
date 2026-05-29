@@ -7,11 +7,12 @@
  *
  * The pure similarity math here (l2Normalize, cosineSimilarity) is unit-tested
  * and used by the orchestrator. The REAL text→embedding path (createOnnxEncoder)
- * is GATED on the model artifact (all-MiniLM-L6-v2-int8.onnx) + a matching
- * tokenizer, which are NOT in the repo — it throws a clear error rather than
- * returning garbage embeddings (garbage would silently corrupt pruning). The
- * orchestrator (pruner.ts) consumes EMBEDDINGS, so it is fully testable without
- * the model via an injected/test encoder.
+ * is backed by @huggingface/transformers (ONNX Runtime + WordPiece tokenizer,
+ * ADR-0010); the model is FETCHED on first use to a gitignored cache (no binary
+ * in the repo) and loaded LAZILY, so unit tests that inject embeddings never hit
+ * the network. The orchestrator (pruner.ts) consumes EMBEDDINGS, so it stays
+ * fully testable without the model via an injected/test encoder; real embeddings
+ * are exercised by `npm run verify-encoder`.
  */
 
 export const EMBEDDING_DIM = 384;
@@ -48,26 +49,64 @@ export function cosineSimilarity(a: Float32Array, b: Float32Array): number {
 }
 
 export interface OnnxEncoderOptions {
-  /** Path to the INT8 ONNX model (all-MiniLM-L6-v2-int8.onnx). */
-  modelPath: string;
+  /** HF model id (ONNX weights). Default: the all-MiniLM-L6-v2 ONNX export. */
+  modelId?: string;
+  /** Local cache dir for the fetched model (gitignored). Default: <cwd>/models. */
+  cacheDir?: string;
+  /** Quantization: "q8" = INT8 (default, per docs), "fp32" = full precision. */
+  dtype?: "q8" | "fp32";
 }
 
+/** Minimal shape of the transformers.js feature-extraction output we use. */
+interface FeatureTensor {
+  tolist(): number[][];
+}
+type Extractor = (texts: string[], opts: { pooling: "mean"; normalize: boolean }) => Promise<FeatureTensor>;
+
 /**
- * Create the real ONNX-backed encoder.
+ * Create the real ONNX-backed encoder (all-MiniLM-L6-v2, INT8, L2-normalized).
  *
- * @param opts - model path.
+ * Backed by `@huggingface/transformers`, which runs the ONNX export on ONNX
+ * Runtime (Node) and supplies the matching WordPiece tokenizer — see ADR-0010
+ * for why this beats hand-rolling tokenization over raw onnxruntime-node. The
+ * model is FETCHED on first use to a gitignored cache dir (no binary in the
+ * repo). Mean-pooled + L2-normalized → a 384-d unit vector, so a dot product is
+ * cosine similarity (docs/ALGORITHM.md §ONNX Runtime).
+ *
+ * The model load is LAZY (first non-empty `encode()`), so constructing the
+ * encoder + encoding `[]` never touches the network — keeping callers testable.
+ *
+ * @param opts - model id / cache dir / quantization.
  * @returns a {@link BiEncoder}.
- * @throws ALWAYS until the model artifact is provided — the
- *   all-MiniLM-L6-v2 INT8 model + matching tokenizer are not in the repo.
- *   Failing loudly is deliberate: silently returning fake embeddings would
- *   corrupt every downstream pruning decision. Provide the model (and wire
- *   onnxruntime-node + the tokenizer here) to enable real embeddings.
  */
-export async function createOnnxEncoder(opts: OnnxEncoderOptions): Promise<BiEncoder> {
-  throw new Error(
-    `ONNX encoder unavailable: model artifact required at "${opts.modelPath}" ` +
-      `(all-MiniLM-L6-v2 INT8) plus a matching tokenizer — neither is in the repo. ` +
-      `See docs/ALGORITHM.md §ONNX Runtime. Until provided, supply a test/injected ` +
-      `BiEncoder. (Real inference + tokenization are wired here once the model exists.)`,
-  );
+export function createOnnxEncoder(opts: OnnxEncoderOptions = {}): BiEncoder {
+  const modelId = opts.modelId ?? "Xenova/all-MiniLM-L6-v2";
+  const dtype = opts.dtype ?? "q8";
+  let extractorPromise: Promise<Extractor> | null = null;
+
+  const getExtractor = (): Promise<Extractor> => {
+    if (!extractorPromise) {
+      extractorPromise = (async (): Promise<Extractor> => {
+        // Dynamic import: transformers.js is ESM + heavy; only load it when an
+        // encode actually happens (never during unit tests that inject vectors).
+        const tf = (await import("@huggingface/transformers")) as unknown as {
+          pipeline: (task: string, model: string, opts: { dtype: string }) => Promise<Extractor>;
+          env: { cacheDir?: string };
+        };
+        if (opts.cacheDir) tf.env.cacheDir = opts.cacheDir;
+        return tf.pipeline("feature-extraction", modelId, { dtype });
+      })();
+    }
+    return extractorPromise;
+  };
+
+  return {
+    dimension: EMBEDDING_DIM,
+    async encode(texts: string[]): Promise<Float32Array[]> {
+      if (texts.length === 0) return [];
+      const extractor = await getExtractor();
+      const out = await extractor(texts, { pooling: "mean", normalize: true });
+      return out.tolist().map((v) => Float32Array.from(v));
+    },
+  };
 }
