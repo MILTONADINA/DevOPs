@@ -71,20 +71,20 @@ export function isCodeRelated(fact: AnyFact): boolean {
   return false;
 }
 
-function factTimeSeconds(fact: AnyFact): number {
-  const ms = Date.parse(fact.created_at);
-  return Number.isFinite(ms) ? Math.floor(ms / 1000) : 0;
-}
-
 function asEvidence(c: CodeChange): AttestationEvidence {
   return { commitHash: c.commitHash, commitMessage: c.message, timestampSeconds: c.timestampSeconds, ...(c.filePath !== undefined ? { filePath: c.filePath } : {}) };
 }
 
-/** The latest change (after `afterTime`) whose effect concerns `symbol` (touches or renames-to it). */
-function latestChangeTo(symbol: string, changes: CodeChange[], afterTime: number): CodeChange | undefined {
+/**
+ * The latest change AT OR AFTER `sinceTime` that concerns `symbol` (touches it, or is
+ * renamed to it), EXCLUDING the confirming commit itself. `>= sinceTime` (not `>`) so a
+ * contradicting change in the SAME second as the confirming commit is NOT masked — git
+ * commit times are second-granular — while the confirming commit is excluded by hash.
+ */
+function latestChangeTo(symbol: string, changes: CodeChange[], sinceTime: number, excludeCommit: string): CodeChange | undefined {
   let latest: CodeChange | undefined;
   for (const c of changes) {
-    if (c.timestampSeconds <= afterTime) continue;
+    if (c.timestampSeconds < sinceTime || c.commitHash === excludeCommit) continue;
     if (c.entity === symbol || c.toEntity === symbol) {
       if (!latest || c.timestampSeconds > latest.timestampSeconds) latest = c;
     }
@@ -132,27 +132,31 @@ export function attestFact(fact: AnyFact, changes: CodeChange[]): AttestationRes
       if (delOld && addNew) confirm = addNew;
     }
 
-    // 2) Determine the symbol whose CURRENT existence the fact asserts, and check
-    //    whether a LATER change contradicts that (Historical Drift).
-    const anchor = confirm?.timestampSeconds ?? factTimeSeconds(fact);
-    // renamed/signature_changed assert a symbol EXISTS now; deprecated asserts old_name is GONE.
-    const assertedExists = fact.change_type === "renamed" ? fact.new_name : fact.change_type === "signature_changed" ? fact.old_name : undefined;
-    const assertedGone = fact.change_type === "deprecated" ? fact.old_name : undefined;
+    // 2) Historical Drift is checked ONLY against a CONFIRMED change: with no
+    //    confirming commit there is no "claimed change" timeline to drift from, so the
+    //    fact is UNVERIFIED (→ Tier-2), never a CONFLICT fabricated from an unrelated
+    //    change. The anchor is the confirming commit's time; the confirming commit is
+    //    excluded from the drift scan (so it can't mask itself).
+    if (confirm) {
+      const anchor = confirm.timestampSeconds;
+      // renamed/signature_changed assert a symbol EXISTS now; deprecated asserts old_name is GONE.
+      const assertedExists = fact.change_type === "renamed" ? fact.new_name : fact.change_type === "signature_changed" ? fact.old_name : undefined;
+      const assertedGone = fact.change_type === "deprecated" ? fact.old_name : undefined;
 
-    if (assertedExists !== undefined) {
-      const latest = latestChangeTo(assertedExists, changes, anchor);
-      if (latest && leavesAbsent(latest, assertedExists)) {
-        return { status: "CONFLICT", conflictCommit: latest.commitHash, conflictDetail: `${assertedExists} was ${latest.changeType} in commit ${latest.commitHash} (${latest.timestampSeconds}) after the claimed change — the memory is stale.` };
+      if (assertedExists !== undefined) {
+        const latest = latestChangeTo(assertedExists, changes, anchor, confirm.commitHash);
+        if (latest && leavesAbsent(latest, assertedExists)) {
+          return { status: "CONFLICT", conflictCommit: latest.commitHash, conflictDetail: `${assertedExists} was ${latest.changeType} in commit ${latest.commitHash} (${latest.timestampSeconds}) after the claimed change — the memory is stale.` };
+        }
       }
-    }
-    if (assertedGone !== undefined) {
-      const latest = latestChangeTo(assertedGone, changes, anchor);
-      if (latest && (latest.entity === assertedGone && latest.changeType === "added")) {
-        return { status: "CONFLICT", conflictCommit: latest.commitHash, conflictDetail: `${assertedGone} was re-added in commit ${latest.commitHash} (${latest.timestampSeconds}) after being deprecated — the memory is stale.` };
+      if (assertedGone !== undefined) {
+        const latest = latestChangeTo(assertedGone, changes, anchor, confirm.commitHash);
+        if (latest && latest.entity === assertedGone && latest.changeType === "added") {
+          return { status: "CONFLICT", conflictCommit: latest.commitHash, conflictDetail: `${assertedGone} was re-added in commit ${latest.commitHash} (${latest.timestampSeconds}) after being deprecated — the memory is stale.` };
+        }
       }
+      return { status: "CONFIRMED", evidence: asEvidence(confirm) };
     }
-
-    if (confirm) return { status: "CONFIRMED", evidence: asEvidence(confirm) };
     return { status: "UNVERIFIED" };
   }
 

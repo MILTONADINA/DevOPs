@@ -45,16 +45,51 @@ describe("attestFact — FunctionChange", () => {
   });
 
   test("NO conflict when the symbol was deleted then RE-ADDED (current state exists)", () => {
+    // Distinct commit hashes so the re-add genuinely drives the result (not hash-exclusion).
     const r = attestFact(fnFact({ new_name: "fetchUser", change_type: "renamed" }), [
-      change({ entity: "getUser", changeType: "renamed", toEntity: "fetchUser", timestampSeconds: 1000 }),
-      change({ entity: "fetchUser", changeType: "deleted", timestampSeconds: 2000 }),
-      change({ entity: "fetchUser", changeType: "added", timestampSeconds: 3000 }),
+      change({ entity: "getUser", changeType: "renamed", toEntity: "fetchUser", commitHash: "ren1", timestampSeconds: 1000 }),
+      change({ entity: "fetchUser", changeType: "deleted", commitHash: "del2", timestampSeconds: 2000 }),
+      change({ entity: "fetchUser", changeType: "added", commitHash: "add3", timestampSeconds: 3000 }),
     ]);
     expect(r.status).toBe("CONFIRMED"); // latest change leaves fetchUser present
   });
 
   test("UNVERIFIED: no commit evidence at all", () => {
     expect(attestFact(fnFact({ new_name: "fetchUser", change_type: "renamed" }), []).status).toBe("UNVERIFIED");
+  });
+
+  test("UNVERIFIED (not CONFLICT) with NO confirming commit even if a later change touches the symbol (review #1)", () => {
+    // renamed getUser→fetchUser with NO rename/add evidence + an unrelated later delete of fetchUser.
+    const r = attestFact(fnFact({ new_name: "fetchUser", change_type: "renamed" }), [change({ entity: "fetchUser", changeType: "deleted", commitHash: "x1", timestampSeconds: 5000 })]);
+    expect(r.status).toBe("UNVERIFIED"); // no confirmation ⇒ no drift CONFLICT fabricated from thin air
+  });
+
+  test("deprecated with NO deletion evidence but a later add → UNVERIFIED, not a fabricated CONFLICT (review #1)", () => {
+    expect(attestFact(fnFact({ change_type: "deprecated" }), [change({ entity: "getUser", changeType: "added", commitHash: "x1", timestampSeconds: 5000 })]).status).toBe("UNVERIFIED");
+  });
+
+  test("a contradicting change in the SAME second as the confirming commit still yields CONFLICT (review #2)", () => {
+    const r = attestFact(fnFact({ new_name: "fetchUser", change_type: "renamed" }), [
+      change({ entity: "getUser", changeType: "renamed", toEntity: "fetchUser", commitHash: "ren1", timestampSeconds: 5000 }),
+      change({ entity: "fetchUser", changeType: "deleted", commitHash: "del1", timestampSeconds: 5000 }), // same second, DISTINCT commit
+    ]);
+    expect(r.status).toBe("CONFLICT");
+  });
+
+  test("signature_changed CONFLICT when the function is later deleted (review #11)", () => {
+    const r = attestFact(fnFact({ change_type: "signature_changed" }), [
+      change({ entity: "getUser", changeType: "modified", commitHash: "mod1", timestampSeconds: 1000 }),
+      change({ entity: "getUser", changeType: "deleted", commitHash: "del2", timestampSeconds: 2000 }),
+    ]);
+    expect(r.status).toBe("CONFLICT");
+    expect(r.conflictCommit).toBe("del2");
+  });
+
+  test("rename partial evidence → UNVERIFIED, not a false CONFIRMED (review #12)", () => {
+    // only delete-old:
+    expect(attestFact(fnFact({ new_name: "fetchUser", change_type: "renamed" }), [change({ entity: "getUser", changeType: "deleted", commitHash: "d1", timestampSeconds: 1000 })]).status).toBe("UNVERIFIED");
+    // only add-new:
+    expect(attestFact(fnFact({ new_name: "fetchUser", change_type: "renamed" }), [change({ entity: "fetchUser", changeType: "added", commitHash: "a1", timestampSeconds: 1000 })]).status).toBe("UNVERIFIED");
   });
 
   test("deprecated: CONFIRMED by a deletion; CONFLICT if re-added later", () => {

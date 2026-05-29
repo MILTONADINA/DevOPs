@@ -26,9 +26,17 @@ import type { CodeChange } from "./git-attestation";
 
 const execFileAsync = promisify(execFile);
 
-/** Record/field separators for a robustly-parseable `git log` format (control chars never appear in commit metadata). */
+// Record/field separators for the `git log` format. NOTE: these control bytes are
+// rare but NOT guaranteed absent from commit metadata or patch BODIES (`-p` appends
+// the diff verbatim). So a record is accepted only if its header validates (hex hash +
+// plausible timestamp), and a fragment that fails — a stray RS in a patch body, or a
+// forged record injected via commit/file content — is RE-ATTACHED to the preceding
+// commit's patch rather than parsed as its own commit (defends the deterministic Tier-1
+// against record-forgery + symbol-loss; see commitHeaderFields / parseGitLogWithPatches).
 const REC = "\x1e";
 const UNIT = "\x1f";
+/** Plausible git hash (short or full, sha-1/sha-256); rejects non-hex junk from patch bodies. */
+const HASH_RE = /^[0-9a-f]{4,64}$/;
 /** `git log` format string: <RS>hash<US>committer-unixtime<US>subject<US>. `-p` appends the patch. */
 export const GIT_LOG_FORMAT = `${REC}%H${UNIT}%ct${UNIT}%s${UNIT}`;
 
@@ -67,16 +75,27 @@ interface CommitMeta {
  * @param meta - the commit hash / time / message.
  * @returns the code changes (one per touched symbol; empty if none detected).
  */
+/** Strip a leading a/ or b/ diff-path prefix. */
+function stripPathPrefix(p: string): string {
+  return p.replace(/^[ab]\//, "");
+}
+
 export function extractChangesFromPatch(patch: string, meta: CommitMeta): CodeChange[] {
-  // Per symbol: which signs touched its declaration + the file it was last seen in.
-  const seen = new Map<string, { added: boolean; removed: boolean; filePath?: string }>();
+  // Keyed by (file, symbol) so the SAME symbol name in two files in one commit stays
+  // distinct (else they'd collapse into one mis-typed, mis-attributed change).
+  const seen = new Map<string, { entity: string; added: boolean; removed: boolean; filePath?: string }>();
   let currentFile: string | undefined;
+  let preImage: string | undefined; // `--- a/<path>` — the deleted file's path when `+++ /dev/null`
 
   for (const line of patch.split(/\r?\n/)) {
-    // File headers — `+++ b/<path>` is the post-image path (own a copy, not a ref).
+    if (line.startsWith("--- ")) {
+      const p = line.slice(4).trim();
+      preImage = p === "/dev/null" ? undefined : stripPathPrefix(p);
+      continue;
+    }
     if (line.startsWith("+++ ")) {
       const p = line.slice(4).trim();
-      currentFile = p === "/dev/null" ? undefined : p.replace(/^b\//, "");
+      currentFile = p === "/dev/null" ? preImage : stripPathPrefix(p); // full-file deletion → keep the pre-image path
       continue;
     }
     if (line.startsWith("---") || line.startsWith("+++")) continue; // ---/+++ headers
@@ -85,18 +104,18 @@ export function extractChangesFromPatch(patch: string, meta: CommitMeta): CodeCh
     if (!isAdd && !isDel) continue;
     const sym = declaredSymbol(line.slice(1));
     if (sym === undefined) continue;
-    const entry = seen.get(sym) ?? { added: false, removed: false };
+    const key = `${currentFile ?? ""}\x00${sym}`;
+    const entry = seen.get(key) ?? { entity: sym, added: false, removed: false, ...(currentFile !== undefined ? { filePath: currentFile } : {}) };
     if (isAdd) entry.added = true;
     else entry.removed = true;
-    if (currentFile !== undefined) entry.filePath = currentFile;
-    seen.set(sym, entry);
+    seen.set(key, entry);
   }
 
   const out: CodeChange[] = [];
-  for (const [entity, s] of seen) {
+  for (const s of seen.values()) {
     const changeType: CodeChange["changeType"] = s.added && s.removed ? "modified" : s.added ? "added" : "deleted";
     out.push({
-      entity,
+      entity: s.entity,
       changeType,
       commitHash: meta.hash,
       message: meta.message,
@@ -107,38 +126,61 @@ export function extractChangesFromPatch(patch: string, meta: CommitMeta): CodeCh
   return out;
 }
 
+/**
+ * Validate a REC-split fragment as a real commit header (hex hash + plausible time +
+ * the format's field count). Rejects a stray RS in a patch body or a forged record
+ * (e.g. a far-future timestamp). `maxTs` bounds implausibly-future (forged) timestamps.
+ */
+function commitHeaderFields(fragment: string, maxTs: number): { hash: string; ts: number; message: string; patch: string } | null {
+  const parts = fragment.split(UNIT);
+  if (parts.length < 4) return null; // the format is hash<US>ct<US>subject<US> then the patch
+  const hash = (parts[0] ?? "").trim();
+  const ts = Number.parseInt((parts[1] ?? "").trim(), 10);
+  if (!HASH_RE.test(hash) || !Number.isFinite(ts) || ts <= 0 || ts > maxTs) return null;
+  return { hash, ts, message: (parts[2] ?? "").trim(), patch: parts.slice(3).join(UNIT) };
+}
+
 /** Parse the commit metadata (hash / time / subject) of `git log` records, no patch. */
 export function parseGitLog(raw: string): CommitMeta[] {
+  const maxTs = Math.floor(Date.now() / 1000) + 86_400;
   const out: CommitMeta[] = [];
-  for (const record of raw.split(REC)) {
-    if (record.trim() === "") continue;
-    const parts = record.split(UNIT);
-    const hash = (parts[0] ?? "").trim();
-    const ct = Number.parseInt((parts[1] ?? "").trim(), 10);
-    if (!hash || !Number.isFinite(ct)) continue;
-    out.push({ hash, timestampSeconds: ct, message: (parts[2] ?? "").trim() });
+  for (const fragment of raw.split(REC)) {
+    if (fragment === "") continue;
+    const h = commitHeaderFields(fragment, maxTs);
+    if (h) out.push({ hash: h.hash, timestampSeconds: h.ts, message: h.message });
   }
   return out;
 }
 
 /**
- * Parse `git log -p --format=GIT_LOG_FORMAT` output into code changes (PURE).
+ * Parse `git log -p --format=GIT_LOG_FORMAT` output into code changes.
+ *
+ * Validates each record's header and RE-ATTACHES non-header fragments (a stray RS in a
+ * patch body, or a forged record injected via commit/file content) to the preceding
+ * commit's patch — so symbols after a body-RS are not lost and an injected fragment
+ * cannot masquerade as its own commit (record-forgery defense). Time-bounded only by
+ * the far-future timestamp guard; otherwise pure.
  *
  * @param raw - the raw `git log -p` output (with {@link GIT_LOG_FORMAT}).
  * @returns all code changes across the commits, newest-first (git log order).
  */
 export function parseGitLogWithPatches(raw: string): CodeChange[] {
-  const changes: CodeChange[] = [];
-  for (const record of raw.split(REC)) {
-    if (record.trim() === "") continue;
-    const parts = record.split(UNIT);
-    const hash = (parts[0] ?? "").trim();
-    const ct = Number.parseInt((parts[1] ?? "").trim(), 10);
-    if (!hash || !Number.isFinite(ct)) continue;
-    const message = (parts[2] ?? "").trim();
-    const patch = parts.slice(3).join(UNIT); // the patch tail (after the 3 metadata fields)
-    changes.push(...extractChangesFromPatch(patch, { hash, timestampSeconds: ct, message }));
+  const maxTs = Math.floor(Date.now() / 1000) + 86_400;
+  const commits: { hash: string; ts: number; message: string; patch: string }[] = [];
+  for (const fragment of raw.split(REC)) {
+    if (fragment === "") continue;
+    const h = commitHeaderFields(fragment, maxTs);
+    if (h) {
+      commits.push(h);
+    } else if (commits.length > 0) {
+      // Stray RS inside a patch body, or an injected/forged fragment: re-attach to the
+      // previous commit's patch (don't lose its symbols; don't accept a forged record).
+      commits[commits.length - 1]!.patch += REC + fragment;
+    }
+    // else: junk before the first real commit → ignore.
   }
+  const changes: CodeChange[] = [];
+  for (const c of commits) changes.push(...extractChangesFromPatch(c.patch, { hash: c.hash, timestampSeconds: c.ts, message: c.message }));
   return changes;
 }
 

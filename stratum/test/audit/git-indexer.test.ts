@@ -58,10 +58,10 @@ describe("extractChangesFromPatch", () => {
 
 describe("parseGitLog / parseGitLogWithPatches", () => {
   test("parseGitLog reads commit metadata", () => {
-    const raw = rec("h1", 1700, "first", "") + rec("h2", 1800, "second", "");
+    const raw = rec("abc123", 1700, "first", "") + rec("def456", 1800, "second", "");
     expect(parseGitLog(raw)).toEqual([
-      { hash: "h1", timestampSeconds: 1700, message: "first" },
-      { hash: "h2", timestampSeconds: 1800, message: "second" },
+      { hash: "abc123", timestampSeconds: 1700, message: "first" },
+      { hash: "def456", timestampSeconds: 1800, message: "second" },
     ]);
   });
 
@@ -92,6 +92,39 @@ describe("indexRepository (injected fake git runner — no real git)", () => {
     expect(seenArgs).toContain(`--format=${GIT_LOG_FORMAT}`);
     expect(seenArgs).toContain("--max-count=5");
     expect(seenArgs.some((a) => a.startsWith("--since="))).toBe(true);
+  });
+});
+
+describe("parser robustness + record-forgery defense (review fixes)", () => {
+  test("cross-file same-symbol: distinct per-file changes, not one collapsed 'modified'", () => {
+    const patch = `+++ b/alpha.js\n+function helper() {\n+++ b/beta.js\n-function helper() {\n`;
+    const changes = extractChangesFromPatch(patch, { hash: "abc123", timestampSeconds: 1, message: "m" });
+    expect(changes).toHaveLength(2);
+    const byFile = Object.fromEntries(changes.map((c) => [c.filePath, c.changeType]));
+    expect(byFile["alpha.js"]).toBe("added");
+    expect(byFile["beta.js"]).toBe("deleted");
+  });
+
+  test("full-file deletion (+++ /dev/null) keeps the deleted path from the pre-image (--- a/…)", () => {
+    const patch = `--- a/dropme.js\n+++ /dev/null\n-function dropped() {\n`;
+    const [c] = extractChangesFromPatch(patch, { hash: "abc123", timestampSeconds: 1, message: "m" });
+    expect(c).toMatchObject({ entity: "dropped", changeType: "deleted", filePath: "dropme.js" });
+  });
+
+  test("a stray RS (\\x1e) inside a patch body does NOT lose later symbols (re-attached)", () => {
+    const patch = `+++ b/x.ts\n+const REC_CHAR = "\x1e";\n+function afterSentinel() {\n`;
+    const ents = parseGitLogWithPatches(rec("abc123", 1000, "weird file", patch)).map((c) => c.entity).sort();
+    expect(ents).toContain("afterSentinel"); // not silently dropped by the RS split
+    expect(ents).toContain("REC_CHAR");
+  });
+
+  test("a record forged via content (far-future timestamp) is NOT accepted as its own commit", () => {
+    const realPatch = `+++ b/real.ts\n+function realFn() {\n`;
+    const forged = `${REC}deadbeefcafe${UNIT}9999999999${UNIT}forged${UNIT}\n+function evilFn(){}\n`;
+    const changes = parseGitLogWithPatches(rec("abc123", 1000, "real commit", realPatch + forged));
+    expect(changes.some((c) => c.commitHash === "deadbeefcafe")).toBe(false); // forged hash rejected
+    expect(changes.some((c) => c.timestampSeconds === 9999999999)).toBe(false); // forged far-future ts rejected
+    expect(changes.find((c) => c.entity === "realFn")?.commitHash).toBe("abc123"); // real commit intact
   });
 });
 
