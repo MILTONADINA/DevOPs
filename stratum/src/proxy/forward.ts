@@ -15,6 +15,8 @@
 import axios from "axios";
 import { getAnthropicClient } from "../lib/anthropic";
 import { createCaptureStore, type CaptureStore } from "./capture";
+import { withRetry } from "./retry";
+import { createTokenCounter } from "./token-count";
 import type Anthropic from "@anthropic-ai/sdk";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
@@ -31,6 +33,8 @@ export interface MessagesBody {
 export interface ForwardResult {
   status: number;
   data: unknown;
+  /** Lower-cased response headers (used by retry/backoff to honor Retry-After). */
+  headers?: Record<string, string>;
 }
 
 export interface TokenCountResult {
@@ -97,7 +101,11 @@ export async function forwardToAnthropic(
     // Let the caller see 4xx/5xx bodies rather than throwing on them.
     validateStatus: () => true,
   });
-  return { status: res.status, data: res.data };
+  const headers: Record<string, string> = {};
+  for (const [k, v] of Object.entries((res.headers ?? {}) as Record<string, unknown>)) {
+    if (typeof v === "string") headers[k.toLowerCase()] = v;
+  }
+  return { status: res.status, data: res.data, headers };
 }
 
 /**
@@ -142,10 +150,15 @@ export function createDefaultMessagesDeps(): MessagesDeps {
   const sessionId = randomUUID();
   const outputFile = path.join(process.cwd(), "data", "sessions", `session-${sessionId}.json`);
 
+  // Forward with retry/backoff (429 Retry-After / 5xx jitter / network 1-retry).
+  const forward = withRetry((body, key) => forwardToAnthropic(body, key, baseUrl));
+  // Exact token counting with hash-cache + flagged heuristic fallback.
+  const counter = createTokenCounter(client);
+
   return {
     apiKey,
-    forward: (body, key) => forwardToAnthropic(body, key, baseUrl),
-    countTokens: (body) => countTokensExact(body, client),
+    forward,
+    countTokens: (body) => counter.count(body),
     capture: createCaptureStore({ sessionId, outputFile }),
   };
 }
