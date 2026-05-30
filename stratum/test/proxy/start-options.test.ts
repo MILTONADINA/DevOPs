@@ -4,7 +4,7 @@
 import { describe, test, expect, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { BuildProxyOptions } from "../../src/proxy/app";
-import { commercialEnabled, buildStartOptions, type ClientFactory } from "../../src/proxy/index";
+import { commercialEnabled, buildStartOptions, resolveListenHost, type ClientFactory } from "../../src/proxy/index";
 
 const base = { messages: {} as never, dashboard: { readSessions: () => [] } } as unknown as BuildProxyOptions;
 const fakeClient = {} as unknown as SupabaseClient;
@@ -17,6 +17,16 @@ describe("commercialEnabled", () => {
     expect(commercialEnabled({ CQ_COMMERCIAL: "1", SUPABASE_URL: "u", SUPABASE_SERVICE_KEY: "k" })).toBe(true);
     expect(commercialEnabled({ CQ_COMMERCIAL: "false", SUPABASE_URL: "u", SUPABASE_SERVICE_KEY: "k" })).toBe(false);
     expect(commercialEnabled({ CQ_COMMERCIAL: "true", SUPABASE_URL: "u", SUPABASE_SERVICE_KEY: "" })).toBe(false); // empty key
+  });
+});
+
+describe("resolveListenHost", () => {
+  test("defaults to loopback; HOST overrides (0.0.0.0 in a container)", () => {
+    expect(resolveListenHost({})).toBe("127.0.0.1"); // private by default
+    expect(resolveListenHost({ HOST: "" })).toBe("127.0.0.1"); // empty ⇒ default
+    expect(resolveListenHost({ HOST: "  " })).toBe("127.0.0.1"); // whitespace ⇒ default
+    expect(resolveListenHost({ HOST: "0.0.0.0" })).toBe("0.0.0.0"); // container/PaaS: reachable
+    expect(resolveListenHost({ HOST: " 0.0.0.0 " })).toBe("0.0.0.0"); // trimmed
   });
 });
 

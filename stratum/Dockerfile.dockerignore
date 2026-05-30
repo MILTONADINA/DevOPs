@@ -1,0 +1,19 @@
+# Scoped ignore for stratum/Dockerfile (BuildKit reads <dockerfile>.dockerignore). The build context
+# is the DevOps parent, so start by excluding EVERYTHING, then re-include only what the image needs:
+# the stratum source + the one cross-subtree file (observability/pii-redaction.ts).
+**
+
+!stratum/**
+!observability/pii-redaction.ts
+
+# Re-exclude heavy / generated / secret paths under stratum (negation above re-added them).
+stratum/node_modules/**
+stratum/models/**
+stratum/data/**
+stratum/dist/**
+stratum/coverage/**
+stratum/.git/**
+stratum/evals/datasets/**
+**/.env
+**/.env.*
+**/*.log

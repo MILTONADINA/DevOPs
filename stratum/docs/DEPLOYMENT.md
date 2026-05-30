@@ -51,6 +51,44 @@ NODE_ENV=production node dist/proxy/index.js
 
 For Phase 1 the proxy runs locally on the developer's machine. No cloud deployment needed.
 
+> Note: the app runs the TypeScript source via **tsx** — `npm run build` is `tsc --noEmit` (typecheck
+> only; there is no `dist/`). Run it with `tsx src/proxy/index.ts` (= `npm run dev`) or the container below.
+
+---
+
+## Container deployment (recommended for the commercial proxy)
+
+The commercial proxy (and the public Stripe webhook endpoint) needs to run at a **public URL** — for a
+design partner to point their Anthropic SDK at it, and for Stripe to deliver `invoice.paid` callbacks.
+A `Dockerfile` is provided; the image is portable to any container host (Fly.io, Render, Railway, a VM,
+Cloud Run, etc.).
+
+**Build context is the DevOps PARENT** (the proxy imports `@devops/observability/pii-redaction` =
+`../observability`), so build from the repo root:
+
+```bash
+docker build -f stratum/Dockerfile -t stratum-proxy .
+
+# Personal (measurement) — ANTHROPIC_API_KEY is required just to boot (the proxy forwards to Anthropic):
+docker run -p 4080:4080 -e HOST=0.0.0.0 -e ANTHROPIC_API_KEY=sk-ant-… stratum-proxy
+
+# Commercial (multi-tenant auth + billing + Stripe webhook):
+docker run -p 4080:4080 -e HOST=0.0.0.0 -e CQ_COMMERCIAL=true \
+  -e SUPABASE_URL=… -e SUPABASE_SERVICE_KEY=… -e ANTHROPIC_API_KEY=… \
+  -e STRIPE_WEBHOOK_SECRET=whsec_… stratum-proxy
+```
+
+- **`HOST=0.0.0.0` is required** in a container — the default bind is `127.0.0.1` (loopback, private by
+  default for local use), which is unreachable from outside a container or behind a load balancer.
+- The image bakes in `tsx` (the runtime) and exposes a `HEALTHCHECK` on `/health` (public, no key/DB).
+- In-memory limiters (rate limit, token budget, webhook retry) are **single-instance** — run ONE
+  instance for a single-partner pilot; a multi-instance deploy needs a shared store (tracked, not yet built).
+- Register the deployed `https://<host>/stripe/webhook` URL in the Stripe Dashboard; put its signing
+  secret in `STRIPE_WEBHOOK_SECRET`. Verify the integration end-to-end with `npm run verify-stripe`.
+
+This image was built + run + health-checked against real Docker (boots in personal mode, `/health` → 200,
+container reports `healthy`). The TEE (Phase 4) + Cloudflare Worker paths below remain account-gated.
+
 ---
 
 ## Database Deployment (Supabase)

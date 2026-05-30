@@ -42,6 +42,19 @@ export interface StartEnv {
   STRIPE_WEBHOOK_SECRET?: string | undefined;
 }
 
+/**
+ * Resolve the bind host. Defaults to 127.0.0.1 (loopback) so local/personal use is private by
+ * default; a CONTAINER or PaaS sets HOST=0.0.0.0 to be reachable from outside (binding 127.0.0.1
+ * inside a container makes the server unreachable — the proxy could not be deployed without this).
+ *
+ * @param env - the process env (reads HOST).
+ * @returns the host to bind.
+ */
+export function resolveListenHost(env: { HOST?: string | undefined }): string {
+  const h = env.HOST;
+  return typeof h === "string" && h.trim() !== "" ? h.trim() : "127.0.0.1";
+}
+
 /** Commercial mode = the flag is on AND Supabase creds are present (else the multi-tenant store can't work). */
 export function commercialEnabled(env: StartEnv): boolean {
   const on = env.CQ_COMMERCIAL === "true" || env.CQ_COMMERCIAL === "1";
@@ -129,8 +142,9 @@ export async function start(): Promise<void> {
   process.on("SIGTERM", () => void shutdown("SIGTERM"));
   process.on("SIGINT", () => void shutdown("SIGINT"));
 
-  await app.listen({ port, host: "127.0.0.1" });
-  logger.info({ port, mode: commercialEnabled(env) ? "commercial (multi-tenant auth + APIs)" : "personal (Phase 1 measurement)" }, "CQ Proxy running");
+  const host = resolveListenHost(process.env);
+  await app.listen({ port, host });
+  logger.info({ port, host, mode: commercialEnabled(env) ? "commercial (multi-tenant auth + APIs)" : "personal (Phase 1 measurement)" }, "CQ Proxy running");
 }
 
 // Only auto-start when run as the entry (not when imported by a test for the pure helpers).
