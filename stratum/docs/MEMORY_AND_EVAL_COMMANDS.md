@@ -1,4 +1,4 @@
-# Stratum — Memory & Eval Commands (v0.4.x / v0.5.x)
+# Stratum — Memory & Eval Commands (v0.4.x / v0.5.x / v0.6.x)
 
 Operator guide for the three-tier memory + the pruning-eval tooling. Each command
 is marked **FREE** (local ONNX encoder + free-tier Supabase only — no Anthropic
@@ -80,6 +80,27 @@ curl -sL -o evals/datasets/longmemeval/longmemeval_s.json \
 curl -sL -o evals/datasets/longmemeval/longmemeval_oracle.json \
   https://huggingface.co/datasets/xiaowu0162/longmemeval-cleaned/resolve/main/longmemeval_oracle.json
 ```
+
+---
+
+## Audit commands (v0.6.x)
+
+The audit engine stops memory from becoming a hallucination amplifier: a
+stored-then-injected FALSE fact makes the AI worse. Tier-1 is the **$0,
+deterministic** gate — cross-reference a code-related fact against the repo's
+real commit history (ADR-0017). Tier-2 (Llama spot-check) / Tier-3 (Opus) escalate
+UNVERIFIED facts and are LLM-gated.
+
+| Command | Cost | What it does |
+|---|---|---|
+| `npm run audit:repo [-- --max-count N]` | **FREE** | Index a repo's real git history into structured code changes and report them (commits / files / added·deleted·modified). No LLM. |
+| `npm run audit:repo -- --facts <json>` | **FREE** | Attest a JSON array of facts against that history: CONFIRMED (with commit evidence) / UNVERIFIED (→ Tier-2, gated) / CONFLICT (stale memory). A CONFLICT yields a non-zero exit. |
+| `npm run audit:repo -- --facts <json> --persist --org-id <uuid> --session-id <uuid>` | **FREE** | Also record CONFLICTs to `audit_conflicts` (suppressed; trusted FKs, ADR-0012). Needs Supabase creds; skips cleanly without them. |
+
+Tier-1 is FREE and runs end-to-end today; escalating the UNVERIFIED residue to the
+Tier-2 Llama / Tier-3 Opus models (and wiring the audit as a request-path injection
+gate) is **NEEDS CREDITS** and follows the same Tier-A validation discipline as the
+pruner (no suppression in the request path until validated). See ADR-0017.
 
 ---
 
