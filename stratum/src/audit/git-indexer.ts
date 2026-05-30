@@ -1,7 +1,7 @@
 /**
  * Git Indexer — commit history → structured {@link CodeChange}s (Phase 5 / v0.6.x).
  *
- * Feeds Tier-1 Git-Attestation (git-attestation.ts): turns real `git log -p` output
+ * Feeds Tier-1 Git-Attestation (git-attestation.ts): turns real `git log -z -p` output
  * into the entity-level CodeChange[] that `attestFact` cross-references. FREE +
  * deterministic (no LLM). Per ADR-0013 the indexed changes live in the Supabase
  * graph; this module produces the CodeChanges (the graph-write is a later slice).
@@ -26,19 +26,17 @@ import type { CodeChange } from "./git-attestation";
 
 const execFileAsync = promisify(execFile);
 
-// Record/field separators for the `git log` format. NOTE: these control bytes are
-// rare but NOT guaranteed absent from commit metadata or patch BODIES (`-p` appends
-// the diff verbatim). So a record is accepted only if its header validates (hex hash +
-// plausible timestamp), and a fragment that fails — a stray RS in a patch body, or a
-// forged record injected via commit/file content — is RE-ATTACHED to the preceding
-// commit's patch rather than parsed as its own commit (defends the deterministic Tier-1
-// against record-forgery + symbol-loss; see commitHeaderFields / parseGitLogWithPatches).
-const REC = "\x1e";
-const UNIT = "\x1f";
-/** Plausible git hash (short or full, sha-1/sha-256); rejects non-hex junk from patch bodies. */
+// `git log -z` NUL-delimits records: it terminates each commit's FORMAT output (the
+// header line) with a NUL, then `-p` appends "\n" + the patch. A NUL byte cannot occur
+// in a commit message or a text patch body, so it is a STRUCTURAL record boundary —
+// unlike the prior \x1e/\x1f heuristic, no crafted commit message or file content can
+// forge a record (PB-45). The header is a single line "<hash> <committer-unixtime>
+// <subject>"; the subject (single-line) is just the remainder, so there is no field
+// separator a subject could spoof to bleed into the patch either.
+/** Plausible git hash (short or full, sha-1/sha-256); rejects non-hex junk. */
 const HASH_RE = /^[0-9a-f]{4,64}$/;
-/** `git log` format string: <RS>hash<US>committer-unixtime<US>subject<US>. `-p` appends the patch. */
-export const GIT_LOG_FORMAT = `${REC}%H${UNIT}%ct${UNIT}%s${UNIT}`;
+/** `git log` format: "<hash> <committer-unixtime> <subject>"; `-z` NUL-terminates it, `-p` appends the patch. */
+export const GIT_LOG_FORMAT = "%H %ct %s";
 
 // Declaration patterns → the declared symbol (group 1). Conservative + multi-language.
 const DECL_PATTERNS: RegExp[] = [
@@ -127,60 +125,94 @@ export function extractChangesFromPatch(patch: string, meta: CommitMeta): CodeCh
 }
 
 /**
- * Validate a REC-split fragment as a real commit header (hex hash + plausible time +
- * the format's field count). Rejects a stray RS in a patch body or a forged record
- * (e.g. a far-future timestamp). `maxTs` bounds implausibly-future (forged) timestamps.
+ * Parse a single header line "<hash> <committer-unixtime> <subject>" (the `git log -z`
+ * format output). Validates the hash (hex) + timestamp (positive integer, not
+ * implausibly future — `maxTs` rejects forged committer dates). Returns null on any
+ * failure so a suspicious line is never fabricated into a commit.
  */
-function commitHeaderFields(fragment: string, maxTs: number): { hash: string; ts: number; message: string; patch: string } | null {
-  const parts = fragment.split(UNIT);
-  if (parts.length < 4) return null; // the format is hash<US>ct<US>subject<US> then the patch
-  const hash = (parts[0] ?? "").trim();
-  const ts = Number.parseInt((parts[1] ?? "").trim(), 10);
-  if (!HASH_RE.test(hash) || !Number.isFinite(ts) || ts <= 0 || ts > maxTs) return null;
-  return { hash, ts, message: (parts[2] ?? "").trim(), patch: parts.slice(3).join(UNIT) };
+function parseHeaderLine(line: string, maxTs: number): CommitMeta | null {
+  const s = line.replace(/\r$/, ""); // tolerate a stray CR
+  const sp1 = s.indexOf(" ");
+  if (sp1 < 0) return null;
+  const sp2 = s.indexOf(" ", sp1 + 1);
+  const hash = s.slice(0, sp1);
+  const ctStr = sp2 < 0 ? s.slice(sp1 + 1) : s.slice(sp1 + 1, sp2);
+  const message = sp2 < 0 ? "" : s.slice(sp2 + 1);
+  if (!HASH_RE.test(hash) || !/^\d+$/.test(ctStr)) return null; // strict: ct all-digits (parseInt is lenient)
+  const ts = Number.parseInt(ctStr, 10);
+  if (!Number.isFinite(ts) || ts <= 0 || ts > maxTs) return null;
+  return { hash, timestampSeconds: ts, message };
 }
 
-/** Parse the commit metadata (hash / time / subject) of `git log` records, no patch. */
-export function parseGitLog(raw: string): CommitMeta[] {
-  const maxTs = Math.floor(Date.now() / 1000) + 86_400;
-  const out: CommitMeta[] = [];
-  for (const fragment of raw.split(REC)) {
-    if (fragment === "") continue;
-    const h = commitHeaderFields(fragment, maxTs);
-    if (h) out.push({ hash: h.hash, timestampSeconds: h.ts, message: h.message });
+/** Split a string into (everything before the last newline, the last line). */
+function lastLineAndRest(s: string): { rest: string; last: string } {
+  const nl = s.lastIndexOf("\n");
+  return nl < 0 ? { rest: "", last: s } : { rest: s.slice(0, nl), last: s.slice(nl + 1) };
+}
+
+interface RawCommit extends CommitMeta {
+  patch: string;
+}
+
+/**
+ * Split `git log -z -p --format=GIT_LOG_FORMAT` output into raw commits (header + patch).
+ *
+ * `-z` NUL-terminates each commit's header; `-p` then appends "\n" + the patch. So for N
+ * commits the output is `H1\0\nP1H2\0\nP2…H_N\0\nP_N`, and splitting on NUL yields
+ * `[H1, "\n"+P1+H2, "\n"+P2+H3, …, "\n"+P_N]`: commit i's header is piece[0] (i=1) or the
+ * TRAILING line of the previous piece, and its patch is the rest of piece[i]. Because a
+ * NUL cannot appear in a message or a text patch, crafted content can never introduce a
+ * record boundary — the structural record-forgery defense (PB-45) that replaces the
+ * prior \x1e-heuristic + re-attach. A header that fails validation (e.g. a forged
+ * far-future committer date) is NOT made into a commit; its bytes fold into the previous
+ * commit's patch (fail-safe — never fabricate a record).
+ */
+function splitRecords(raw: string, maxTs: number): RawCommit[] {
+  const pieces = raw.split("\0");
+  while (pieces.length > 0 && pieces[pieces.length - 1] === "") pieces.pop(); // tolerate a trailing NUL
+  if (pieces.length === 0) return [];
+  if (pieces.length === 1) {
+    const only = parseHeaderLine(pieces[0]!, maxTs);
+    return only ? [{ ...only, patch: "" }] : []; // a lone header, no patch (no -p / single record)
+  }
+  const out: RawCommit[] = [];
+  const N = pieces.length - 1; // N commits → N+1 pieces
+  let header = pieces[0]!; // H1
+  for (let i = 1; i <= N; i++) {
+    const piece = pieces[i]!;
+    let patch = piece; // last piece (i === N) is all patch
+    let nextHeader: string | undefined;
+    if (i < N) {
+      const split = lastLineAndRest(piece);
+      patch = split.rest;
+      nextHeader = split.last;
+    }
+    const h = parseHeaderLine(header, maxTs);
+    if (h) out.push({ ...h, patch });
+    else if (out.length > 0) out[out.length - 1]!.patch += `\n${header}\n${patch}`; // fail-safe re-attach (header ignored: not a +/- line)
+    if (nextHeader !== undefined) header = nextHeader;
   }
   return out;
 }
 
+/** Parse the commit metadata (hash / time / subject) of `git log -z` records, no patch. */
+export function parseGitLog(raw: string): CommitMeta[] {
+  const maxTs = Math.floor(Date.now() / 1000) + 86_400;
+  return splitRecords(raw, maxTs).map((c) => ({ hash: c.hash, timestampSeconds: c.timestampSeconds, message: c.message }));
+}
+
 /**
- * Parse `git log -p --format=GIT_LOG_FORMAT` output into code changes.
+ * Parse `git log -z -p --format=GIT_LOG_FORMAT` output into code changes.
  *
- * Validates each record's header and RE-ATTACHES non-header fragments (a stray RS in a
- * patch body, or a forged record injected via commit/file content) to the preceding
- * commit's patch — so symbols after a body-RS are not lost and an injected fragment
- * cannot masquerade as its own commit (record-forgery defense). Time-bounded only by
- * the far-future timestamp guard; otherwise pure.
- *
- * @param raw - the raw `git log -p` output (with {@link GIT_LOG_FORMAT}).
+ * @param raw - the raw `git log -z -p` output (with {@link GIT_LOG_FORMAT}).
  * @returns all code changes across the commits, newest-first (git log order).
  */
 export function parseGitLogWithPatches(raw: string): CodeChange[] {
   const maxTs = Math.floor(Date.now() / 1000) + 86_400;
-  const commits: { hash: string; ts: number; message: string; patch: string }[] = [];
-  for (const fragment of raw.split(REC)) {
-    if (fragment === "") continue;
-    const h = commitHeaderFields(fragment, maxTs);
-    if (h) {
-      commits.push(h);
-    } else if (commits.length > 0) {
-      // Stray RS inside a patch body, or an injected/forged fragment: re-attach to the
-      // previous commit's patch (don't lose its symbols; don't accept a forged record).
-      commits[commits.length - 1]!.patch += REC + fragment;
-    }
-    // else: junk before the first real commit → ignore.
-  }
   const changes: CodeChange[] = [];
-  for (const c of commits) changes.push(...extractChangesFromPatch(c.patch, { hash: c.hash, timestampSeconds: c.ts, message: c.message }));
+  for (const c of splitRecords(raw, maxTs)) {
+    changes.push(...extractChangesFromPatch(c.patch, { hash: c.hash, timestampSeconds: c.timestampSeconds, message: c.message }));
+  }
   return changes;
 }
 
@@ -212,7 +244,7 @@ export const defaultRunGit: GitRunner = async (args, cwd) => {
  */
 export async function indexRepository(opts: IndexOptions = {}, runGit: GitRunner = defaultRunGit): Promise<CodeChange[]> {
   const cwd = opts.cwd ?? process.cwd();
-  const args = ["log", "-p", "--no-color", `--format=${GIT_LOG_FORMAT}`, `--max-count=${opts.maxCount ?? 100}`];
+  const args = ["log", "-z", "-p", "--no-color", `--format=${GIT_LOG_FORMAT}`, `--max-count=${opts.maxCount ?? 100}`];
   if (opts.sinceIso !== undefined) args.push(`--since=${opts.sinceIso}`);
   const raw = await runGit(args, cwd);
   return parseGitLogWithPatches(raw);

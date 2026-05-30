@@ -1,4 +1,4 @@
-// Unit tests for the git indexer. The PARSERS are pure (fixture `git log -p`
+// Unit tests for the git indexer. The PARSERS are pure (fixture `git log -z -p`
 // output → CodeChange[]); indexRepository is tested with an INJECTED fake runner
 // (no real git). A guarded test exercises the real `git` against this repo.
 
@@ -13,9 +13,13 @@ import {
   type GitRunner,
 } from "../../src/audit/git-indexer";
 
-const REC = "\x1e";
-const UNIT = "\x1f";
-const rec = (hash: string, ct: number, subject: string, patch: string): string => `${REC}${hash}${UNIT}${ct}${UNIT}${subject}${UNIT}\n${patch}`;
+// Mirror `git log -z -p --format="%H %ct %s"`: per commit, the header line, a NUL (the
+// format terminator), then "\n" + the patch (`-p`). Concatenated, no separator between
+// commits — the NUL after each header is the only record boundary. Patches must end in
+// "\n" (as real git diffs do), so the next header lands on its own line.
+const hdr = (hash: string, ct: number, subject: string): string => `${hash} ${ct} ${subject}`;
+const buildLog = (commits: { hash: string; ct: number; subject: string; patch: string }[]): string =>
+  commits.map((c) => `${hdr(c.hash, c.ct, c.subject)}\0\n${c.patch}`).join("");
 
 const RENAME_PATCH = `diff --git a/src/auth.ts b/src/auth.ts
 --- a/src/auth.ts
@@ -57,19 +61,39 @@ describe("extractChangesFromPatch", () => {
 });
 
 describe("parseGitLog / parseGitLogWithPatches", () => {
-  test("parseGitLog reads commit metadata", () => {
-    const raw = rec("abc123", 1700, "first", "") + rec("def456", 1800, "second", "");
+  test("parseGitLog reads commit metadata (no patch)", () => {
+    const raw = buildLog([
+      { hash: "abc123", ct: 1700, subject: "first", patch: "" },
+      { hash: "def456", ct: 1800, subject: "second", patch: "" },
+    ]);
     expect(parseGitLog(raw)).toEqual([
       { hash: "abc123", timestampSeconds: 1700, message: "first" },
       { hash: "def456", timestampSeconds: 1800, message: "second" },
     ]);
   });
 
-  test("parseGitLogWithPatches yields code changes across commits", () => {
-    const raw = rec("a3f9b2", 1000, "rename getUser", RENAME_PATCH);
+  test("parseGitLogWithPatches yields code changes for a single commit", () => {
+    const raw = buildLog([{ hash: "a3f9b2", ct: 1000, subject: "rename getUser", patch: RENAME_PATCH }]);
     const changes = parseGitLogWithPatches(raw);
     expect(changes.map((c) => `${c.entity}:${c.changeType}`).sort()).toEqual(["fetchUser:added", "getUser:deleted"]);
     expect(changes.every((c) => c.commitHash === "a3f9b2" && c.timestampSeconds === 1000)).toBe(true);
+  });
+
+  test("multi-commit: each commit's symbols are attributed to its OWN hash + time", () => {
+    const raw = buildLog([
+      { hash: "c0ffee", ct: 2000, subject: "add foo", patch: `+++ b/foo.ts\n+function foo() {\n` },
+      { hash: "beef01", ct: 3000, subject: "add bar", patch: `+++ b/bar.ts\n+function bar() {\n` },
+    ]);
+    const byEntity = Object.fromEntries(parseGitLogWithPatches(raw).map((c) => [c.entity, c]));
+    expect(byEntity["foo"]).toMatchObject({ commitHash: "c0ffee", timestampSeconds: 2000, changeType: "added", filePath: "foo.ts" });
+    expect(byEntity["bar"]).toMatchObject({ commitHash: "beef01", timestampSeconds: 3000, changeType: "added", filePath: "bar.ts" });
+  });
+
+  test("a subject containing spaces is preserved whole; the patch is not polluted", () => {
+    const raw = buildLog([{ hash: "abc123", ct: 1234, subject: "fix: the thing (with parens) and spaces", patch: `+++ b/z.ts\n+function z() {\n` }]);
+    const [meta] = parseGitLog(raw);
+    expect(meta).toEqual({ hash: "abc123", timestampSeconds: 1234, message: "fix: the thing (with parens) and spaces" });
+    expect(parseGitLogWithPatches(raw).map((c) => c.entity)).toEqual(["z"]);
   });
 
   test("empty / blank input → no changes", () => {
@@ -79,15 +103,16 @@ describe("parseGitLog / parseGitLogWithPatches", () => {
 });
 
 describe("indexRepository (injected fake git runner — no real git)", () => {
-  test("composes runGit → parse → CodeChange[]; passes the right git args", async () => {
+  test("composes runGit → parse → CodeChange[]; passes the right git args (incl. -z)", async () => {
     let seenArgs: string[] = [];
     const fakeRun: GitRunner = (args) => {
       seenArgs = args;
-      return Promise.resolve(rec("a3f9b2", 1000, "rename", RENAME_PATCH));
+      return Promise.resolve(buildLog([{ hash: "a3f9b2", ct: 1000, subject: "rename", patch: RENAME_PATCH }]));
     };
     const changes = await indexRepository({ maxCount: 5, sinceIso: "2026-01-01" }, fakeRun);
     expect(changes.map((c) => c.entity).sort()).toEqual(["fetchUser", "getUser"]);
     expect(seenArgs).toContain("log");
+    expect(seenArgs).toContain("-z"); // NUL-delimited records (PB-45 record-forgery defense)
     expect(seenArgs).toContain("-p");
     expect(seenArgs).toContain(`--format=${GIT_LOG_FORMAT}`);
     expect(seenArgs).toContain("--max-count=5");
@@ -95,7 +120,7 @@ describe("indexRepository (injected fake git runner — no real git)", () => {
   });
 });
 
-describe("parser robustness + record-forgery defense (review fixes)", () => {
+describe("parser robustness + record-forgery defense (NUL-delimited records, PB-45)", () => {
   test("cross-file same-symbol: distinct per-file changes, not one collapsed 'modified'", () => {
     const patch = `+++ b/alpha.js\n+function helper() {\n+++ b/beta.js\n-function helper() {\n`;
     const changes = extractChangesFromPatch(patch, { hash: "abc123", timestampSeconds: 1, message: "m" });
@@ -111,20 +136,33 @@ describe("parser robustness + record-forgery defense (review fixes)", () => {
     expect(c).toMatchObject({ entity: "dropped", changeType: "deleted", filePath: "dropme.js" });
   });
 
-  test("a stray RS (\\x1e) inside a patch body does NOT lose later symbols (re-attached)", () => {
-    const patch = `+++ b/x.ts\n+const REC_CHAR = "\x1e";\n+function afterSentinel() {\n`;
-    const ents = parseGitLogWithPatches(rec("abc123", 1000, "weird file", patch)).map((c) => c.entity).sort();
-    expect(ents).toContain("afterSentinel"); // not silently dropped by the RS split
-    expect(ents).toContain("REC_CHAR");
+  test("the former separators (\\x1e/\\x1f) in patch content are now INERT — symbols still detected", () => {
+    const patch = `+++ b/x.ts\n+const SEP = "\x1e\x1f";\n+function afterSep() {\n`;
+    const ents = parseGitLogWithPatches(buildLog([{ hash: "abc123", ct: 1000, subject: "weird file", patch }])).map((c) => c.entity).sort();
+    expect(ents).toContain("afterSep");
+    expect(ents).toContain("SEP");
   });
 
-  test("a record forged via content (far-future timestamp) is NOT accepted as its own commit", () => {
-    const realPatch = `+++ b/real.ts\n+function realFn() {\n`;
-    const forged = `${REC}deadbeefcafe${UNIT}9999999999${UNIT}forged${UNIT}\n+function evilFn(){}\n`;
-    const changes = parseGitLogWithPatches(rec("abc123", 1000, "real commit", realPatch + forged));
-    expect(changes.some((c) => c.commitHash === "deadbeefcafe")).toBe(false); // forged hash rejected
-    expect(changes.some((c) => c.timestampSeconds === 9999999999)).toBe(false); // forged far-future ts rejected
+  test("forged header TEXT inside patch content cannot create a separate commit (content has no NUL)", () => {
+    // An attacker commits a file whose content looks like a header + a +decl line. With
+    // NUL-delimited records this stays inside the real commit's patch — it can never begin
+    // a new record, because file/commit content cannot contain a NUL byte.
+    const patch = `+++ b/real.ts\n+function realFn() {\ndeadbeefcafe 9999999999 forged-subject\n+function evilFn() {\n`;
+    const changes = parseGitLogWithPatches(buildLog([{ hash: "abc123", ct: 1000, subject: "real commit", patch }]));
+    expect(changes.some((c) => c.commitHash === "deadbeefcafe")).toBe(false); // forged hash never a commit
+    expect(changes.some((c) => c.timestampSeconds === 9999999999)).toBe(false); // forged far-future ts never a commit
     expect(changes.find((c) => c.entity === "realFn")?.commitHash).toBe("abc123"); // real commit intact
+  });
+
+  test("a commit header with a far-future timestamp is rejected (forged committer date); neighbors survive", () => {
+    const future = Math.floor(Date.now() / 1000) + 10 * 365 * 86_400;
+    const raw = buildLog([
+      { hash: "aaaa11", ct: 1000, subject: "real", patch: `+++ b/a.ts\n+function good() {\n` },
+      { hash: "bbbb22", ct: future, subject: "forged-date", patch: `+++ b/b.ts\n+function bad() {\n` },
+    ]);
+    const hashes = parseGitLog(raw).map((m) => m.hash);
+    expect(hashes).toContain("aaaa11");
+    expect(hashes).not.toContain("bbbb22"); // far-future header not accepted as its own commit
   });
 });
 
@@ -138,12 +176,14 @@ function gitAvailable(): boolean {
   }
 }
 describe.skipIf(!gitAvailable())("indexRepository against the real repo (live, free)", () => {
-  test("returns without error over the last few commits", async () => {
+  test("returns without error over the last few commits, attributing symbols to real hashes", async () => {
     const changes = await indexRepository({ maxCount: 5 });
-    expect(Array.isArray(changes)).toBe(true); // parses real `git log -p` output without throwing
+    expect(Array.isArray(changes)).toBe(true); // parses real `git log -z -p` output without throwing
     for (const c of changes) {
       expect(typeof c.entity).toBe("string");
       expect(["added", "deleted", "modified", "renamed"]).toContain(c.changeType);
+      expect(c.commitHash).toMatch(/^[0-9a-f]{7,64}$/); // a real abbreviated/full hash, never a forged fragment
+      expect(c.timestampSeconds).toBeGreaterThan(0);
     }
   });
 });

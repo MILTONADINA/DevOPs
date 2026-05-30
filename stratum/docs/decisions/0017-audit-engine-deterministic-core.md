@@ -41,18 +41,29 @@ and assumes a Neo4j commit graph + Cypher queries; ADR-0013 moved Tier-3 to Supa
    reproducible, not RNG).
 5. **Security hardening (from a 21-agent adversarial review, 12 confirmed defects
    fixed):** drift CONFLICT only against a confirmed change (no fabricated
-   suppression of valid-but-unindexed facts); `\x1e/\x1f` record-separator validation
-   + re-attach to defend Tier-1 against commit/content record-forgery; `sanitizeForFence`
-   (strip fence tokens + length-cap) on every untrusted prompt block to stop the
-   verdict-control prompt-injection that would defeat the engine's purpose.
+   suppression of valid-but-unindexed facts); **NUL-delimited records (`git log -z`)** —
+   a *structural* record boundary (a NUL byte cannot appear in a commit message or a
+   text patch), so no crafted commit/file content can forge a record (this replaced the
+   earlier `\x1e/\x1f` separator heuristic + re-attach, and also removed the field
+   separator a subject could spoof); `sanitizeForFence` (strip fence tokens + length-cap)
+   on every untrusted prompt block to stop the verdict-control prompt-injection that
+   would defeat the engine's purpose.
+6. **Runnable surface.** `npm run audit:repo` (scripts/audit-repo.ts) runs the full
+   deterministic path on a real repo: index → report changes, and with `--facts <json>`
+   attest claims (CONFIRMED / UNVERIFIED / CONFLICT), with `--persist` recording
+   CONFLICTs. FREE; live-verified against this repo (CONFIRMED facts carry real commit
+   evidence). The Tier-2/3 escalation of the UNVERIFIED residue stays gated.
 
 ## Consequences
 
 - The deterministic Tier-1 audit runs end-to-end FREE + is adversarially hardened;
   the higher tiers (and any request-path wiring) are gated on Anthropic credits.
 - The indexer's heuristic has documented limits (declaration-line detection, no
-  similarity-100% rename, C-quoted paths) tracked in PB-45; the full structural
-  separator fix (`git log -z`) is also PB-45.
+  similarity-100% rename, C-quoted paths) tracked in PB-45. The structural
+  record-separator fix (`git log -z`, NUL-delimited) is **done** (closes the
+  record-forgery class that the prior `\x1e` heuristic only mitigated); the remaining
+  PB-45 residuals (similarity-100% renames, C-quoted paths) are lower-severity parsing
+  fidelity, not integrity.
 - Activation as a memory-injection gate is a future step gated on the same Tier-A
   validation discipline as the pruner (do not suppress/inject in the request path
   until validated). Constitution unchanged.
