@@ -3,9 +3,10 @@
  *
  * Reads the org's append-only billing_records (FREE, read-only) and prints the CFO report —
  * savings, the 20%-of-savings fee, the plan's monthly-minimum floor, and the amount due. With
- * --csv it writes the signed-hash audit trail; with --send it attempts delivery through the
- * Stripe seam (which is a gated stub — see stripe-sink.ts — so --send fails honestly until
- * Stripe is wired + verified). NO Anthropic; gated only on Supabase creds.
+ * --csv it writes the signed-hash audit trail; with --send it delivers through the REAL Stripe sink
+ * (createStripeInvoiceSink → customer → invoiceitem → invoice → finalize). --send needs STRIPE_SECRET_KEY
+ * (a sk_test_ key; sk_live_ is refused until verified) and exits 2 if that delivery is unavailable — the
+ * engine still ran. NO Anthropic; gated only on Supabase creds (+ a Stripe key for --send).
  *
  *   npm run invoice -- --org-id <uuid> [--since <iso>] [--until <iso>] [--csv <path>] [--send]
  */
