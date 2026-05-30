@@ -138,6 +138,53 @@ describe("POST /v1/messages — error handling", () => {
   });
 });
 
+describe("POST /v1/messages — usage recording bills the UPSTREAM-confirmed input count (commercial)", () => {
+  const resolve = (raw: string) => Promise.resolve(raw === "k" ? { orgId: "o1", keyId: "i" } : null);
+  type Rec = { orgId: string; model: string; inputTokens: number; outputTokens: number };
+
+  test("bills usage.input_tokens from the upstream response, NOT the pre-flight estimate", async () => {
+    const recorded: Rec[] = [];
+    // Pre-flight count says 99 (e.g. a coarse estimate); the upstream response's authoritative count is 10.
+    const { deps } = makeDeps({ countTokens: async () => ({ input_tokens: 99, token_count_method: "estimated", message_breakdown: [] }) });
+    deps.recordUsage = async (e) => void recorded.push(e as Rec);
+    app = buildProxy({ cors: false, messages: deps, auth: { resolve } });
+    await app.ready();
+
+    const res = await app.inject({ method: "POST", url: "/v1/messages", headers: { authorization: "Bearer k" }, payload: goodBody });
+    expect(res.statusCode).toBe(200);
+    expect(recorded).toHaveLength(1);
+    expect(recorded[0]).toMatchObject({ orgId: "o1", model: "claude-opus-4-7", inputTokens: 10, outputTokens: 3 }); // 10 (upstream), not 99
+  });
+
+  test("records even when pre-flight countTokens THREW (0) — recovers the count from the upstream response (no invoice hole)", async () => {
+    const recorded: Rec[] = [];
+    const { deps } = makeDeps({
+      countTokens: async () => {
+        throw new Error("countTokens endpoint 500");
+      },
+    });
+    deps.recordUsage = async (e) => void recorded.push(e as Rec);
+    app = buildProxy({ cors: false, messages: deps, auth: { resolve } });
+    await app.ready();
+
+    const res = await app.inject({ method: "POST", url: "/v1/messages", headers: { authorization: "Bearer k" }, payload: goodBody });
+    expect(res.statusCode).toBe(200);
+    expect(recorded).toHaveLength(1); // NOT dropped — pre-flight 0 but upstream usage.input_tokens=10 used
+    expect(recorded[0]!.inputTokens).toBe(10);
+  });
+
+  test("does NOT record usage for an upstream 4xx (no charge on a failed request)", async () => {
+    const recorded: Rec[] = [];
+    const { deps } = makeDeps({ forward: async () => ({ status: 429, data: { type: "error", error: { type: "rate_limit_error" } } }) });
+    deps.recordUsage = async (e) => void recorded.push(e as Rec);
+    app = buildProxy({ cors: false, messages: deps, auth: { resolve } });
+    await app.ready();
+
+    await app.inject({ method: "POST", url: "/v1/messages", headers: { authorization: "Bearer k" }, payload: goodBody });
+    expect(recorded).toHaveLength(0);
+  });
+});
+
 describe("POST /v1/messages — token-budget gate (commercial)", () => {
   const resolve = (raw: string) => Promise.resolve(raw === "k" ? { orgId: "o1", keyId: "i" } : null);
 

@@ -2,8 +2,9 @@
 // sleep (records delays, no real timers) + deterministic rng (no jitter).
 
 import { describe, test, expect, vi } from "vitest";
-import { withRetry, parseRetryAfterMs, type ForwardFn } from "../../src/proxy/retry";
+import { withRetry, withStreamRetry, parseRetryAfterMs, type ForwardFn, type StreamForwardFn } from "../../src/proxy/retry";
 import type { ForwardResult, MessagesBody } from "../../src/proxy/forward";
+import type { StreamForwardResult } from "../../src/proxy/stream-forward";
 
 const body = { model: "m", messages: [{ role: "user", content: "x" }], max_tokens: 8 } as MessagesBody;
 
@@ -83,6 +84,65 @@ describe("withRetry — network errors", () => {
     const { wrapped } = harness(fn);
     await expect(wrapped(body, "k")).rejects.toThrow("ECONNREFUSED");
     expect(fn).toHaveBeenCalledTimes(2); // initial + one retry
+  });
+});
+
+// The streaming path carries the majority of partner traffic; it must retry 429/5xx like the
+// non-streaming path (the gap this fixes). withStreamRetry mirrors withRetry over StreamForwardResult.
+async function* emptyStream(): AsyncGenerator<string> {
+  // no chunks
+}
+function streamHarness(forward: StreamForwardFn, overrides = {}) {
+  const delays: number[] = [];
+  const wrapped = withStreamRetry(forward, { baseDelayMs: 100, maxRetries: 3, rng: () => 0, sleep: async (ms: number) => void delays.push(ms), ...overrides });
+  return { wrapped, delays };
+}
+function streamSeq(...results: (StreamForwardResult | Error)[]): StreamForwardFn {
+  let i = 0;
+  return async () => {
+    const r = results[Math.min(i, results.length - 1)];
+    i++;
+    if (r instanceof Error) throw r;
+    return r as StreamForwardResult;
+  };
+}
+
+describe("withStreamRetry — streaming path gets the same 429/5xx policy", () => {
+  test("429 then 2xx stream → retries once, returns the open stream", async () => {
+    const { wrapped, delays } = streamHarness(streamSeq({ status: 429, data: { e: 1 } }, { status: 200, stream: emptyStream() }));
+    const res = await wrapped(body, "k");
+    expect(res.status).toBe(200);
+    expect(res.stream).toBeDefined();
+    expect(delays).toHaveLength(1);
+  });
+
+  test("429 honors Retry-After from the streaming error result's headers", async () => {
+    const { wrapped, delays } = streamHarness(streamSeq({ status: 429, data: {}, headers: { "retry-after": "3" } }, { status: 200, stream: emptyStream() }));
+    await wrapped(body, "k");
+    expect(delays[0]).toBe(3000);
+  });
+
+  test("persistent 5xx → exhausts maxRetries then returns the 5xx (never an open stream)", async () => {
+    const { wrapped, delays } = streamHarness(streamSeq({ status: 503, data: { e: 1 } }));
+    const res = await wrapped(body, "k");
+    expect(res.status).toBe(503);
+    expect(res.stream).toBeUndefined();
+    expect(delays).toEqual([100, 200, 400]);
+  });
+
+  test("2xx returns immediately (no retry, stream not re-driven)", async () => {
+    const fn = vi.fn(async () => ({ status: 200, stream: emptyStream() }) as StreamForwardResult);
+    const { wrapped, delays } = streamHarness(fn);
+    await wrapped(body, "k");
+    expect(fn).toHaveBeenCalledTimes(1);
+    expect(delays).toHaveLength(0);
+  });
+
+  test("network throw once then success → one retry (before any byte)", async () => {
+    const { wrapped, delays } = streamHarness(streamSeq(new Error("ECONNRESET"), { status: 200, stream: emptyStream() }));
+    const res = await wrapped(body, "k");
+    expect(res.status).toBe(200);
+    expect(delays).toHaveLength(1);
   });
 });
 

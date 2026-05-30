@@ -22,6 +22,8 @@ export interface StreamForwardResult {
   stream?: AsyncIterable<string>;
   /** Present on non-2xx — the collected + parsed error body (passed through). */
   data?: unknown;
+  /** Lower-cased response headers (used by the streaming retry to honor Retry-After on a 429). */
+  headers?: Record<string, string>;
 }
 
 /**
@@ -60,9 +62,14 @@ export async function forwardStreamToAnthropic(
   });
 
   const upstream = res.data as AsyncIterable<Buffer | string>;
+  const respHeaders: Record<string, string> = {};
+  for (const [k, v] of Object.entries((res.headers ?? {}) as Record<string, unknown>)) {
+    if (typeof v === "string") respHeaders[k.toLowerCase()] = v;
+  }
 
   if (res.status >= 400) {
-    // Collect the (non-stream) error body so the route can pass it through.
+    // Collect the (non-stream) error body so the route can pass it through. The headers ride along so
+    // the streaming retry can honor a 429 Retry-After (the stream is NOT open here — safe to retry).
     let buf = "";
     for await (const chunk of upstream) buf += chunk.toString();
     let data: unknown;
@@ -71,13 +78,13 @@ export async function forwardStreamToAnthropic(
     } catch {
       data = buf;
     }
-    return { status: res.status, data };
+    return { status: res.status, data, headers: respHeaders };
   }
 
   async function* toStrings(): AsyncGenerator<string> {
     for await (const chunk of upstream) yield chunk.toString();
   }
-  return { status: res.status, stream: toStrings() };
+  return { status: res.status, stream: toStrings(), headers: respHeaders };
 }
 
 /** True if the request asked for streaming (body.stream or SSE Accept header). */

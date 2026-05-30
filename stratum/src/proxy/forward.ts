@@ -15,7 +15,7 @@
 import axios from "axios";
 import { getAnthropicClient } from "../lib/anthropic";
 import { createCaptureStore, type CaptureStore } from "./capture";
-import { withRetry } from "./retry";
+import { withRetry, withStreamRetry } from "./retry";
 import { createTokenCounter } from "./token-count";
 import { forwardStreamToAnthropic, type StreamForwardResult } from "./stream-forward";
 import { resolveTelemetrySink, type TelemetrySink } from "./telemetry";
@@ -187,15 +187,18 @@ export function createDefaultMessagesDeps(): MessagesDeps {
   const sessionId = randomUUID();
   const outputFile = path.join(process.cwd(), "data", "sessions", `session-${sessionId}.json`);
 
-  // Forward with retry/backoff (429 Retry-After / 5xx jitter / network 1-retry).
+  // Forward with retry/backoff (429 Retry-After / 5xx jitter / network 1-retry). BOTH paths retry —
+  // the streaming path (the majority of partner traffic) used to get none, so a transient 429/5xx
+  // surfaced to the partner immediately while the non-streaming path silently recovered.
   const forward = withRetry((body, key, passthrough) => forwardToAnthropic(body, key, baseUrl, passthrough));
+  const forwardStream = withStreamRetry((body, key, passthrough) => forwardStreamToAnthropic(body, key, baseUrl, passthrough));
   // Exact token counting with hash-cache + flagged heuristic fallback.
   const counter = createTokenCounter(client);
 
   return {
     apiKey,
     forward,
-    forwardStream: (body, key, passthrough) => forwardStreamToAnthropic(body, key, baseUrl, passthrough),
+    forwardStream,
     countTokens: (body) => counter.count(body),
     capture: createCaptureStore({ sessionId, outputFile }),
     telemetry: resolveTelemetrySink(),

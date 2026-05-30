@@ -41,6 +41,12 @@ function outputTokensOf(response: unknown): number {
   return typeof u?.output_tokens === "number" ? u.output_tokens : 0;
 }
 
+/** Extract input_tokens from an upstream response/usage object (0 if absent). The AUTHORITATIVE count. */
+function inputTokensOf(response: unknown): number {
+  const u = (response as { usage?: { input_tokens?: number } } | null)?.usage;
+  return typeof u?.input_tokens === "number" ? u.input_tokens : 0;
+}
+
 const ESTIMATED_FALLBACK: TokenCountResult = {
   input_tokens: 0,
   token_count_method: "estimated",
@@ -94,7 +100,14 @@ async function checkTokenBudget(deps: MessagesDeps, request: FastifyRequest, inp
  */
 function recordUsageSafe(deps: MessagesDeps, request: FastifyRequest, model: string, inputTokens: number, outputTokens: number): void {
   const orgId = request.orgId;
-  if (deps.recordUsage === undefined || typeof orgId !== "string" || orgId === "" || !(inputTokens > 0)) return;
+  if (deps.recordUsage === undefined || typeof orgId !== "string" || orgId === "") return;
+  if (!(inputTokens > 0)) {
+    // The billing_records `original_tokens > 0` CHECK would reject a 0-token record. Callers now pass the
+    // UPSTREAM-confirmed input count (present on every 2xx), so reaching here means both that and the
+    // pre-flight count were unavailable — a genuine invoice hole. WARN (don't drop silently) so it's visible.
+    request.log?.warn?.({ orgId, model }, "usage record skipped: input_tokens<=0 (no count from upstream OR pre-flight)");
+    return;
+  }
   void deps.recordUsage({ orgId, model, inputTokens, outputTokens }).catch((e: unknown) => {
     request.log?.error?.({ err: (e as Error).message }, "usage record failed (non-blocking)");
   });
@@ -141,11 +154,14 @@ async function handleStreaming(
     const events = [];
     try {
       for await (const chunk of upstream) {
-        if (out.destroyed) break; // client went away
-        out.write(chunk);
+        // Keep DRAINING upstream even after the client goes away — `message_delta` (the ONLY source of
+        // output_tokens, and the invoice basis for this turn) is the LAST event, so breaking on a client
+        // abort recorded a 0/partial output count. Anthropic generates + charges for the whole response
+        // regardless, so reading the already-open socket to completion is the correct billing behavior;
+        // we just stop WRITING to the departed client.
+        if (!out.destroyed) out.write(chunk);
         events.push(...parser.push(chunk));
       }
-      events.push(...parser.flush());
     } catch (e) {
       // Mid-stream upstream failure: emit an SSE error event so the client sees it.
       if (!out.destroyed) {
@@ -157,10 +173,16 @@ async function handleStreaming(
         );
       }
     } finally {
+      // flush() in the FINALLY (not the try) so a partial event buffered when the stream ERRORED
+      // mid-chunk — e.g. a split `message_delta` carrying output_tokens — is still recovered for billing.
+      events.push(...parser.flush());
       // Capture the accumulated turn (redaction + FAIL-CLOSED inside the store).
       // Done BEFORE out.end() so the artifact is written before the response
       // completes. A client abort still captures what was forwarded.
       const { message } = accumulateAnthropicStream(events);
+      // Bill on the UPSTREAM-confirmed input count (from message_start, which arrives early — present even
+      // on an abort), falling back to the pre-flight count only if upstream omitted it (exact-counts rule).
+      const billedInput = inputTokensOf(message) > 0 ? inputTokensOf(message) : tokens.input_tokens;
       const recorded = deps.capture.record({
         request: captureRequest(body),
         response: message,
@@ -174,7 +196,7 @@ async function handleStreaming(
           "stratum.session_id": deps.capture.getSession().session_id,
           "stratum.turn_number": deps.capture.getSession().total_turns,
           "stratum.model": body.model,
-          "stratum.input_tokens": tokens.input_tokens,
+          "stratum.input_tokens": billedInput,
           "stratum.output_tokens": outputTokensOf(message),
           "stratum.token_count_method": tokens.token_count_method,
           "stratum.elapsed_ms": Date.now() - start,
@@ -183,7 +205,7 @@ async function handleStreaming(
         },
         deps.telemetry,
       );
-      recordUsageSafe(deps, request, body.model, tokens.input_tokens, outputTokensOf(message));
+      recordUsageSafe(deps, request, body.model, billedInput, outputTokensOf(message));
       out.end();
     }
   })();
@@ -255,12 +277,16 @@ export function makeMessagesRoute(deps: MessagesDeps): FastifyPluginCallback {
         messageBreakdown: tokens.message_breakdown,
         elapsedMs: Date.now() - start,
       });
+      // Bill on the UPSTREAM-confirmed input count (Anthropic's own usage.input_tokens — the exact,
+      // provable number the billing model requires), falling back to the pre-flight count only if the
+      // response omitted usage. The pre-flight count is the BUDGET-gate input; the invoice basis is this.
+      const billedInput = inputTokensOf(forwarded.data) > 0 ? inputTokensOf(forwarded.data) : tokens.input_tokens;
       emitTurnTelemetry(
         {
           "stratum.session_id": deps.capture.getSession().session_id,
           "stratum.turn_number": deps.capture.getSession().total_turns,
           "stratum.model": body.model,
-          "stratum.input_tokens": tokens.input_tokens,
+          "stratum.input_tokens": billedInput,
           "stratum.output_tokens": outputTokensOf(forwarded.data),
           "stratum.token_count_method": tokens.token_count_method,
           "stratum.elapsed_ms": Date.now() - start,
@@ -269,7 +295,7 @@ export function makeMessagesRoute(deps: MessagesDeps): FastifyPluginCallback {
         },
         deps.telemetry,
       );
-      recordUsageSafe(deps, request, body.model, tokens.input_tokens, outputTokensOf(forwarded.data));
+      recordUsageSafe(deps, request, body.model, billedInput, outputTokensOf(forwarded.data));
 
       // nosemgrep: javascript.express.security.audit.xss.direct-response-write.direct-response-write -- FALSE POSITIVE: transparent JSON proxy. Forwards the upstream Anthropic response (Fastify sends it as application/json) to the Claude Code CLI client; never HTML rendered in a browser, so no XSS surface. The "user input" is the upstream provider's own JSON, not attacker markup.
       return reply.send(forwarded.data);

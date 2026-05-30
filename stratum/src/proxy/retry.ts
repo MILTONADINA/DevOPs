@@ -13,8 +13,10 @@
  */
 
 import type { ForwardResult, ForwardHeaders, MessagesBody } from "./forward";
+import type { StreamForwardResult } from "./stream-forward";
 
 export type ForwardFn = (body: MessagesBody, apiKey: string, passthrough?: ForwardHeaders) => Promise<ForwardResult>;
+export type StreamForwardFn = (body: MessagesBody, apiKey: string, passthrough?: ForwardHeaders) => Promise<StreamForwardResult>;
 
 export interface RetryConfig {
   /** Max retries for 429/5xx (network errors get exactly one retry). Default 3. */
@@ -90,6 +92,55 @@ export function withRetry(forward: ForwardFn, config: Partial<RetryConfig> = {})
         result.status === 429
           ? (parseRetryAfterMs(result.headers) ?? expBackoff(attempt))
           : expBackoff(attempt);
+      await cfg.sleep(Math.min(cfg.maxDelayMs, delay));
+      attempt++;
+    }
+  };
+}
+
+/**
+ * Wrap a STREAMING forward with the SAME retry/backoff policy as {@link withRetry}. The streaming path
+ * carries the majority of partner traffic (Claude Code uses SSE), yet without this a transient upstream
+ * 429/5xx would surface to the partner immediately while the non-streaming path silently retried — an
+ * asymmetric availability gap. This is SAFE because forwardStreamToAnthropic collects the full error body
+ * BEFORE returning on any non-2xx status (no SSE stream is open on a retryable result), so a retry simply
+ * re-issues the request; once a 2xx stream is open it is returned immediately and never re-driven mid-stream.
+ *
+ * @param forward - the underlying streaming forward (forwardStreamToAnthropic-bound).
+ * @param config - partial overrides; unset fields use {@link DEFAULTS}.
+ * @returns a streaming forward fn with identical signature that applies retries.
+ */
+export function withStreamRetry(forward: StreamForwardFn, config: Partial<RetryConfig> = {}): StreamForwardFn {
+  const cfg: RetryConfig = { ...DEFAULTS, ...config };
+
+  const expBackoff = (attempt: number): number => {
+    const base = cfg.baseDelayMs * Math.pow(2, attempt);
+    const jitter = base * 0.25 * cfg.rng();
+    return Math.min(cfg.maxDelayMs, Math.round(base + jitter));
+  };
+
+  return async (body: MessagesBody, apiKey: string, passthrough?: ForwardHeaders): Promise<StreamForwardResult> => {
+    let networkRetried = false;
+    let attempt = 0;
+
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      let result: StreamForwardResult;
+      try {
+        result = await forward(body, apiKey, passthrough);
+      } catch (err) {
+        if (!networkRetried) {
+          networkRetried = true;
+          await cfg.sleep(cfg.baseDelayMs);
+          continue; // network error before any byte — safe single retry (does NOT consume an HTTP attempt)
+        }
+        throw err;
+      }
+
+      const retryable = result.status === 429 || (result.status >= 500 && result.status < 600);
+      if (!retryable || attempt >= cfg.maxRetries) return result;
+
+      const delay = result.status === 429 ? (parseRetryAfterMs(result.headers) ?? expBackoff(attempt)) : expBackoff(attempt);
       await cfg.sleep(Math.min(cfg.maxDelayMs, delay));
       attempt++;
     }

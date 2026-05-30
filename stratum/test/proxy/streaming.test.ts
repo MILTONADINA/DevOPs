@@ -93,6 +93,48 @@ describe("POST /v1/messages — streaming happy path", () => {
   });
 });
 
+describe("POST /v1/messages — streaming usage recording (commercial)", () => {
+  const resolve = (raw: string) => Promise.resolve(raw === "k" ? { orgId: "o1", keyId: "i" } : null);
+  type Rec = { orgId: string; model: string; inputTokens: number; outputTokens: number };
+
+  test("bills the upstream message_start input_tokens + message_delta output_tokens (not the pre-flight estimate)", async () => {
+    const { deps } = makeStreamDeps({ status: 200, stream: gen(SSE_CHUNKS) });
+    // Pre-flight estimate is deliberately wrong (77); the upstream stream carries input_tokens=5 / output=4.
+    deps.countTokens = async () => ({ input_tokens: 77, token_count_method: "estimated", message_breakdown: [] });
+    const recorded: Rec[] = [];
+    deps.recordUsage = async (e) => void recorded.push(e as Rec);
+    app = buildProxy({ cors: false, rateLimit: false, messages: deps, auth: { resolve } });
+    await app.ready();
+
+    const res = await app.inject({ method: "POST", url: "/v1/messages", headers: { authorization: "Bearer k" }, payload: body });
+    expect(res.statusCode).toBe(200);
+    expect(recorded).toHaveLength(1);
+    expect(recorded[0]).toMatchObject({ orgId: "o1", inputTokens: 5, outputTokens: 4 }); // upstream-confirmed, not 77
+  });
+
+  test("recovers output_tokens via flush-in-finally when the stream errors with message_delta still buffered", async () => {
+    // message_start (complete), then a message_delta WITHOUT its trailing blank line (so it sits in the
+    // parser buffer), then the upstream throws. The old code's flush() lived in the try block and was
+    // skipped on a throw → output_tokens lost (0). flush() now runs in finally → the buffered delta (4) is recovered.
+    async function* deltaBufferedThenThrow(): AsyncGenerator<string> {
+      yield SSE_CHUNKS[0]!; // message_start (input_tokens=5), complete with \n\n
+      yield 'event: message_delta\ndata: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":4}}'; // NO trailing \n\n
+      throw new Error("dropped after delta buffered");
+    }
+    const { deps } = makeStreamDeps({ status: 200, stream: deltaBufferedThenThrow() });
+    const recorded: Rec[] = [];
+    deps.recordUsage = async (e) => void recorded.push(e as Rec);
+    app = buildProxy({ cors: false, rateLimit: false, messages: deps, auth: { resolve } });
+    await app.ready();
+
+    const res = await app.inject({ method: "POST", url: "/v1/messages", headers: { authorization: "Bearer k" }, payload: body });
+    expect(res.statusCode).toBe(200);
+    expect(res.payload).toContain("upstream_stream_error"); // client still saw the error event
+    expect(recorded).toHaveLength(1);
+    expect(recorded[0]).toMatchObject({ inputTokens: 5, outputTokens: 4 }); // delta recovered from the buffer
+  });
+});
+
 describe("POST /v1/messages — streaming error handling", () => {
   test("upstream non-200 is passed through (not streamed, not captured)", async () => {
     const { deps, capture } = makeStreamDeps({ status: 429, data: { type: "error", error: { type: "rate_limit_error" } } });
