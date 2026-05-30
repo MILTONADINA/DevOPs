@@ -78,6 +78,21 @@ describe("GET /v1/billing/invoice", () => {
   });
 });
 
+describe("GET /billing (CFO dashboard page)", () => {
+  test("serves the vanilla HTML dashboard (no innerHTML, no org needed to load the shell)", async () => {
+    const { deps } = fakeDeps();
+    const app = buildProxy({ rateLimit: false, cors: false, billing: deps });
+    await app.ready();
+    const res = await app.inject({ method: "GET", url: "/billing" });
+    expect(res.statusCode).toBe(200);
+    expect(res.headers["content-type"]).toMatch(/text\/html/);
+    expect(res.body).toContain("CFO Billing Dashboard");
+    expect(res.body).toContain("/v1/billing/invoice?org-id=");
+    expect(res.body).not.toContain(".innerHTML"); // XSS-safe by construction
+    await app.close();
+  });
+});
+
 describe("GET /v1/billing/audit.csv", () => {
   test("returns the signed-hash audit trail as a CSV download", async () => {
     const { deps } = fakeDeps();

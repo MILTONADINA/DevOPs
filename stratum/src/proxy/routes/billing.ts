@@ -40,6 +40,54 @@ function err(reply: FastifyReply, code: number, type: string, message: string): 
   return reply.code(code).send({ type: "error", error: { type, message } });
 }
 
+// The customer-facing CFO dashboard (BUSINESS_MODEL.md §The CFO Dashboard). Vanilla HTML (no
+// framework); reads ?org-id and renders /v1/billing/invoice + an audit-CSV download. All dynamic
+// values go through textContent (never innerHTML) — XSS-safe by construction.
+const BILLING_HTML = `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stratum — CFO Billing Dashboard</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font: 15px/1.5 system-ui, sans-serif; margin: 0; padding: 1.5rem; max-width: 900px; }
+  h1 { font-size: 1.4rem; margin: 0 0 .25rem; }
+  .note { color: #888; font-size: .85rem; margin-bottom: 1.25rem; }
+  .cards { display: flex; flex-wrap: wrap; gap: .75rem; margin-bottom: 1.5rem; }
+  .card { border: 1px solid #8884; border-radius: 8px; padding: .75rem 1rem; min-width: 130px; }
+  .card .v { font-size: 1.5rem; font-weight: 600; } .card .k { color: #888; font-size: .8rem; }
+  .due .v { color: #30a46c; }
+  table { border-collapse: collapse; width: 100%; margin-bottom: 1rem; font-size: .9rem; }
+  th, td { text-align: left; padding: .4rem .6rem; border-bottom: 1px solid #8883; }
+  th { color: #888; font-weight: 600; }
+  .empty { color: #888; font-style: italic; }
+  a.btn { display: inline-block; border: 1px solid #8884; border-radius: 6px; padding: .35rem .7rem; text-decoration: none; color: inherit; }
+</style></head>
+<body>
+  <h1>Stratum — CFO Billing Dashboard</h1>
+  <div class="note" id="note">Loading…</div>
+  <div class="cards" id="cards"></div>
+  <h2>Per-session line items</h2>
+  <table id="items"><thead><tr><th>Session</th><th>Original tok</th><th>Quarantined tok</th><th>Savings</th><th>Fee</th></tr></thead><tbody></tbody></table>
+  <p id="dl"></p>
+  <script>
+    const org = new URLSearchParams(location.search).get('org-id') || '';
+    const usd = (n) => '$' + Number(n).toFixed(2);
+    const fmt = (n) => Number(n).toLocaleString();
+    // textContent-only DOM helpers — no innerHTML, so org-supplied values can never inject markup.
+    const el = (tag, text, cls) => { const e = document.createElement(tag); if (text != null) e.textContent = String(text); if (cls) e.className = cls; return e; };
+    const card = (k, v, cls) => { const c = el('div', null, cls ? 'card ' + cls : 'card'); c.appendChild(el('div', v, 'v')); c.appendChild(el('div', k, 'k')); return c; };
+    const note = document.getElementById('note'), cards = document.getElementById('cards'), tb = document.querySelector('#items tbody'), dl = document.getElementById('dl');
+    if (!org) { note.textContent = 'Add ?org-id=<uuid> to the URL.'; }
+    else fetch('/v1/billing/invoice?org-id=' + encodeURIComponent(org)).then((r) => r.ok ? r.json() : r.json().then((e) => Promise.reject(e))).then((d) => {
+      note.textContent = 'Org ' + d.orgId + ' (' + d.plan + ') · ' + d.periodStart + ' -> ' + d.periodEnd;
+      [['Sessions', d.recordCount], ['Original tokens', fmt(d.totalOriginalTokens)], ['Effectiveness', d.effectivenessPct.toFixed(1) + '%'], ['Customer savings', usd(d.totalSavingsUsd)], ['CQ fee (20%)', usd(d.rawFeeUsd)], ['Min (' + d.plan + ')', usd(d.monthlyMinimumUsd)]].forEach(([k, v]) => cards.appendChild(card(k, v)));
+      cards.appendChild(card('AMOUNT DUE', usd(d.amountDueUsd), 'due'));
+      if (d.lineItems.length) d.lineItems.forEach((li) => { const tr = document.createElement('tr'); [li.sessionId.slice(0, 8), fmt(li.originalTokens), fmt(li.quarantinedTokens), usd(li.savingsUsd), usd(li.feeUsd)].forEach((v) => tr.appendChild(el('td', v))); tb.appendChild(tr); });
+      else { const tr = document.createElement('tr'); const td = el('td', 'No billing records yet - pruning has not run in the request path.', 'empty'); td.colSpan = 5; tr.appendChild(td); tb.appendChild(tr); }
+      const a = el('a', 'Download audit trail (CSV)', 'btn'); a.setAttribute('href', '/v1/billing/audit.csv?org-id=' + encodeURIComponent(org)); dl.appendChild(a);
+    }).catch((e) => { note.textContent = 'Could not load invoice: ' + (e && e.error ? e.error.message : e); });
+  </script>
+</body></html>`;
+
 /**
  * Build the billing API plugin bound to a record source.
  *
@@ -48,6 +96,11 @@ function err(reply: FastifyReply, code: number, type: string, message: string): 
  */
 export function makeBillingRoute(deps: BillingDeps): FastifyPluginCallback {
   return function billingPlugin(app: FastifyInstance, _opts, done): void {
+    app.get("/billing", async (_req, reply) => {
+      void reply.header("content-type", "text/html; charset=utf-8");
+      return reply.send(BILLING_HTML);
+    });
+
     app.get("/v1/billing/invoice", async (req, reply) => {
       const orgId = resolveOrg(req);
       if (orgId === undefined) return err(reply, 400, "request_error", "org id required (authenticate, or pass ?org-id)");
