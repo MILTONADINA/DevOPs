@@ -6,6 +6,7 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { forwardToAnthropic } from "../../src/proxy/forward";
+import { forwardStreamToAnthropic } from "../../src/proxy/stream-forward";
 import { captureState, setAxiosResponse, resetMockState } from "../helpers/capture-harness";
 import type { ForwardHeaders, MessagesDeps } from "../../src/proxy/forward";
 
@@ -34,6 +35,16 @@ describe("forwardToAnthropic — upstream header passthrough", () => {
     const headers = (captureState.axios.postCalls[0]!.config as { headers: Record<string, string> }).headers;
     expect(headers["anthropic-version"]).toBe("2023-06-01");
     expect(headers["anthropic-beta"]).toBeUndefined();
+  });
+
+  test("forwardStreamToAnthropic injects stream:true into the body (so the upstream returns SSE)", async () => {
+    resetMockState();
+    async function* sse(): AsyncGenerator<string> {
+      yield 'event: message_stop\ndata: {"type":"message_stop"}\n\n';
+    }
+    setAxiosResponse(sse()); // status 200, data = an async iterable
+    await forwardStreamToAnthropic(BODY, "sk-ant-x", "https://api.anthropic.com");
+    expect((captureState.axios.postCalls[0]!.body as { stream?: boolean }).stream).toBe(true);
   });
 });
 

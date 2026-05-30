@@ -52,21 +52,30 @@ export interface UsageRecorder {
  * @returns a {@link UsageRecorder}.
  */
 export function createSupabaseUsageRecorder(opts: UsageRecorderOptions): UsageRecorder {
-  const sessionCache = new Map<string, string>(); // `${org}|${day}|${model}` → session id
+  // Cache the in-flight PROMISE (not the resolved id): recordUsage is fire-and-forget, so overlapping
+  // requests for the same (org, day, model) can enter ensureSession concurrently. Caching the resolved
+  // id only AFTER the insert lets both observe a miss and create DUPLICATE session rows (a TOCTOU race).
+  const sessionCache = new Map<string, Promise<string>>(); // `${org}|${day}|${model}` → session id promise
   const now = opts.now ?? ((): number => Date.now());
   const price = opts.priceFn ?? ((m: string): number => pricePerInputTokenUsd(m));
 
-  async function ensureSession(orgId: string, model: string): Promise<string> {
+  function ensureSession(orgId: string, model: string): Promise<string> {
     const day = new Date(now()).toISOString().slice(0, 10); // UTC date bucket
     const key = `${orgId}|${day}|${model}`;
     const cached = sessionCache.get(key);
     if (cached !== undefined) return cached;
-    const { data, error } = await opts.client.from("sessions").insert({ org_id: orgId, model }).select("id").limit(1);
-    if (error) throw new Error(`ensureSession failed: ${error.message}`);
-    const id = ((data ?? [])[0] as { id: string } | undefined)?.id;
-    if (id === undefined || id === "") throw new Error("ensureSession returned no id");
-    sessionCache.set(key, id);
-    return id;
+    // Insert under one shared promise, stored SYNCHRONOUSLY (before the first await) so a concurrent
+    // caller for the same key awaits this insert instead of issuing a second one.
+    const created = (async (): Promise<string> => {
+      const { data, error } = await opts.client.from("sessions").insert({ org_id: orgId, model }).select("id").limit(1);
+      if (error) throw new Error(`ensureSession failed: ${error.message}`);
+      const id = ((data ?? [])[0] as { id: string } | undefined)?.id;
+      if (id === undefined || id === "") throw new Error("ensureSession returned no id");
+      return id;
+    })();
+    sessionCache.set(key, created);
+    created.catch(() => sessionCache.delete(key)); // never cache a rejected promise — allow a retry
+    return created;
   }
 
   return {

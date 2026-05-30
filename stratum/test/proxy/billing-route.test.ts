@@ -93,6 +93,16 @@ describe("GET /v1/billing/invoice", () => {
     expect(captured.orgId).toBe("o1"); // scoped to the key's org, not a query param
     await app.close();
   });
+
+  test("a malformed ?since is a 400 (not a 500 leaking a Postgres error)", async () => {
+    const { deps } = fakeDeps();
+    const app = buildProxy({ rateLimit: false, cors: false, billing: deps });
+    await app.ready();
+    const res = await app.inject({ method: "GET", url: "/v1/billing/invoice?org-id=o1&since=not-a-date" });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.message).toMatch(/since must be an ISO-8601 timestamp/);
+    await app.close();
+  });
 });
 
 describe("GET /billing (CFO dashboard page)", () => {

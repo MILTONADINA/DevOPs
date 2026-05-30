@@ -6,7 +6,8 @@ import { createHmac } from "node:crypto";
 
 vi.unmock("fastify");
 const { buildProxy } = await import("../../src/proxy/app");
-import type { PaymentRecord, StripeWebhookDeps } from "../../src/proxy/routes/stripe-webhook";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { createSupabaseStripeWebhookDeps, type PaymentRecord, type StripeWebhookDeps } from "../../src/proxy/routes/stripe-webhook";
 
 const SECRET = "whsec_route";
 const NOW = 1_700_000_000;
@@ -102,5 +103,32 @@ describe("POST /stripe/webhook", () => {
     const gated = await app.inject({ method: "GET", url: "/v1/config" });
     expect(gated.statusCode).toBe(401);
     await app.close();
+  });
+
+  test("a signed payment with NO invoice id → 200 acked, NOT recorded (an empty key would collide cross-org)", async () => {
+    const { deps, calls } = makeDeps();
+    const app = buildProxy({ cors: false, rateLimit: false, stripeWebhook: deps });
+    await app.ready();
+    // object has org_id metadata but no `id` → stripeEventToAction yields stripeInvoiceId ""
+    const payload = JSON.stringify({ id: "evt_6", type: "invoice.paid", data: { object: { amount_paid: 1, metadata: { org_id: "org-x" } } } });
+    const res = await post(app, payload, sign(payload));
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ received: true, handled: null, reason: "missing invoice id" });
+    expect(calls).toHaveLength(0);
+    await app.close();
+  });
+});
+
+describe("createSupabaseStripeWebhookDeps.recordPayment", () => {
+  test("calls the forward-only record_invoice_payment RPC with mapped params (not a blind upsert)", async () => {
+    const calls: Array<{ fn: string; args: Record<string, unknown> }> = [];
+    const client = { rpc: async (fn: string, args: Record<string, unknown>) => { calls.push({ fn, args }); return { error: null }; } } as unknown as SupabaseClient;
+    await createSupabaseStripeWebhookDeps(client, "whsec_x").recordPayment({ orgId: "o1", stripeInvoiceId: "in_1", amountCents: 9900, status: "paid", eventId: "evt_1" });
+    expect(calls).toEqual([{ fn: "record_invoice_payment", args: { p_org_id: "o1", p_stripe_invoice_id: "in_1", p_amount_cents: 9900, p_status: "paid", p_event_id: "evt_1" } }]);
+  });
+
+  test("an RPC error throws", async () => {
+    const client = { rpc: async () => ({ error: { message: "boom" } }) } as unknown as SupabaseClient;
+    await expect(createSupabaseStripeWebhookDeps(client, "whsec_x").recordPayment({ orgId: "o", stripeInvoiceId: "in", amountCents: 1, status: "failed", eventId: "e" })).rejects.toThrow(/recordPayment failed: boom/);
   });
 });

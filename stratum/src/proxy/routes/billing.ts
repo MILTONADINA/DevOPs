@@ -108,6 +108,16 @@ function strParam(req: FastifyRequest, name: string): string | undefined {
   return typeof v === "string" && v !== "" ? v : undefined;
 }
 
+/** A query param that must parse as an ISO-8601 timestamp. Throws a 400 (the global error handler honors
+ *  statusCode) so a garbage `?since=foo` is a clean 400 — not a Postgres "invalid input syntax" 500 with
+ *  the raw DB error leaked. (created_at is timestamptz; passing junk to .gte/.lt errors at the DB.) */
+function isoParam(req: FastifyRequest, name: string): string | undefined {
+  const v = strParam(req, name);
+  if (v === undefined) return undefined;
+  if (Number.isNaN(Date.parse(v))) throw Object.assign(new Error(`${name} must be an ISO-8601 timestamp`), { statusCode: 400 });
+  return v;
+}
+
 function intParam(req: FastifyRequest, name: string, def: number): number {
   const v = (req.query as Record<string, unknown>)[name];
   const n = typeof v === "string" ? Number.parseInt(v, 10) : NaN;
@@ -187,8 +197,8 @@ export function makeBillingRoute(deps: BillingDeps): FastifyPluginCallback {
       if (orgId === undefined) return err(reply, 400, "request_error", "org id required (authenticate, or pass ?org-id)");
       const plan = await deps.getOrgPlan(orgId);
       if (plan === null) return err(reply, 404, "request_error", "organization not found");
-      const since = strParam(req, "since");
-      const until = strParam(req, "until");
+      const since = isoParam(req, "since");
+      const until = isoParam(req, "until");
       const records = await deps.listBillingRecords(orgId, since, until);
       return generateInvoice(orgId, plan, records, since ?? "(all time)", until ?? "(now)");
     });
@@ -198,7 +208,7 @@ export function makeBillingRoute(deps: BillingDeps): FastifyPluginCallback {
       if (orgId === undefined) return err(reply, 400, "request_error", "org id required (authenticate, or pass ?org-id)");
       const plan = await deps.getOrgPlan(orgId);
       if (plan === null) return err(reply, 404, "request_error", "organization not found");
-      const records = await deps.listBillingRecords(orgId, strParam(req, "since"), strParam(req, "until"));
+      const records = await deps.listBillingRecords(orgId, isoParam(req, "since"), isoParam(req, "until"));
       void reply.header("content-type", "text/csv; charset=utf-8");
       void reply.header("content-disposition", `attachment; filename="audit-${orgId.slice(0, 8)}.csv"`);
       return reply.send(toAuditCsv(records));
@@ -212,8 +222,8 @@ export function makeBillingRoute(deps: BillingDeps): FastifyPluginCallback {
       const plan = await deps.getOrgPlan(orgId);
       if (plan === null) return err(reply, 404, "request_error", "organization not found");
       const month = strParam(req, "month");
-      let since = strParam(req, "since");
-      let until = strParam(req, "until");
+      let since = isoParam(req, "since");
+      let until = isoParam(req, "until");
       let period = since ?? "(all time)";
       if (month !== undefined) {
         const b = monthBounds(month);
@@ -245,8 +255,8 @@ export function makeBillingRoute(deps: BillingDeps): FastifyPluginCallback {
       const limit = Math.min(500, Math.max(1, intParam(req, "limit", 50)));
       const offset = Math.max(0, intParam(req, "offset", 0));
       const { records, total } = await deps.listRecords(orgId, {
-        since: strParam(req, "since"),
-        until: strParam(req, "until"),
+        since: isoParam(req, "since"),
+        until: isoParam(req, "until"),
         sessionId: strParam(req, "session_id"),
         limit,
         offset,
@@ -290,7 +300,7 @@ export function createSupabaseBillingDeps(client: SupabaseClient): BillingDeps {
         .select("session_id, original_tokens, quarantined_tokens, cost_delta_usd, cq_fee_usd, signed_hash")
         .eq("org_id", orgId);
       if (since !== undefined) q = q.gte("created_at", since);
-      if (until !== undefined) q = q.lte("created_at", until);
+      if (until !== undefined) q = q.lt("created_at", until);
       const { data, error } = await q;
       if (error) throw new Error(`listBillingRecords failed: ${error.message}`);
       return (data ?? []) as BillableRecord[];
@@ -298,7 +308,7 @@ export function createSupabaseBillingDeps(client: SupabaseClient): BillingDeps {
     async developerBreakdown(orgId: string, since?: string, until?: string): Promise<DeveloperBreakdown[]> {
       let q = client.from("billing_records").select("original_tokens, quarantined_tokens, cq_fee_usd, sessions(developer_id, developers(name))").eq("org_id", orgId);
       if (since !== undefined) q = q.gte("created_at", since);
-      if (until !== undefined) q = q.lte("created_at", until);
+      if (until !== undefined) q = q.lt("created_at", until);
       const { data, error } = await q;
       if (error) throw new Error(`developerBreakdown failed: ${error.message}`);
       type Row = { original_tokens: number; quarantined_tokens: number; cq_fee_usd: number; sessions: { developer_id: string | null; developers: { name: string } | { name: string }[] | null } | { developer_id: string | null; developers: { name: string } | { name: string }[] | null }[] | null };
@@ -321,7 +331,7 @@ export function createSupabaseBillingDeps(client: SupabaseClient): BillingDeps {
         .select("id, created_at, session_id, original_tokens, quarantined_tokens, token_delta, cost_delta_usd, cq_fee_usd, signed_hash", { count: "exact" })
         .eq("org_id", orgId);
       if (query.since !== undefined) q = q.gte("created_at", query.since);
-      if (query.until !== undefined) q = q.lte("created_at", query.until);
+      if (query.until !== undefined) q = q.lt("created_at", query.until);
       if (query.sessionId !== undefined) q = q.eq("session_id", query.sessionId);
       const { data, error, count } = await q.order("created_at", { ascending: false }).range(query.offset, query.offset + query.limit - 1);
       if (error) throw new Error(`listRecords failed: ${error.message}`);

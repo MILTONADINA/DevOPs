@@ -45,7 +45,7 @@ function resolveOrg(req: FastifyRequest): string | undefined {
 function intParam(req: FastifyRequest, name: string, def: number): number {
   const v = (req.query as Record<string, unknown>)[name];
   const n = typeof v === "string" ? Number.parseInt(v, 10) : NaN;
-  return Number.isFinite(n) && n > 0 ? n : def;
+  return Number.isFinite(n) && n > 0 ? Math.min(n, 500) : def; // cap (mirrors billing) — no unbounded ?limit
 }
 
 function err(reply: FastifyReply, code: number, message: string): FastifyReply {

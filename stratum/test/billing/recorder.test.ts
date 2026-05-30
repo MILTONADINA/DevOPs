@@ -32,6 +32,18 @@ describe("signBillingRecord", () => {
     const b = signBillingRecord({ ...INPUT, orgId: "a", sessionId: "bc" }, SECRET);
     expect(a).not.toBe(b);
   });
+
+  test("the NUMERIC token boundary cannot be gamed (a ''-join collision is impossible)", () => {
+    // The defect: with a no-delimiter join, {original:10, quarantined:100} and {original:1010,
+    // quarantined:0} both concatenate to "...10100..." and sign identically — so a tampered token
+    // split (which changes the billed fee) would still verify. The delimiter must prevent this.
+    const lo = signBillingRecord({ ...INPUT, originalTokens: 10, quarantinedTokens: 100 }, SECRET);
+    const hi = signBillingRecord({ ...INPUT, originalTokens: 1010, quarantinedTokens: 0 }, SECRET);
+    expect(lo).not.toBe(hi);
+    // and a record verified under one split must NOT verify under the colliding split
+    const hash = signBillingRecord({ ...INPUT, originalTokens: 10, quarantinedTokens: 100 }, SECRET);
+    expect(verifyBillingRecord({ ...INPUT, originalTokens: 1010, quarantinedTokens: 0 }, hash, SECRET)).toBe(false);
+  });
 });
 
 describe("verifyBillingRecord", () => {

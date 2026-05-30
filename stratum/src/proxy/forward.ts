@@ -32,6 +32,8 @@ export interface MessagesBody {
   system?: unknown;
   tools?: unknown[];
   max_tokens: number;
+  /** Set by the client (or injected on the streaming path so the upstream actually returns SSE). */
+  stream?: boolean;
 }
 
 export interface ForwardResult {

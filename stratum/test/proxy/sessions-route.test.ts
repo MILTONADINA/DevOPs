@@ -44,6 +44,15 @@ describe("GET /v1/sessions", () => {
     await app.close();
   });
 
+  test("caps ?limit at 500 (no unbounded query)", async () => {
+    const { deps, captured } = fakeDeps();
+    const app = buildProxy({ rateLimit: false, cors: false, sessions: deps });
+    await app.ready();
+    await app.inject({ method: "GET", url: "/v1/sessions?org-id=o1&limit=9999999" });
+    expect((captured["list"] as { limit: number }).limit).toBe(500);
+    await app.close();
+  });
+
   test("400 with no org", async () => {
     const app = buildProxy({ rateLimit: false, cors: false, sessions: fakeDeps().deps });
     await app.ready();

@@ -63,6 +63,19 @@ describe("createSupabaseUsageRecorder", () => {
     for (const b of inserts.filter((i) => i.table === "billing_records")) expect(b.row["session_id"]).toBe("sess-1");
   });
 
+  test("CONCURRENT requests for the same (org, day, model) share ONE session insert (no TOCTOU race)", async () => {
+    const { client, inserts } = fakeClient();
+    const rec = createSupabaseUsageRecorder({ client, signingSecret: SECRET, now: () => NOW });
+    // recordUsage is fire-and-forget in the route, so overlapping calls can hit ensureSession before
+    // the first insert resolves. The in-flight-promise cache must collapse them to ONE session.
+    await Promise.all([
+      rec.recordUsage({ orgId: "org-1", model: "claude-opus-4-8", inputTokens: 1000, outputTokens: 10 }),
+      rec.recordUsage({ orgId: "org-1", model: "claude-opus-4-8", inputTokens: 2000, outputTokens: 20 }),
+    ]);
+    expect(inserts.filter((i) => i.table === "sessions")).toHaveLength(1); // not 2
+    expect(inserts.filter((i) => i.table === "billing_records")).toHaveLength(2);
+  });
+
   test("a different model gets its own session", async () => {
     const { client, inserts } = fakeClient();
     const rec = createSupabaseUsageRecorder({ client, signingSecret: SECRET, now: () => NOW });

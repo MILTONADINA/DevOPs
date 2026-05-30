@@ -69,7 +69,11 @@ export function makeStripeWebhookRoute(deps: StripeWebhookDeps): FastifyPluginCa
       }
 
       const action = stripeEventToAction(event);
-      if (action.kind === "payment" && action.orgId !== null) {
+      // Persist only an attributable payment: a real org AND a real invoice id. A missing invoice id
+      // would otherwise become an empty-string idempotency key, and (since '' is a single value under
+      // the UNIQUE constraint) a second empty-key event for a DIFFERENT org would overwrite the first
+      // — a cross-org misattribution on a financial table. Skip + ACK 200 (don't make Stripe retry).
+      if (action.kind === "payment" && action.orgId !== null && action.stripeInvoiceId !== "") {
         await deps.recordPayment({
           orgId: action.orgId,
           stripeInvoiceId: action.stripeInvoiceId,
@@ -79,16 +83,20 @@ export function makeStripeWebhookRoute(deps: StripeWebhookDeps): FastifyPluginCa
         });
         return reply.code(200).send({ received: true, handled: action.eventType, status: action.status });
       }
-      // Ignored event type, or a payment with no org_id metadata (can't attribute) — ACK with 200 so
-      // Stripe stops retrying (it's not our job to re-handle an event we intentionally skip).
-      return reply.code(200).send({ received: true, handled: null, reason: action.kind === "payment" ? "no org_id metadata" : "unhandled event type" });
+      // Ignored event type, or an un-attributable payment (no org_id metadata / no invoice id) — ACK
+      // with 200 so Stripe stops retrying (it's not our job to re-handle an event we intentionally skip).
+      const reason = action.kind !== "payment" ? "unhandled event type" : action.orgId === null ? "no org_id metadata" : "missing invoice id";
+      return reply.code(200).send({ received: true, handled: null, reason });
     });
     done();
   };
 }
 
 /**
- * Live Stripe-webhook deps over Supabase: upsert the invoice's paid/failed state.
+ * Live Stripe-webhook deps over Supabase: record the invoice's paid/failed state via the FORWARD-ONLY
+ * `record_invoice_payment` RPC (migration 20260530000000). The RPC makes the merge atomic + forward-only
+ * so a stale/out-of-order `invoice.payment_failed` delivered after `invoice.paid` cannot downgrade a paid
+ * invoice (Stripe is at-least-once with no ordering guarantee). A blind upsert would clobber it.
  *
  * @param client - a service-role Supabase client.
  * @param signingSecret - the endpoint signing secret (whsec_…).
@@ -98,20 +106,14 @@ export function createSupabaseStripeWebhookDeps(client: SupabaseClient, signingS
   return {
     signingSecret,
     async recordPayment(p: PaymentRecord): Promise<void> {
-      const nowIso = new Date().toISOString();
-      const { error } = await client.from("invoices").upsert(
-        {
-          org_id: p.orgId,
-          stripe_invoice_id: p.stripeInvoiceId,
-          amount_cents: p.amountCents,
-          status: p.status,
-          paid_at: p.status === "paid" ? nowIso : null,
-          last_event_id: p.eventId,
-          updated_at: nowIso,
-        },
-        { onConflict: "stripe_invoice_id" },
-      );
-      if (error) throw new Error(`recordPayment upsert failed: ${error.message}`);
+      const { error } = await client.rpc("record_invoice_payment", {
+        p_org_id: p.orgId,
+        p_stripe_invoice_id: p.stripeInvoiceId,
+        p_amount_cents: p.amountCents,
+        p_status: p.status,
+        p_event_id: p.eventId,
+      });
+      if (error) throw new Error(`recordPayment failed: ${error.message}`);
     },
   };
 }

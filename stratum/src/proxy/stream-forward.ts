@@ -48,7 +48,12 @@ export async function forwardStreamToAnthropic(
   if (passthrough?.anthropicBeta !== undefined && passthrough.anthropicBeta !== "") {
     headers["anthropic-beta"] = passthrough.anthropicBeta;
   }
-  const res = await axios.post(`${baseUrl}/v1/messages`, body, {
+  // Inject stream:true so the upstream ACTUALLY returns SSE. The route enters this path on a
+  // body.stream:true OR an `Accept: text/event-stream` header (isStreamingRequest); in the latter
+  // case the client may not have set body.stream, and Anthropic returns SSE only when the BODY field
+  // is set — without this, an Accept-only request would get a JSON body fed through the SSE tee → an
+  // empty/garbled stream. Keeping the body + the `accept: text/event-stream` header consistent fixes it.
+  const res = await axios.post(`${baseUrl}/v1/messages`, { ...body, stream: true }, {
     headers,
     responseType: "stream",
     validateStatus: () => true,
