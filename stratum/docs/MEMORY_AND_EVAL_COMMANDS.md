@@ -34,10 +34,14 @@ referential-integrity-verified.
 `npm run invoice -- --org-id <uuid> [--since <iso>] [--until <iso>] [--csv <path>] [--send]`
 computes an org's **token-arbitrage invoice** (BUSINESS_MODEL.md: 20% of savings, with the
 plan's monthly-minimum floor) from its append-only `billing_records` and prints the CFO
-report; `--csv` writes the signed-hash audit trail. **FREE**, read-only. `--send` goes through
-the Stripe seam, which is a **gated stub** (no unverified payment code) — it fails honestly
-until Stripe is wired + verified in test mode. Build-ahead of v1.0.0; the engine is ready, an
-actual paid invoice needs Stripe + a design partner.
+report; `--csv` writes the signed-hash audit trail. **FREE**, read-only. The Stripe **send is
+implemented** (`src/billing/stripe.ts`: customer → invoiceitem → invoice → finalize, behind the
+InvoiceSink seam, fake-fetch-tested incl. dollars→cents; a `sk_live_` key is refused until verified
+in test mode), and the **inbound `invoice.paid` webhook** (`POST /stripe/webhook`, signature-verified)
+records payment into the `invoices` table. `npm run verify-stripe` is the one-command TEST-MODE check:
+given a `sk_test_` key it sends a $1 test invoice against the real Stripe API and round-trips the
+webhook signature/routing; **gated-skip without a key** (never fabricates). An actual paid invoice
+still needs a deployed endpoint + a design partner.
 
 Billing records are **HMAC-signed** (src/billing/recorder.ts: `recordBilling` signs each row's
 immutable inputs with `CQ_BILLING_SIGNING_SECRET`; the generated columns are DB-derived). `npm run
