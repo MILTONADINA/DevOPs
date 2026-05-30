@@ -8,6 +8,7 @@
     "setup": "tsx scripts/setup.ts",
     "dev": "tsx src/proxy/index.ts",
     "build": "tsc --noEmit -p tsconfig.typecheck.json",
+    "build:vercel": "npx esbuild vercel-src/entry.ts --bundle --platform=node --format=esm --packages=external --tsconfig=tsconfig.json --outfile=api/index.js",
     "build:wasm": "cd rust/hot-path && wasm-pack build --target nodejs",
     "start": "node dist/proxy/index.js",
     "lint": "eslint src --ext .ts && prettier --check src",

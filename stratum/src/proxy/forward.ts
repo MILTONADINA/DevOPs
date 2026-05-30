@@ -185,7 +185,10 @@ export function createDefaultMessagesDeps(): MessagesDeps {
   const client = getAnthropicClient();
 
   const sessionId = randomUUID();
-  const outputFile = path.join(process.cwd(), "data", "sessions", `session-${sessionId}.json`);
+  // CQ_CAPTURE_DIR lets a deployment redirect the on-disk capture artifact off the (often read-only)
+  // app root — e.g. a serverless host where only /tmp is writable. Default unchanged (<cwd>/data/sessions).
+  const captureDir = process.env["CQ_CAPTURE_DIR"] ?? path.join(process.cwd(), "data", "sessions");
+  const outputFile = path.join(captureDir, `session-${sessionId}.json`);
 
   // Forward with retry/backoff (429 Retry-After / 5xx jitter / network 1-retry). BOTH paths retry —
   // the streaming path (the majority of partner traffic) used to get none, so a transient 429/5xx

@@ -6,6 +6,11 @@
 # Build outputs
 dist/
 .wrangler/
+# Vercel: api/index.js is the esbuild-bundled function (regenerate with `npm run build:vercel`); the
+# local Vercel link + the boot-test scratch are machine-local.
+api/index.js
+.vercel/
+vercel-src/local-test.mjs
 
 # Dependencies
 node_modules/
