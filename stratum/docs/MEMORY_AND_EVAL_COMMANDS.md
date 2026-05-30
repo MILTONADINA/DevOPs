@@ -39,6 +39,11 @@ the Stripe seam, which is a **gated stub** (no unverified payment code) — it f
 until Stripe is wired + verified in test mode. Build-ahead of v1.0.0; the engine is ready, an
 actual paid invoice needs Stripe + a design partner.
 
+Billing records are **HMAC-signed** (src/billing/recorder.ts: `recordBilling` signs each row's
+immutable inputs with `CQ_BILLING_SIGNING_SECRET`; the generated columns are DB-derived). `npm run
+verify-billing -- --org-id <uuid>` recomputes every record's signature and flags any tampering —
+the dispute-proof check ("we provably cannot retroactively modify the data"). **FREE**, read-only.
+
 The proxy also exposes the **CFO billing API** when `buildProxy({ billing })` is supplied:
 `GET /v1/billing/invoice` (the computed Invoice JSON) and `GET /v1/billing/audit.csv` (the
 signed-hash audit trail download) — org-scoped via the auth gate (or `?org-id`). It composes
