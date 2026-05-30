@@ -295,6 +295,21 @@ Source of truth: `src/proxy/openapi.ts`. A test (`test/proxy/openapi.test.ts`)
 asserts every documented path is an actually-registered route and every `$ref`
 resolves, so the spec cannot drift from the implementation.
 
+### POST /stripe/webhook
+
+No API key — Stripe authenticates via the `Stripe-Signature` header (HMAC-SHA256 of
+`<timestamp>.<rawBody>` keyed by the endpoint signing secret `STRIPE_WEBHOOK_SECRET`).
+Mounted OUTSIDE `/v1/`, so it bypasses the API-key gate; the **signature is the auth**.
+
+Records the invoice lifecycle so the system knows "invoice **paid** by design partner"
+(the v1.0.0 acceptance): `invoice.paid` / `invoice.payment_succeeded` → mark the invoice
+paid (upsert into `invoices`, idempotent on `stripe_invoice_id` since Stripe re-delivers
+at-least-once); `invoice.payment_failed` → mark failed; any other event → `200` ack, no-op.
+
+A bad/stale/missing signature returns `400` (never acked as accepted); a verified event
+returns `200 {received:true}`. Verification is over the RAW body (a re-serialized JSON body
+would not match), with a 5-minute timestamp tolerance for replay defense.
+
 ### GET /docs
 
 No authentication required. A human-browsable API reference page that renders

@@ -49,4 +49,18 @@ describe("buildStartOptions", () => {
     expect(opts.messages).toBe(base.messages); // base preserved
     expect(opts.dashboard).toBe(base.dashboard);
   });
+
+  test("Stripe webhook is wired ONLY when STRIPE_WEBHOOK_SECRET is set", () => {
+    const commercial = { CQ_COMMERCIAL: "true", SUPABASE_URL: "u", SUPABASE_SERVICE_KEY: "k" };
+    const without = buildStartOptions(commercial, base, (() => fakeClient) as unknown as ClientFactory);
+    expect(without.stripeWebhook).toBeUndefined(); // no endpoint secret ⇒ no route
+
+    const withSecret = buildStartOptions({ ...commercial, STRIPE_WEBHOOK_SECRET: "whsec_x" }, base, (() => fakeClient) as unknown as ClientFactory);
+    expect(withSecret.stripeWebhook).toBeDefined();
+    expect(withSecret.stripeWebhook?.signingSecret).toBe("whsec_x");
+
+    // personal mode never wires it even if the secret is present
+    const personal = buildStartOptions({ STRIPE_WEBHOOK_SECRET: "whsec_x" }, base, (() => fakeClient) as unknown as ClientFactory);
+    expect(personal.stripeWebhook).toBeUndefined();
+  });
 });

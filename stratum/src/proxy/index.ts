@@ -28,6 +28,7 @@ import { createSupabaseMemoryDeps } from "./routes/memory";
 import { createSupabaseBillingDeps } from "./routes/billing";
 import { createSupabaseSessionsDeps } from "./routes/sessions";
 import { createSupabaseWebhookDeps } from "./routes/webhooks";
+import { createSupabaseStripeWebhookDeps } from "./routes/stripe-webhook";
 import { createTokenBudget } from "./token-budget";
 import { createSupabaseHealthCheck } from "./routes/health";
 
@@ -37,6 +38,8 @@ export interface StartEnv {
   CQ_COMMERCIAL?: string | undefined;
   SUPABASE_URL?: string | undefined;
   SUPABASE_SERVICE_KEY?: string | undefined;
+  /** Stripe endpoint signing secret (whsec_…). When set in commercial mode, wires POST /stripe/webhook. */
+  STRIPE_WEBHOOK_SECRET?: string | undefined;
 }
 
 /** Commercial mode = the flag is on AND Supabase creds are present (else the multi-tenant store can't work). */
@@ -72,6 +75,10 @@ export function buildStartOptions(env: StartEnv, base: BuildProxyOptions, makeCl
     const getPlan = async (orgId: string): Promise<string> => (await billing.getOrgPlan(orgId)) ?? "starter";
     opts.rateLimitByPlan = { getPlan };
     opts.health = { checkDatabase: createSupabaseHealthCheck(client) };
+    // Stripe inbound webhook (records invoice.paid) — only when the endpoint secret is configured.
+    if (typeof env.STRIPE_WEBHOOK_SECRET === "string" && env.STRIPE_WEBHOOK_SECRET !== "") {
+      opts.stripeWebhook = createSupabaseStripeWebhookDeps(client, env.STRIPE_WEBHOOK_SECRET);
+    }
     if (base.messages !== undefined) {
       // Reuse the already-wired exact token counter for /v1/tokens/count.
       opts.tokens = { countTokens: base.messages.countTokens };
@@ -94,6 +101,7 @@ export async function start(): Promise<void> {
     CQ_COMMERCIAL: process.env["CQ_COMMERCIAL"],
     SUPABASE_URL: process.env["SUPABASE_URL"],
     SUPABASE_SERVICE_KEY: process.env["SUPABASE_SERVICE_KEY"],
+    STRIPE_WEBHOOK_SECRET: process.env["STRIPE_WEBHOOK_SECRET"],
   };
   const base: BuildProxyOptions = {
     messages: createDefaultMessagesDeps(),

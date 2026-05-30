@@ -21,6 +21,7 @@ import { makeMemoryRoute, type MemoryDeps } from "./routes/memory";
 import { makeSessionsRoute, type SessionsDeps } from "./routes/sessions";
 import { makeWebhookRoute, type WebhookDeps } from "./routes/webhooks";
 import { makeTokensRoute, type TokensDeps } from "./routes/tokens";
+import { makeStripeWebhookRoute, type StripeWebhookDeps } from "./routes/stripe-webhook";
 import { planRequestsPerMinute } from "./rate-limit-tiers";
 import { OPENAPI_SPEC, OPENAPI_DOCS_HTML } from "./openapi";
 import { registerAuth, type AuthDeps } from "./auth";
@@ -89,6 +90,12 @@ export interface BuildProxyOptions {
    * reuses the messages counter.
    */
   tokens?: TokensDeps;
+  /**
+   * The Stripe INBOUND webhook (POST /stripe/webhook) — records `invoice.paid` (the "paid by
+   * design partner" half of v1.0.0). PUBLIC by path (outside /v1/, signature-authenticated). When
+   * omitted, not registered. The commercial deploy supplies createSupabaseStripeWebhookDeps().
+   */
+  stripeWebhook?: StripeWebhookDeps;
   /**
    * Per-PLAN request rate limiting (docs/RATE_LIMITS.md). When provided (commercial mode), requests
    * are limited per-ORG by the org's plan (requests/min) — `getPlan` resolves the plan. When omitted,
@@ -205,6 +212,10 @@ export function buildProxy(opts: BuildProxyOptions = {}): FastifyInstance {
 
   if (opts.tokens) {
     void app.register(makeTokensRoute(opts.tokens));
+  }
+
+  if (opts.stripeWebhook) {
+    void app.register(makeStripeWebhookRoute(opts.stripeWebhook));
   }
 
   app.setErrorHandler((err, _req, reply) => {
