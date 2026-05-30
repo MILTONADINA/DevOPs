@@ -58,6 +58,14 @@ describe("isSafeWebhookUrl (SSRF guard)", () => {
       "http://169.254.169.254/latest/meta-data", // cloud metadata
       "http://[::1]/x",
       "http://[fc00::1]/x",
+      // IPv4-mapped / embedded IPv6 — these decode to the same private IPs and must NOT bypass the guard.
+      "http://[::ffff:127.0.0.1]/x", // loopback (dotted)
+      "http://[::ffff:7f00:1]/x", // loopback (hex, Node-normalized form)
+      "http://[::ffff:10.0.0.1]/x", // RFC-1918
+      "http://[::ffff:169.254.169.254]/x", // cloud metadata (dotted)
+      "http://[::ffff:a9fe:a9fe]/x", // cloud metadata (hex, Node-normalized)
+      "http://[::ffff:192.168.0.1]/x",
+      "http://[::127.0.0.1]/x", // IPv4-compatible (deprecated)
       "ftp://example.com/x",
       "not-a-url",
     ]) {
@@ -78,6 +86,8 @@ describe("deliverWebhook", () => {
     expect(seen!.url).toBe("https://api.customer.com/cq");
     expect(seen!.init.headers[SIGNATURE_HEADER]).toBe(signWebhook('{"event":"x"}', SECRET));
     expect(seen!.init.body).toBe('{"event":"x"}');
+    // redirect:"error" so a 3xx to an internal target is not followed (SSRF guard is URL-only).
+    expect((seen!.init as { redirect?: string }).redirect).toBe("error");
   });
   test("non-2xx → not delivered (status preserved)", async () => {
     const res = await deliverWebhook("https://api.customer.com/cq", "{}", SECRET, () => Promise.resolve({ status: 500 }));

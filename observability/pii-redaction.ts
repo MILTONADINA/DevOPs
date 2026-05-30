@@ -36,9 +36,15 @@
 // — which also kills the O(N²) the prior REQUIRED-`.` 3-segment form had on
 // `eyJ`-repeated input (each `eyJ` start backtracked hunting the next dot).
 const PATTERNS = [
-  // Email — bounded: no anchor + REQUIRED `@…tld` suffix would be O(N²); the
-  // bound makes it linear and leaks at most a few leading local-part chars.
-  { name: 'email', regex: /[a-zA-Z0-9._%+-]{1,64}@[a-zA-Z0-9.-]{1,253}\.[a-zA-Z]{2,24}/g },
+  // Email — LEFT-ANCHORED (negative lookbehind) + a generous local-part bound. The lookbehind pins
+  // each match to the TRUE local-part start (a position not preceded by a local-part char), so the
+  // engine can only START a match once per local-part run — that caps start positions to O(1) per run
+  // and kills the O(N²) the no-anchor form had. Because the start is pinned, the {1,256} bound is large
+  // enough to redact even an over-RFC-length local-part IN FULL (the prior bare {1,64} left a shifted
+  // partial match → a few leading local-part chars leaked to disk; see the §2a redo lesson). Still
+  // linear: interior positions are skipped O(1) by the failing lookbehind. The 500KB-no-`@` ReDoS
+  // backstop test stays green.
+  { name: 'email', regex: /(?<![a-zA-Z0-9._%+-])[a-zA-Z0-9._%+-]{1,256}@[a-zA-Z0-9.-]{1,253}\.[a-zA-Z]{2,24}/g },
   // US phone
   { name: 'phone-us', regex: /\b(\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b/g },
   // SSN

@@ -98,14 +98,11 @@ describe('pii-redaction — bounded quantifiers (ReDoS resilience)', () => {
     expect(redactString(input)).toBe('[REDACTED:email]');
   });
 
-  test('email with 65-char local part: longer matches still get caught via shifted boundary', () => {
-    // Bounded {1,64} means a 65-char local part will match starting from
-    // char 2 (still 64 chars). Email detection remains best-effort on
-    // pathological inputs; the bound trades a tiny edge case for ReDoS
-    // resilience.
-    const input = 'b'.repeat(65) + '@example.com';
-    // The first 'b' is preserved; chars 2-65 + '@example.com' is redacted
-    expect(redactString(input)).toBe('b[REDACTED:email]');
+  test('email with an over-RFC-length local part is redacted IN FULL (no leading-char leak)', () => {
+    // The left-anchor lookbehind pins the match to the local-part start, so a >64-char local part is
+    // captured whole — the prior bare {1,64} left the leading chars unredacted (a partial PII leak).
+    expect(redactString('b'.repeat(65) + '@example.com')).toBe('[REDACTED:email]');
+    expect(redactString('john.smith.' + 'x'.repeat(100) + '@example.com')).toBe('[REDACTED:email]');
   });
 
   test('200KB string with one embedded email: email IS redacted, surrounding bulk preserved', () => {
