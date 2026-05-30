@@ -15,6 +15,7 @@ import { logger } from "../lib/logger";
 import { healthRoute } from "./routes/health";
 import { makeMessagesRoute } from "./routes/messages";
 import { makeDashboardRoute, type DashboardDeps } from "./routes/dashboard";
+import { registerAuth, type AuthDeps } from "./auth";
 import type { MessagesDeps } from "./forward";
 
 export interface BuildProxyOptions {
@@ -43,6 +44,13 @@ export interface BuildProxyOptions {
    * over data/sessions/*.json.
    */
   dashboard?: DashboardDeps;
+  /**
+   * Multi-tenant API-key auth (v1.0.0). When omitted, the proxy is UNAUTHENTICATED
+   * (the Phase-1 personal-use default). When supplied, every non-public request must
+   * carry a valid key, whose org is attached to req.orgId. Opt-in so personal use is
+   * unaffected; the commercial deploy supplies a Supabase-backed resolver.
+   */
+  auth?: AuthDeps;
 }
 
 /**
@@ -68,6 +76,12 @@ export function buildProxy(opts: BuildProxyOptions = {}): FastifyInstance {
       max,
       timeWindow: process.env["RATE_LIMIT_WINDOW"] ?? "1 minute",
     });
+  }
+
+  // Auth gate (opt-in) — registered before the routes so it guards them all (it
+  // exempts /health). Omitted in personal-use → no auth, unchanged behavior.
+  if (opts.auth) {
+    registerAuth(app, opts.auth);
   }
 
   void app.register(healthRoute);

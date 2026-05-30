@@ -39,6 +39,12 @@ the Stripe seam, which is a **gated stub** (no unverified payment code) — it f
 until Stripe is wired + verified in test mode. Build-ahead of v1.0.0; the engine is ready, an
 actual paid invoice needs Stripe + a design partner.
 
+`npm run create-api-key -- --org-id <uuid> --name "<label>" [--env test]` mints a multi-tenant
+API key, stores **only its SHA-256 hash** in `api_keys` (a DB leak never exposes usable keys),
+and prints the raw key once. The proxy enforces it when `buildProxy({ auth })` is supplied
+(opt-in — the personal-use proxy stays unauthenticated): every non-`/health` request must send
+`Authorization: Bearer <key>` (or `x-api-key`), and its org is attached to `req.orgId`. **FREE**.
+
 Add to `stratum/.env` (gitignored — never commit):
 
 ```
