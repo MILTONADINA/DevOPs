@@ -284,6 +284,17 @@ Count tokens without proxying a request.
 }
 ```
 
+### GET /openapi.json
+
+No authentication required. Returns the machine-readable OpenAPI 3.1 spec for this
+API — the same contract this document describes, in a form clients can use to
+generate SDKs, validate requests, or render Swagger UI. Served publicly even when
+`/v1/*` auth is enabled, so a client can read the contract before it has a key.
+
+Source of truth: `src/proxy/openapi.ts`. A test (`test/proxy/openapi.test.ts`)
+asserts every documented path is an actually-registered route and every `$ref`
+resolves, so the spec cannot drift from the implementation.
+
 ---
 
 ## Webhooks

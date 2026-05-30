@@ -22,6 +22,7 @@ import { makeSessionsRoute, type SessionsDeps } from "./routes/sessions";
 import { makeWebhookRoute, type WebhookDeps } from "./routes/webhooks";
 import { makeTokensRoute, type TokensDeps } from "./routes/tokens";
 import { planRequestsPerMinute } from "./rate-limit-tiers";
+import { OPENAPI_SPEC } from "./openapi";
 import { registerAuth, type AuthDeps } from "./auth";
 import type { MessagesDeps } from "./forward";
 
@@ -160,6 +161,13 @@ export function buildProxy(opts: BuildProxyOptions = {}): FastifyInstance {
   }
 
   void app.register(makeHealthRoute(opts.health));
+
+  // Machine-readable API contract (public, like /health) — clients generate SDKs / render Swagger
+  // from it. Not under /v1/, so the auth gate (protectedPrefixes: ["/v1/"]) exempts it.
+  app.get("/openapi.json", async (_req, reply) => {
+    void reply.header("content-type", "application/json; charset=utf-8");
+    return OPENAPI_SPEC;
+  });
 
   if (opts.messages) {
     void app.register(makeMessagesRoute(opts.messages));
