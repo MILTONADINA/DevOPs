@@ -29,6 +29,7 @@ function fakeDeps(): { deps: BillingDeps; captured: { orgId?: string; since?: st
       const full = { id: "r1", created_at: "t", session_id: "s1", original_tokens: 50_000, quarantined_tokens: 7_500, token_delta: 42_500, cost_delta_usd: 0.6375, cq_fee_usd: 0.1275, signed_hash: "h1" };
       return Promise.resolve(orgId === "o1" ? { records: [full], total: 1 } : { records: [], total: 0 });
     },
+    developerBreakdown: (orgId) => Promise.resolve(orgId === "o1" ? [{ developer_id: null, name: null, token_delta: 42_500, cq_fee_usd: 0.13 }] : []),
   };
   return { deps, captured };
 }
@@ -130,7 +131,7 @@ describe("GET /v1/billing/summary", () => {
       total_token_delta: 42_500,
       total_sessions: 1,
       average_pruning_effectiveness_pct: 85,
-      by_developer: [],
+      by_developer: [{ developer_id: null, name: null, token_delta: 42_500, cq_fee_usd: 0.13 }],
     });
     await app.close();
   });

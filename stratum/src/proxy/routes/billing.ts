@@ -37,13 +37,27 @@ export interface RecordsQuery {
   offset: number;
 }
 
+/** Per-developer cost attribution (docs/API_REFERENCE.md GET /v1/billing/summary §by_developer). */
+export interface DeveloperBreakdown {
+  developer_id: string | null;
+  name: string | null;
+  token_delta: number;
+  cq_fee_usd: number;
+}
+
 export interface BillingDeps {
   /** The org's billing records in [since, until] (ISO bounds optional) — the invoice/summary source. */
   listBillingRecords: (orgId: string, since?: string, until?: string) => Promise<BillableRecord[]>;
   /** Paginated full records for the audit endpoint, + the total count for the page metadata. */
   listRecords: (orgId: string, q: RecordsQuery) => Promise<{ records: BillingRecordFull[]; total: number }>;
+  /** Per-developer token_delta + cq_fee for the summary (null developer = unattributed). */
+  developerBreakdown: (orgId: string, since?: string, until?: string) => Promise<DeveloperBreakdown[]>;
   /** The org's plan (drives the monthly-minimum floor), or null if the org is unknown. */
   getOrgPlan: (orgId: string) => Promise<string | null>;
+}
+
+function round2cents(n: number): number {
+  return Math.round((n + Number.EPSILON) * 100) / 100;
 }
 
 /** Convert a YYYY-MM month into [since, until) ISO bounds, or null if malformed. */
@@ -197,7 +211,7 @@ export function makeBillingRoute(deps: BillingDeps): FastifyPluginCallback {
         total_cq_fee_usd: inv.rawFeeUsd,
         total_sessions: new Set(records.map((r) => r.session_id)).size,
         average_pruning_effectiveness_pct: inv.effectivenessPct,
-        by_developer: [] as unknown[], // deferred — needs the sessions.developer_id join
+        by_developer: await deps.developerBreakdown(orgId, since, until),
       };
     });
 
@@ -240,6 +254,26 @@ export function createSupabaseBillingDeps(client: SupabaseClient): BillingDeps {
       const { data, error } = await q;
       if (error) throw new Error(`listBillingRecords failed: ${error.message}`);
       return (data ?? []) as BillableRecord[];
+    },
+    async developerBreakdown(orgId: string, since?: string, until?: string): Promise<DeveloperBreakdown[]> {
+      let q = client.from("billing_records").select("original_tokens, quarantined_tokens, cq_fee_usd, sessions(developer_id, developers(name))").eq("org_id", orgId);
+      if (since !== undefined) q = q.gte("created_at", since);
+      if (until !== undefined) q = q.lte("created_at", until);
+      const { data, error } = await q;
+      if (error) throw new Error(`developerBreakdown failed: ${error.message}`);
+      type Row = { original_tokens: number; quarantined_tokens: number; cq_fee_usd: number; sessions: { developer_id: string | null; developers: { name: string } | { name: string }[] | null } | { developer_id: string | null; developers: { name: string } | { name: string }[] | null }[] | null };
+      const map = new Map<string | null, DeveloperBreakdown>();
+      for (const row of (data ?? []) as Row[]) {
+        const session = Array.isArray(row.sessions) ? row.sessions[0] : row.sessions;
+        const devId = session?.developer_id ?? null;
+        const dev = Array.isArray(session?.developers) ? session?.developers[0] : session?.developers;
+        const name = dev?.name ?? null;
+        const e = map.get(devId) ?? { developer_id: devId, name, token_delta: 0, cq_fee_usd: 0 };
+        e.token_delta += row.original_tokens - row.quarantined_tokens;
+        e.cq_fee_usd += row.cq_fee_usd;
+        map.set(devId, e);
+      }
+      return [...map.values()].map((e) => ({ ...e, cq_fee_usd: round2cents(e.cq_fee_usd) }));
     },
     async listRecords(orgId: string, query: RecordsQuery): Promise<{ records: BillingRecordFull[]; total: number }> {
       let q = client
