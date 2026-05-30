@@ -77,6 +77,8 @@ API key, stores **only its SHA-256 hash** in `api_keys` (a DB leak never exposes
 and prints the raw key once. The proxy enforces it when `buildProxy({ auth })` is supplied
 (opt-in — the personal-use proxy stays unauthenticated): every non-`/health` request must send
 `Authorization: Bearer <key>` (or `x-api-key`), and its org is attached to `req.orgId`. **FREE**.
+`npm run api-keys -- --org-id <uuid> --list` lists an org's keys (never the secret/hash); `--revoke
+<key-id>` deactivates one — the auth gate (which filters `is_active=true`) rejects it immediately.
 
 Add to `stratum/.env` (gitignored — never commit):
 
