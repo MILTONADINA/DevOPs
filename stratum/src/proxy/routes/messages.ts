@@ -17,6 +17,13 @@ import { isStreamingRequest } from "../stream-forward";
 import { createSseParser, accumulateAnthropicStream } from "../sse";
 import { emitTurnTelemetry } from "../telemetry";
 
+declare module "fastify" {
+  interface FastifyRequest {
+    /** Per-minute token-budget state (set by the budget gate; emitted as X-RateLimit-*-Tokens). */
+    tokenBudgetHeaders?: { limit: number; remaining: number };
+  }
+}
+
 /** Extract output_tokens from a response/usage object (0 if absent). */
 function outputTokensOf(response: unknown): number {
   const u = (response as { usage?: { output_tokens?: number } } | null)?.usage;
@@ -60,6 +67,7 @@ async function checkTokenBudget(deps: MessagesDeps, request: FastifyRequest, inp
   } catch {
     return false; // fail-open: never block legit traffic on a transient budget-lookup error
   }
+  request.tokenBudgetHeaders = { limit: verdict.limit, remaining: verdict.remaining }; // for X-RateLimit-*-Tokens
   if (verdict.allowed) return false;
   void reply.status(429).send({
     type: "error",

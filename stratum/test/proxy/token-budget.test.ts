@@ -12,7 +12,7 @@ describe("createTokenBudget — minute window", () => {
 
     expect((await budget.tryConsume("o", 40_000)).allowed).toBe(true); // 40k ≤ 50k
     const over = await budget.tryConsume("o", 20_000); // 40k + 20k = 60k > 50k
-    expect(over).toMatchObject({ allowed: false, limitType: "tokens_per_minute", limit: 50_000, used: 40_000 });
+    expect(over).toMatchObject({ allowed: false, limitType: "tokens_per_minute", limit: 50_000, remaining: 10_000 }); // 50k − 40k
     // the rejected attempt did NOT consume → a smaller one still fits (40k + 5k = 45k)
     expect((await budget.tryConsume("o", 5_000)).allowed).toBe(true);
 
@@ -37,7 +37,7 @@ describe("createTokenBudget — day window", () => {
       t += 60_001; // advance a minute (resets the minute window, not the day)
     }
     const dayOver = await budget.tryConsume("o", 50_000);
-    expect(dayOver).toMatchObject({ allowed: false, limitType: "tokens_per_day", limit: 1_000_000 });
+    expect(dayOver).toMatchObject({ allowed: false, limitType: "tokens_per_day", limit: 50_000 }); // header limit = per-minute budget; limitType says the daily cap was hit
   });
 
   test("enterprise has unlimited daily tokens (Infinity)", async () => {

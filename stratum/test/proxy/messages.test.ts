@@ -161,11 +161,23 @@ describe("POST /v1/messages — token-budget gate (commercial)", () => {
 
   test("under budget → forwards normally", async () => {
     const { deps } = makeDeps();
-    deps.tokenBudget = { tryConsume: () => Promise.resolve({ allowed: true }) };
+    deps.tokenBudget = { tryConsume: () => Promise.resolve({ allowed: true, limit: 50_000, remaining: 49_990 }) };
     app = buildProxy({ cors: false, messages: deps, auth: { resolve } });
     await app.ready();
 
     const res = await app.inject({ method: "POST", url: "/v1/messages", headers: { authorization: "Bearer k" }, payload: goodBody });
     expect(res.statusCode).toBe(200);
+  });
+
+  test("emits the X-RateLimit-*-Tokens headers (commercial — rateLimitByPlan on)", async () => {
+    const { deps } = makeDeps();
+    deps.tokenBudget = { tryConsume: () => Promise.resolve({ allowed: true, limit: 50_000, remaining: 49_990 }) };
+    app = buildProxy({ cors: false, messages: deps, auth: { resolve }, rateLimitByPlan: { getPlan: () => Promise.resolve("starter") } });
+    await app.ready();
+
+    const res = await app.inject({ method: "POST", url: "/v1/messages", headers: { authorization: "Bearer k" }, payload: goodBody });
+    expect(res.statusCode).toBe(200);
+    expect(res.headers["x-ratelimit-limit-tokens"]).toBe("50000");
+    expect(res.headers["x-ratelimit-remaining-tokens"]).toBe("49990");
   });
 });

@@ -13,8 +13,10 @@ import { planLimits } from "./rate-limit-tiers";
 export interface BudgetResult {
   allowed: boolean;
   limitType?: "tokens_per_minute" | "tokens_per_day";
-  limit?: number;
-  used?: number;
+  /** The per-minute token budget (for the X-RateLimit-Limit-Tokens header). */
+  limit: number;
+  /** Per-minute tokens remaining after this decision (for X-RateLimit-Remaining-Tokens). */
+  remaining: number;
 }
 
 interface Window {
@@ -72,17 +74,21 @@ export function createTokenBudget(deps: TokenBudgetDeps): TokenBudget {
         s.day.tokens = 0;
       }
 
+      // limit/remaining reported for the headers are the per-minute budget (RATE_LIMITS.md §Token Budget).
+      const minuteLimit = limits.tokensPerMinute;
+      const remainingNow = (): number => Math.max(0, minuteLimit - s.minute.tokens);
+
       // Reject if adding these tokens would exceed either budget (don't consume on reject).
-      if (s.minute.tokens + tokens > limits.tokensPerMinute) {
-        return { allowed: false, limitType: "tokens_per_minute", limit: limits.tokensPerMinute, used: s.minute.tokens };
+      if (s.minute.tokens + tokens > minuteLimit) {
+        return { allowed: false, limitType: "tokens_per_minute", limit: minuteLimit, remaining: remainingNow() };
       }
       if (s.day.tokens + tokens > limits.tokensPerDay) {
-        return { allowed: false, limitType: "tokens_per_day", limit: limits.tokensPerDay, used: s.day.tokens };
+        return { allowed: false, limitType: "tokens_per_day", limit: minuteLimit, remaining: remainingNow() };
       }
 
       s.minute.tokens += tokens;
       s.day.tokens += tokens;
-      return { allowed: true };
+      return { allowed: true, limit: minuteLimit, remaining: remainingNow() };
     },
   };
 }

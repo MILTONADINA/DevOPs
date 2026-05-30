@@ -129,7 +129,7 @@ export function buildProxy(opts: BuildProxyOptions = {}): FastifyInstance {
       });
       // Emit the spec's request rate-limit headers (docs/RATE_LIMITS.md) by mapping the limiter's
       // functional x-ratelimit-* headers to the documented -Requests names (+ ISO reset).
-      app.addHook("onSend", async (_req, reply, payload) => {
+      app.addHook("onSend", async (req, reply, payload) => {
         const limit = reply.getHeader("x-ratelimit-limit");
         if (limit !== undefined) {
           void reply.header("x-ratelimit-limit-requests", limit);
@@ -140,6 +140,11 @@ export function buildProxy(opts: BuildProxyOptions = {}): FastifyInstance {
             const secs = Number(resetSec);
             void reply.header("x-ratelimit-reset-requests", Number.isFinite(secs) ? new Date(Date.now() + secs * 1000).toISOString() : String(resetSec));
           }
+        }
+        const tb = req.tokenBudgetHeaders;
+        if (tb !== undefined) {
+          void reply.header("x-ratelimit-limit-tokens", String(tb.limit));
+          void reply.header("x-ratelimit-remaining-tokens", String(tb.remaining));
         }
         return payload;
       });
