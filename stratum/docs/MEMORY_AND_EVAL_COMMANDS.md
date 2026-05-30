@@ -31,6 +31,14 @@ portability / GDPR export). **FREE**, read-only (SELECT only); needs Supabase cr
 columns — into a CLEAN target. The full backup → delete → restore round-trip is
 referential-integrity-verified.
 
+`npm run invoice -- --org-id <uuid> [--since <iso>] [--until <iso>] [--csv <path>] [--send]`
+computes an org's **token-arbitrage invoice** (BUSINESS_MODEL.md: 20% of savings, with the
+plan's monthly-minimum floor) from its append-only `billing_records` and prints the CFO
+report; `--csv` writes the signed-hash audit trail. **FREE**, read-only. `--send` goes through
+the Stripe seam, which is a **gated stub** (no unverified payment code) — it fails honestly
+until Stripe is wired + verified in test mode. Build-ahead of v1.0.0; the engine is ready, an
+actual paid invoice needs Stripe + a design partner.
+
 Add to `stratum/.env` (gitignored — never commit):
 
 ```

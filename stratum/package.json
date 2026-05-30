@@ -41,6 +41,7 @@
     "audit:conflicts": "tsx scripts/audit-conflicts.ts",
     "backup": "tsx scripts/backup-org.ts",
     "restore": "tsx scripts/restore-org.ts",
+    "invoice": "tsx scripts/invoice.ts",
     "db:start": "npx supabase start",
     "db:stop": "npx supabase stop",
     "db:reset": "npx supabase db reset",
