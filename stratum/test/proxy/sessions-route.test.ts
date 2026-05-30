@@ -9,7 +9,7 @@ const { buildProxy } = await import("../../src/proxy/app");
 const SESSION: SessionSummary = { id: "s1", created_at: "t", ended_at: null, model: "claude-opus-4-8", lambda: 0.97, gain_shift: 0, theta: 1, zk_enabled: false, audit_enabled: true };
 const STATS: SessionStats = { sessionId: "s1", billingRecords: 2, originalTokens: 100_000, quarantinedTokens: 15_000, savingsUsd: 1.28, feeUsd: 0.26 };
 
-function fakeDeps(): { deps: SessionsDeps; captured: Record<string, unknown> } {
+function fakeDeps(opts: { active?: number } = {}): { deps: SessionsDeps; captured: Record<string, unknown> } {
   const captured: Record<string, unknown> = {};
   const deps: SessionsDeps = {
     listSessions: (orgId, limit) => {
@@ -21,6 +21,12 @@ function fakeDeps(): { deps: SessionsDeps; captured: Record<string, unknown> } {
     endSession: (_orgId, id) => {
       captured["ended"] = id;
       return Promise.resolve(id === "s1" ? { ...SESSION, ended_at: "2026-05-30T00:00:00Z" } : null);
+    },
+    getPlan: (orgId) => Promise.resolve(orgId === "o1" ? "starter" : null), // starter → concurrent cap 1
+    countActiveSessions: () => Promise.resolve(opts.active ?? 0),
+    createSession: (orgId, model) => {
+      captured["created"] = { orgId, model };
+      return Promise.resolve({ ...SESSION, id: "new-s", model });
     },
   };
   return { deps, captured };
@@ -52,6 +58,36 @@ describe("GET /v1/sessions/:id", () => {
     await app.ready();
     expect((await app.inject({ method: "GET", url: "/v1/sessions/s1?org-id=o1" })).json()).toEqual(SESSION);
     expect((await app.inject({ method: "GET", url: "/v1/sessions/ghost?org-id=o1" })).statusCode).toBe(404);
+    await app.close();
+  });
+});
+
+describe("POST /v1/sessions", () => {
+  test("creates a session under the plan's concurrent cap (starter=1, 0 active → 201)", async () => {
+    const { deps, captured } = fakeDeps({ active: 0 });
+    const app = buildProxy({ rateLimit: false, cors: false, sessions: deps });
+    await app.ready();
+    const res = await app.inject({ method: "POST", url: "/v1/sessions?org-id=o1", headers: { "content-type": "application/json" }, payload: { model: "claude-haiku-4-5" } });
+    expect(res.statusCode).toBe(201);
+    expect(res.json()).toMatchObject({ id: "new-s", model: "claude-haiku-4-5" });
+    expect(captured["created"]).toEqual({ orgId: "o1", model: "claude-haiku-4-5" });
+    await app.close();
+  });
+  test("429 when the org is already at its concurrent-session cap (starter=1, 1 active)", async () => {
+    const { deps, captured } = fakeDeps({ active: 1 });
+    const app = buildProxy({ rateLimit: false, cors: false, sessions: deps });
+    await app.ready();
+    const res = await app.inject({ method: "POST", url: "/v1/sessions?org-id=o1", headers: { "content-type": "application/json" }, payload: {} });
+    expect(res.statusCode).toBe(429);
+    expect(res.json()).toMatchObject({ error: { type: "rate_limit_error", limit_type: "concurrent_sessions" } });
+    expect(captured["created"]).toBeUndefined(); // never created over the cap
+    await app.close();
+  });
+  test("400 no org; 404 unknown org", async () => {
+    const app = buildProxy({ rateLimit: false, cors: false, sessions: fakeDeps().deps });
+    await app.ready();
+    expect((await app.inject({ method: "POST", url: "/v1/sessions", headers: { "content-type": "application/json" }, payload: {} })).statusCode).toBe(400);
+    expect((await app.inject({ method: "POST", url: "/v1/sessions?org-id=ghost", headers: { "content-type": "application/json" }, payload: {} })).statusCode).toBe(404);
     await app.close();
   });
 });

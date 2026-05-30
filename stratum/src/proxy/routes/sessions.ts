@@ -12,6 +12,7 @@
 
 import type { FastifyInstance, FastifyPluginCallback, FastifyReply, FastifyRequest } from "fastify";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { planLimits } from "../rate-limit-tiers";
 
 export interface SessionSummary {
   id: string;
@@ -41,6 +42,12 @@ export interface SessionsDeps {
   getSessionStats: (orgId: string, id: string) => Promise<SessionStats | null>;
   /** End a session (set ended_at); returns the updated session, or null if not in this org. */
   endSession: (orgId: string, id: string) => Promise<SessionSummary | null>;
+  /** The org's plan (drives the concurrent-session cap), or null if the org is unknown. */
+  getPlan: (orgId: string) => Promise<string | null>;
+  /** Count the org's currently-active (not-yet-ended) sessions. */
+  countActiveSessions: (orgId: string) => Promise<number>;
+  /** Create a new session for the org; returns it. */
+  createSession: (orgId: string, model: string) => Promise<SessionSummary>;
 }
 
 function resolveOrg(req: FastifyRequest): string | undefined {
@@ -81,6 +88,24 @@ export function makeSessionsRoute(deps: SessionsDeps): FastifyPluginCallback {
       return session;
     });
 
+    // POST /v1/sessions — start a session, enforcing the plan's concurrent-session cap
+    // (docs/RATE_LIMITS.md). 429 when the org is already at its limit.
+    app.post("/v1/sessions", async (req, reply) => {
+      const orgId = resolveOrg(req);
+      if (orgId === undefined) return err(reply, 400, "org id required (authenticate, or pass ?org-id)");
+      const plan = await deps.getPlan(orgId);
+      if (plan === null) return err(reply, 404, "organization not found");
+      const limit = planLimits(plan).concurrentSessions;
+      const active = await deps.countActiveSessions(orgId);
+      if (active >= limit) {
+        return reply.code(429).send({ type: "error", error: { type: "rate_limit_error", message: `concurrent session limit (${limit}) reached for plan '${plan}'`, limit_type: "concurrent_sessions" } });
+      }
+      const body = (req.body ?? {}) as Record<string, unknown>;
+      const model = typeof body["model"] === "string" && body["model"] !== "" ? body["model"] : "claude-opus-4-8";
+      const session = await deps.createSession(orgId, model);
+      return reply.code(201).send(session);
+    });
+
     app.get("/v1/sessions/:id/stats", async (req, reply) => {
       const orgId = resolveOrg(req);
       if (orgId === undefined) return err(reply, 400, "org id required (authenticate, or pass ?org-id)");
@@ -118,6 +143,24 @@ export function createSupabaseSessionsDeps(client: SupabaseClient): SessionsDeps
       return (data ?? []) as SessionSummary[];
     },
     getSession,
+    async getPlan(orgId) {
+      const { data, error } = await client.from("organizations").select("plan").eq("id", orgId).limit(1);
+      if (error) throw new Error(`getPlan failed: ${error.message}`);
+      const row = (data ?? [])[0] as { plan: string } | undefined;
+      return row ? row.plan : null;
+    },
+    async countActiveSessions(orgId) {
+      const { count, error } = await client.from("sessions").select("id", { count: "exact", head: true }).eq("org_id", orgId).is("ended_at", null);
+      if (error) throw new Error(`countActiveSessions failed: ${error.message}`);
+      return count ?? 0;
+    },
+    async createSession(orgId, model) {
+      const { data, error } = await client.from("sessions").insert({ org_id: orgId, model }).select(SESSION_COLS).limit(1);
+      if (error) throw new Error(`createSession failed: ${error.message}`);
+      const row = (data ?? [])[0] as SessionSummary | undefined;
+      if (!row) throw new Error("createSession returned no row");
+      return row;
+    },
     async endSession(orgId, id) {
       // Scope-check first so a cross-org id is a clean 404, not a silent no-op update.
       if ((await getSession(orgId, id)) === null) return null;
