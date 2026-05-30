@@ -23,6 +23,12 @@ creates `.env` from `.env.example` if missing and prints, given your current key
 which commands run now (FREE/local always; Supabase + Anthropic tiers when configured).
 Add `-- --fetch-model` to also pre-download the ONNX encoder.
 
+`npm run backup -- --org-id <uuid> [--pretty]` exports one org's full row-set across all
+16 tables to a timestamped JSON in the gitignored `backups/` (disaster recovery / data
+portability / GDPR export). **FREE**, read-only (SELECT only); needs Supabase creds.
+Restore is the documented follow-up (billing is append-only + has generated columns, and
+the cross-table FKs need dependency-ordered re-insertion — a careful write-path).
+
 Add to `stratum/.env` (gitignored — never commit):
 
 ```

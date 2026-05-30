@@ -59,3 +59,7 @@ coverage/
 # Temporary
 tmp/
 .tmp/
+
+# Operator data backups (may contain real org data — never commit)
+backups/
+*.backup.json
