@@ -52,7 +52,11 @@ and assumes a Neo4j commit graph + Cypher queries; ADR-0013 moved Tier-3 to Supa
    deterministic path on a real repo: index → report changes, and with `--facts <json>`
    attest claims (CONFIRMED / UNVERIFIED / CONFLICT), with `--persist` recording
    CONFLICTs. FREE; live-verified against this repo (CONFIRMED facts carry real commit
-   evidence). The Tier-2/3 escalation of the UNVERIFIED residue stays gated.
+   evidence). `npm run audit:conflicts` (scripts/audit-conflicts.ts) is the spec's
+   **alert** half ("CONFLICT ⇒ suppress + alert"): list the unacknowledged
+   `audit_conflicts` queue + `--ack` to clear one — live-verified end-to-end on Supabase
+   (seed → list → ack → re-read). The Tier-2/3 escalation of the UNVERIFIED residue, and
+   the dashboard UI banner, stay gated/deferred.
 
 ## Consequences
 
