@@ -17,6 +17,7 @@ import { makeMessagesRoute } from "./routes/messages";
 import { makeDashboardRoute, type DashboardDeps } from "./routes/dashboard";
 import { makeBillingRoute, type BillingDeps } from "./routes/billing";
 import { makeConfigRoute, type ConfigDeps } from "./routes/config";
+import { makeMemoryRoute, type MemoryDeps } from "./routes/memory";
 import { registerAuth, type AuthDeps } from "./auth";
 import type { MessagesDeps } from "./forward";
 
@@ -63,6 +64,11 @@ export interface BuildProxyOptions {
    * deploy supplies createSupabaseConfigDeps(client).
    */
   config?: ConfigDeps;
+  /**
+   * The memory API (facts / suppress / conflicts). When omitted, not registered. The commercial
+   * deploy supplies createSupabaseMemoryDeps(client).
+   */
+  memory?: MemoryDeps;
 }
 
 /**
@@ -112,6 +118,10 @@ export function buildProxy(opts: BuildProxyOptions = {}): FastifyInstance {
 
   if (opts.config) {
     void app.register(makeConfigRoute(opts.config));
+  }
+
+  if (opts.memory) {
+    void app.register(makeMemoryRoute(opts.memory));
   }
 
   app.setErrorHandler((err, _req, reply) => {
