@@ -29,6 +29,7 @@ import { createSupabaseBillingDeps } from "./routes/billing";
 import { createSupabaseSessionsDeps } from "./routes/sessions";
 import { createSupabaseWebhookDeps } from "./routes/webhooks";
 import { createTokenBudget } from "./token-budget";
+import { createSupabaseHealthCheck } from "./routes/health";
 
 dotenv.config();
 
@@ -70,6 +71,7 @@ export function buildStartOptions(env: StartEnv, base: BuildProxyOptions, makeCl
     const billing = opts.billing;
     const getPlan = async (orgId: string): Promise<string> => (await billing.getOrgPlan(orgId)) ?? "starter";
     opts.rateLimitByPlan = { getPlan };
+    opts.health = { checkDatabase: createSupabaseHealthCheck(client) };
     if (base.messages !== undefined) {
       // Reuse the already-wired exact token counter for /v1/tokens/count.
       opts.tokens = { countTokens: base.messages.countTokens };

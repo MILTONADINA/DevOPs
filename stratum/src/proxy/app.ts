@@ -12,7 +12,7 @@ import Fastify, { type FastifyInstance } from "fastify";
 import cors from "@fastify/cors";
 import rateLimit from "@fastify/rate-limit";
 import { logger } from "../lib/logger";
-import { healthRoute } from "./routes/health";
+import { makeHealthRoute, type HealthDeps } from "./routes/health";
 import { makeMessagesRoute } from "./routes/messages";
 import { makeDashboardRoute, type DashboardDeps } from "./routes/dashboard";
 import { makeBillingRoute, type BillingDeps } from "./routes/billing";
@@ -95,6 +95,11 @@ export interface BuildProxyOptions {
    * from req.orgId), so the rate limiter is registered AFTER the auth gate.
    */
   rateLimitByPlan?: { getPlan: (orgId: string) => Promise<string> };
+  /**
+   * Optional dependency checkers for GET /health (e.g. a cached Supabase ping). When omitted,
+   * /health is liveness-only (the personal-use default).
+   */
+  health?: HealthDeps;
 }
 
 /**
@@ -154,7 +159,7 @@ export function buildProxy(opts: BuildProxyOptions = {}): FastifyInstance {
     }
   }
 
-  void app.register(healthRoute);
+  void app.register(makeHealthRoute(opts.health));
 
   if (opts.messages) {
     void app.register(makeMessagesRoute(opts.messages));
