@@ -16,6 +16,7 @@ import { healthRoute } from "./routes/health";
 import { makeMessagesRoute } from "./routes/messages";
 import { makeDashboardRoute, type DashboardDeps } from "./routes/dashboard";
 import { makeBillingRoute, type BillingDeps } from "./routes/billing";
+import { makeConfigRoute, type ConfigDeps } from "./routes/config";
 import { registerAuth, type AuthDeps } from "./auth";
 import type { MessagesDeps } from "./forward";
 
@@ -57,6 +58,11 @@ export interface BuildProxyOptions {
    * are not registered. The commercial deploy supplies createSupabaseBillingDeps(client).
    */
   billing?: BillingDeps;
+  /**
+   * The org config API (GET + PATCH /v1/config). When omitted, not registered. The commercial
+   * deploy supplies createSupabaseConfigDeps(client).
+   */
+  config?: ConfigDeps;
 }
 
 /**
@@ -102,6 +108,10 @@ export function buildProxy(opts: BuildProxyOptions = {}): FastifyInstance {
 
   if (opts.billing) {
     void app.register(makeBillingRoute(opts.billing));
+  }
+
+  if (opts.config) {
+    void app.register(makeConfigRoute(opts.config));
   }
 
   app.setErrorHandler((err, _req, reply) => {
