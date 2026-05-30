@@ -17,6 +17,8 @@ import { createClient } from "@supabase/supabase-js";
 import { generateInvoice, toAuditCsv, renderInvoice } from "../src/billing/invoice";
 import { createSupabaseBillingDeps } from "../src/proxy/routes/billing";
 import { createStripeInvoiceSink } from "../src/billing/stripe-sink";
+import { usdToCents } from "../src/billing/stripe";
+import { createSupabaseInvoiceLedger } from "../src/billing/invoice-ledger";
 
 interface Args {
   orgId?: string;
@@ -24,10 +26,12 @@ interface Args {
   until?: string;
   csv?: string;
   send: boolean;
+  /** Override the period-dedup guard (re-send an already-sent period). */
+  force: boolean;
 }
 
 export function parseArgs(argv: string[]): Args {
-  const out: Args = { send: false };
+  const out: Args = { send: false, force: false };
   for (let i = 0; i < argv.length; i++) {
     const tok = argv[i] ?? "";
     const val = (): string => argv[++i] ?? "";
@@ -46,6 +50,9 @@ export function parseArgs(argv: string[]): Args {
         break;
       case "--send":
         out.send = true;
+        break;
+      case "--force":
+        out.force = true;
         break;
       default:
         break;
@@ -98,9 +105,34 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
       out(`--send skipped: amount due is $${invoice.amountDueUsd.toFixed(2)} — nothing to charge for org ${args.orgId}.`);
       return 0;
     }
+    const ledger = createSupabaseInvoiceLedger(client);
+    // Period-dedup: refuse a second --send for the same (org, period) — a duplicate real invoice is the
+    // worst failure mode. Only when both bounds are present (an unbounded all-time invoice has no period
+    // to key on; the Stripe-side idempotency key still guards it). --force overrides (e.g. a re-issue).
+    if (args.since !== undefined && args.until !== undefined && !args.force) {
+      const existing = await ledger.findActiveForPeriod(args.orgId, args.since, args.until);
+      if (existing !== null) {
+        out(`--send refused: invoice ${existing.stripe_invoice_id} (${existing.status}) already sent for org ${args.orgId} over ${args.since} → ${args.until}. Re-run with --force to re-issue.`);
+        return 2;
+      }
+    }
     try {
       const receipt = await createStripeInvoiceSink({ secretKey: process.env["STRIPE_SECRET_KEY"] ?? "" }).send(invoice);
       out(`Sent: ${receipt.id} (${receipt.status}, $${receipt.amountUsd.toFixed(2)}).`);
+      // Record the sent invoice (status 'sent') so the dashboard sees it pre-payment and a re-send is
+      // deduped. A ledger failure here does NOT fail the run (the charge already happened + the Stripe
+      // idempotency key still protects a retry); surface it so the operator can reconcile.
+      try {
+        await ledger.recordSent(args.orgId, {
+          stripeInvoiceId: receipt.id,
+          amountCents: usdToCents(invoice.amountDueUsd),
+          currency: "usd",
+          periodStart: args.since,
+          periodEnd: args.until,
+        });
+      } catch (e) {
+        out(`  (warning: invoice sent but not recorded locally: ${e instanceof Error ? e.message : String(e)})`);
+      }
     } catch (e) {
       out(`--send not available: ${e instanceof Error ? e.message : String(e)}`);
       return 2; // distinct code: the engine ran, but delivery is gated
