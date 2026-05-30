@@ -14,7 +14,7 @@
  */
 
 import axios from "axios";
-import { resolveAnthropicBaseUrl, type ForwardHeaders, type MessagesBody } from "./forward";
+import { resolveAnthropicBaseUrl, upstreamIdleMs, type ForwardHeaders, type MessagesBody } from "./forward";
 
 export interface StreamForwardResult {
   status: number;
@@ -55,11 +55,29 @@ export async function forwardStreamToAnthropic(
   // case the client may not have set body.stream, and Anthropic returns SSE only when the BODY field
   // is set — without this, an Accept-only request would get a JSON body fed through the SSE tee → an
   // empty/garbled stream. Keeping the body + the `accept: text/event-stream` header consistent fixes it.
-  const res = await axios.post(`${baseUrl}/v1/messages`, { ...body, stream: true }, {
-    headers,
-    responseType: "stream",
-    validateStatus: () => true,
-  });
+  // IDLE-timeout guard (PB-49): abort the upstream connection if no bytes arrive for `idleMs`, re-armed
+  // on every chunk. Catches a hung/stalled stream (which would otherwise pin a worker forever) WITHOUT
+  // capping a legitimately-long stream that keeps emitting tokens. Armed now to cover connect/first-byte.
+  const idleMs = upstreamIdleMs();
+  const ac = new AbortController();
+  let idle: ReturnType<typeof setTimeout> = setTimeout(() => ac.abort(), idleMs);
+  const rearm = (): void => {
+    clearTimeout(idle);
+    idle = setTimeout(() => ac.abort(), idleMs);
+  };
+
+  let res;
+  try {
+    res = await axios.post(`${baseUrl}/v1/messages`, { ...body, stream: true }, {
+      headers,
+      responseType: "stream",
+      validateStatus: () => true,
+      signal: ac.signal,
+    });
+  } catch (e) {
+    clearTimeout(idle);
+    throw e; // connect timed out / network error → caller (withStreamRetry) decides
+  }
 
   const upstream = res.data as AsyncIterable<Buffer | string>;
   const respHeaders: Record<string, string> = {};
@@ -71,7 +89,14 @@ export async function forwardStreamToAnthropic(
     // Collect the (non-stream) error body so the route can pass it through. The headers ride along so
     // the streaming retry can honor a 429 Retry-After (the stream is NOT open here — safe to retry).
     let buf = "";
-    for await (const chunk of upstream) buf += chunk.toString();
+    try {
+      for await (const chunk of upstream) {
+        rearm();
+        buf += chunk.toString();
+      }
+    } finally {
+      clearTimeout(idle);
+    }
     let data: unknown;
     try {
       data = JSON.parse(buf);
@@ -82,7 +107,14 @@ export async function forwardStreamToAnthropic(
   }
 
   async function* toStrings(): AsyncGenerator<string> {
-    for await (const chunk of upstream) yield chunk.toString();
+    try {
+      for await (const chunk of upstream) {
+        rearm(); // bytes arrived → reset the idle timer
+        yield chunk.toString();
+      }
+    } finally {
+      clearTimeout(idle); // stream ended / consumer stopped → disarm
+    }
   }
   return { status: res.status, stream: toStrings(), headers: respHeaders };
 }

@@ -109,6 +109,31 @@ export function resolveAnthropicBaseUrl(
 }
 
 /**
+ * Total request timeout (ms) for the NON-streaming upstream call. Env CQ_UPSTREAM_TIMEOUT_MS (default
+ * 120s). A non-streaming response is bounded, so a whole-request cap is correct: it prevents a hung
+ * upstream (no response, no close) from pinning a worker indefinitely. Surfaces as a network error →
+ * one retry (withRetry) → 502. NOT used on the streaming path (a long stream would tripwire a total cap).
+ *
+ * @returns the timeout in ms.
+ */
+export function upstreamTimeoutMs(): number {
+  const n = Number(process.env["CQ_UPSTREAM_TIMEOUT_MS"]);
+  return Number.isFinite(n) && n > 0 ? n : 120_000;
+}
+
+/**
+ * IDLE timeout (ms) for the STREAMING upstream call — the max gap between bytes before the connection is
+ * treated as hung and aborted. Env CQ_UPSTREAM_IDLE_MS (default 60s). Re-armed on every chunk, so a
+ * legitimately-long stream that keeps emitting tokens never trips it; only a genuinely stalled stream does.
+ *
+ * @returns the idle timeout in ms.
+ */
+export function upstreamIdleMs(): number {
+  const n = Number(process.env["CQ_UPSTREAM_IDLE_MS"]);
+  return Number.isFinite(n) && n > 0 ? n : 60_000;
+}
+
+/**
  * Forward a request to the upstream Anthropic Messages API (unchanged).
  *
  * @param body - the Anthropic request body.
@@ -137,6 +162,8 @@ export async function forwardToAnthropic(
     headers: reqHeaders,
     // Let the caller see 4xx/5xx bodies rather than throwing on them.
     validateStatus: () => true,
+    // Bound the whole request so a hung upstream can't pin a worker (non-streaming is bounded; PB-49).
+    timeout: upstreamTimeoutMs(),
   });
   const headers: Record<string, string> = {};
   for (const [k, v] of Object.entries((res.headers ?? {}) as Record<string, unknown>)) {
