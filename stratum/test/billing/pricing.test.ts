@@ -20,6 +20,20 @@ describe("pricePerInputTokenUsd", () => {
     expect(pricePerInputTokenUsd("claude-haiku-3-5", {})).toBeCloseTo(0.8 / 1_000_000, 12);
   });
 
+  test("OpenAI gpt-5.x families map to verified list prices (mini/nano before the generic gpt-5)", () => {
+    expect(pricePerInputTokenUsd("gpt-5.5", {})).toBeCloseTo(5 / 1_000_000, 12);
+    expect(pricePerInputTokenUsd("gpt-5.4", {})).toBeCloseTo(2.5 / 1_000_000, 12);
+    expect(pricePerInputTokenUsd("gpt-5.4-mini", {})).toBeCloseTo(0.75 / 1_000_000, 12);
+    expect(pricePerInputTokenUsd("gpt-5.4-nano", {})).toBeCloseTo(0.2 / 1_000_000, 12);
+    expect(pricePerInputTokenUsd("openai/gpt-5.4-mini", {})).toBeCloseTo(0.75 / 1_000_000, 12); // prefix-tolerant
+  });
+
+  test("Gemini families map to verified base-tier list prices", () => {
+    expect(pricePerInputTokenUsd("gemini-2.5-pro", {})).toBeCloseTo(1.25 / 1_000_000, 12);
+    expect(pricePerInputTokenUsd("gemini-2.5-flash", {})).toBeCloseTo(0.3 / 1_000_000, 12);
+    expect(pricePerInputTokenUsd("gemini-2.0-flash", {})).toBeCloseTo(0.1 / 1_000_000, 12);
+  });
+
   test("an unknown model falls back to the workhorse (Sonnet) tier — never $0", () => {
     const p = pricePerInputTokenUsd("some-future-model", {});
     expect(p).toBeGreaterThan(0);

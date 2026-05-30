@@ -13,17 +13,12 @@
  */
 
 import axios from "axios";
-import { getAnthropicClient } from "../lib/anthropic";
-import { createCaptureStore, type CaptureStore } from "./capture";
-import { withRetry, withStreamRetry } from "./retry";
-import { createTokenCounter } from "./token-count";
-import { forwardStreamToAnthropic, type StreamForwardResult } from "./stream-forward";
-import { resolveTelemetrySink, type TelemetrySink } from "./telemetry";
+import type { CaptureStore } from "./capture";
+import type { StreamForwardResult } from "./stream-forward";
+import type { TelemetrySink } from "./telemetry";
 import type { TokenBudget } from "./token-budget";
 import type { UsageEvent } from "../billing/usage-recorder";
 import type Anthropic from "@anthropic-ai/sdk";
-import { randomUUID } from "node:crypto";
-import path from "node:path";
 
 /** Anthropic-compatible request body the proxy forwards. */
 export interface MessagesBody {
@@ -186,39 +181,6 @@ export async function countTokensExact(body: MessagesBody, client: Anthropic): P
   };
 }
 
-/**
- * Build the real (production) message-route deps: axios forward + SDK token
- * counter + a disk-backed capture store. Called by the entry point at start().
- *
- * @returns wired {@link MessagesDeps}.
- * @throws {Error} if ANTHROPIC_API_KEY is unset or ANTHROPIC_BASE_URL invalid.
- */
-export function createDefaultMessagesDeps(): MessagesDeps {
-  const apiKey = process.env["ANTHROPIC_API_KEY"];
-  if (!apiKey) throw new Error("ANTHROPIC_API_KEY must be set in environment");
-  const baseUrl = resolveAnthropicBaseUrl();
-  const client = getAnthropicClient();
-
-  const sessionId = randomUUID();
-  // CQ_CAPTURE_DIR lets a deployment redirect the on-disk capture artifact off the (often read-only)
-  // app root — e.g. a serverless host where only /tmp is writable. Default unchanged (<cwd>/data/sessions).
-  const captureDir = process.env["CQ_CAPTURE_DIR"] ?? path.join(process.cwd(), "data", "sessions");
-  const outputFile = path.join(captureDir, `session-${sessionId}.json`);
-
-  // Forward with retry/backoff (429 Retry-After / 5xx jitter / network 1-retry). BOTH paths retry —
-  // the streaming path (the majority of partner traffic) used to get none, so a transient 429/5xx
-  // surfaced to the partner immediately while the non-streaming path silently recovered.
-  const forward = withRetry((body, key, passthrough) => forwardToAnthropic(body, key, baseUrl, passthrough));
-  const forwardStream = withStreamRetry((body, key, passthrough) => forwardStreamToAnthropic(body, key, baseUrl, passthrough));
-  // Exact token counting with hash-cache + flagged heuristic fallback.
-  const counter = createTokenCounter(client);
-
-  return {
-    apiKey,
-    forward,
-    forwardStream,
-    countTokens: (body) => counter.count(body),
-    capture: createCaptureStore({ sessionId, outputFile }),
-    telemetry: resolveTelemetrySink(),
-  };
-}
+// The production deps factory (createDefaultMessagesDeps) lives in ./default-deps.ts (ADR-0019): it wires
+// the multi-provider router into MessagesDeps. It is kept OUT of this module so forward.ts stays the
+// Anthropic-transport leaf with no provider/router import cycle.

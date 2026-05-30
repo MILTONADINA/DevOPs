@@ -22,7 +22,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { createClient } from "@supabase/supabase-js";
 import { buildProxy, type BuildProxyOptions } from "../src/proxy/app";
 import { buildStartOptions, type StartEnv } from "../src/proxy/index";
-import { createDefaultMessagesDeps } from "../src/proxy/forward";
+import { createDefaultMessagesDeps } from "../src/proxy/default-deps";
 import { readSessionsFromDir } from "../src/proxy/routes/dashboard";
 
 const env: StartEnv = {

@@ -170,7 +170,17 @@ function foldEvent(state: AccumulatorState, ev: SseEvent): void {
         if ("stop_sequence" in delta) msg.stop_sequence = asString(delta["stop_sequence"]) ?? null;
       }
       const u = d ? asRecord(d["usage"]) : null;
-      if (u) msg.usage = { ...msg.usage, ...(asNumber(u["output_tokens"]) !== undefined ? { output_tokens: asNumber(u["output_tokens"]) } : {}) };
+      // Merge output_tokens (the only usage Anthropic's real message_delta carries) AND input_tokens when
+      // present. Anthropic never sends input_tokens here, so merging it is additive/no-op for Anthropic;
+      // the OpenAI/Gemini stream adapters DO emit input_tokens in message_delta (their prompt-token count
+      // is only known at the end), so this lets the proxy bill the exact upstream input count.
+      if (u) {
+        msg.usage = {
+          ...msg.usage,
+          ...(asNumber(u["input_tokens"]) !== undefined ? { input_tokens: asNumber(u["input_tokens"]) } : {}),
+          ...(asNumber(u["output_tokens"]) !== undefined ? { output_tokens: asNumber(u["output_tokens"]) } : {}),
+        };
+      }
       break;
     }
     case "error": {

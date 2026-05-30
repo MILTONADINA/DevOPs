@@ -20,7 +20,7 @@ import path from "node:path";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { logger } from "../lib/logger";
 import { buildProxy, type BuildProxyOptions } from "./app";
-import { createDefaultMessagesDeps } from "./forward";
+import { createDefaultMessagesDeps } from "./default-deps";
 import { readSessionsFromDir } from "./routes/dashboard";
 import { resolveApiKeyVia } from "./auth";
 import { createSupabaseConfigDeps } from "./routes/config";
