@@ -179,6 +179,35 @@ Paginated list of billing records. For CFO audit use.
 }
 ```
 
+### GET /v1/billing/invoices
+
+The invoice lifecycle — what the inbound Stripe webhook (`POST /stripe/webhook`) records, so
+"did the design partner pay?" is answerable via the API (not just SQL). Newest first.
+
+**Query params:**
+- `status`: filter by `sent` | `paid` | `failed` (invalid → 400)
+- `limit`: default 50, max 500; `offset`: default 0
+
+**Response:**
+```json
+{
+  "invoices": [
+    {
+      "id": "uuid",
+      "created_at": "2026-05-30T09:00:00Z",
+      "stripe_invoice_id": "in_1abc...",
+      "amount_cents": 9900,
+      "currency": "usd",
+      "status": "paid",
+      "paid_at": "2026-05-30T11:42:00Z"
+    }
+  ],
+  "total": 3,
+  "offset": 0,
+  "limit": 50
+}
+```
+
 ---
 
 ## Memory

@@ -30,6 +30,15 @@ function fakeDeps(): { deps: BillingDeps; captured: { orgId?: string; since?: st
       return Promise.resolve(orgId === "o1" ? { records: [full], total: 1 } : { records: [], total: 0 });
     },
     developerBreakdown: (orgId) => Promise.resolve(orgId === "o1" ? [{ developer_id: null, name: null, token_delta: 42_500, cq_fee_usd: 0.13 }] : []),
+    listInvoices: (orgId, q) => {
+      captured.orgId = orgId;
+      const all = [
+        { id: "i1", created_at: "t2", stripe_invoice_id: "in_2", amount_cents: 9900, currency: "usd", status: "paid" as const, paid_at: "t3" },
+        { id: "i2", created_at: "t1", stripe_invoice_id: "in_1", amount_cents: 5000, currency: "usd", status: "sent" as const, paid_at: null },
+      ];
+      const filtered = q.status ? all.filter((i) => i.status === q.status) : all;
+      return Promise.resolve(orgId === "o1" ? { invoices: filtered, total: filtered.length } : { invoices: [], total: 0 });
+    },
   };
   return { deps, captured };
 }
@@ -163,6 +172,39 @@ describe("GET /v1/billing/records", () => {
     const app = buildProxy({ rateLimit: false, cors: false, billing: fakeDeps().deps });
     await app.ready();
     expect((await app.inject({ method: "GET", url: "/v1/billing/records" })).statusCode).toBe(400);
+    await app.close();
+  });
+});
+
+describe("GET /v1/billing/invoices", () => {
+  test("lists the org's invoices (newest first), with total + pagination echo", async () => {
+    const app = buildProxy({ rateLimit: false, cors: false, billing: fakeDeps().deps });
+    await app.ready();
+    const res = await app.inject({ method: "GET", url: "/v1/billing/invoices?org-id=o1" });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body).toMatchObject({ total: 2, offset: 0, limit: 50 });
+    expect(body.invoices.map((i: { stripe_invoice_id: string }) => i.stripe_invoice_id)).toEqual(["in_2", "in_1"]);
+    expect(body.invoices[0]).toMatchObject({ status: "paid", amount_cents: 9900, paid_at: "t3" });
+    await app.close();
+  });
+
+  test("?status=paid filters; an invalid status is 400", async () => {
+    const app = buildProxy({ rateLimit: false, cors: false, billing: fakeDeps().deps });
+    await app.ready();
+    const paid = await app.inject({ method: "GET", url: "/v1/billing/invoices?org-id=o1&status=paid" });
+    expect(paid.json().invoices).toHaveLength(1);
+    expect(paid.json().invoices[0].status).toBe("paid");
+    const bad = await app.inject({ method: "GET", url: "/v1/billing/invoices?org-id=o1&status=bogus" });
+    expect(bad.statusCode).toBe(400);
+    await app.close();
+  });
+
+  test("404 for an unknown org, 400 with no org", async () => {
+    const app = buildProxy({ rateLimit: false, cors: false, billing: fakeDeps().deps });
+    await app.ready();
+    expect((await app.inject({ method: "GET", url: "/v1/billing/invoices?org-id=nope" })).statusCode).toBe(404);
+    expect((await app.inject({ method: "GET", url: "/v1/billing/invoices" })).statusCode).toBe(400);
     await app.close();
   });
 });

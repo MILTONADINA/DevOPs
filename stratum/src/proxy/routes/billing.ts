@@ -45,6 +45,24 @@ export interface DeveloperBreakdown {
   cq_fee_usd: number;
 }
 
+/** An invoice's lifecycle row (the `invoices` table — sent → paid/failed via the Stripe webhook). */
+export interface InvoiceRow {
+  id: string;
+  created_at: string;
+  stripe_invoice_id: string;
+  amount_cents: number;
+  currency: string;
+  status: "sent" | "paid" | "failed";
+  paid_at: string | null;
+}
+
+export interface InvoicesQuery {
+  /** Filter by lifecycle status (validated against sent|paid|failed). */
+  status?: string | undefined;
+  limit: number;
+  offset: number;
+}
+
 export interface BillingDeps {
   /** The org's billing records in [since, until] (ISO bounds optional) — the invoice/summary source. */
   listBillingRecords: (orgId: string, since?: string, until?: string) => Promise<BillableRecord[]>;
@@ -54,6 +72,8 @@ export interface BillingDeps {
   developerBreakdown: (orgId: string, since?: string, until?: string) => Promise<DeveloperBreakdown[]>;
   /** The org's plan (drives the monthly-minimum floor), or null if the org is unknown. */
   getOrgPlan: (orgId: string) => Promise<string | null>;
+  /** The org's invoices (sent/paid/failed) + total count — surfaces the Stripe webhook's records. */
+  listInvoices: (orgId: string, q: InvoicesQuery) => Promise<{ invoices: InvoiceRow[]; total: number }>;
 }
 
 function round2cents(n: number): number {
@@ -231,6 +251,23 @@ export function makeBillingRoute(deps: BillingDeps): FastifyPluginCallback {
       return { records, total, offset, limit };
     });
 
+    // GET /v1/billing/invoices — the invoice lifecycle (sent → paid/failed), surfacing what the
+    // Stripe webhook records (so "did the design partner pay?" is answerable via the API, not just SQL).
+    app.get("/v1/billing/invoices", async (req, reply) => {
+      const orgId = resolveOrg(req);
+      if (orgId === undefined) return err(reply, 400, "request_error", "org id required (authenticate, or pass ?org-id)");
+      const plan = await deps.getOrgPlan(orgId);
+      if (plan === null) return err(reply, 404, "request_error", "organization not found");
+      const status = strParam(req, "status");
+      if (status !== undefined && !["sent", "paid", "failed"].includes(status)) {
+        return err(reply, 400, "request_error", "status must be one of: sent, paid, failed");
+      }
+      const limit = Math.min(500, Math.max(1, intParam(req, "limit", 50)));
+      const offset = Math.max(0, intParam(req, "offset", 0));
+      const { invoices, total } = await deps.listInvoices(orgId, { status, limit, offset });
+      return { invoices, total, offset, limit };
+    });
+
     done();
   };
 }
@@ -286,6 +323,16 @@ export function createSupabaseBillingDeps(client: SupabaseClient): BillingDeps {
       const { data, error, count } = await q.order("created_at", { ascending: false }).range(query.offset, query.offset + query.limit - 1);
       if (error) throw new Error(`listRecords failed: ${error.message}`);
       return { records: (data ?? []) as BillingRecordFull[], total: count ?? 0 };
+    },
+    async listInvoices(orgId: string, query: InvoicesQuery): Promise<{ invoices: InvoiceRow[]; total: number }> {
+      let q = client
+        .from("invoices")
+        .select("id, created_at, stripe_invoice_id, amount_cents, currency, status, paid_at", { count: "exact" })
+        .eq("org_id", orgId);
+      if (query.status !== undefined) q = q.eq("status", query.status);
+      const { data, error, count } = await q.order("created_at", { ascending: false }).range(query.offset, query.offset + query.limit - 1);
+      if (error) throw new Error(`listInvoices failed: ${error.message}`);
+      return { invoices: (data ?? []) as InvoiceRow[], total: count ?? 0 };
     },
   };
 }

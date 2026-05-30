@@ -108,6 +108,9 @@ export const OPENAPI_SPEC = {
     "/v1/billing/records": {
       get: { summary: "Paginated raw billing records", parameters: [ORG_ID_QUERY, ...SINCE_UNTIL, { name: "limit", in: "query", schema: { type: "integer", maximum: 500 } }, { name: "offset", in: "query", schema: { type: "integer" } }], responses: { "200": { description: "Records page" } } },
     },
+    "/v1/billing/invoices": {
+      get: { summary: "Invoice lifecycle (sent → paid/failed), as recorded by the Stripe webhook", parameters: [ORG_ID_QUERY, { name: "status", in: "query", required: false, schema: { type: "string", enum: ["sent", "paid", "failed"] } }, { name: "limit", in: "query", schema: { type: "integer", maximum: 500 } }, { name: "offset", in: "query", schema: { type: "integer" } }], responses: { "200": { description: "Invoices page" }, "400": ERROR_RESPONSE, "404": ERROR_RESPONSE } },
+    },
     "/v1/billing/audit.csv": {
       get: { summary: "Signed-hash audit trail (CSV download)", parameters: [ORG_ID_QUERY, ...SINCE_UNTIL], responses: { "200": { description: "CSV", content: { "text/csv": {} } } } },
     },
