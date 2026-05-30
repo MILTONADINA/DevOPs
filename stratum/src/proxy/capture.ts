@@ -175,13 +175,28 @@ export function createCaptureStore(opts: CaptureStoreOptions): CaptureStore {
       session.total_input_tokens += resp.usage.input_tokens;
       session.total_output_tokens += resp.usage.output_tokens;
     }
-    flush();
+    // flush() does a synchronous writeFileSync. record() is called from the streaming pump's `finally`
+    // inside a `void (async …)()` IIFE that has NO .catch() — so an fs throw here (e.g. a full Vercel /tmp,
+    // or a Windows file lock) would become an UNHANDLED PROMISE REJECTION and crash the function instance
+    // (fatal on Node 24). Keep record() non-throwing (fail-OPEN, like usage recording): the turn is already
+    // in memory; a flush failure degrades to a logged warning, never an instance crash.
+    try {
+      flush();
+    } catch (flushError) {
+      const fe = flushError as Error;
+      onError(`[capture flush error] Turn ${turnNumber} not persisted to disk: ${fe.name}: ${fe.message}. Continuing.`);
+    }
     return true;
   }
 
   function end(): void {
     session.ended_at = now();
-    flush();
+    try {
+      flush();
+    } catch (flushError) {
+      const fe = flushError as Error;
+      onError(`[capture flush error] Session end not persisted to disk: ${fe.name}: ${fe.message}.`);
+    }
   }
 
   return { record, end, getSession: () => session };

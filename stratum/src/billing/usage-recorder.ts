@@ -61,6 +61,13 @@ export function createSupabaseUsageRecorder(opts: UsageRecorderOptions): UsageRe
 
   function ensureSession(orgId: string, model: string): Promise<string> {
     const day = new Date(now()).toISOString().slice(0, 10); // UTC date bucket
+    // Evict prior-day entries: the key embeds the UTC day, so any entry whose middle segment != today is
+    // stale (its bucket is permanently resolved in the DB) and unreachable. Without this the Map grows one
+    // entry per (org, model) per day forever on a long-lived (non-serverless) instance — an unbounded leak.
+    // O(stale) only, and only on the first call after a UTC-midnight rollover.
+    for (const k of sessionCache.keys()) {
+      if (k.split("|")[1] !== day) sessionCache.delete(k);
+    }
     const key = `${orgId}|${day}|${model}`;
     const cached = sessionCache.get(key);
     if (cached !== undefined) return cached;
@@ -69,10 +76,25 @@ export function createSupabaseUsageRecorder(opts: UsageRecorderOptions): UsageRe
     const created = (async (): Promise<string> => {
       // kind='usage' (PB-46): this is a daily USAGE bucket, never "ended", so it must NOT count toward
       // the concurrent-session cap (which counts active EXPLICIT sessions). See sessions.kind migration.
-      const { data, error } = await opts.client.from("sessions").insert({ org_id: orgId, model, kind: "usage" }).select("id").limit(1);
-      if (error) throw new Error(`ensureSession failed: ${error.message}`);
-      const id = ((data ?? [])[0] as { id: string } | undefined)?.id;
-      if (id === undefined || id === "") throw new Error("ensureSession returned no id");
+      // SELECT-or-INSERT against the partial unique index sessions_usage_bucket_uniq (kind='usage', per
+      // org+model+UTC-day): the in-memory cache dedups within ONE instance, but separate Vercel instances
+      // each miss their own cache and would insert DUPLICATE daily buckets, fragmenting a day's billing
+      // across many session ids. Try the insert; on a unique-violation (23505) another instance won the
+      // race, so re-read its bucket — all instances then converge on the one row.
+      const ins = await opts.client.from("sessions").insert({ org_id: orgId, model, kind: "usage" }).select("id").limit(1);
+      if (!ins.error) {
+        const id = ((ins.data ?? [])[0] as { id: string } | undefined)?.id;
+        if (id === undefined || id === "") throw new Error("ensureSession returned no id");
+        return id;
+      }
+      if ((ins.error as { code?: string }).code !== "23505") throw new Error(`ensureSession failed: ${ins.error.message}`);
+      // Lost the cross-instance race — read the existing usage bucket for (org, model, today).
+      const startOfDay = `${day}T00:00:00.000Z`;
+      const nextDay = new Date(Date.parse(startOfDay) + 86_400_000).toISOString().slice(0, 10) + "T00:00:00.000Z";
+      const sel = await opts.client.from("sessions").select("id").eq("org_id", orgId).eq("model", model).eq("kind", "usage").gte("created_at", startOfDay).lt("created_at", nextDay).limit(1);
+      if (sel.error) throw new Error(`ensureSession conflict re-read failed: ${sel.error.message}`);
+      const id = ((sel.data ?? [])[0] as { id: string } | undefined)?.id;
+      if (id === undefined || id === "") throw new Error("ensureSession: unique conflict but no existing bucket found");
       return id;
     })();
     sessionCache.set(key, created);

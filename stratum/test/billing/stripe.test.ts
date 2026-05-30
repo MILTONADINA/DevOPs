@@ -44,7 +44,7 @@ interface Call {
   headers: Record<string, string>;
   method: string;
 }
-function fakeStripe(opts: { errorAt?: string; existingCustomer?: string } = {}): { doFetch: StripeFetch; calls: Call[] } {
+function fakeStripe(opts: { errorAt?: string; existingCustomer?: string; existingPendingItem?: boolean } = {}): { doFetch: StripeFetch; calls: Call[] } {
   const calls: Call[] = [];
   const doFetch: StripeFetch = (url, init) => {
     calls.push({ url, body: init.body, headers: init.headers, method: init.method });
@@ -55,6 +55,8 @@ function fakeStripe(opts: { errorAt?: string; existingCustomer?: string } = {}):
     if (url.includes("/v1/customers/search")) json = { data: opts.existingCustomer !== undefined ? [{ id: opts.existingCustomer }] : [] };
     else if (url.endsWith("/finalize")) json = { id: "in_1", status: "open" };
     else if (url.includes("/v1/customers")) json = { id: "cus_1" };
+    // GET = the pending-item idempotency pre-check (>24h double-charge guard); POST = create the item.
+    else if (url.includes("/v1/invoiceitems") && init.method === "GET") json = { data: opts.existingPendingItem ? [{ id: "ii_existing", metadata: { org_id: "o1", period_start: "2026-04", period_end: "(now)" } }] : [] };
     else if (url.includes("/v1/invoiceitems")) json = { id: "ii_1" };
     else if (url.includes("/v1/invoices")) json = { id: "in_1", status: "draft" };
     return Promise.resolve({ status: 200, json: () => Promise.resolve(json) });
@@ -73,14 +75,17 @@ describe("sendStripeInvoice", () => {
     expect(paths(calls)).toEqual([
       "/v1/customers/search", // lookup-or-create: search by org_id metadata first
       "/v1/customers", // not found → create
-      "/v1/invoiceitems",
+      "/v1/invoiceitems", // GET: pending-item idempotency pre-check (>24h double-charge guard)
+      "/v1/invoiceitems", // POST: create the item
       "/v1/invoices",
       "/v1/invoices/in_1/finalize",
     ]);
-    const item = new URLSearchParams(calls[2]!.body);
+    const item = new URLSearchParams(calls[3]!.body); // calls[2] is now the GET pre-check; the POST is [3]
     expect(item.get("amount")).toBe("6304"); // $63.04 → 6304 cents (NOT 63 or 6304.0)
     expect(item.get("currency")).toBe("usd");
     expect(item.get("customer")).toBe("cus_1");
+    expect(item.get("metadata[period_start]")).toBe("2026-04"); // period+org metadata enables the >24h idempotency lookup
+    expect(item.get("metadata[org_id]")).toBe("o1");
     expect(receipt).toEqual({ id: "in_1", status: "open", amountUsd: 63.04 });
   });
 
@@ -99,9 +104,9 @@ describe("sendStripeInvoice", () => {
   test("an EXISTING customer is reused (no duplicate customer created on re-run)", async () => {
     const { doFetch, calls } = fakeStripe({ existingCustomer: "cus_existing" });
     await sendStripeInvoice({ secretKey: "sk_test_x", doFetch }, INVOICE);
-    expect(paths(calls)).toEqual(["/v1/customers/search", "/v1/invoiceitems", "/v1/invoices", "/v1/invoices/in_1/finalize"]);
+    expect(paths(calls)).toEqual(["/v1/customers/search", "/v1/invoiceitems", "/v1/invoiceitems", "/v1/invoices", "/v1/invoices/in_1/finalize"]);
     expect(paths(calls)).not.toContain("/v1/customers"); // create skipped
-    expect(new URLSearchParams(calls[1]!.body).get("customer")).toBe("cus_existing");
+    expect(new URLSearchParams(calls[2]!.body).get("customer")).toBe("cus_existing"); // POST item is now index 2 (after the GET pre-check)
   });
 
   test("a $0 amount-due is refused BEFORE any Stripe call (no orphaned customer)", async () => {
@@ -112,7 +117,19 @@ describe("sendStripeInvoice", () => {
 
   test("a Stripe API error is surfaced (with the Stripe message), not swallowed", async () => {
     const { doFetch } = fakeStripe({ errorAt: "/v1/invoiceitems" });
-    await expect(sendStripeInvoice({ secretKey: "sk_test_x", doFetch }, INVOICE)).rejects.toThrow(/Stripe \/v1\/invoiceitems failed: card_declined/);
+    // (.* tolerates the query string on the pending-item GET, which is the first /v1/invoiceitems call.)
+    await expect(sendStripeInvoice({ secretKey: "sk_test_x", doFetch }, INVOICE)).rejects.toThrow(/Stripe \/v1\/invoiceitems.*failed: card_declined/);
+  });
+
+  test("reuses an existing pending invoice item for the same org+period — no duplicate (>24h double-charge guard)", async () => {
+    // Simulates a prior run that created the invoice item but crashed before the invoice swept it up;
+    // >24h later Stripe's Idempotency-Key no longer dedups, so without this guard a SECOND item would be
+    // created and the invoice would bill BOTH. The pending-item GET matches on org+period metadata → skip.
+    const { doFetch, calls } = fakeStripe({ existingCustomer: "cus_existing", existingPendingItem: true });
+    await sendStripeInvoice({ secretKey: "sk_test_x", doFetch }, INVOICE);
+    const itemPosts = calls.filter((c) => c.url.includes("/v1/invoiceitems") && c.method === "POST");
+    expect(itemPosts).toHaveLength(0); // no new item created — the existing pending item is reused
+    expect(paths(calls)).toEqual(["/v1/customers/search", "/v1/invoiceitems", "/v1/invoices", "/v1/invoices/in_1/finalize"]);
   });
 
   test("empty key → throws (gated)", async () => {

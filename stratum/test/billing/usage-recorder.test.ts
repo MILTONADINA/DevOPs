@@ -90,4 +90,34 @@ describe("createSupabaseUsageRecorder", () => {
     await rec.recordUsage({ orgId: "org-1", model: "claude-sonnet-4-6", inputTokens: 0, outputTokens: 0 });
     expect(inserts).toHaveLength(0);
   });
+
+  test("cross-instance race: a 23505 on the sessions insert re-reads the winner bucket (no duplicate, no throw)", async () => {
+    // Simulate another Vercel instance having already created today's usage bucket: the unique index
+    // (sessions_usage_bucket_uniq) rejects our INSERT with 23505, and we converge on the existing row.
+    let billingRow: Record<string, unknown> | undefined;
+    const client = {
+      from(table: string) {
+        if (table === "sessions") {
+          return {
+            // INSERT path → unique-violation
+            insert: () => ({ select: () => ({ limit: () => Promise.resolve({ data: null, error: { code: "23505", message: "duplicate key value violates unique constraint" } }) }) }),
+            // SELECT-or-re-read path → the winner's bucket id (chainable eq/gte/lt → limit)
+            select: () => {
+              const q = { eq: () => q, gte: () => q, lt: () => q, limit: () => Promise.resolve({ data: [{ id: "winner-bucket" }], error: null }) };
+              return q;
+            },
+          };
+        }
+        return {
+          insert(row: Record<string, unknown>) {
+            billingRow = row;
+            return { select: () => ({ limit: () => Promise.resolve({ data: [{ id: "rec-1" }], error: null }) }) };
+          },
+        };
+      },
+    } as unknown as SupabaseClient;
+    const rec = createSupabaseUsageRecorder({ client, signingSecret: SECRET, now: () => NOW });
+    await rec.recordUsage({ orgId: "org-1", model: "claude-opus-4-8", inputTokens: 1000, outputTokens: 10 });
+    expect(billingRow?.["session_id"]).toBe("winner-bucket"); // billed against the converged bucket, not a dup
+  });
 });

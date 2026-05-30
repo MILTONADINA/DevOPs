@@ -10,6 +10,16 @@ describe("pricePerInputTokenUsd", () => {
     expect(pricePerInputTokenUsd("claude-haiku-4-5", {})).toBeCloseTo(1 / 1_000_000, 12);
   });
 
+  test("Haiku 4.x bills at $1.00/M input (NOT $0.80 like 3.5) — audit regression guard", () => {
+    // Verified list price (platform.claude.com pricing, 2026-05-30). A 2026 audit finding mistakenly
+    // proposed $0.80/M for Haiku 4.5, which would UNDER-bill the savings fee by 20%. Pin it so a future
+    // "fix" can't silently re-introduce that error.
+    expect(pricePerInputTokenUsd("claude-haiku-4-5", {})).toBeCloseTo(1 / 1_000_000, 12);
+    expect(pricePerInputTokenUsd("claude-haiku-4-5-20251001", {})).toBeCloseTo(1 / 1_000_000, 12);
+    // The older Haiku 3.x family is the $0.80/M tier (matched via the haiku-3 entry).
+    expect(pricePerInputTokenUsd("claude-haiku-3-5", {})).toBeCloseTo(0.8 / 1_000_000, 12);
+  });
+
   test("an unknown model falls back to the workhorse (Sonnet) tier — never $0", () => {
     const p = pricePerInputTokenUsd("some-future-model", {});
     expect(p).toBeGreaterThan(0);

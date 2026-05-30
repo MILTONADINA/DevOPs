@@ -88,7 +88,19 @@ export function buildStartOptions(env: StartEnv, base: BuildProxyOptions, makeCl
     opts.webhooks = createSupabaseWebhookDeps(client);
     // Per-plan request rate limiting (reuse the billing deps' plan reader).
     const billing = opts.billing;
-    const getPlan = async (orgId: string): Promise<string> => (await billing.getOrgPlan(orgId)) ?? "starter";
+    // Fail-OPEN to the starter tier on a lookup error. This closure feeds @fastify/rate-limit's async
+    // `max` (NOT wrapped by the plugin) AND the token-budget gate; an unguarded throw here from a transient
+    // Supabase blip would propagate into the rate-limiter on EVERY request → the whole instance 500s
+    // (a self-inflicted DoS). The starter tier is the safe, most-restrictive default. (Token-budget's own
+    // tryConsume is already try/caught in messages.ts; this guards the rate-limit path symmetrically.)
+    const getPlan = async (orgId: string): Promise<string> => {
+      try {
+        return (await billing.getOrgPlan(orgId)) ?? "starter";
+      } catch (e) {
+        logger.warn({ err: (e as Error).message, orgId }, "getOrgPlan failed — defaulting to starter tier");
+        return "starter";
+      }
+    };
     opts.rateLimitByPlan = { getPlan };
     opts.health = { checkDatabase: createSupabaseHealthCheck(client) };
     // Stripe inbound webhook (records invoice.paid) — only when the endpoint secret is configured.

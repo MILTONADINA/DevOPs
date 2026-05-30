@@ -29,6 +29,12 @@ function fakeDeps(opts: { active?: number } = {}): { deps: SessionsDeps; capture
       captured["created"] = { orgId, model };
       return Promise.resolve({ ...SESSION, id: "new-s", model });
     },
+    // The atomic cap path the POST route now uses: returns null at/over the cap, else the new session.
+    createSessionIfUnderCap: (orgId, model, limit) => {
+      if ((opts.active ?? 0) >= limit) return Promise.resolve(null);
+      captured["created"] = { orgId, model };
+      return Promise.resolve({ ...SESSION, id: "new-s", model });
+    },
   };
   return { deps, captured };
 }
@@ -161,5 +167,52 @@ describe("createSupabaseSessionsDeps.countActiveSessions — only active EXPLICI
     expect(eqs).toContainEqual(["org_id", "o1"]);
     expect(eqs).toContainEqual(["kind", "explicit"]); // PB-46: usage buckets must NOT count toward the cap
     expect(isNull).toContain("ended_at");
+  });
+});
+
+describe("createSupabaseSessionsDeps.listSessions — only EXPLICIT sessions (audit: usage buckets hidden)", () => {
+  test("filters org_id + kind='explicit' so internal usage buckets never appear in the list", async () => {
+    const eqs: [string, unknown][] = [];
+    const builder = {
+      select() {
+        return builder;
+      },
+      eq(col: string, val: unknown) {
+        eqs.push([col, val]);
+        return builder;
+      },
+      order() {
+        return builder;
+      },
+      limit() {
+        return Promise.resolve({ data: [], error: null });
+      },
+    };
+    const client = { from: () => builder } as unknown as SupabaseClient;
+    await createSupabaseSessionsDeps(client).listSessions("o1", 50);
+    expect(eqs).toContainEqual(["org_id", "o1"]);
+    expect(eqs).toContainEqual(["kind", "explicit"]);
+  });
+});
+
+describe("createSupabaseSessionsDeps.createSessionIfUnderCap — atomic advisory-locked cap (audit: TOCTOU fix)", () => {
+  test("calls the create_session_if_under_cap RPC with (org, model, cap) and maps the returned row", async () => {
+    let rpcArgs: unknown;
+    const client = {
+      rpc(_fn: string, args: unknown) {
+        rpcArgs = args;
+        return Promise.resolve({ data: [{ id: "new-s", created_at: "t", ended_at: null, model: "m", lambda: 0.97, gain_shift: 0, theta: 1, zk_enabled: false, audit_enabled: true, org_id: "o1", kind: "explicit" }], error: null });
+      },
+    } as unknown as SupabaseClient;
+    const row = await createSupabaseSessionsDeps(client).createSessionIfUnderCap("o1", "m", 1);
+    expect(rpcArgs).toEqual({ p_org_id: "o1", p_model: "m", p_cap: 1 });
+    // Response is mapped to the SessionSummary shape (no org_id/kind leakage into the API response).
+    expect(row).toEqual({ id: "new-s", created_at: "t", ended_at: null, model: "m", lambda: 0.97, gain_shift: 0, theta: 1, zk_enabled: false, audit_enabled: true });
+  });
+
+  test("returns null when the RPC yields no row (org already at/over the cap)", async () => {
+    const client = { rpc: () => Promise.resolve({ data: [], error: null }) } as unknown as SupabaseClient;
+    const row = await createSupabaseSessionsDeps(client).createSessionIfUnderCap("o1", "m", 1);
+    expect(row).toBeNull();
   });
 });

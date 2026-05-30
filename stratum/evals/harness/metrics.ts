@@ -49,15 +49,23 @@ export interface Judge {
 }
 
 export interface LlmOptions {
-  /** API key; falls back to ANTHROPIC_API_KEY. */
+  /** API key; falls back to EVAL_ANTHROPIC_API_KEY, then ANTHROPIC_API_KEY. */
   apiKey?: string | undefined;
   /** Judge/answerer model (EVAL_FRAMEWORK.md uses Claude Haiku for cost stability). */
   model?: string | undefined;
 }
 
 const NO_KEY =
-  "eval metric source needs an API key: set ANTHROPIC_API_KEY (or pass opts.apiKey). " +
+  "eval metric source needs an API key: set EVAL_ANTHROPIC_API_KEY (preferred — keeps eval spend separate " +
+  "from the production proxy key), or ANTHROPIC_API_KEY, or pass opts.apiKey. " +
   "The judge uses Claude Haiku per docs/EVAL_FRAMEWORK.md. Refusing to fabricate scores.";
+
+/** Resolve the eval API key: an explicit opt, else the dedicated eval key, else the proxy key. Preferring
+ *  EVAL_ANTHROPIC_API_KEY keeps eval Anthropic spend (and eval prompt content) off the SAME key that
+ *  forwards paying customers' production traffic — a cost-attribution + data-segregation hygiene fix. */
+function resolveEvalKey(opts: LlmOptions): string | undefined {
+  return opts.apiKey ?? process.env["EVAL_ANTHROPIC_API_KEY"] ?? process.env["ANTHROPIC_API_KEY"];
+}
 
 const DEFAULT_JUDGE_MODEL = "claude-haiku-4-5-20251001";
 
@@ -66,7 +74,7 @@ export function createClaudeCompletion(opts: LlmOptions = {}): LlmCompletion {
   const model = opts.model ?? DEFAULT_JUDGE_MODEL;
   return {
     async complete(prompt, callOpts): Promise<string> {
-      const apiKey = opts.apiKey ?? process.env["ANTHROPIC_API_KEY"];
+      const apiKey = resolveEvalKey(opts);
       if (!apiKey) throw new Error(NO_KEY);
       const client = new Anthropic({ apiKey });
       const resp = await client.messages.create({
@@ -234,7 +242,7 @@ export function createLlmJudge(llm: LlmCompletion = createClaudeCompletion()): J
 
 /** True when an API key is available to drive the real metric sources. */
 export function judgeConfigured(opts: LlmOptions = {}): boolean {
-  return Boolean(opts.apiKey ?? process.env["ANTHROPIC_API_KEY"]);
+  return Boolean(resolveEvalKey(opts));
 }
 
 /**

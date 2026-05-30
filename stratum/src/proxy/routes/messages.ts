@@ -14,7 +14,7 @@ import type { FastifyInstance, FastifyPluginCallback, FastifyReply, FastifyReque
 import { PassThrough } from "node:stream";
 import type { ForwardHeaders, MessagesBody, MessagesDeps, TokenCountResult } from "../forward";
 import { isStreamingRequest } from "../stream-forward";
-import { createSseParser, accumulateAnthropicStream } from "../sse";
+import { createSseParser, createStreamAccumulator } from "../sse";
 import { emitTurnTelemetry } from "../telemetry";
 
 declare module "fastify" {
@@ -145,7 +145,10 @@ async function handleStreaming(body: MessagesBody, request: FastifyRequest, repl
   // Pump runs concurrently with Fastify piping `out` to the client.
   void (async () => {
     const parser = createSseParser();
-    const events = [];
+    // Incremental fold (not a growing events[] array): each parsed batch is folded into the running
+    // message and then discarded, so per-request heap stays O(accumulated text) even for a very long
+    // streaming generation — and even though we keep draining upstream after a client abort (below).
+    const acc = createStreamAccumulator();
     try {
       for await (const chunk of upstream) {
         // Keep DRAINING upstream even after the client goes away — `message_delta` (the ONLY source of
@@ -154,7 +157,7 @@ async function handleStreaming(body: MessagesBody, request: FastifyRequest, repl
         // regardless, so reading the already-open socket to completion is the correct billing behavior;
         // we just stop WRITING to the departed client.
         if (!out.destroyed) out.write(chunk);
-        events.push(...parser.push(chunk));
+        acc.push(parser.push(chunk));
       }
     } catch (e) {
       // Mid-stream upstream failure: emit an SSE error event so the client sees it.
@@ -169,11 +172,11 @@ async function handleStreaming(body: MessagesBody, request: FastifyRequest, repl
     } finally {
       // flush() in the FINALLY (not the try) so a partial event buffered when the stream ERRORED
       // mid-chunk — e.g. a split `message_delta` carrying output_tokens — is still recovered for billing.
-      events.push(...parser.flush());
+      acc.push(parser.flush());
       // Capture the accumulated turn (redaction + FAIL-CLOSED inside the store).
       // Done BEFORE out.end() so the artifact is written before the response
       // completes. A client abort still captures what was forwarded.
-      const { message } = accumulateAnthropicStream(events);
+      const { message } = acc.result();
       // Bill on the UPSTREAM-confirmed input count (from message_start, which arrives early — present even
       // on an abort), falling back to the pre-flight count only if upstream omitted it (exact-counts rule).
       const billedInput = inputTokensOf(message) > 0 ? inputTokensOf(message) : tokens.input_tokens;

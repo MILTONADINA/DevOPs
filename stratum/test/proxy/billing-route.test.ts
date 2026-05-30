@@ -142,6 +142,20 @@ describe("GET /billing (CFO dashboard page)", () => {
     expect(res.body).not.toContain(".innerHTML"); // XSS-safe by construction
     await app.close();
   });
+
+  test("hardens the dashboard shell against framing + key exfiltration (CSP, X-Frame-Options) (audit)", async () => {
+    const { deps } = fakeDeps();
+    const app = buildProxy({ rateLimit: false, cors: false, billing: deps });
+    await app.ready();
+    const res = await app.inject({ method: "GET", url: "/billing" });
+    expect(res.headers["x-frame-options"]).toBe("DENY"); // no clickjacking of the key input
+    expect(res.headers["x-content-type-options"]).toBe("nosniff");
+    expect(res.headers["referrer-policy"]).toBe("no-referrer");
+    const csp = String(res.headers["content-security-policy"]);
+    expect(csp).toContain("frame-ancestors 'none'"); // modern anti-framing
+    expect(csp).toContain("connect-src 'self'"); // fetches confined to same origin — key can't be exfiltrated
+    await app.close();
+  });
 });
 
 describe("GET /v1/billing/audit.csv", () => {

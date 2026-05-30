@@ -112,79 +112,115 @@ function asNumber(v: unknown): number | undefined {
   return typeof v === "number" ? v : undefined;
 }
 
+interface AccumulatorState {
+  msg: AccumulatedMessage;
+  error: unknown;
+  count: number;
+}
+
+/** Fold ONE Anthropic SSE event into the running accumulator state (mutates `state`). */
+function foldEvent(state: AccumulatorState, ev: SseEvent): void {
+  state.count++;
+  const d = asRecord(ev.data);
+  const type = (d && asString(d["type"])) ?? ev.event;
+  const msg = state.msg;
+
+  switch (type) {
+    case "message_start": {
+      const m = d ? asRecord(d["message"]) : null;
+      if (m) {
+        msg.id = asString(m["id"]);
+        msg.type = asString(m["type"]);
+        msg.role = asString(m["role"]);
+        msg.model = asString(m["model"]);
+        const u = asRecord(m["usage"]);
+        if (u) msg.usage = { input_tokens: asNumber(u["input_tokens"]), output_tokens: asNumber(u["output_tokens"]) };
+        msg.content = [];
+      }
+      break;
+    }
+    case "content_block_start": {
+      const index = d ? asNumber(d["index"]) : undefined;
+      if (index !== undefined) {
+        const cb = (d && asRecord(d["content_block"])) ?? { type: "text" };
+        msg.content[index] = { type: asString(cb["type"]) ?? "text", ...cb } as AccumulatedContentBlock;
+      }
+      break;
+    }
+    case "content_block_delta": {
+      const index = d ? asNumber(d["index"]) : undefined;
+      const delta = d ? asRecord(d["delta"]) : null;
+      if (index !== undefined && delta) {
+        const block = msg.content[index] ?? (msg.content[index] = { type: "text" });
+        const dt = asString(delta["type"]);
+        if (dt === "text_delta") {
+          const t = asString(delta["text"]);
+          if (t !== undefined) block.text = (block.text ?? "") + t;
+        } else if (dt === "input_json_delta") {
+          const pj = asString(delta["partial_json"]);
+          if (pj !== undefined) block.partial_json = (block.partial_json ?? "") + pj;
+        }
+      }
+      break;
+    }
+    case "message_delta": {
+      const delta = d ? asRecord(d["delta"]) : null;
+      if (delta) {
+        if ("stop_reason" in delta) msg.stop_reason = asString(delta["stop_reason"]) ?? null;
+        if ("stop_sequence" in delta) msg.stop_sequence = asString(delta["stop_sequence"]) ?? null;
+      }
+      const u = d ? asRecord(d["usage"]) : null;
+      if (u) msg.usage = { ...msg.usage, ...(asNumber(u["output_tokens"]) !== undefined ? { output_tokens: asNumber(u["output_tokens"]) } : {}) };
+      break;
+    }
+    case "error": {
+      state.error = d ? (d["error"] ?? d) : ev.data;
+      break;
+    }
+    // content_block_stop, message_stop, ping, unknown → no state change.
+    default:
+      break;
+  }
+}
+
+export interface StreamAccumulator {
+  /** Fold a batch of parsed events into the running message; the batch may be discarded afterward. */
+  push(events: SseEvent[]): void;
+  /** The accumulated message + event count so far (+ error if an error event fired). */
+  result(): AccumulateResult;
+}
+
 /**
- * Fold an Anthropic SSE event sequence into the final message object.
+ * Create a STATEFUL incremental accumulator. Unlike {@link accumulateAnthropicStream} (which folds an
+ * entire array at once), this folds batch-by-batch so the caller can fold each parsed chunk and DISCARD
+ * the events immediately. The streaming proxy uses this so per-request heap stays O(accumulated text)
+ * rather than O(total stream events): a long generation (e.g. max_tokens: 32000 ≈ one delta event per
+ * output token) would otherwise pin ~MBs of parsed event objects in a single array for the whole stream,
+ * a per-request heap-exhaustion vector (worse because the pump keeps draining upstream after a client abort).
+ *
+ * @returns a {@link StreamAccumulator}.
+ */
+export function createStreamAccumulator(): StreamAccumulator {
+  const state: AccumulatorState = { msg: { content: [] }, error: undefined, count: 0 };
+  return {
+    push(events: SseEvent[]): void {
+      for (const ev of events) foldEvent(state, ev);
+    },
+    result(): AccumulateResult {
+      return { message: state.msg, events: state.count, ...(state.error !== undefined ? { error: state.error } : {}) };
+    },
+  };
+}
+
+/**
+ * Fold an Anthropic SSE event sequence into the final message object (whole-array convenience over
+ * {@link createStreamAccumulator}; used by tests + any caller that already holds the full event array).
  *
  * @param events - parsed SSE events in arrival order.
  * @returns the accumulated message + event count (+ error if an error event fired).
  */
 export function accumulateAnthropicStream(events: SseEvent[]): AccumulateResult {
-  const msg: AccumulatedMessage = { content: [] };
-  let error: unknown;
-  let count = 0;
-
-  for (const ev of events) {
-    count++;
-    const d = asRecord(ev.data);
-    const type = (d && asString(d["type"])) ?? ev.event;
-
-    switch (type) {
-      case "message_start": {
-        const m = d ? asRecord(d["message"]) : null;
-        if (m) {
-          msg.id = asString(m["id"]);
-          msg.type = asString(m["type"]);
-          msg.role = asString(m["role"]);
-          msg.model = asString(m["model"]);
-          const u = asRecord(m["usage"]);
-          if (u) msg.usage = { input_tokens: asNumber(u["input_tokens"]), output_tokens: asNumber(u["output_tokens"]) };
-          msg.content = [];
-        }
-        break;
-      }
-      case "content_block_start": {
-        const index = d ? asNumber(d["index"]) : undefined;
-        if (index !== undefined) {
-          const cb = (d && asRecord(d["content_block"])) ?? { type: "text" };
-          msg.content[index] = { type: asString(cb["type"]) ?? "text", ...cb } as AccumulatedContentBlock;
-        }
-        break;
-      }
-      case "content_block_delta": {
-        const index = d ? asNumber(d["index"]) : undefined;
-        const delta = d ? asRecord(d["delta"]) : null;
-        if (index !== undefined && delta) {
-          const block = msg.content[index] ?? (msg.content[index] = { type: "text" });
-          const dt = asString(delta["type"]);
-          if (dt === "text_delta") {
-            const t = asString(delta["text"]);
-            if (t !== undefined) block.text = (block.text ?? "") + t;
-          } else if (dt === "input_json_delta") {
-            const pj = asString(delta["partial_json"]);
-            if (pj !== undefined) block.partial_json = (block.partial_json ?? "") + pj;
-          }
-        }
-        break;
-      }
-      case "message_delta": {
-        const delta = d ? asRecord(d["delta"]) : null;
-        if (delta) {
-          if ("stop_reason" in delta) msg.stop_reason = asString(delta["stop_reason"]) ?? null;
-          if ("stop_sequence" in delta) msg.stop_sequence = asString(delta["stop_sequence"]) ?? null;
-        }
-        const u = d ? asRecord(d["usage"]) : null;
-        if (u) msg.usage = { ...msg.usage, ...(asNumber(u["output_tokens"]) !== undefined ? { output_tokens: asNumber(u["output_tokens"]) } : {}) };
-        break;
-      }
-      case "error": {
-        error = d ? (d["error"] ?? d) : ev.data;
-        break;
-      }
-      // content_block_stop, message_stop, ping, unknown → no state change.
-      default:
-        break;
-    }
-  }
-
-  return { message: msg, events: count, ...(error !== undefined ? { error } : {}) };
+  const acc = createStreamAccumulator();
+  acc.push(events);
+  return acc.result();
 }

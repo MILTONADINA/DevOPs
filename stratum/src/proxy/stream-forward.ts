@@ -93,6 +93,18 @@ export async function forwardStreamToAnthropic(body: MessagesBody, apiKey: strin
         rearm();
         buf += chunk.toString();
       }
+    } catch (e) {
+      // PB-49: if the idle timer aborts mid-error-body (or the body stream resets), the status + headers
+      // are ALREADY captured and correct. Swallow an abort/cancel and return the (partial) body so
+      // withStreamRetry sees a ForwardResult — preserving the 429 Retry-After in respHeaders — instead of
+      // mistaking the abort for a connect failure (which would burn the single network-retry slot and drop
+      // Retry-After). A non-abort error still propagates to the caller as before.
+      const name = e instanceof Error ? e.name : "";
+      const isAbort = axios.isCancel(e) || name === "AbortError" || name === "CanceledError";
+      if (!isAbort) {
+        clearTimeout(idle);
+        throw e;
+      }
     } finally {
       clearTimeout(idle);
     }

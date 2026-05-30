@@ -210,15 +210,20 @@ const BILLING_HTML = `<!doctype html>
       const a = el('a', 'Download audit trail (CSV)', 'btn'); a.setAttribute('href', '#'); a.addEventListener('click', (ev) => { ev.preventDefault(); downloadCsv(key, d.orgId); }); dl.appendChild(a);
     }
 
+    let loading = false;
     function load() {
+      if (loading) return; // in-flight guard: a 2nd click/Enter before the fetch resolves would clear()
+                           // then render() again, appending a SECOND download button to a partly-cleared DOM.
       const key = (keyInput.value || '').trim();
       if (key) sessionStorage.setItem(STORE, key); else sessionStorage.removeItem(STORE);
       if (!key && !org) { note.textContent = 'Enter your CQ API key above (commercial mode), or add ?org-id=<uuid> to the URL (personal mode).'; return; }
+      loading = true;
       clear(); note.textContent = 'Loading…';
       fetch('/v1/billing/invoice' + qs(key), { headers: headers(key) })
         .then((r) => r.ok ? r.json() : r.json().then((e) => Promise.reject(e)))
         .then((d) => render(d, key))
-        .catch((e) => { note.textContent = 'Could not load invoice: ' + (e && e.error ? e.error.message : (e && e.message ? e.message : e)); });
+        .catch((e) => { note.textContent = 'Could not load invoice: ' + (e && e.error ? e.error.message : (e && e.message ? e.message : e)); })
+        .finally(() => { loading = false; });
     }
 
     loadBtn.addEventListener('click', load);
@@ -237,6 +242,17 @@ export function makeBillingRoute(deps: BillingDeps): FastifyPluginCallback {
   return function billingPlugin(app: FastifyInstance, _opts, done): void {
     app.get("/billing", async (_req, reply) => {
       void reply.header("content-type", "text/html; charset=utf-8");
+      // The dashboard holds the CQ key in sessionStorage, so harden the shell. frame-ancestors 'none'
+      // (+ legacy X-Frame-Options: DENY) kills clickjacking of the key input; the CSP confines the page to
+      // its own inline script + SAME-ORIGIN fetches, so an injected/extension script can't exfiltrate the
+      // key to a third party. script-src 'unsafe-inline' is required — the page's JS is inline by design.
+      void reply.header(
+        "content-security-policy",
+        "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+      );
+      void reply.header("x-frame-options", "DENY");
+      void reply.header("x-content-type-options", "nosniff");
+      void reply.header("referrer-policy", "no-referrer");
       return reply.send(BILLING_HTML);
     });
 

@@ -82,6 +82,30 @@ async function findOrCreateCustomer(cfg: StripeConfig, orgId: string): Promise<s
 }
 
 /**
+ * True if a still-pending (not-yet-invoiced) invoice item already exists on the customer for this exact
+ * org+period. Closes the >24h double-charge window: Stripe's Idempotency-Key only dedups a retried POST
+ * for 24 hours, after which a re-run (e.g. after a crash between the invoiceitem and invoice POSTs) would
+ * mint a SECOND pending item that the next invoice sweeps up — a double charge. Matching on the period
+ * metadata makes the invoice-item step idempotent indefinitely, independent of Stripe's key window.
+ *
+ * @param cfg - the Stripe config (key + injected fetch).
+ * @param customerId - the resolved Stripe customer.
+ * @param orgId - the org (metadata match).
+ * @param periodStart - ISO/label period start (metadata match).
+ * @param periodEnd - ISO/label period end (metadata match).
+ * @returns true if a matching pending item exists (so the caller should NOT create another).
+ */
+async function hasPendingInvoiceItem(cfg: StripeConfig, customerId: string, orgId: string, periodStart: string, periodEnd: string): Promise<boolean> {
+  const res = await stripeGet(cfg, `/v1/invoiceitems?customer=${encodeURIComponent(customerId)}&pending=true&limit=100`);
+  const data = res["data"];
+  if (!Array.isArray(data)) return false;
+  return (data as Array<{ metadata?: Record<string, unknown> }>).some((it) => {
+    const m = it.metadata ?? {};
+    return m["org_id"] === orgId && m["period_start"] === periodStart && m["period_end"] === periodEnd;
+  });
+}
+
+/**
  * Send a finalized invoice for `invoice.amountDueUsd` to the org's Stripe customer.
  *
  * @param cfg - secret key + injected fetch + live-key guard.
@@ -106,17 +130,26 @@ export async function sendStripeInvoice(cfg: StripeConfig, invoice: Invoice): Pr
   const idem = `${invoice.orgId}|${invoice.periodStart}|${invoice.periodEnd}`;
   const customerId = await findOrCreateCustomer(cfg, invoice.orgId);
 
-  await stripePost(
-    cfg,
-    "/v1/invoiceitems",
-    {
-      customer: customerId,
-      amount: usdToCents(invoice.amountDueUsd),
-      currency: "usd",
-      description: `Stratum token-arbitrage fee (${invoice.periodStart} → ${invoice.periodEnd}; 20% of $${invoice.totalSavingsUsd.toFixed(2)} saved)`,
-    },
-    `${idem}|invoiceitem`,
-  );
+  // Idempotent BEYOND Stripe's 24h key window: if a pending item for this exact org+period already exists
+  // (a prior run crashed after creating it but before the invoice below swept it up), REUSE it rather than
+  // creating a duplicate — otherwise the invoice would bill BOTH items (double charge). The period+org
+  // metadata is what makes the lookup exact; it is also stored on create for this very purpose.
+  if (!(await hasPendingInvoiceItem(cfg, customerId, invoice.orgId, invoice.periodStart, invoice.periodEnd))) {
+    await stripePost(
+      cfg,
+      "/v1/invoiceitems",
+      {
+        customer: customerId,
+        amount: usdToCents(invoice.amountDueUsd),
+        currency: "usd",
+        description: `Stratum token-arbitrage fee (${invoice.periodStart} → ${invoice.periodEnd}; 20% of $${invoice.totalSavingsUsd.toFixed(2)} saved)`,
+        "metadata[org_id]": invoice.orgId,
+        "metadata[period_start]": invoice.periodStart,
+        "metadata[period_end]": invoice.periodEnd,
+      },
+      `${idem}|invoiceitem`,
+    );
+  }
 
   const created = await stripePost(cfg, "/v1/invoices", { customer: customerId, "metadata[org_id]": invoice.orgId, collection_method: "send_invoice", days_until_due: 15 }, `${idem}|invoice`);
   const invoiceId = String(created["id"]);

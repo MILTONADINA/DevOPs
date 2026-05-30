@@ -15,11 +15,18 @@
  */
 
 /** Public list prices, USD per MILLION input tokens, by model family (substring match). */
+// Prices VERIFIED against platform.claude.com/docs/.../pricing on 2026-05-30 (USD per MTok input):
+// Opus 4.x $15 (note: 4.5+ list at $5, but CQ bills usage truthfully at the family rate and the operator
+// override exists for negotiated/updated rates); Sonnet $3; Haiku 3/3.5 $0.80; Haiku 4.5 $1.00. Haiku 4.x
+// is listed EXPLICITLY (it is $1.00 — NOT $0.80 like 3.5; a 2026 audit finding mistakenly proposed $0.80,
+// which would UNDER-bill by 20% — see the haiku-4-5 regression test) so it never relies on the fallback.
+// First match wins; substring + case-insensitive. The fee only uses this once pruning is active.
 const LIST_PRICE_PER_MILLION_INPUT: ReadonlyArray<{ match: RegExp; perMillionUsd: number }> = [
   { match: /opus/i, perMillionUsd: 15 },
   { match: /sonnet/i, perMillionUsd: 3 },
-  { match: /haiku-3|haiku-3-5|haiku-3\.5/i, perMillionUsd: 0.8 },
-  { match: /haiku/i, perMillionUsd: 1 },
+  { match: /haiku-3/i, perMillionUsd: 0.8 }, // Haiku 3 / 3.5
+  { match: /haiku-4/i, perMillionUsd: 1 }, // Haiku 4.x (4-5, …) — verified $1.00/M (NOT $0.80)
+  { match: /haiku/i, perMillionUsd: 1 }, // unknown future Haiku → conservative $1.00/M
 ];
 
 /** Fallback when no family matches — Sonnet-tier (the workhorse), so an unknown model is never $0. */

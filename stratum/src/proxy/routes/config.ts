@@ -50,7 +50,11 @@ export function validateConfigPatch(body: unknown): { ok: true; patch: OrgConfig
     patch.lambda = b["lambda"];
   }
   if ("theta" in b) {
-    if (typeof b["theta"] !== "number" || !(b["theta"] > 0)) return { ok: false, error: "theta must be a number > 0" };
+    // Number.isFinite guard (mirrors gain_shift): without it, theta = 1e308 (valid JSON, > 0) is stored as
+    // effectively Infinity. When pruning activates, kadaneDialSpans uses `maxSum >= theta - 1e-9`, and
+    // `Infinity - 1e-9 === Infinity` is never satisfied → every turn pruned, conversation destroyed, fee
+    // inflated. Reject non-finite values at the API boundary so they can never persist.
+    if (typeof b["theta"] !== "number" || !Number.isFinite(b["theta"]) || !(b["theta"] > 0)) return { ok: false, error: "theta must be a finite number > 0" };
     patch.theta = b["theta"];
   }
   if ("gain_shift" in b) {

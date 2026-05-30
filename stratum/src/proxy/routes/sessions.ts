@@ -48,6 +48,12 @@ export interface SessionsDeps {
   countActiveSessions: (orgId: string) => Promise<number>;
   /** Create a new session for the org; returns it. */
   createSession: (orgId: string, model: string) => Promise<SessionSummary>;
+  /**
+   * Atomically create an explicit session ONLY if the org is under `limit` active explicit sessions;
+   * returns the new session, or null if already at/over the cap. Serializes concurrent creates per org
+   * (a DB advisory lock) so the cap cannot be raced — unlike a separate count-then-insert (TOCTOU).
+   */
+  createSessionIfUnderCap: (orgId: string, model: string, limit: number) => Promise<SessionSummary | null>;
 }
 
 function resolveOrg(req: FastifyRequest): string | undefined {
@@ -99,15 +105,17 @@ export function makeSessionsRoute(deps: SessionsDeps): FastifyPluginCallback {
       const plan = await deps.getPlan(orgId);
       if (plan === null) return err(reply, 404, "organization not found");
       const limit = planLimits(plan).concurrentSessions;
-      const active = await deps.countActiveSessions(orgId);
-      if (active >= limit) {
+      const body = (req.body ?? {}) as Record<string, unknown>;
+      const model = typeof body["model"] === "string" && body["model"] !== "" ? body["model"] : "claude-opus-4-8";
+      // ATOMIC cap check + insert (advisory-locked in the DB): a parallel pair of POSTs for the same org
+      // cannot both observe "active < limit" and both insert. The prior count-then-create was a TOCTOU
+      // window that let a starter org (cap 1) open N sessions by racing N concurrent requests.
+      const session = await deps.createSessionIfUnderCap(orgId, model, limit);
+      if (session === null) {
         return reply
           .code(429)
           .send({ type: "error", error: { type: "rate_limit_error", message: `concurrent session limit (${limit}) reached for plan '${plan}'`, limit_type: "concurrent_sessions" } });
       }
-      const body = (req.body ?? {}) as Record<string, unknown>;
-      const model = typeof body["model"] === "string" && body["model"] !== "" ? body["model"] : "claude-opus-4-8";
-      const session = await deps.createSession(orgId, model);
       return reply.code(201).send(session);
     });
 
@@ -137,13 +145,18 @@ const SESSION_COLS = "id, created_at, ended_at, model, lambda, gain_shift, theta
 /** Live session store over Supabase (sessions table + billing_records). */
 export function createSupabaseSessionsDeps(client: SupabaseClient): SessionsDeps {
   const getSession = async (orgId: string, id: string): Promise<SessionSummary | null> => {
-    const { data, error } = await client.from("sessions").select(SESSION_COLS).eq("id", id).eq("org_id", orgId).limit(1);
+    // kind='explicit' guard: a kind='usage' bucket id (observable to a client via billing_records.session_id)
+    // must be invisible here — so it can't be fetched, stat'd, or ENDED via DELETE (which would break that
+    // day's usage bucket). getSessionStats + endSession both scope-check through getSession, so this one
+    // guard covers all three.
+    const { data, error } = await client.from("sessions").select(SESSION_COLS).eq("id", id).eq("org_id", orgId).eq("kind", "explicit").limit(1);
     if (error) throw new Error(`getSession failed: ${error.message}`);
     return ((data ?? [])[0] as SessionSummary | undefined) ?? null;
   };
   return {
     async listSessions(orgId, limit) {
-      const { data, error } = await client.from("sessions").select(SESSION_COLS).eq("org_id", orgId).order("created_at", { ascending: false }).limit(limit);
+      // Only EXPLICIT sessions are client-facing; kind='usage' rows are internal daily billing buckets.
+      const { data, error } = await client.from("sessions").select(SESSION_COLS).eq("org_id", orgId).eq("kind", "explicit").order("created_at", { ascending: false }).limit(limit);
       if (error) throw new Error(`listSessions failed: ${error.message}`);
       return (data ?? []) as SessionSummary[];
     },
@@ -167,6 +180,27 @@ export function createSupabaseSessionsDeps(client: SupabaseClient): SessionsDeps
       const row = (data ?? [])[0] as SessionSummary | undefined;
       if (!row) throw new Error("createSession returned no row");
       return row;
+    },
+    async createSessionIfUnderCap(orgId, model, limit) {
+      // Atomic: create_session_if_under_cap (migration 20260530050000) takes a per-org advisory lock,
+      // re-counts active explicit sessions, and inserts only if under `limit` — all inside one DB call,
+      // so concurrent POSTs are serialized and the cap can't be raced. Empty result = at/over cap.
+      const { data, error } = await client.rpc("create_session_if_under_cap", { p_org_id: orgId, p_model: model, p_cap: limit });
+      if (error) throw new Error(`createSessionIfUnderCap failed: ${error.message}`);
+      const row = ((data ?? []) as Record<string, unknown>[])[0];
+      if (!row) return null;
+      // Map to the SessionSummary shape (the RPC returns the full row; keep the response columns stable).
+      return {
+        id: row["id"] as string,
+        created_at: row["created_at"] as string,
+        ended_at: (row["ended_at"] as string | null) ?? null,
+        model: row["model"] as string,
+        lambda: row["lambda"] as number,
+        gain_shift: row["gain_shift"] as number,
+        theta: row["theta"] as number,
+        zk_enabled: row["zk_enabled"] as boolean,
+        audit_enabled: row["audit_enabled"] as boolean,
+      };
     },
     async endSession(orgId, id) {
       // Scope-check first so a cross-org id is a clean 404, not a silent no-op update.

@@ -226,9 +226,14 @@ export function buildProxy(opts: BuildProxyOptions = {}): FastifyInstance {
     const status = typeof e.statusCode === "number" && e.statusCode >= 400 ? e.statusCode : 500;
     const type = status === 429 ? "rate_limit_error" : status >= 500 ? "internal_proxy_error" : "request_error";
     logger.error({ err: e.message, status }, "proxy error");
+    // 5xx messages must NOT reach the client: route deps wrap raw Supabase errors as
+    // `throw new Error("X failed: " + error.message)`, which can carry table/column/constraint names
+    // (schema disclosure). The full error is in the server log above; the client gets a generic string.
+    // 4xx messages are framework/validation-generated (rate-limit, the isoParam 400) and safe to surface.
+    const clientMessage = status >= 500 ? "an internal error occurred" : e.message;
     void reply.status(status).send({
       type: "error",
-      error: { type, message: e.message },
+      error: { type, message: clientMessage },
     });
   });
 
