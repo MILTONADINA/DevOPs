@@ -43,6 +43,7 @@ describe("buildStartOptions", () => {
     expect(opts.memory).toBeDefined();
     expect(opts.billing).toBeDefined();
     expect(opts.sessions).toBeDefined();
+    expect(opts.webhooks).toBeDefined();
     expect(opts.messages).toBe(base.messages); // base preserved
     expect(opts.dashboard).toBe(base.dashboard);
   });

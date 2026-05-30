@@ -57,6 +57,12 @@ Other opt-in proxy APIs (all org-scoped via the auth gate): **config** (`buildPr
 takes an injectable deps object (a fake in tests; a `createSupabase*Deps(client)` helper in prod)
 and is omitted by default.
 
+**Webhooks** (`buildProxy({ webhooks })`): `POST /v1/webhooks/test` sends a signed sample event
+(6 types per `docs/WEBHOOKS.md`) to the org's configured `webhook_url`. Every event carries an
+`X-CQ-Signature: sha256=<hmac>` header (HMAC-SHA256 of the body, per-org `webhook_secret`); delivery
+is **SSRF-guarded** (rejects localhost / private / cloud-metadata targets). Set the url + secret via
+`PATCH /v1/config`.
+
 **Commercial mode:** `CQ_COMMERCIAL=true npm run dev` (with Supabase creds set) boots the proxy
 with the multi-tenant auth gate (protecting `/v1/*`) + all of the above APIs wired over Supabase —
 mint a key with `npm run create-api-key`, then call `/v1/*` with `Authorization: Bearer <key>`.

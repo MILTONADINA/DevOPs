@@ -27,6 +27,7 @@ import { createSupabaseConfigDeps } from "./routes/config";
 import { createSupabaseMemoryDeps } from "./routes/memory";
 import { createSupabaseBillingDeps } from "./routes/billing";
 import { createSupabaseSessionsDeps } from "./routes/sessions";
+import { createSupabaseWebhookDeps } from "./routes/webhooks";
 
 dotenv.config();
 
@@ -63,6 +64,7 @@ export function buildStartOptions(env: StartEnv, base: BuildProxyOptions, makeCl
     opts.memory = createSupabaseMemoryDeps(client);
     opts.billing = createSupabaseBillingDeps(client);
     opts.sessions = createSupabaseSessionsDeps(client);
+    opts.webhooks = createSupabaseWebhookDeps(client);
   }
   return opts;
 }

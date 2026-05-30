@@ -19,6 +19,7 @@ import { makeBillingRoute, type BillingDeps } from "./routes/billing";
 import { makeConfigRoute, type ConfigDeps } from "./routes/config";
 import { makeMemoryRoute, type MemoryDeps } from "./routes/memory";
 import { makeSessionsRoute, type SessionsDeps } from "./routes/sessions";
+import { makeWebhookRoute, type WebhookDeps } from "./routes/webhooks";
 import { registerAuth, type AuthDeps } from "./auth";
 import type { MessagesDeps } from "./forward";
 
@@ -75,6 +76,11 @@ export interface BuildProxyOptions {
    * deploy supplies createSupabaseSessionsDeps(client).
    */
   sessions?: SessionsDeps;
+  /**
+   * The webhook API (POST /v1/webhooks/test). When omitted, not registered. The commercial deploy
+   * supplies createSupabaseWebhookDeps(client).
+   */
+  webhooks?: WebhookDeps;
 }
 
 /**
@@ -132,6 +138,10 @@ export function buildProxy(opts: BuildProxyOptions = {}): FastifyInstance {
 
   if (opts.sessions) {
     void app.register(makeSessionsRoute(opts.sessions));
+  }
+
+  if (opts.webhooks) {
+    void app.register(makeWebhookRoute(opts.webhooks));
   }
 
   app.setErrorHandler((err, _req, reply) => {
