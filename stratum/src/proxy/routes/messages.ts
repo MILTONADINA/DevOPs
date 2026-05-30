@@ -47,6 +47,28 @@ function captureRequest(body: MessagesBody): {
 }
 
 /**
+ * Per-org token-budget gate (commercial). Returns a 429 reply if the org is over its plan's
+ * token budget, else null (proceed). Fail-OPEN on a tracker error — never block legit traffic
+ * on a transient budget-lookup failure. Only active when a budget + an authenticated org exist.
+ */
+async function checkTokenBudget(deps: MessagesDeps, request: FastifyRequest, inputTokens: number, reply: FastifyReply): Promise<boolean> {
+  const orgId = request.orgId;
+  if (deps.tokenBudget === undefined || typeof orgId !== "string" || orgId === "") return false;
+  let verdict;
+  try {
+    verdict = await deps.tokenBudget.tryConsume(orgId, inputTokens);
+  } catch {
+    return false; // fail-open: never block legit traffic on a transient budget-lookup error
+  }
+  if (verdict.allowed) return false;
+  void reply.status(429).send({
+    type: "error",
+    error: { type: "rate_limit_error", message: `token budget exceeded (${verdict.limitType ?? "tokens"}; limit ${verdict.limit ?? 0})`, limit_type: verdict.limitType },
+  });
+  return true; // over budget — response sent
+}
+
+/**
  * Streaming branch: forward with SSE, tee each chunk to the client while
  * accumulating the event stream, then capture the (redacted) accumulated turn.
  */
@@ -57,6 +79,10 @@ async function handleStreaming(
   deps: MessagesDeps,
   start: number,
 ): Promise<FastifyReply> {
+  // Count + budget-check BEFORE forwarding (so an over-budget request never reaches upstream).
+  const tokens = await deps.countTokens(body).catch(() => ESTIMATED_FALLBACK);
+  if (await checkTokenBudget(deps, request, tokens.input_tokens, reply)) return reply;
+
   let sf;
   try {
     sf = await deps.forwardStream(body, deps.apiKey);
@@ -70,7 +96,6 @@ async function handleStreaming(
     return reply.status(sf.status).send(sf.data);
   }
 
-  const tokens = await deps.countTokens(body).catch(() => ESTIMATED_FALLBACK);
   const upstream = sf.stream;
 
   const out = new PassThrough();
@@ -166,6 +191,9 @@ export function makeMessagesRoute(deps: MessagesDeps): FastifyPluginCallback {
       } catch {
         tokens = { input_tokens: 0, token_count_method: "estimated" as const, message_breakdown: [] };
       }
+
+      // Per-org token-budget gate (commercial) — reject before forwarding if over budget.
+      if (await checkTokenBudget(deps, request, tokens.input_tokens, reply)) return reply;
 
       // Forward upstream. validateStatus:true means HTTP errors come back as a
       // result (not a throw); a throw here is a genuine network/transport error.

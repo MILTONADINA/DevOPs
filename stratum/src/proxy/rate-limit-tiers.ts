@@ -10,14 +10,18 @@ export interface PlanLimits {
   requestsPerMinute: number;
   requestsPerHour: number;
   concurrentSessions: number;
+  /** Input tokens sent to CQ per minute (pre-pruning). */
+  tokensPerMinute: number;
+  /** Input tokens per day (Infinity = unlimited). */
+  tokensPerDay: number;
 }
 
-/** Plan → limits (docs/RATE_LIMITS.md §CQ Proxy Rate Limits). Custom = generous negotiated defaults. */
+/** Plan → limits (docs/RATE_LIMITS.md §CQ Proxy Rate Limits + §Token Budget). Custom = generous defaults. */
 export const PLAN_RATE_LIMITS: Record<string, PlanLimits> = {
-  starter: { requestsPerMinute: 20, requestsPerHour: 500, concurrentSessions: 1 },
-  growth: { requestsPerMinute: 60, requestsPerHour: 2_000, concurrentSessions: 5 },
-  enterprise: { requestsPerMinute: 300, requestsPerHour: 10_000, concurrentSessions: 25 },
-  custom: { requestsPerMinute: 1_000, requestsPerHour: 50_000, concurrentSessions: 100 },
+  starter: { requestsPerMinute: 20, requestsPerHour: 500, concurrentSessions: 1, tokensPerMinute: 50_000, tokensPerDay: 1_000_000 },
+  growth: { requestsPerMinute: 60, requestsPerHour: 2_000, concurrentSessions: 5, tokensPerMinute: 200_000, tokensPerDay: 5_000_000 },
+  enterprise: { requestsPerMinute: 300, requestsPerHour: 10_000, concurrentSessions: 25, tokensPerMinute: 1_000_000, tokensPerDay: Number.POSITIVE_INFINITY },
+  custom: { requestsPerMinute: 1_000, requestsPerHour: 50_000, concurrentSessions: 100, tokensPerMinute: 5_000_000, tokensPerDay: Number.POSITIVE_INFINITY },
 };
 
 /** The limits for a plan, falling back to starter for an unknown plan. */

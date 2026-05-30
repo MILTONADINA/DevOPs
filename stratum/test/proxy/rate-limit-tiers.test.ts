@@ -14,7 +14,7 @@ describe("rate-limit tiers", () => {
     expect(planRequestsPerMinute("mystery")).toBe(20);
     expect(planLimits("mystery")).toEqual(PLAN_RATE_LIMITS["starter"]);
   });
-  test("limits include rph + concurrent sessions per the spec", () => {
-    expect(planLimits("growth")).toEqual({ requestsPerMinute: 60, requestsPerHour: 2_000, concurrentSessions: 5 });
+  test("limits include rph + concurrent sessions + token budgets per the spec", () => {
+    expect(planLimits("growth")).toEqual({ requestsPerMinute: 60, requestsPerHour: 2_000, concurrentSessions: 5, tokensPerMinute: 200_000, tokensPerDay: 5_000_000 });
   });
 });

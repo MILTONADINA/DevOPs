@@ -19,6 +19,7 @@ import { withRetry } from "./retry";
 import { createTokenCounter } from "./token-count";
 import { forwardStreamToAnthropic, type StreamForwardResult } from "./stream-forward";
 import { resolveTelemetrySink, type TelemetrySink } from "./telemetry";
+import type { TokenBudget } from "./token-budget";
 import type Anthropic from "@anthropic-ai/sdk";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
@@ -56,6 +57,8 @@ export interface MessagesDeps {
   apiKey: string;
   /** Per-turn telemetry sink (Q7 soft-dep). Default: structured-log fallback. */
   telemetry?: TelemetrySink;
+  /** Optional per-org token-budget limiter (commercial mode); checked before forwarding. */
+  tokenBudget?: TokenBudget;
 }
 
 /**

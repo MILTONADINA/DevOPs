@@ -28,6 +28,7 @@ import { createSupabaseMemoryDeps } from "./routes/memory";
 import { createSupabaseBillingDeps } from "./routes/billing";
 import { createSupabaseSessionsDeps } from "./routes/sessions";
 import { createSupabaseWebhookDeps } from "./routes/webhooks";
+import { createTokenBudget } from "./token-budget";
 
 dotenv.config();
 
@@ -65,11 +66,16 @@ export function buildStartOptions(env: StartEnv, base: BuildProxyOptions, makeCl
     opts.billing = createSupabaseBillingDeps(client);
     opts.sessions = createSupabaseSessionsDeps(client);
     opts.webhooks = createSupabaseWebhookDeps(client);
-    // Reuse the already-wired exact token counter from the messages deps.
-    if (base.messages !== undefined) opts.tokens = { countTokens: base.messages.countTokens };
     // Per-plan request rate limiting (reuse the billing deps' plan reader).
     const billing = opts.billing;
-    opts.rateLimitByPlan = { getPlan: async (orgId) => (await billing.getOrgPlan(orgId)) ?? "starter" };
+    const getPlan = async (orgId: string): Promise<string> => (await billing.getOrgPlan(orgId)) ?? "starter";
+    opts.rateLimitByPlan = { getPlan };
+    if (base.messages !== undefined) {
+      // Reuse the already-wired exact token counter for /v1/tokens/count.
+      opts.tokens = { countTokens: base.messages.countTokens };
+      // Per-org token-budget gate on /v1/messages (commercial).
+      base.messages.tokenBudget = createTokenBudget({ getPlan });
+    }
   }
   return opts;
 }

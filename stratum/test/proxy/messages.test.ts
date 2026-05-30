@@ -137,3 +137,35 @@ describe("POST /v1/messages — error handling", () => {
     expect(res.json().error.type).toBe("invalid_request_error");
   });
 });
+
+describe("POST /v1/messages — token-budget gate (commercial)", () => {
+  const resolve = (raw: string) => Promise.resolve(raw === "k" ? { orgId: "o1", keyId: "i" } : null);
+
+  test("over the per-org token budget → 429, BEFORE forwarding upstream", async () => {
+    let forwarded = false;
+    const { deps } = makeDeps({
+      forward: async () => {
+        forwarded = true;
+        return { status: 200, data: {} };
+      },
+    });
+    deps.tokenBudget = { tryConsume: () => Promise.resolve({ allowed: false, limitType: "tokens_per_minute", limit: 50_000, used: 50_000 }) };
+    app = buildProxy({ cors: false, messages: deps, auth: { resolve } });
+    await app.ready();
+
+    const res = await app.inject({ method: "POST", url: "/v1/messages", headers: { authorization: "Bearer k" }, payload: goodBody });
+    expect(res.statusCode).toBe(429);
+    expect(res.json().error.limit_type).toBe("tokens_per_minute");
+    expect(forwarded).toBe(false); // never reached upstream
+  });
+
+  test("under budget → forwards normally", async () => {
+    const { deps } = makeDeps();
+    deps.tokenBudget = { tryConsume: () => Promise.resolve({ allowed: true }) };
+    app = buildProxy({ cors: false, messages: deps, auth: { resolve } });
+    await app.ready();
+
+    const res = await app.inject({ method: "POST", url: "/v1/messages", headers: { authorization: "Bearer k" }, payload: goodBody });
+    expect(res.statusCode).toBe(200);
+  });
+});
