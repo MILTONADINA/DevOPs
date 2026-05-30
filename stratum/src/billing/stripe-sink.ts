@@ -10,6 +10,7 @@
  */
 
 import type { Invoice } from "../types/billing";
+import { sendStripeInvoice, type StripeFetch } from "./stripe";
 
 export interface InvoiceReceipt {
   /** The provider's invoice id (or a fake id under the fake sink). */
@@ -40,20 +41,36 @@ export function createFakeInvoiceSink(): FakeInvoiceSink {
   };
 }
 
+export interface StripeSinkOptions {
+  /** The Stripe secret key (an empty/absent key makes send() throw with guidance). */
+  secretKey: string;
+  /** Injected fetch (defaults to a global-fetch adapter). */
+  doFetch?: StripeFetch;
+  /** Allow a LIVE key. Default false — refuse sk_live_ until verified in test mode. */
+  allowLiveKey?: boolean;
+}
+
+/** Adapt the global fetch to the {@link StripeFetch} shape. */
+const defaultStripeFetch: StripeFetch = (url, init) => fetch(url, init).then((r) => ({ status: r.status, json: () => r.json() }));
+
 /**
- * The real Stripe sink — an intentionally GATED STUB. Sending a real invoice moves money; we do
- * not ship that path unverified. Implement the Stripe customer→invoice-item→invoice→finalize flow
- * and verify it end-to-end in Stripe TEST MODE (then a billing review) before enabling.
+ * The real Stripe sink — runs the customer → invoice-item → invoice → finalize flow (src/billing/stripe.ts).
+ * The request construction (incl. the dollars→cents conversion) is unit-tested via an injected fetch;
+ * the live API is gated on a Stripe TEST-MODE key, and a LIVE key is refused until explicitly verified.
  *
- * @returns an {@link InvoiceSink} whose `send` throws until that work is done.
+ * @param options - secret key + optional injected fetch + live-key guard.
+ * @returns an {@link InvoiceSink} backed by Stripe.
  */
-export function createStripeInvoiceSink(): InvoiceSink {
+export function createStripeInvoiceSink(options: StripeSinkOptions): InvoiceSink {
   return {
-    send(): Promise<InvoiceReceipt> {
-      return Promise.reject(
-        new Error(
-          "Stripe invoice sending is not implemented — gated on STRIPE_SECRET_KEY + verification against Stripe TEST MODE + a billing review. Refusing to ship unverified payment code (see src/pruner/crypto.ts precedent). The invoice ENGINE (generateInvoice/toAuditCsv) is complete and usable now.",
-        ),
+    send(invoice: Invoice): Promise<InvoiceReceipt> {
+      return sendStripeInvoice(
+        {
+          secretKey: options.secretKey,
+          doFetch: options.doFetch ?? defaultStripeFetch,
+          ...(options.allowLiveKey !== undefined ? { allowLiveKey: options.allowLiveKey } : {}),
+        },
+        invoice,
       );
     },
   };

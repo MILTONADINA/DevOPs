@@ -102,7 +102,7 @@ describe("invoice sinks", () => {
     expect(receipt.id).toMatch(/^fake_inv_/);
   });
 
-  test("the real Stripe sink is a gated stub — it rejects (no unverified payment code)", async () => {
-    await expect(createStripeInvoiceSink().send(inv)).rejects.toThrow(/not implemented|gated|STRIPE_SECRET_KEY/);
+  test("the real Stripe sink rejects without a key (gated)", async () => {
+    await expect(createStripeInvoiceSink({ secretKey: "" }).send(inv)).rejects.toThrow(/STRIPE_SECRET_KEY is empty/);
   });
 });

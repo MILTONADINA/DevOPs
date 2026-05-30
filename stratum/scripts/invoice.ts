@@ -92,7 +92,7 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
   if (args.send) {
     out("");
     try {
-      const receipt = await createStripeInvoiceSink().send(invoice);
+      const receipt = await createStripeInvoiceSink({ secretKey: process.env["STRIPE_SECRET_KEY"] ?? "" }).send(invoice);
       out(`Sent: ${receipt.id} (${receipt.status}, $${receipt.amountUsd.toFixed(2)}).`);
     } catch (e) {
       out(`--send not available: ${e instanceof Error ? e.message : String(e)}`);
