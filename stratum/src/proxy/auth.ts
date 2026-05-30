@@ -68,8 +68,14 @@ export function resolveApiKeyVia(client: SupabaseClient): ApiKeyResolver {
 export interface AuthDeps {
   /** How to resolve a key → org (Supabase-backed in prod, a fake in tests). */
   resolve: ApiKeyResolver;
-  /** Paths that bypass auth — liveness etc. (default ["/health"]). */
+  /** Paths that always bypass auth — liveness etc. (default ["/health"]). */
   publicPaths?: string[];
+  /**
+   * If set, ONLY paths starting with one of these prefixes are gated (everything else is public) —
+   * lets a mixed server protect its APIs (e.g. ["/v1/"]) while leaving /health + HTML pages open.
+   * When unset, every non-public path is gated.
+   */
+  protectedPrefixes?: string[];
 }
 
 function unauthorized(reply: FastifyReply, message: string): FastifyReply {
@@ -85,9 +91,11 @@ function unauthorized(reply: FastifyReply, message: string): FastifyReply {
  */
 export function registerAuth(app: FastifyInstance, deps: AuthDeps): void {
   const publicPaths = new Set(deps.publicPaths ?? ["/health"]);
+  const prefixes = deps.protectedPrefixes;
   app.addHook("onRequest", async (req: FastifyRequest, reply: FastifyReply) => {
     const path = (req.url.split("?")[0] ?? req.url);
     if (publicPaths.has(path)) return;
+    if (prefixes !== undefined && !prefixes.some((p) => path.startsWith(p))) return; // not a protected prefix → public
     const raw = extractApiKey(req.headers as Record<string, unknown>);
     if (raw === undefined) return unauthorized(reply, "missing API key (send Authorization: Bearer <key> or x-api-key)");
     const resolved = await deps.resolve(raw);

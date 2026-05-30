@@ -57,6 +57,11 @@ Other opt-in proxy APIs (all org-scoped via the auth gate): **config** (`buildPr
 takes an injectable deps object (a fake in tests; a `createSupabase*Deps(client)` helper in prod)
 and is omitted by default.
 
+**Commercial mode:** `CQ_COMMERCIAL=true npm run dev` (with Supabase creds set) boots the proxy
+with the multi-tenant auth gate (protecting `/v1/*`) + all of the above APIs wired over Supabase —
+mint a key with `npm run create-api-key`, then call `/v1/*` with `Authorization: Bearer <key>`.
+Without the flag, the proxy is the unauthenticated Phase-1 personal measurement server (unchanged).
+
 `npm run create-api-key -- --org-id <uuid> --name "<label>" [--env test]` mints a multi-tenant
 API key, stores **only its SHA-256 hash** in `api_keys` (a DB leak never exposes usable keys),
 and prints the raw key once. The proxy enforces it when `buildProxy({ auth })` is supplied
