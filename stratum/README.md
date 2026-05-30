@@ -30,6 +30,20 @@ CQ acts as a **Semantic Surgeon** — a deterministic proxy that:
 
 ---
 
+## Status — what runs today
+
+A working build, not a sketch. On the current branch:
+
+- **Proxy** — a Fastify server (`npm run dev`) with token measurement + a waste dashboard (Phase 1, personal use), plus an opt-in **commercial mode** (`CQ_COMMERCIAL=true`) with multi-tenant API-key auth (hash-only) and org-scoped `/v1/{config,memory,billing,sessions}` APIs over Supabase.
+- **Memory** — the three tiers are live on Supabase (hot RAM · warm fact tables · cold pgvector + knowledge graph, per ADR-0013); Pinecone/Neo4j remain swappable seams.
+- **Pruner** — CQ-Extended KadaneDial + a local ONNX encoder, built + eval-harnessed, but **not yet in the request path** (it ships only after a published Tier-A eval passes <5% faithfulness degradation — constitution).
+- **Audit** — deterministic Git-attestation (Tier-1) runs free (`npm run audit:repo`, `audit:conflicts`); the Llama/Opus tiers are gated on credits.
+- **Billing** — the token-arbitrage engine (20% of savings), HMAC-signed append-only records, invoice + CFO dashboard + audit CSV (`npm run invoice` / `verify-billing`); the Stripe send is a gated stub (no unverified payment code).
+
+Full operator + API surface: [`docs/MEMORY_AND_EVAL_COMMANDS.md`](docs/MEMORY_AND_EVAL_COMMANDS.md). **Gated on external inputs:** Anthropic credits (judged eval ship-decision · audit Tier-2/3 · live ingestion) · AWS Nitro TEE + a security review (ZK-Context crypto) · Stripe + a design partner (first paid invoice).
+
+---
+
 ## Quick Start
 
 ```bash
@@ -47,6 +61,15 @@ export ANTHROPIC_BASE_URL=http://localhost:4080
 ```
 
 Waste dashboard: `http://localhost:4080/dashboard`
+
+**Commercial (multi-tenant) mode** — set `SUPABASE_URL` + `SUPABASE_SERVICE_KEY` in `.env`, then:
+
+```bash
+npm run setup                                  # validate env + report which tiers are live
+CQ_COMMERCIAL=true npm run dev                 # multi-tenant proxy: /v1/* requires an API key
+npm run create-api-key -- --org-id <uuid> --name "my key"
+# then: curl -H "Authorization: Bearer <key>" http://localhost:4080/v1/config
+```
 
 ---
 
@@ -148,11 +171,11 @@ Waste dashboard: `http://localhost:4080/dashboard`
 
 | Layer | Technology |
 |---|---|
-| Edge proxy | Cloudflare Workers + Durable Objects |
+| Proxy server | Fastify (Node) today; Cloudflare Workers + Durable Objects is the roadmap edge target |
 | Language | TypeScript (proxy, billing) · Rust (hot-path string ops) |
 | Client pruner | ONNX Runtime (<10ms local inference) |
 | Warm storage | Supabase (Postgres) |
-| Cold storage | Pinecone (vector index) + Neo4j (knowledge graph) |
+| Cold storage | Supabase pgvector + a Postgres knowledge graph (ADR-0013; Pinecone/Neo4j are swappable seams) |
 | Audit models | Llama 4-8B (spot-check) · Claude Opus (escalation) |
 | Security | AWS Nitro Enclaves (TEE) · AES-256-GCM (client encryption) |
 
