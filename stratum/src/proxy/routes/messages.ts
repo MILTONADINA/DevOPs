@@ -77,6 +77,19 @@ async function checkTokenBudget(deps: MessagesDeps, request: FastifyRequest, inp
 }
 
 /**
+ * Best-effort commercial usage persistence (writes a signed billing_record to Supabase). Fire-and-forget
+ * + fail-open: invoked AFTER a successful forward so it never adds latency to or fails the proxied
+ * response. No-op unless an authenticated org + a recorder exist and the count is > 0.
+ */
+function recordUsageSafe(deps: MessagesDeps, request: FastifyRequest, model: string, inputTokens: number, outputTokens: number): void {
+  const orgId = request.orgId;
+  if (deps.recordUsage === undefined || typeof orgId !== "string" || orgId === "" || !(inputTokens > 0)) return;
+  void deps.recordUsage({ orgId, model, inputTokens, outputTokens }).catch((e: unknown) => {
+    request.log?.error?.({ err: (e as Error).message }, "usage record failed (non-blocking)");
+  });
+}
+
+/**
  * Streaming branch: forward with SSE, tee each chunk to the client while
  * accumulating the event stream, then capture the (redacted) accumulated turn.
  */
@@ -159,6 +172,7 @@ async function handleStreaming(
         },
         deps.telemetry,
       );
+      recordUsageSafe(deps, request, body.model, tokens.input_tokens, outputTokensOf(message));
       out.end();
     }
   })();
@@ -244,6 +258,7 @@ export function makeMessagesRoute(deps: MessagesDeps): FastifyPluginCallback {
         },
         deps.telemetry,
       );
+      recordUsageSafe(deps, request, body.model, tokens.input_tokens, outputTokensOf(forwarded.data));
 
       // nosemgrep: javascript.express.security.audit.xss.direct-response-write.direct-response-write -- FALSE POSITIVE: transparent JSON proxy. Forwards the upstream Anthropic response (Fastify sends it as application/json) to the Claude Code CLI client; never HTML rendered in a browser, so no XSS surface. The "user input" is the upstream provider's own JSON, not attacker markup.
       return reply.send(forwarded.data);

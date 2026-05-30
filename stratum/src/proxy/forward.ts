@@ -20,6 +20,7 @@ import { createTokenCounter } from "./token-count";
 import { forwardStreamToAnthropic, type StreamForwardResult } from "./stream-forward";
 import { resolveTelemetrySink, type TelemetrySink } from "./telemetry";
 import type { TokenBudget } from "./token-budget";
+import type { UsageEvent } from "../billing/usage-recorder";
 import type Anthropic from "@anthropic-ai/sdk";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
@@ -59,6 +60,12 @@ export interface MessagesDeps {
   telemetry?: TelemetrySink;
   /** Optional per-org token-budget limiter (commercial mode); checked before forwarding. */
   tokenBudget?: TokenBudget;
+  /**
+   * Optional commercial usage persistence (writes a signed billing_record per request to Supabase so a
+   * design partner sees their usage + the invoice has a basis). Best-effort + fail-open — never blocks
+   * or fails a proxied response. Only meaningful with an authenticated org (req.orgId).
+   */
+  recordUsage?: (event: UsageEvent) => Promise<void>;
 }
 
 /**

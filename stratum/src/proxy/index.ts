@@ -29,6 +29,7 @@ import { createSupabaseBillingDeps } from "./routes/billing";
 import { createSupabaseSessionsDeps } from "./routes/sessions";
 import { createSupabaseWebhookDeps } from "./routes/webhooks";
 import { createSupabaseStripeWebhookDeps } from "./routes/stripe-webhook";
+import { createSupabaseUsageRecorder } from "../billing/usage-recorder";
 import { createTokenBudget } from "./token-budget";
 import { createSupabaseHealthCheck } from "./routes/health";
 
@@ -40,6 +41,8 @@ export interface StartEnv {
   SUPABASE_SERVICE_KEY?: string | undefined;
   /** Stripe endpoint signing secret (whsec_…). When set in commercial mode, wires POST /stripe/webhook. */
   STRIPE_WEBHOOK_SECRET?: string | undefined;
+  /** Dedicated billing-record signing secret. When set in commercial mode, the request path persists usage. */
+  CQ_BILLING_SIGNING_SECRET?: string | undefined;
 }
 
 /**
@@ -97,6 +100,11 @@ export function buildStartOptions(env: StartEnv, base: BuildProxyOptions, makeCl
       opts.tokens = { countTokens: base.messages.countTokens };
       // Per-org token-budget gate on /v1/messages (commercial).
       base.messages.tokenBudget = createTokenBudget({ getPlan });
+      // Persist each request's usage to Supabase (signed billing_record) so a partner sees their
+      // activity + the invoice has a basis. Needs the dedicated billing-signing secret.
+      if (typeof env.CQ_BILLING_SIGNING_SECRET === "string" && env.CQ_BILLING_SIGNING_SECRET !== "") {
+        base.messages.recordUsage = createSupabaseUsageRecorder({ client, signingSecret: env.CQ_BILLING_SIGNING_SECRET }).recordUsage;
+      }
     }
   }
   return opts;
@@ -115,6 +123,7 @@ export async function start(): Promise<void> {
     SUPABASE_URL: process.env["SUPABASE_URL"],
     SUPABASE_SERVICE_KEY: process.env["SUPABASE_SERVICE_KEY"],
     STRIPE_WEBHOOK_SECRET: process.env["STRIPE_WEBHOOK_SECRET"],
+    CQ_BILLING_SIGNING_SECRET: process.env["CQ_BILLING_SIGNING_SECRET"],
   };
   const base: BuildProxyOptions = {
     messages: createDefaultMessagesDeps(),
