@@ -35,18 +35,50 @@ export function encodeForm(params: Record<string, string | number>): string {
     .join("&");
 }
 
-async function stripePost(cfg: StripeConfig, path: string, params: Record<string, string | number>): Promise<Record<string, unknown>> {
-  const r = await cfg.doFetch(`https://api.stripe.com${path}`, {
-    method: "POST",
-    headers: { authorization: `Bearer ${cfg.secretKey}`, "content-type": "application/x-www-form-urlencoded" },
-    body: encodeForm(params),
-  });
+async function stripePost(cfg: StripeConfig, path: string, params: Record<string, string | number>, idempotencyKey?: string): Promise<Record<string, unknown>> {
+  const headers: Record<string, string> = { authorization: `Bearer ${cfg.secretKey}`, "content-type": "application/x-www-form-urlencoded" };
+  // Stripe dedups a retried POST carrying the same Idempotency-Key (24h window): a re-run for the same
+  // org+period returns the ORIGINAL object instead of creating a duplicate customer / invoiceitem / invoice.
+  // This is THE canonical double-charge defense (Stripe API: "Idempotent requests"). Without it, a network
+  // retry after the request was accepted, a crash-restart, or an accidental re-run sends a SECOND real invoice.
+  if (idempotencyKey !== undefined) headers["idempotency-key"] = idempotencyKey;
+  const r = await cfg.doFetch(`https://api.stripe.com${path}`, { method: "POST", headers, body: encodeForm(params) });
   const body = (await r.json()) as Record<string, unknown>;
   if (r.status >= 400) {
     const message = (body["error"] as { message?: string } | undefined)?.message ?? `HTTP ${r.status}`;
     throw new Error(`Stripe ${path} failed: ${message}`);
   }
   return body;
+}
+
+async function stripeGet(cfg: StripeConfig, path: string): Promise<Record<string, unknown>> {
+  const r = await cfg.doFetch(`https://api.stripe.com${path}`, { method: "GET", headers: { authorization: `Bearer ${cfg.secretKey}` }, body: "" });
+  const body = (await r.json()) as Record<string, unknown>;
+  if (r.status >= 400) {
+    const message = (body["error"] as { message?: string } | undefined)?.message ?? `HTTP ${r.status}`;
+    throw new Error(`Stripe ${path} failed: ${message}`);
+  }
+  return body;
+}
+
+/**
+ * Resolve the org's Stripe customer: find the existing one (by org_id metadata) or create it.
+ * Without this lookup, every send POSTs a NEW customer for the same org — duplicate customers, each
+ * accruing their own invoices, which defeats Stripe's per-customer dedup and fragments the billing
+ * history so the audit trail can't be reconstructed from Stripe alone.
+ *
+ * @param cfg - the Stripe config (key + injected fetch).
+ * @param orgId - the org whose customer to resolve.
+ * @returns the Stripe customer id (existing or freshly created).
+ */
+async function findOrCreateCustomer(cfg: StripeConfig, orgId: string): Promise<string> {
+  const query = `metadata['org_id']:'${orgId}'`;
+  const found = await stripeGet(cfg, `/v1/customers/search?query=${encodeURIComponent(query)}&limit=1`);
+  const data = found["data"] as Array<{ id?: unknown }> | undefined;
+  if (Array.isArray(data) && data.length > 0 && typeof data[0]?.id === "string") return data[0]!.id;
+  // Not found — create (keyed on org so a within-window retry of the FIRST create also dedups).
+  const created = await stripePost(cfg, "/v1/customers", { "metadata[org_id]": orgId, description: `Stratum org ${orgId}` }, `stratum-customer-${orgId}`);
+  return String(created["id"]);
 }
 
 /**
@@ -62,20 +94,28 @@ export async function sendStripeInvoice(cfg: StripeConfig, invoice: Invoice): Pr
   if (cfg.secretKey.startsWith("sk_live_") && cfg.allowLiveKey !== true) {
     throw new Error("refusing a LIVE Stripe key (sk_live_): verify the flow in TEST MODE first, then pass allowLiveKey to enable real charges");
   }
+  // Never create Stripe state for a non-positive amount. Stripe rejects a $0 invoiceitem — but only AFTER
+  // the customer POST succeeds, leaving an orphaned customer with no invoice. A $0 amount (a starter/custom
+  // org with no savings yet) is "nothing to bill", not a charge: fail BEFORE any API call so no state leaks.
+  if (!(invoice.amountDueUsd > 0)) {
+    throw new Error(`invoice for org ${invoice.orgId} has amountDueUsd=$${invoice.amountDueUsd.toFixed(2)} — nothing to charge (no Stripe call made)`);
+  }
 
-  const customer = await stripePost(cfg, "/v1/customers", { "metadata[org_id]": invoice.orgId, description: `Stratum org ${invoice.orgId}` });
-  const customerId = String(customer["id"]);
+  // Deterministic idempotency base: a re-send for the same org + period collapses to a no-op on Stripe's
+  // side (within the 24h window) rather than minting a second invoice. period bounds are stable labels.
+  const idem = `${invoice.orgId}|${invoice.periodStart}|${invoice.periodEnd}`;
+  const customerId = await findOrCreateCustomer(cfg, invoice.orgId);
 
   await stripePost(cfg, "/v1/invoiceitems", {
     customer: customerId,
     amount: usdToCents(invoice.amountDueUsd),
     currency: "usd",
     description: `Stratum token-arbitrage fee (${invoice.periodStart} → ${invoice.periodEnd}; 20% of $${invoice.totalSavingsUsd.toFixed(2)} saved)`,
-  });
+  }, `${idem}|invoiceitem`);
 
-  const created = await stripePost(cfg, "/v1/invoices", { customer: customerId, "metadata[org_id]": invoice.orgId, collection_method: "send_invoice", days_until_due: 15 });
+  const created = await stripePost(cfg, "/v1/invoices", { customer: customerId, "metadata[org_id]": invoice.orgId, collection_method: "send_invoice", days_until_due: 15 }, `${idem}|invoice`);
   const invoiceId = String(created["id"]);
 
-  const finalized = await stripePost(cfg, `/v1/invoices/${invoiceId}/finalize`, {});
+  const finalized = await stripePost(cfg, `/v1/invoices/${invoiceId}/finalize`, {}, `${idem}|finalize`);
   return { id: invoiceId, status: String(finalized["status"] ?? "open"), amountUsd: invoice.amountDueUsd };
 }

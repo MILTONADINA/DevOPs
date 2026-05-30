@@ -86,12 +86,18 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
   if (records.length === 0) out("\n(no billing records in range — pruning has not run in the request path yet; this is the engine, ready ahead of activation.)");
 
   if (args.csv !== undefined) {
-    writeFileSync(args.csv, toAuditCsv(records), "utf8");
+    writeFileSync(args.csv, toAuditCsv(records, invoice), "utf8");
     out(`\nAudit trail (${records.length} record(s)) → ${args.csv}`);
   }
 
   if (args.send) {
     out("");
+    // A $0 amount-due (starter/custom org with no savings yet) is "nothing to bill", an EXPECTED state —
+    // not a delivery failure. Skip the Stripe send cleanly (exit 0) instead of letting the sink throw.
+    if (!(invoice.amountDueUsd > 0)) {
+      out(`--send skipped: amount due is $${invoice.amountDueUsd.toFixed(2)} — nothing to charge for org ${args.orgId}.`);
+      return 0;
+    }
     try {
       const receipt = await createStripeInvoiceSink({ secretKey: process.env["STRIPE_SECRET_KEY"] ?? "" }).send(invoice);
       out(`Sent: ${receipt.id} (${receipt.status}, $${receipt.amountUsd.toFixed(2)}).`);

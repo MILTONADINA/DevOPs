@@ -49,7 +49,27 @@ describe("generateInvoice", () => {
     expect(inv.rawFeeUsd).toBe(0.26); // round2(0.255)
     expect(inv.amountDueUsd).toBe(0.26); // starter minimum $0 → the fee
     expect(inv.lineItems).toHaveLength(2);
-    expect(inv.lineItems[0]).toMatchObject({ sessionId: "s1", savingsUsd: 0.64, feeUsd: 0.13 });
+    // Line items carry RAW per-session values (not round2) so they reconcile with the total.
+    expect(inv.lineItems[0]).toMatchObject({ sessionId: "s1", savingsUsd: 0.6375, feeUsd: 0.1275 });
+  });
+
+  test("line-item fees reconcile with the total (no per-line rounding divergence)", () => {
+    // 20 records each at $0.005: Σ(round2(0.005)) = 20×0.01 = 0.20, but round2(Σ) = round2(0.10) = 0.10.
+    // Rounding lines independently would diverge; raw lines must sum to the pre-round fee accumulation.
+    const recs: BillableRecord[] = Array.from({ length: 20 }, (_, i) => ({
+      session_id: `s${i}`,
+      original_tokens: 1000,
+      quarantined_tokens: 500,
+      cost_delta_usd: 0.025,
+      cq_fee_usd: 0.005,
+      signed_hash: `h${i}`,
+    }));
+    const inv = generateInvoice("org1", "starter", recs, "a", "b");
+    const lineFeeSum = inv.lineItems.reduce((s, l) => s + l.feeUsd, 0);
+    const lineSavingsSum = inv.lineItems.reduce((s, l) => s + l.savingsUsd, 0);
+    expect(lineFeeSum).toBeCloseTo(0.1, 9); // Σ raw lines = 0.10, NOT 0.20
+    expect(Math.round(lineFeeSum * 100) / 100).toBe(inv.rawFeeUsd); // reconciles with the charged total
+    expect(Math.round(lineSavingsSum * 100) / 100).toBe(inv.totalSavingsUsd);
   });
 
   test("the monthly minimum floors the amount due (growth plan, tiny usage)", () => {
@@ -79,6 +99,26 @@ describe("toAuditCsv", () => {
   test("escapes a field containing a comma", () => {
     const csv = toAuditCsv([{ session_id: "a,b", original_tokens: 1, quarantined_tokens: 0, cost_delta_usd: 0, cq_fee_usd: 0 }]);
     expect(csv.split("\n")[1]).toBe('"a,b",1,0,0,0,'); // quoted; empty hash trailing
+  });
+
+  test("appends a __SUMMARY__ row reconciling Σ(fees) → amount due (incl. the plan-minimum floor)", () => {
+    // growth plan ($99 minimum) with tiny fees → the floor applies; the CSV must record it so a
+    // customer summing cq_fee_usd ($0.255) can still reconcile to the $99 charged.
+    const recs: BillableRecord[] = [
+      { session_id: "s1", original_tokens: 50_000, quarantined_tokens: 7_500, cost_delta_usd: 0.6375, cq_fee_usd: 0.1275, signed_hash: "h1" },
+      { session_id: "s2", original_tokens: 50_000, quarantined_tokens: 7_500, cost_delta_usd: 0.6375, cq_fee_usd: 0.1275, signed_hash: "h2" },
+    ];
+    const inv = generateInvoice("org1", "growth", recs, "2026-05-01", "2026-05-31");
+    const csv = toAuditCsv(recs, inv);
+    const lines = csv.split("\n");
+    const summary = lines[lines.length - 1]!;
+    expect(summary.startsWith("__SUMMARY__,")).toBe(true);
+    expect(summary).toContain("plan=growth");
+    expect(summary).toContain("monthly_minimum_usd=99");
+    expect(summary).toContain("raw_fee_usd=0.26"); // round2(0.255)
+    expect(summary).toContain("amount_due_usd=99"); // floored to the plan minimum
+    // Without the invoice arg, no summary row (backward compatible).
+    expect(toAuditCsv(recs).split("\n")).toHaveLength(3); // header + 2 records, no summary
   });
 });
 

@@ -38,15 +38,22 @@ const INVOICE: Invoice = {
   lineItems: [],
 };
 
-function fakeStripe(opts: { errorAt?: string } = {}): { doFetch: StripeFetch; calls: { url: string; body: string }[] } {
-  const calls: { url: string; body: string }[] = [];
+interface Call {
+  url: string;
+  body: string;
+  headers: Record<string, string>;
+  method: string;
+}
+function fakeStripe(opts: { errorAt?: string; existingCustomer?: string } = {}): { doFetch: StripeFetch; calls: Call[] } {
+  const calls: Call[] = [];
   const doFetch: StripeFetch = (url, init) => {
-    calls.push({ url, body: init.body });
+    calls.push({ url, body: init.body, headers: init.headers, method: init.method });
     if (opts.errorAt !== undefined && url.includes(opts.errorAt)) {
       return Promise.resolve({ status: 402, json: () => Promise.resolve({ error: { message: "card_declined" } }) });
     }
     let json: unknown = {};
-    if (url.endsWith("/finalize")) json = { id: "in_1", status: "open" };
+    if (url.includes("/v1/customers/search")) json = { data: opts.existingCustomer !== undefined ? [{ id: opts.existingCustomer }] : [] };
+    else if (url.endsWith("/finalize")) json = { id: "in_1", status: "open" };
     else if (url.includes("/v1/customers")) json = { id: "cus_1" };
     else if (url.includes("/v1/invoiceitems")) json = { id: "ii_1" };
     else if (url.includes("/v1/invoices")) json = { id: "in_1", status: "draft" };
@@ -55,22 +62,52 @@ function fakeStripe(opts: { errorAt?: string } = {}): { doFetch: StripeFetch; ca
   return { doFetch, calls };
 }
 
+/** The path (no query) of each call, in order. */
+const paths = (calls: Call[]): string[] => calls.map((c) => c.url.replace("https://api.stripe.com", "").split("?")[0]!);
+
 describe("sendStripeInvoice", () => {
-  test("runs customer → invoice-item (amount in CENTS) → invoice → finalize, and returns the receipt", async () => {
+  test("search → create customer → invoice-item (amount in CENTS) → invoice → finalize, and returns the receipt", async () => {
     const { doFetch, calls } = fakeStripe();
     const receipt = await sendStripeInvoice({ secretKey: "sk_test_x", doFetch }, INVOICE);
 
-    expect(calls.map((c) => c.url.replace("https://api.stripe.com", ""))).toEqual([
-      "/v1/customers",
+    expect(paths(calls)).toEqual([
+      "/v1/customers/search", // lookup-or-create: search by org_id metadata first
+      "/v1/customers", // not found → create
       "/v1/invoiceitems",
       "/v1/invoices",
       "/v1/invoices/in_1/finalize",
     ]);
-    const item = new URLSearchParams(calls[1]!.body);
+    const item = new URLSearchParams(calls[2]!.body);
     expect(item.get("amount")).toBe("6304"); // $63.04 → 6304 cents (NOT 63 or 6304.0)
     expect(item.get("currency")).toBe("usd");
     expect(item.get("customer")).toBe("cus_1");
     expect(receipt).toEqual({ id: "in_1", status: "open", amountUsd: 63.04 });
+  });
+
+  test("every mutating POST carries a deterministic Idempotency-Key (retry → no duplicate charge)", async () => {
+    const { doFetch, calls } = fakeStripe();
+    await sendStripeInvoice({ secretKey: "sk_test_x", doFetch }, INVOICE);
+    const keyFor = (pathPart: string): string | undefined => calls.find((c) => c.url.includes(pathPart) && c.method === "POST")?.headers["idempotency-key"];
+    expect(keyFor("/v1/customers")).toBe("stratum-customer-o1"); // org-scoped (period-independent)
+    expect(keyFor("/v1/invoiceitems")).toBe("o1|2026-04|(now)|invoiceitem"); // org+period scoped
+    expect(keyFor("/v1/invoices")).toBe("o1|2026-04|(now)|invoice");
+    expect(calls.find((c) => c.url.endsWith("/finalize"))?.headers["idempotency-key"]).toBe("o1|2026-04|(now)|finalize");
+    // the search is a GET and carries no idempotency key
+    expect(calls.find((c) => c.url.includes("/v1/customers/search"))?.method).toBe("GET");
+  });
+
+  test("an EXISTING customer is reused (no duplicate customer created on re-run)", async () => {
+    const { doFetch, calls } = fakeStripe({ existingCustomer: "cus_existing" });
+    await sendStripeInvoice({ secretKey: "sk_test_x", doFetch }, INVOICE);
+    expect(paths(calls)).toEqual(["/v1/customers/search", "/v1/invoiceitems", "/v1/invoices", "/v1/invoices/in_1/finalize"]);
+    expect(paths(calls)).not.toContain("/v1/customers"); // create skipped
+    expect(new URLSearchParams(calls[1]!.body).get("customer")).toBe("cus_existing");
+  });
+
+  test("a $0 amount-due is refused BEFORE any Stripe call (no orphaned customer)", async () => {
+    const { doFetch, calls } = fakeStripe();
+    await expect(sendStripeInvoice({ secretKey: "sk_test_x", doFetch }, { ...INVOICE, amountDueUsd: 0 })).rejects.toThrow(/nothing to charge/);
+    expect(calls).toHaveLength(0); // not even the customer search ran
   });
 
   test("a Stripe API error is surfaced (with the Stripe message), not swallowed", async () => {

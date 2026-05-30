@@ -208,10 +208,15 @@ export function makeBillingRoute(deps: BillingDeps): FastifyPluginCallback {
       if (orgId === undefined) return err(reply, 400, "request_error", "org id required (authenticate, or pass ?org-id)");
       const plan = await deps.getOrgPlan(orgId);
       if (plan === null) return err(reply, 404, "request_error", "organization not found");
-      const records = await deps.listBillingRecords(orgId, isoParam(req, "since"), isoParam(req, "until"));
+      const since = isoParam(req, "since");
+      const until = isoParam(req, "until");
+      const records = await deps.listBillingRecords(orgId, since, until);
+      // Pass the computed invoice so the CSV carries the reconciliation summary (the plan-minimum floor) —
+      // without it a floored invoice's fee column would not sum to the amount charged (dispute-proof contract).
+      const invoice = generateInvoice(orgId, plan, records, since ?? "(all time)", until ?? "(now)");
       void reply.header("content-type", "text/csv; charset=utf-8");
       void reply.header("content-disposition", `attachment; filename="audit-${orgId.slice(0, 8)}.csv"`);
-      return reply.send(toAuditCsv(records));
+      return reply.send(toAuditCsv(records, invoice));
     });
 
     // GET /v1/billing/summary — the monthly summary (docs/API_REFERENCE.md). `?month=YYYY-MM`
