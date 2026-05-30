@@ -10,7 +10,7 @@ vi.unmock("@fastify/cors");
 
 const { buildProxy } = await import("../../src/proxy/app");
 const captureMod = await import("../../src/proxy/capture");
-import type { MessagesDeps, ForwardResult, TokenCountResult } from "../../src/proxy/forward";
+import type { MessagesDeps, ForwardResult, TokenCountResult, StreamForwardResult } from "../../src/proxy/forward";
 import type { UsageEvent } from "../../src/billing/usage-recorder";
 
 let app: FastifyInstance | undefined;
@@ -69,5 +69,26 @@ describe("commercial usage persistence on /v1/messages", () => {
     const res = await post();
     expect(res.statusCode).toBe(200); // the response still succeeds despite the recorder throwing
     expect(res.json()).toMatchObject({ usage: { output_tokens: 42 } });
+  });
+
+  test("the STREAMING branch records usage too (the path Claude Code actually uses)", async () => {
+    const calls: UsageEvent[] = [];
+    async function* chunks(): AsyncGenerator<string> {
+      yield 'event: message_start\ndata: {"type":"message_start","message":{"id":"m","role":"assistant","usage":{"input_tokens":5,"output_tokens":1}}}\n\n';
+      yield 'event: message_delta\ndata: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":4}}\n\n';
+      yield 'event: message_stop\ndata: {"type":"message_stop"}\n\n';
+    }
+    const streamDeps: MessagesDeps = {
+      ...deps({ recordUsage: async (e) => void calls.push(e) }),
+      countTokens: async (): Promise<TokenCountResult> => ({ input_tokens: 5, token_count_method: "exact", message_breakdown: [] }),
+      forwardStream: async (): Promise<StreamForwardResult> => ({ status: 200, stream: chunks() }),
+    };
+    app = buildProxy({ cors: false, rateLimit: false, auth: AUTH, messages: streamDeps });
+    await app.ready();
+    const res = await post({ ...BODY, stream: true });
+    expect(res.statusCode).toBe(200);
+    // recordUsageSafe runs in the stream's finally (before out.end()), so by the time inject resolves
+    // the response stream has completed and usage was recorded with the accumulated output tokens.
+    expect(calls).toEqual([{ orgId: "org-7", model: "claude-sonnet-4-6", inputTokens: 5, outputTokens: 4 }]);
   });
 });
