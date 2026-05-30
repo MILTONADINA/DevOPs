@@ -87,7 +87,12 @@ docker run -p 4080:4080 -e HOST=0.0.0.0 -e CQ_COMMERCIAL=true \
   secret in `STRIPE_WEBHOOK_SECRET`. Verify the integration end-to-end with `npm run verify-stripe`.
 
 This image was built + run + health-checked against real Docker (boots in personal mode, `/health` → 200,
-container reports `healthy`). The TEE (Phase 4) + Cloudflare Worker paths below remain account-gated.
+container reports `healthy`). The **commercial entry point** was separately verified booting end-to-end
+against the real Supabase backend (`CQ_COMMERCIAL=true`, `HOST=0.0.0.0`): `/health` → `200` with
+`dependencies.database: "ok"` (live cached health check), `/v1/config` without a key → `401` (auth gate
+active), `/openapi.json` → `200` (public) — i.e. every commercial dependency (auth, billing, memory,
+sessions, webhooks, token budget, usage recorder, Stripe webhook) constructs + registers without error.
+The TEE (Phase 4) + Cloudflare Worker paths below remain account-gated.
 
 ---
 
