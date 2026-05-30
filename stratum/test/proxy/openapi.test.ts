@@ -5,7 +5,7 @@
 // even when the /v1 auth gate is on (so a client can read the contract before it has a key).
 
 import { describe, test, expect, vi } from "vitest";
-import { OPENAPI_SPEC } from "../../src/proxy/openapi";
+import { OPENAPI_SPEC, OPENAPI_DOCS_HTML } from "../../src/proxy/openapi";
 
 // test/setup.ts mocks fastify (capture harness). buildProxy needs the real one — unmock + dynamic import.
 vi.unmock("fastify");
@@ -124,6 +124,41 @@ describe("GET /openapi.json", () => {
     expect(spec.statusCode).toBe(200);
     const gated = await app.inject({ method: "GET", url: "/v1/config" });
     expect(gated.statusCode).toBe(401); // proves the gate is actually on
+    await app.close();
+  });
+});
+
+describe("GET /docs (browsable reference)", () => {
+  test("serves the HTML reference page, public, and is driven by /openapi.json", async () => {
+    const app = buildProxy({ cors: false, rateLimit: false });
+    await app.ready();
+    const res = await app.inject({ method: "GET", url: "/docs" });
+    expect(res.statusCode).toBe(200);
+    expect(res.headers["content-type"]).toMatch(/text\/html/);
+    // It renders the live contract (so the drift-guard keeps it honest), not a hand-copied list.
+    expect(res.body).toContain('fetch("/openapi.json")');
+    expect(res.body).toContain("Stratum API Reference");
+    await app.close();
+  });
+
+  test("the page is XSS-safe by construction: no innerHTML, renders via textContent/createElement", () => {
+    // The page renders server-supplied (trusted) spec data, but we still hold the XSS-safe convention
+    // (the CFO-dashboard rule): never innerHTML; only textContent + createElement. Asserting it here
+    // prevents a future edit from regressing the page to innerHTML.
+    expect(OPENAPI_DOCS_HTML).not.toContain("innerHTML");
+    expect(OPENAPI_DOCS_HTML).toContain("createElement");
+    expect(OPENAPI_DOCS_HTML).toContain("textContent");
+  });
+
+  test("remains public even with the /v1 auth gate enabled", async () => {
+    const app = buildProxy({
+      cors: false,
+      rateLimit: false,
+      auth: { resolve: async () => null, protectedPrefixes: ["/v1/"] },
+    });
+    await app.ready();
+    const res = await app.inject({ method: "GET", url: "/docs" });
+    expect(res.statusCode).toBe(200);
     await app.close();
   });
 });

@@ -295,6 +295,15 @@ Source of truth: `src/proxy/openapi.ts`. A test (`test/proxy/openapi.test.ts`)
 asserts every documented path is an actually-registered route and every `$ref`
 resolves, so the spec cannot drift from the implementation.
 
+### GET /docs
+
+No authentication required. A human-browsable API reference page that renders
+`/openapi.json` client-side — point a browser at it to see every endpoint, its
+parameters, and responses, always current with the served spec. Self-contained
+(no external CDN) and XSS-safe (textContent/createElement only), matching the CFO
+dashboard's rendering convention. Verified end-to-end in a real browser (renders
+all 18 operations from the live spec).
+
 ---
 
 ## Webhooks

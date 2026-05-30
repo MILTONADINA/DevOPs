@@ -22,7 +22,7 @@ import { makeSessionsRoute, type SessionsDeps } from "./routes/sessions";
 import { makeWebhookRoute, type WebhookDeps } from "./routes/webhooks";
 import { makeTokensRoute, type TokensDeps } from "./routes/tokens";
 import { planRequestsPerMinute } from "./rate-limit-tiers";
-import { OPENAPI_SPEC } from "./openapi";
+import { OPENAPI_SPEC, OPENAPI_DOCS_HTML } from "./openapi";
 import { registerAuth, type AuthDeps } from "./auth";
 import type { MessagesDeps } from "./forward";
 
@@ -167,6 +167,12 @@ export function buildProxy(opts: BuildProxyOptions = {}): FastifyInstance {
   app.get("/openapi.json", async (_req, reply) => {
     void reply.header("content-type", "application/json; charset=utf-8");
     return OPENAPI_SPEC;
+  });
+
+  // Human-browsable API reference (public) — renders /openapi.json client-side, no CDN, XSS-safe.
+  app.get("/docs", async (_req, reply) => {
+    void reply.header("content-type", "text/html; charset=utf-8");
+    return OPENAPI_DOCS_HTML;
   });
 
   if (opts.messages) {
