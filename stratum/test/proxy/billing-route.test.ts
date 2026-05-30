@@ -2,9 +2,30 @@
 // with injected fake billing deps (no DB). Composes the pure invoice engine.
 
 import { describe, test, expect, vi } from "vitest";
-import type { BillingDeps } from "../../src/proxy/routes/billing";
+import type { FastifyRequest } from "fastify";
+import { resolveOrg, type BillingDeps } from "../../src/proxy/routes/billing";
 import type { BillableRecord } from "../../src/billing/invoice";
 import type { ApiKeyResolver } from "../../src/proxy/auth";
+
+// resolveOrg is the org-scoping helper every commercial route shares. The ?org-id query fallback exists
+// for personal/unauthenticated mode ONLY — when the auth gate is registered it sets req.authEnforced, and
+// the fallback MUST be refused so a caller can never read another tenant by supplying a UUID (the
+// defense-in-depth half of the percent-encoding-bypass fix).
+describe("resolveOrg — ?org-id is refused once auth is enforced (cross-tenant guard)", () => {
+  const req = (o: Partial<FastifyRequest> & { query?: Record<string, unknown> }) => o as unknown as FastifyRequest;
+  test("authenticated org wins, ignoring any ?org-id", () => {
+    expect(resolveOrg(req({ orgId: "A", query: { "org-id": "B" } }))).toBe("A");
+  });
+  test("personal mode (authEnforced unset): ?org-id fallback is honored", () => {
+    expect(resolveOrg(req({ query: { "org-id": "B" } }))).toBe("B");
+  });
+  test("commercial mode (authEnforced) + no orgId: ?org-id is REFUSED → undefined (→ 400, not a cross-tenant read)", () => {
+    expect(resolveOrg(req({ authEnforced: true, query: { "org-id": "B" } }))).toBeUndefined();
+  });
+  test("commercial mode + authenticated: still the authed org", () => {
+    expect(resolveOrg(req({ authEnforced: true, orgId: "A", query: { "org-id": "B" } }))).toBe("A");
+  });
+});
 
 // Real Fastify (the global setup mocks it).
 vi.unmock("fastify");

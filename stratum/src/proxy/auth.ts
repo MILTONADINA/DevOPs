@@ -18,6 +18,12 @@ declare module "fastify" {
     orgId?: string;
     /** The api_keys.id that authenticated the request. */
     apiKeyId?: string;
+    /**
+     * True on EVERY request when the auth gate is registered (commercial mode). Routes use this to
+     * REFUSE a client-supplied ?org-id fallback when auth is enforced — the org must come from the
+     * authenticated key, never the query string (defense-in-depth against a gate bypass).
+     */
+    authEnforced?: boolean;
   }
 }
 
@@ -93,9 +99,24 @@ export function registerAuth(app: FastifyInstance, deps: AuthDeps): void {
   const publicPaths = new Set(deps.publicPaths ?? ["/health"]);
   const prefixes = deps.protectedPrefixes;
   app.addHook("onRequest", async (req: FastifyRequest, reply: FastifyReply) => {
-    const path = (req.url.split("?")[0] ?? req.url);
-    if (publicPaths.has(path)) return;
-    if (prefixes !== undefined && !prefixes.some((p) => path.startsWith(p))) return; // not a protected prefix → public
+    // Mark auth as enforced on this server BEFORE any early return — every downstream route reads this
+    // to refuse a client-supplied ?org-id (the org must come from the key, not the query string).
+    req.authEnforced = true;
+    // find-my-way (Fastify's router) percent-DECODES the path via safeDecodeURI (non-reserved sequences
+    // only) BEFORE matching routes. The gate MUST decode too — otherwise /%76%31/messages (which the
+    // router decodes to /v1/messages and dispatches) fails this raw startsWith("/v1/") check, is treated
+    // as "public", and reaches the real /v1/* handler UNAUTHENTICATED (CVE-class auth bypass → cross-tenant
+    // access via the ?org-id fallback). decodeURI mirrors safeDecodeURI exactly (it leaves %2F encoded, as
+    // the router does); we check the raw form too (fail-closed OR) so no interpretation slips through.
+    const rawPath = req.url.split("?")[0] ?? req.url;
+    let decodedPath: string;
+    try {
+      decodedPath = decodeURI(rawPath);
+    } catch {
+      decodedPath = rawPath; // malformed %-sequence → router will 404 it; keep raw so the checks stay closed
+    }
+    if (publicPaths.has(rawPath) || publicPaths.has(decodedPath)) return; // explicit public path (e.g. /health)
+    if (prefixes !== undefined && !prefixes.some((p) => rawPath.startsWith(p) || decodedPath.startsWith(p))) return; // not under a protected prefix (raw OR decoded) → public
     const raw = extractApiKey(req.headers as Record<string, unknown>);
     if (raw === undefined) return unauthorized(reply, "missing API key (send Authorization: Bearer <key> or x-api-key)");
     const resolved = await deps.resolve(raw);

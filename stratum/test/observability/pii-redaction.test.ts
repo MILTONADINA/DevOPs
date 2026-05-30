@@ -71,6 +71,13 @@ describe('pii-redaction — pattern detection', () => {
       .toBe('key=[REDACTED:sk-key]');
   });
 
+  test('CQ proxy API key (cq_live_/cq_test_) is redacted', () => {
+    expect(redactString('my key is cq_live_abc123def456ghi789jkl012mnop please'))
+      .toBe('my key is [REDACTED:cq-key] please');
+    expect(redactString('cq_test_abcdefghijklmnopqrstuvwxyz0123'))
+      .toBe('[REDACTED:cq-key]');
+  });
+
   test('AWS access key is redacted', () => {
     expect(redactString('AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE'))
       .toBe('AWS_ACCESS_KEY_ID=[REDACTED:aws-key]');

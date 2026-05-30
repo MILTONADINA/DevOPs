@@ -52,6 +52,9 @@ export interface SessionsDeps {
 
 function resolveOrg(req: FastifyRequest): string | undefined {
   if (typeof req.orgId === "string" && req.orgId !== "") return req.orgId;
+  // Auth ENFORCED (commercial): the org comes from the key, never a client-supplied ?org-id (cross-tenant
+  // guard if the gate is ever bypassed). Personal mode (authEnforced unset) keeps the ?org-id convenience.
+  if (req.authEnforced === true) return undefined;
   const v = (req.query as Record<string, unknown>)["org-id"];
   return typeof v === "string" && v !== "" ? v : undefined;
 }

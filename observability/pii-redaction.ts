@@ -60,6 +60,10 @@ const PATTERNS = [
   // an over-long token is fully redacted (no raw overflow tail) and still linear.
   { name: 'bearer', regex: /Bearer\s+[A-Za-z0-9._\-+/=]{20,}/gi },
   { name: 'sk-key', regex: /sk-[A-Za-z0-9_-]{20,}/g },
+  // CQ/Stratum API keys (generateApiKey: `cq_${env}_${base64url(32)}`) — the proxy's OWN keys. Without
+  // this, a partner embedding a cq_live_/cq_test_ key in a prompt/tool payload would land in the capture
+  // artifact unredacted. Literal-anchored, suffix-free greedy (same discipline as sk-key); linear.
+  { name: 'cq-key', regex: /cq_(?:live|test)_[A-Za-z0-9_-]{20,}/g },
   // AWS access key ID (fixed width)
   { name: 'aws-key', regex: /AKIA[0-9A-Z]{16}/g },
 ];

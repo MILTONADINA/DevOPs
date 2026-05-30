@@ -110,3 +110,53 @@ describe("auth gate via buildProxy", () => {
     await app.close();
   });
 });
+
+// The REAL commercial config gates by PREFIX (protectedPrefixes:["/v1/"]) — leaving /health + HTML pages
+// public. This is the surface of the percent-encoding auth bypass: the gate must decode the path the same
+// way the router (find-my-way safeDecodeURI) does, else an encoded /v1/ slips past as "public".
+describe("auth gate — prefix mode + percent-encoding bypass (CRITICAL regression)", () => {
+  const resolve: ApiKeyResolver = (raw) => Promise.resolve(raw === "good-key" ? { orgId: "org-x", keyId: "key-1" } : null);
+  async function appPrefixAuth() {
+    const app = buildProxy({ rateLimit: false, cors: false, auth: { resolve, protectedPrefixes: ["/v1/"] } });
+    app.get("/v1/echo-org", (req) => ({ orgId: req.orgId ?? null, authEnforced: req.authEnforced ?? false }));
+    app.get("/public-page", (req) => ({ ok: true, authEnforced: req.authEnforced ?? false }));
+    await app.ready();
+    return app;
+  }
+
+  test("a NON-/v1 path is public (not gated)", async () => {
+    const app = await appPrefixAuth();
+    const res = await app.inject({ method: "GET", url: "/public-page" });
+    expect(res.statusCode).toBe(200);
+    await app.close();
+  });
+
+  test("/v1/* with no key → 401 (control)", async () => {
+    const app = await appPrefixAuth();
+    expect((await app.inject({ method: "GET", url: "/v1/echo-org" })).statusCode).toBe(401);
+    await app.close();
+  });
+
+  test("PERCENT-ENCODED /v1 (/%76%31/echo-org) with no key → 401, NOT a bypass to the handler", async () => {
+    const app = await appPrefixAuth();
+    const res = await app.inject({ method: "GET", url: "/%76%31/echo-org" }); // %76%31 == "v1"
+    expect(res.statusCode).toBe(401); // pre-fix this was 200 (the gate saw the raw encoded path as "public")
+    expect(res.json()).toMatchObject({ error: { type: "authentication_error" } });
+    await app.close();
+  });
+
+  test("a valid key on the ENCODED path still routes + authenticates (decode is consistent both ways)", async () => {
+    const app = await appPrefixAuth();
+    const res = await app.inject({ method: "GET", url: "/%76%31/echo-org", headers: { authorization: "Bearer good-key" } });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ orgId: "org-x" });
+    await app.close();
+  });
+
+  test("req.authEnforced is set on an authenticated request (the ?org-id-refusal signal for routes)", async () => {
+    const app = await appPrefixAuth();
+    const res = await app.inject({ method: "GET", url: "/v1/echo-org", headers: { authorization: "Bearer good-key" } });
+    expect(res.json()).toMatchObject({ authEnforced: true });
+    await app.close();
+  });
+});
