@@ -13,7 +13,8 @@
 import "dotenv/config";
 import { writeFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
-import { generateInvoice, toAuditCsv, renderInvoice, type BillableRecord } from "../src/billing/invoice";
+import { generateInvoice, toAuditCsv, renderInvoice } from "../src/billing/invoice";
+import { createSupabaseBillingDeps } from "../src/proxy/routes/billing";
 import { createStripeInvoiceSink } from "../src/billing/stripe-sink";
 
 interface Args {
@@ -70,23 +71,14 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
   }
   const client = createClient(url, key);
 
-  const { data: orgRows, error: orgErr } = await client.from("organizations").select("plan").eq("id", args.orgId).limit(1);
-  if (orgErr) throw new Error(`read organization failed: ${orgErr.message}`);
-  if (!orgRows || orgRows.length === 0) {
+  // Same source the CFO billing API uses (src/proxy/routes/billing.ts) — one read path.
+  const deps = createSupabaseBillingDeps(client);
+  const plan = await deps.getOrgPlan(args.orgId);
+  if (plan === null) {
     out(`No organization found with id ${args.orgId}.`);
     return 1;
   }
-  const plan = (orgRows[0] as { plan: string }).plan;
-
-  let q = client
-    .from("billing_records")
-    .select("session_id, original_tokens, quarantined_tokens, cost_delta_usd, cq_fee_usd, signed_hash")
-    .eq("org_id", args.orgId);
-  if (args.since !== undefined) q = q.gte("created_at", args.since);
-  if (args.until !== undefined) q = q.lte("created_at", args.until);
-  const { data, error } = await q;
-  if (error) throw new Error(`read billing_records failed: ${error.message}`);
-  const records = (data ?? []) as BillableRecord[];
+  const records = await deps.listBillingRecords(args.orgId, args.since, args.until);
 
   const invoice = generateInvoice(args.orgId, plan, records, args.since ?? "(all time)", args.until ?? "(now)");
   out(renderInvoice(invoice));

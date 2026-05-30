@@ -15,6 +15,7 @@ import { logger } from "../lib/logger";
 import { healthRoute } from "./routes/health";
 import { makeMessagesRoute } from "./routes/messages";
 import { makeDashboardRoute, type DashboardDeps } from "./routes/dashboard";
+import { makeBillingRoute, type BillingDeps } from "./routes/billing";
 import { registerAuth, type AuthDeps } from "./auth";
 import type { MessagesDeps } from "./forward";
 
@@ -51,6 +52,11 @@ export interface BuildProxyOptions {
    * unaffected; the commercial deploy supplies a Supabase-backed resolver.
    */
   auth?: AuthDeps;
+  /**
+   * The CFO billing API (GET /v1/billing/invoice + /audit.csv). When omitted, the routes
+   * are not registered. The commercial deploy supplies createSupabaseBillingDeps(client).
+   */
+  billing?: BillingDeps;
 }
 
 /**
@@ -92,6 +98,10 @@ export function buildProxy(opts: BuildProxyOptions = {}): FastifyInstance {
 
   if (opts.dashboard) {
     void app.register(makeDashboardRoute(opts.dashboard));
+  }
+
+  if (opts.billing) {
+    void app.register(makeBillingRoute(opts.billing));
   }
 
   app.setErrorHandler((err, _req, reply) => {

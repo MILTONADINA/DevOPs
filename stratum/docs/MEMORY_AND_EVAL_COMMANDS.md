@@ -39,6 +39,11 @@ the Stripe seam, which is a **gated stub** (no unverified payment code) — it f
 until Stripe is wired + verified in test mode. Build-ahead of v1.0.0; the engine is ready, an
 actual paid invoice needs Stripe + a design partner.
 
+The proxy also exposes the **CFO billing API** when `buildProxy({ billing })` is supplied:
+`GET /v1/billing/invoice` (the computed Invoice JSON) and `GET /v1/billing/audit.csv` (the
+signed-hash audit trail download) — org-scoped via the auth gate (or `?org-id`). It composes
+the same invoice engine + read path as `npm run invoice`.
+
 `npm run create-api-key -- --org-id <uuid> --name "<label>" [--env test]` mints a multi-tenant
 API key, stores **only its SHA-256 hash** in `api_keys` (a DB leak never exposes usable keys),
 and prints the raw key once. The proxy enforces it when `buildProxy({ auth })` is supplied
