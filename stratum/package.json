@@ -36,6 +36,7 @@
     "bench:tiers": "tsx scripts/bench-tiers.ts",
     "promote": "tsx scripts/promote-tier2-to-tier3.ts",
     "understand-codebase": "tsx scripts/understand-codebase.ts",
+    "audit:repo": "tsx scripts/audit-repo.ts",
     "db:start": "npx supabase start",
     "db:stop": "npx supabase stop",
     "db:reset": "npx supabase db reset",
