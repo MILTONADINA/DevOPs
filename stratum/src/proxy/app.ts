@@ -21,6 +21,7 @@ import { makeMemoryRoute, type MemoryDeps } from "./routes/memory";
 import { makeSessionsRoute, type SessionsDeps } from "./routes/sessions";
 import { makeWebhookRoute, type WebhookDeps } from "./routes/webhooks";
 import { makeTokensRoute, type TokensDeps } from "./routes/tokens";
+import { planRequestsPerMinute } from "./rate-limit-tiers";
 import { registerAuth, type AuthDeps } from "./auth";
 import type { MessagesDeps } from "./forward";
 
@@ -87,6 +88,13 @@ export interface BuildProxyOptions {
    * reuses the messages counter.
    */
   tokens?: TokensDeps;
+  /**
+   * Per-PLAN request rate limiting (docs/RATE_LIMITS.md). When provided (commercial mode), requests
+   * are limited per-ORG by the org's plan (requests/min) — `getPlan` resolves the plan. When omitted,
+   * the limiter is the per-IP fixed `rateLimit` max (personal mode). Requires `auth` (the org is read
+   * from req.orgId), so the rate limiter is registered AFTER the auth gate.
+   */
+  rateLimitByPlan?: { getPlan: (orgId: string) => Promise<string> };
 }
 
 /**
@@ -103,21 +111,26 @@ export function buildProxy(opts: BuildProxyOptions = {}): FastifyInstance {
     void app.register(cors);
   }
 
-  if (opts.rateLimit !== false) {
-    const max =
-      typeof opts.rateLimit === "number"
-        ? opts.rateLimit
-        : parseInt(process.env["RATE_LIMIT_MAX"] ?? "100", 10);
-    void app.register(rateLimit, {
-      max,
-      timeWindow: process.env["RATE_LIMIT_WINDOW"] ?? "1 minute",
-    });
-  }
-
   // Auth gate (opt-in) — registered before the routes so it guards them all (it
   // exempts /health). Omitted in personal-use → no auth, unchanged behavior.
   if (opts.auth) {
     registerAuth(app, opts.auth);
+  }
+
+  // Rate limiting — AFTER auth so the per-plan limiter can read req.orgId. When `rateLimitByPlan`
+  // is set (commercial), limit per-ORG by the org's plan (requests/min); else per-IP fixed max.
+  if (opts.rateLimit !== false) {
+    if (opts.rateLimitByPlan) {
+      const resolvePlan = opts.rateLimitByPlan.getPlan;
+      void app.register(rateLimit, {
+        keyGenerator: (req) => (typeof req.orgId === "string" && req.orgId !== "" ? req.orgId : req.ip),
+        max: async (req) => (typeof req.orgId === "string" && req.orgId !== "" ? planRequestsPerMinute(await resolvePlan(req.orgId)) : planRequestsPerMinute("starter")),
+        timeWindow: "1 minute",
+      });
+    } else {
+      const max = typeof opts.rateLimit === "number" ? opts.rateLimit : parseInt(process.env["RATE_LIMIT_MAX"] ?? "100", 10);
+      void app.register(rateLimit, { max, timeWindow: process.env["RATE_LIMIT_WINDOW"] ?? "1 minute" });
+    }
   }
 
   void app.register(healthRoute);

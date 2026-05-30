@@ -3,6 +3,7 @@
 
 import { describe, test, expect, afterEach, vi } from "vitest";
 import type { FastifyInstance } from "fastify";
+import type { ConfigDeps } from "../../src/proxy/routes/config";
 
 vi.unmock("fastify");
 vi.unmock("@fastify/cors");
@@ -40,5 +41,24 @@ describe("buildProxy — rate limiting", () => {
       const res = await app.inject({ method: "GET", url: "/health" });
       expect(res.statusCode).toBe(200);
     }
+  });
+
+  test("per-PLAN limiting: starter org capped at 20/min, per-org (commercial mode)", async () => {
+    const resolve = (raw: string) => Promise.resolve(raw === "starter-key" ? { orgId: "org-s", keyId: "k" } : raw === "growth-key" ? { orgId: "org-g", keyId: "k" } : null);
+    const getPlan = (orgId: string) => Promise.resolve(orgId === "org-s" ? "starter" : "growth");
+    // A real in-buildProxy route (/v1/config) so it's covered by the rate-limit plugin + the auth gate.
+    const config: ConfigDeps = { getConfig: () => Promise.resolve(null), upsertConfig: (_o, p) => Promise.resolve({ lambda: 0.97, gain_shift: 0, theta: 1, zk_enabled: false, audit_enabled: true, webhook_url: null, ...p }) };
+    app = buildProxy({ cors: false, auth: { resolve }, rateLimitByPlan: { getPlan }, config });
+    await app.ready();
+
+    let last = 0;
+    for (let i = 0; i < 21; i++) {
+      last = (await app.inject({ method: "GET", url: "/v1/config", headers: { authorization: "Bearer starter-key" } })).statusCode;
+    }
+    expect(last).toBe(429); // the 21st starter request exceeds the 20/min plan cap
+
+    // A DIFFERENT org has its own counter — not affected by org-s's burst.
+    const g = await app.inject({ method: "GET", url: "/v1/config", headers: { authorization: "Bearer growth-key" } });
+    expect(g.statusCode).toBe(200);
   });
 });

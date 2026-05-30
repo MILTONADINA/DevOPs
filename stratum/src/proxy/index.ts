@@ -67,6 +67,9 @@ export function buildStartOptions(env: StartEnv, base: BuildProxyOptions, makeCl
     opts.webhooks = createSupabaseWebhookDeps(client);
     // Reuse the already-wired exact token counter from the messages deps.
     if (base.messages !== undefined) opts.tokens = { countTokens: base.messages.countTokens };
+    // Per-plan request rate limiting (reuse the billing deps' plan reader).
+    const billing = opts.billing;
+    opts.rateLimitByPlan = { getPlan: async (orgId) => (await billing.getOrgPlan(orgId)) ?? "starter" };
   }
   return opts;
 }
