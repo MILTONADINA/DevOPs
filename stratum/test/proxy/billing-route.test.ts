@@ -127,7 +127,7 @@ describe("GET /v1/billing/invoice", () => {
 });
 
 describe("GET /billing (CFO dashboard page)", () => {
-  test("serves the vanilla HTML dashboard (no innerHTML, no org needed to load the shell)", async () => {
+  test("serves the vanilla HTML dashboard — authenticates with a CQ key (Bearer) + ?org-id fallback (PB-50)", async () => {
     const { deps } = fakeDeps();
     const app = buildProxy({ rateLimit: false, cors: false, billing: deps });
     await app.ready();
@@ -135,7 +135,10 @@ describe("GET /billing (CFO dashboard page)", () => {
     expect(res.statusCode).toBe(200);
     expect(res.headers["content-type"]).toMatch(/text\/html/);
     expect(res.body).toContain("CFO Billing Dashboard");
-    expect(res.body).toContain("/v1/billing/invoice?org-id=");
+    expect(res.body).toContain('id="key"'); // the CQ key input — commercial-mode auth
+    expect(res.body).toContain("Bearer"); // sends the key as Authorization: Bearer (works behind the auth gate)
+    expect(res.body).toContain("sessionStorage"); // key kept session-only, never placed in a URL
+    expect(res.body).toContain("?org-id="); // personal/unauthenticated-mode fallback still supported
     expect(res.body).not.toContain(".innerHTML"); // XSS-safe by construction
     await app.close();
   });

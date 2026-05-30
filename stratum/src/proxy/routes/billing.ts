@@ -138,8 +138,13 @@ function err(reply: FastifyReply, code: number, type: string, message: string): 
 }
 
 // The customer-facing CFO dashboard (BUSINESS_MODEL.md §The CFO Dashboard). Vanilla HTML (no
-// framework); reads ?org-id and renders /v1/billing/invoice + an audit-CSV download. All dynamic
-// values go through textContent (never innerHTML) — XSS-safe by construction.
+// framework). AUTH (PB-50): in commercial mode /v1/* requires a key, so the page collects the CQ key
+// and sends it as `Authorization: Bearer <key>` on its fetches (the org is resolved from the key — no
+// client-supplied ?org-id, which the gate correctly refuses). The key is held in sessionStorage only
+// (cleared when the tab closes), never in a URL. Personal/unauthenticated mode still works via ?org-id.
+// All dynamic values go through textContent (never innerHTML) — XSS-safe by construction; the key is
+// only ever sent in a request header, never written into the DOM. The CSV is fetched with the header
+// and downloaded via a blob (a plain <a href> cannot carry Authorization).
 const BILLING_HTML = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Stratum — CFO Billing Dashboard</title>
@@ -148,6 +153,9 @@ const BILLING_HTML = `<!doctype html>
   body { font: 15px/1.5 system-ui, sans-serif; margin: 0; padding: 1.5rem; max-width: 900px; }
   h1 { font-size: 1.4rem; margin: 0 0 .25rem; }
   .note { color: #888; font-size: .85rem; margin-bottom: 1.25rem; }
+  .auth { display: flex; gap: .5rem; margin-bottom: 1.25rem; flex-wrap: wrap; }
+  .auth input { flex: 1; min-width: 240px; padding: .4rem .6rem; border: 1px solid #8884; border-radius: 6px; background: transparent; color: inherit; font: inherit; }
+  .auth button { padding: .4rem .9rem; border: 1px solid #8884; border-radius: 6px; background: transparent; color: inherit; cursor: pointer; font: inherit; }
   .cards { display: flex; flex-wrap: wrap; gap: .75rem; margin-bottom: 1.5rem; }
   .card { border: 1px solid #8884; border-radius: 8px; padding: .75rem 1rem; min-width: 130px; }
   .card .v { font-size: 1.5rem; font-weight: 600; } .card .k { color: #888; font-size: .8rem; }
@@ -156,16 +164,21 @@ const BILLING_HTML = `<!doctype html>
   th, td { text-align: left; padding: .4rem .6rem; border-bottom: 1px solid #8883; }
   th { color: #888; font-weight: 600; }
   .empty { color: #888; font-style: italic; }
-  a.btn { display: inline-block; border: 1px solid #8884; border-radius: 6px; padding: .35rem .7rem; text-decoration: none; color: inherit; }
+  a.btn { display: inline-block; border: 1px solid #8884; border-radius: 6px; padding: .35rem .7rem; text-decoration: none; color: inherit; cursor: pointer; }
 </style></head>
 <body>
   <h1>Stratum — CFO Billing Dashboard</h1>
-  <div class="note" id="note">Loading…</div>
+  <div class="auth">
+    <input id="key" type="password" autocomplete="off" placeholder="Your CQ API key (cq_…) — required in commercial mode" />
+    <button id="load" type="button">Load</button>
+  </div>
+  <div class="note" id="note">Enter your CQ API key, then Load.</div>
   <div class="cards" id="cards"></div>
   <h2>Per-session line items</h2>
   <table id="items"><thead><tr><th>Session</th><th>Original tok</th><th>Quarantined tok</th><th>Savings</th><th>Fee</th></tr></thead><tbody></tbody></table>
   <p id="dl"></p>
   <script>
+    const STORE = 'cq_dashboard_key';
     const org = new URLSearchParams(location.search).get('org-id') || '';
     const usd = (n) => '$' + Number(n).toFixed(2);
     const fmt = (n) => Number(n).toLocaleString();
@@ -173,18 +186,44 @@ const BILLING_HTML = `<!doctype html>
     const el = (tag, text, cls) => { const e = document.createElement(tag); if (text != null) e.textContent = String(text); if (cls) e.className = cls; return e; };
     const card = (k, v, cls) => { const c = el('div', null, cls ? 'card ' + cls : 'card'); c.appendChild(el('div', v, 'v')); c.appendChild(el('div', k, 'k')); return c; };
     const note = document.getElementById('note'), cards = document.getElementById('cards'), tb = document.querySelector('#items tbody'), dl = document.getElementById('dl');
-    if (!org) { note.textContent = 'Add ?org-id=<uuid> to the URL.'; }
-    else fetch('/v1/billing/invoice?org-id=' + encodeURIComponent(org)).then((r) => r.ok ? r.json() : r.json().then((e) => Promise.reject(e))).then((d) => {
+    const keyInput = document.getElementById('key'), loadBtn = document.getElementById('load');
+    keyInput.value = sessionStorage.getItem(STORE) || '';
+    const headers = (key) => key ? { Authorization: 'Bearer ' + key } : {};
+    // With a key the org comes from the key (gate refuses ?org-id); without, fall back to ?org-id (personal mode).
+    const qs = (key) => key ? '' : (org ? '?org-id=' + encodeURIComponent(org) : '');
+    const clear = () => { cards.replaceChildren(); tb.replaceChildren(); dl.replaceChildren(); };
+
+    function downloadCsv(key, orgId) {
+      fetch('/v1/billing/audit.csv' + qs(key), { headers: headers(key) })
+        .then((r) => r.ok ? r.text() : r.json().then((e) => Promise.reject(e)))
+        .then((csv) => { const b = new Blob([csv], { type: 'text/csv' }); const u = URL.createObjectURL(b); const a = document.createElement('a'); a.href = u; a.download = 'audit-' + String(orgId).slice(0, 8) + '.csv'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(u); })
+        .catch((e) => { note.textContent = 'CSV download failed: ' + (e && e.error ? e.error.message : e); });
+    }
+
+    function render(d, key) {
       note.textContent = 'Org ' + d.orgId + ' (' + d.plan + ') · ' + d.periodStart + ' -> ' + d.periodEnd;
       [['Sessions', d.recordCount], ['Original tokens', fmt(d.totalOriginalTokens)], ['Effectiveness', d.effectivenessPct.toFixed(1) + '%'], ['Customer savings', usd(d.totalSavingsUsd)], ['CQ fee (20%)', usd(d.rawFeeUsd)], ['Min (' + d.plan + ')', usd(d.monthlyMinimumUsd)]].forEach(([k, v]) => cards.appendChild(card(k, v)));
       cards.appendChild(card('AMOUNT DUE', usd(d.amountDueUsd), 'due'));
-      // Records exist but 0% reduction = pruning isn't active yet (ADR-0009/0014). Explain the $0
-      // savings so the partner's first view is honest, not a confusing "0 saved, plan-minimum due".
       if (d.recordCount > 0 && d.effectivenessPct === 0) { const s = el('p', 'Pruning is not yet active — these are measured usage records at 0% reduction; savings (and a usage-based fee) begin once it is enabled. Until then you are billed the ' + d.plan + ' plan minimum.', 'note'); cards.insertAdjacentElement('afterend', s); }
       if (d.lineItems.length) d.lineItems.forEach((li) => { const tr = document.createElement('tr'); [li.sessionId.slice(0, 8), fmt(li.originalTokens), fmt(li.quarantinedTokens), usd(li.savingsUsd), usd(li.feeUsd)].forEach((v) => tr.appendChild(el('td', v))); tb.appendChild(tr); });
       else { const tr = document.createElement('tr'); const td = el('td', 'No billing records yet - pruning has not run in the request path.', 'empty'); td.colSpan = 5; tr.appendChild(td); tb.appendChild(tr); }
-      const a = el('a', 'Download audit trail (CSV)', 'btn'); a.setAttribute('href', '/v1/billing/audit.csv?org-id=' + encodeURIComponent(org)); dl.appendChild(a);
-    }).catch((e) => { note.textContent = 'Could not load invoice: ' + (e && e.error ? e.error.message : e); });
+      const a = el('a', 'Download audit trail (CSV)', 'btn'); a.setAttribute('href', '#'); a.addEventListener('click', (ev) => { ev.preventDefault(); downloadCsv(key, d.orgId); }); dl.appendChild(a);
+    }
+
+    function load() {
+      const key = (keyInput.value || '').trim();
+      if (key) sessionStorage.setItem(STORE, key); else sessionStorage.removeItem(STORE);
+      if (!key && !org) { note.textContent = 'Enter your CQ API key above (commercial mode), or add ?org-id=<uuid> to the URL (personal mode).'; return; }
+      clear(); note.textContent = 'Loading…';
+      fetch('/v1/billing/invoice' + qs(key), { headers: headers(key) })
+        .then((r) => r.ok ? r.json() : r.json().then((e) => Promise.reject(e)))
+        .then((d) => render(d, key))
+        .catch((e) => { note.textContent = 'Could not load invoice: ' + (e && e.error ? e.error.message : (e && e.message ? e.message : e)); });
+    }
+
+    loadBtn.addEventListener('click', load);
+    keyInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') load(); });
+    if (keyInput.value || org) load(); // auto-load if a key is remembered or ?org-id is present
   </script>
 </body></html>`;
 
