@@ -159,6 +159,9 @@ const BILLING_HTML = `<!doctype html>
       note.textContent = 'Org ' + d.orgId + ' (' + d.plan + ') · ' + d.periodStart + ' -> ' + d.periodEnd;
       [['Sessions', d.recordCount], ['Original tokens', fmt(d.totalOriginalTokens)], ['Effectiveness', d.effectivenessPct.toFixed(1) + '%'], ['Customer savings', usd(d.totalSavingsUsd)], ['CQ fee (20%)', usd(d.rawFeeUsd)], ['Min (' + d.plan + ')', usd(d.monthlyMinimumUsd)]].forEach(([k, v]) => cards.appendChild(card(k, v)));
       cards.appendChild(card('AMOUNT DUE', usd(d.amountDueUsd), 'due'));
+      // Records exist but 0% reduction = pruning isn't active yet (ADR-0009/0014). Explain the $0
+      // savings so the partner's first view is honest, not a confusing "0 saved, plan-minimum due".
+      if (d.recordCount > 0 && d.effectivenessPct === 0) { const s = el('p', 'Pruning is not yet active — these are measured usage records at 0% reduction; savings (and a usage-based fee) begin once it is enabled. Until then you are billed the ' + d.plan + ' plan minimum.', 'note'); cards.insertAdjacentElement('afterend', s); }
       if (d.lineItems.length) d.lineItems.forEach((li) => { const tr = document.createElement('tr'); [li.sessionId.slice(0, 8), fmt(li.originalTokens), fmt(li.quarantinedTokens), usd(li.savingsUsd), usd(li.feeUsd)].forEach((v) => tr.appendChild(el('td', v))); tb.appendChild(tr); });
       else { const tr = document.createElement('tr'); const td = el('td', 'No billing records yet - pruning has not run in the request path.', 'empty'); td.colSpan = 5; tr.appendChild(td); tb.appendChild(tr); }
       const a = el('a', 'Download audit trail (CSV)', 'btn'); a.setAttribute('href', '/v1/billing/audit.csv?org-id=' + encodeURIComponent(org)); dl.appendChild(a);
