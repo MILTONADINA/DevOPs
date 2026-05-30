@@ -44,6 +44,7 @@
     "invoice": "tsx scripts/invoice.ts",
     "verify-billing": "tsx scripts/verify-billing.ts",
     "verify-stripe": "tsx scripts/verify-stripe.ts",
+    "create-org": "tsx scripts/create-org.ts",
     "create-api-key": "tsx scripts/create-api-key.ts",
     "api-keys": "tsx scripts/api-keys.ts",
     "db:start": "npx supabase start",

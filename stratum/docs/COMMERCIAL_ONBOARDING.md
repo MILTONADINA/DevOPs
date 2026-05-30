@@ -50,17 +50,19 @@ commercial mode). The machine-readable contract is at `GET /openapi.json`; a bro
 ## 2. Create the partner's org + API key
 
 Create the org with its plan (the plan sets the monthly minimum — starter $0 / growth $99 /
-enterprise $499). Via the Supabase dashboard or SQL:
-
-```sql
-INSERT INTO organizations (name, plan) VALUES ('<Partner Agency>', 'growth') RETURNING id;
-```
-
-Mint a CQ key for that org (the raw key is shown ONCE — give it to the partner over a secure channel):
+enterprise $499) and mint its first key in one step (the raw key is shown ONCE — give it to the
+partner over a secure channel):
 
 ```bash
+npm run create-org -- --name "<Partner Agency>" --plan growth --with-key
+# → org id + cq_live_……  (store the hash only; we cannot recover the raw key)
+```
+
+Or create the org alone, then add keys later:
+
+```bash
+npm run create-org    -- --name "<Partner Agency>" --plan growth
 npm run create-api-key -- --org-id <org-uuid> --name "<Partner> Claude Code"
-# → cq_live_……  (store the hash only; we cannot recover the raw key)
 ```
 
 Manage keys later with `npm run api-keys -- --org-id <id> --list | --revoke <key-id>`.
@@ -131,6 +133,7 @@ free period. The technical pipeline supports either; this is a commercial decisi
 | Command | Purpose |
 |---|---|
 | `curl https://<host>/health` | Liveness (+ DB dependency in commercial mode) |
+| `npm run create-org -- --name "<Org>" --plan <plan> [--with-key]` | Create a partner org (+ optional first key) |
 | `npm run create-api-key -- --org-id <id> --name "<label>"` | Mint a CQ key (shown once) |
 | `npm run api-keys -- --org-id <id> --list \| --revoke <key-id>` | Key lifecycle |
 | `npm run verify-stripe` | TEST-MODE Stripe send + webhook-signature round-trip |

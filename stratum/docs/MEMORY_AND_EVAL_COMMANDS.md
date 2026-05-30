@@ -76,6 +76,10 @@ with the multi-tenant auth gate (protecting `/v1/*`) + all of the above APIs wir
 mint a key with `npm run create-api-key`, then call `/v1/*` with `Authorization: Bearer <key>`.
 Without the flag, the proxy is the unauthenticated Phase-1 personal measurement server (unchanged).
 
+`npm run create-org -- --name "<Org>" --plan starter|growth|enterprise|custom [--with-key]` creates a
+partner org (the plan sets the invoice monthly-minimum floor) and, with `--with-key`, mints its first
+API key in one step — the onboarding entry point (`COMMERCIAL_ONBOARDING.md`). **FREE**.
+
 `npm run create-api-key -- --org-id <uuid> --name "<label>" [--env test]` mints a multi-tenant
 API key, stores **only its SHA-256 hash** in `api_keys` (a DB leak never exposes usable keys),
 and prints the raw key once. The proxy enforces it when `buildProxy({ auth })` is supplied
