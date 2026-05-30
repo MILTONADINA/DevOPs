@@ -26,8 +26,10 @@ Add `-- --fetch-model` to also pre-download the ONNX encoder.
 `npm run backup -- --org-id <uuid> [--pretty]` exports one org's full row-set across all
 16 tables to a timestamped JSON in the gitignored `backups/` (disaster recovery / data
 portability / GDPR export). **FREE**, read-only (SELECT only); needs Supabase creds.
-Restore is the documented follow-up (billing is append-only + has generated columns, and
-the cross-table FKs need dependency-ordered re-insertion — a careful write-path).
+`npm run restore -- --file <path> [--dry-run]` re-inserts a backup in FK-dependency order
+— preserving UUIDs (so cross-table references stay valid) and stripping billing's generated
+columns — into a CLEAN target. The full backup → delete → restore round-trip is
+referential-integrity-verified.
 
 Add to `stratum/.env` (gitignored — never commit):
 
