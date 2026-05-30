@@ -47,6 +47,11 @@ Confirm liveness: `curl https://<host>/health` → `{"status":"ok",...}` (and `d
 commercial mode). The machine-readable contract is at `GET /openapi.json`; a browsable reference at
 `GET /docs`.
 
+**Alternative host — Vercel serverless:** a deploy adapter + runbook is at `docs/VERCEL_DEPLOY.md` (the
+function is esbuild-bundled, locally boot-verified). Note the ≈300s function cap bounds the *streaming*
+`/v1/messages` path — the non-streaming invoice/billing/webhook path this runbook depends on is unaffected;
+the container above (no cap) is the better fit if long-stream truncation matters.
+
 ## 2. Create the partner's org + API key
 
 Create the org with its plan (the plan sets the monthly minimum — starter $0 / growth $99 /
@@ -83,8 +88,9 @@ plan, and **persisted** — each request appends a signed `billing_record` (thei
 
 ## 4. Confirm their usage is visible
 
-- CFO dashboard: `https://<host>/billing?org-id=<org-uuid>` (sessions, tokens, effectiveness, amount due).
-- API: `GET /v1/billing/summary` and `GET /v1/sessions` (authenticated with the CQ key).
+- **API (authenticated with the CQ key — the reliable path):** `GET /v1/billing/invoice`, `GET /v1/billing/summary`, `GET /v1/sessions`.
+- **Operator (direct DB read, no HTTP):** `npm run invoice -- --org-id <org-uuid>` — the CFO report + amount due.
+- **CFO dashboard** (`https://<host>/billing`): the HTML page is public, but in commercial mode its data fetch is now **auth-gated** — the previous unauthenticated `?org-id` read was a cross-tenant hole, closed in the review-#7 security fix, so the browser dashboard needs auth before it renders data (PB-50: a small dashboard-auth UX follow-up). Until that lands, use the authenticated API or `npm run invoice` above.
 
 > Until pruning is activated (gated on the Tier-A eval — ADR-0009/0014), `quarantined = original`, so
 > **savings are $0** and the amount due is the plan minimum. The dashboard truthfully shows usage with
