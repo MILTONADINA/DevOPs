@@ -16,11 +16,49 @@ import type { FastifyInstance, FastifyPluginCallback, FastifyReply, FastifyReque
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { generateInvoice, toAuditCsv, type BillableRecord } from "../../billing/invoice";
 
+/** A full billing record row (the audit shape, docs/API_REFERENCE.md GET /v1/billing/records). */
+export interface BillingRecordFull {
+  id: string;
+  created_at: string;
+  session_id: string;
+  original_tokens: number;
+  quarantined_tokens: number;
+  token_delta: number;
+  cost_delta_usd: number;
+  cq_fee_usd: number;
+  signed_hash: string;
+}
+
+export interface RecordsQuery {
+  since?: string | undefined;
+  until?: string | undefined;
+  sessionId?: string | undefined;
+  limit: number;
+  offset: number;
+}
+
 export interface BillingDeps {
-  /** The org's billing records in [since, until] (ISO bounds optional). */
+  /** The org's billing records in [since, until] (ISO bounds optional) — the invoice/summary source. */
   listBillingRecords: (orgId: string, since?: string, until?: string) => Promise<BillableRecord[]>;
+  /** Paginated full records for the audit endpoint, + the total count for the page metadata. */
+  listRecords: (orgId: string, q: RecordsQuery) => Promise<{ records: BillingRecordFull[]; total: number }>;
   /** The org's plan (drives the monthly-minimum floor), or null if the org is unknown. */
   getOrgPlan: (orgId: string) => Promise<string | null>;
+}
+
+/** Convert a YYYY-MM month into [since, until) ISO bounds, or null if malformed. */
+export function monthBounds(month: string): { since: string; until: string } | null {
+  const m = month.match(/^(\d{4})-(\d{2})$/);
+  if (m === null) return null;
+  const y = Number(m[1]);
+  const mo = Number(m[2]);
+  if (mo < 1 || mo > 12) return null;
+  const pad = (n: number): string => String(n).padStart(2, "0");
+  const since = `${m[1]}-${m[2]}-01T00:00:00.000Z`;
+  const nextY = mo === 12 ? y + 1 : y;
+  const nextMo = mo === 12 ? 1 : mo + 1;
+  const until = `${String(nextY).padStart(4, "0")}-${pad(nextMo)}-01T00:00:00.000Z`;
+  return { since, until };
 }
 
 /** The org for this request: the authenticated org, else ?org-id (unauthenticated proxy). */
@@ -34,6 +72,12 @@ function resolveOrg(req: FastifyRequest): string | undefined {
 function strParam(req: FastifyRequest, name: string): string | undefined {
   const v = (req.query as Record<string, unknown>)[name];
   return typeof v === "string" && v !== "" ? v : undefined;
+}
+
+function intParam(req: FastifyRequest, name: string, def: number): number {
+  const v = (req.query as Record<string, unknown>)[name];
+  const n = typeof v === "string" ? Number.parseInt(v, 10) : NaN;
+  return Number.isFinite(n) ? n : def;
 }
 
 function err(reply: FastifyReply, code: number, type: string, message: string): FastifyReply {
@@ -123,6 +167,56 @@ export function makeBillingRoute(deps: BillingDeps): FastifyPluginCallback {
       return reply.send(toAuditCsv(records));
     });
 
+    // GET /v1/billing/summary — the monthly summary (docs/API_REFERENCE.md). `?month=YYYY-MM`
+    // (default: all time / the given since-until). by_developer is deferred (needs the sessions join).
+    app.get("/v1/billing/summary", async (req, reply) => {
+      const orgId = resolveOrg(req);
+      if (orgId === undefined) return err(reply, 400, "request_error", "org id required (authenticate, or pass ?org-id)");
+      const plan = await deps.getOrgPlan(orgId);
+      if (plan === null) return err(reply, 404, "request_error", "organization not found");
+      const month = strParam(req, "month");
+      let since = strParam(req, "since");
+      let until = strParam(req, "until");
+      let period = since ?? "(all time)";
+      if (month !== undefined) {
+        const b = monthBounds(month);
+        if (b === null) return err(reply, 400, "request_error", "month must be YYYY-MM");
+        since = b.since;
+        until = b.until;
+        period = month;
+      }
+      const records = await deps.listBillingRecords(orgId, since, until);
+      const inv = generateInvoice(orgId, plan, records, period, until ?? "(now)");
+      return {
+        org_id: orgId,
+        period,
+        total_original_tokens: inv.totalOriginalTokens,
+        total_quarantined_tokens: inv.totalQuarantinedTokens,
+        total_token_delta: inv.totalOriginalTokens - inv.totalQuarantinedTokens,
+        total_cost_delta_usd: inv.totalSavingsUsd,
+        total_cq_fee_usd: inv.rawFeeUsd,
+        total_sessions: new Set(records.map((r) => r.session_id)).size,
+        average_pruning_effectiveness_pct: inv.effectivenessPct,
+        by_developer: [] as unknown[], // deferred — needs the sessions.developer_id join
+      };
+    });
+
+    // GET /v1/billing/records — paginated raw records for programmatic CFO audit.
+    app.get("/v1/billing/records", async (req, reply) => {
+      const orgId = resolveOrg(req);
+      if (orgId === undefined) return err(reply, 400, "request_error", "org id required (authenticate, or pass ?org-id)");
+      const limit = Math.min(500, Math.max(1, intParam(req, "limit", 50)));
+      const offset = Math.max(0, intParam(req, "offset", 0));
+      const { records, total } = await deps.listRecords(orgId, {
+        since: strParam(req, "since"),
+        until: strParam(req, "until"),
+        sessionId: strParam(req, "session_id"),
+        limit,
+        offset,
+      });
+      return { records, total, offset, limit };
+    });
+
     done();
   };
 }
@@ -146,6 +240,18 @@ export function createSupabaseBillingDeps(client: SupabaseClient): BillingDeps {
       const { data, error } = await q;
       if (error) throw new Error(`listBillingRecords failed: ${error.message}`);
       return (data ?? []) as BillableRecord[];
+    },
+    async listRecords(orgId: string, query: RecordsQuery): Promise<{ records: BillingRecordFull[]; total: number }> {
+      let q = client
+        .from("billing_records")
+        .select("id, created_at, session_id, original_tokens, quarantined_tokens, token_delta, cost_delta_usd, cq_fee_usd, signed_hash", { count: "exact" })
+        .eq("org_id", orgId);
+      if (query.since !== undefined) q = q.gte("created_at", query.since);
+      if (query.until !== undefined) q = q.lte("created_at", query.until);
+      if (query.sessionId !== undefined) q = q.eq("session_id", query.sessionId);
+      const { data, error, count } = await q.order("created_at", { ascending: false }).range(query.offset, query.offset + query.limit - 1);
+      if (error) throw new Error(`listRecords failed: ${error.message}`);
+      return { records: (data ?? []) as BillingRecordFull[], total: count ?? 0 };
     },
   };
 }

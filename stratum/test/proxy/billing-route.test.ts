@@ -22,6 +22,13 @@ function fakeDeps(): { deps: BillingDeps; captured: { orgId?: string; since?: st
       captured.until = until;
       return Promise.resolve(orgId === "o1" ? [RECORD] : []);
     },
+    listRecords: (orgId, q) => {
+      captured.orgId = orgId;
+      captured.since = q.since;
+      captured.until = q.until;
+      const full = { id: "r1", created_at: "t", session_id: "s1", original_tokens: 50_000, quarantined_tokens: 7_500, token_delta: 42_500, cost_delta_usd: 0.6375, cq_fee_usd: 0.1275, signed_hash: "h1" };
+      return Promise.resolve(orgId === "o1" ? { records: [full], total: 1 } : { records: [], total: 0 });
+    },
   };
   return { deps, captured };
 }
@@ -106,5 +113,65 @@ describe("GET /v1/billing/audit.csv", () => {
     expect(lines[0]).toBe("session_id,original_tokens,quarantined_tokens,cost_delta_usd,cq_fee_usd,signed_hash");
     expect(lines[1]).toBe("s1,50000,7500,0.6375,0.1275,h1");
     await app.close();
+  });
+});
+
+describe("GET /v1/billing/summary", () => {
+  test("returns the monthly summary shape (token delta, fee, distinct sessions, effectiveness)", async () => {
+    const app = buildProxy({ rateLimit: false, cors: false, billing: fakeDeps().deps });
+    await app.ready();
+    const res = await app.inject({ method: "GET", url: "/v1/billing/summary?org-id=o1&month=2026-05" });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      org_id: "o1",
+      period: "2026-05",
+      total_original_tokens: 50_000,
+      total_quarantined_tokens: 7_500,
+      total_token_delta: 42_500,
+      total_sessions: 1,
+      average_pruning_effectiveness_pct: 85,
+      by_developer: [],
+    });
+    await app.close();
+  });
+  test("400 on a malformed month; 404 for an unknown org", async () => {
+    const app = buildProxy({ rateLimit: false, cors: false, billing: fakeDeps().deps });
+    await app.ready();
+    expect((await app.inject({ method: "GET", url: "/v1/billing/summary?org-id=o1&month=2026-13" })).statusCode).toBe(400);
+    expect((await app.inject({ method: "GET", url: "/v1/billing/summary?org-id=ghost" })).statusCode).toBe(404);
+    await app.close();
+  });
+});
+
+describe("GET /v1/billing/records", () => {
+  test("returns paginated full records with metadata; clamps limit to [1,500]", async () => {
+    const { deps, captured } = fakeDeps();
+    const app = buildProxy({ rateLimit: false, cors: false, billing: deps });
+    await app.ready();
+    const res = await app.inject({ method: "GET", url: "/v1/billing/records?org-id=o1&limit=9999&offset=0&since=2026-05-01" });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.total).toBe(1);
+    expect(body.limit).toBe(500); // clamped from 9999
+    expect(body.offset).toBe(0);
+    expect(body.records[0]).toMatchObject({ id: "r1", session_id: "s1", token_delta: 42_500, signed_hash: "h1" });
+    expect(captured.since).toBe("2026-05-01");
+    await app.close();
+  });
+  test("400 with no org", async () => {
+    const app = buildProxy({ rateLimit: false, cors: false, billing: fakeDeps().deps });
+    await app.ready();
+    expect((await app.inject({ method: "GET", url: "/v1/billing/records" })).statusCode).toBe(400);
+    await app.close();
+  });
+});
+
+describe("monthBounds", () => {
+  test("converts YYYY-MM to [since, until); rolls over December; rejects bad input", async () => {
+    const { monthBounds } = await import("../../src/proxy/routes/billing");
+    expect(monthBounds("2026-05")).toEqual({ since: "2026-05-01T00:00:00.000Z", until: "2026-06-01T00:00:00.000Z" });
+    expect(monthBounds("2026-12")).toEqual({ since: "2026-12-01T00:00:00.000Z", until: "2027-01-01T00:00:00.000Z" });
+    expect(monthBounds("2026-13")).toBeNull();
+    expect(monthBounds("nope")).toBeNull();
   });
 });

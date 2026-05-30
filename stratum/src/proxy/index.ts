@@ -65,6 +65,8 @@ export function buildStartOptions(env: StartEnv, base: BuildProxyOptions, makeCl
     opts.billing = createSupabaseBillingDeps(client);
     opts.sessions = createSupabaseSessionsDeps(client);
     opts.webhooks = createSupabaseWebhookDeps(client);
+    // Reuse the already-wired exact token counter from the messages deps.
+    if (base.messages !== undefined) opts.tokens = { countTokens: base.messages.countTokens };
   }
   return opts;
 }

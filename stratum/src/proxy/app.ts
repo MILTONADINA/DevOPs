@@ -20,6 +20,7 @@ import { makeConfigRoute, type ConfigDeps } from "./routes/config";
 import { makeMemoryRoute, type MemoryDeps } from "./routes/memory";
 import { makeSessionsRoute, type SessionsDeps } from "./routes/sessions";
 import { makeWebhookRoute, type WebhookDeps } from "./routes/webhooks";
+import { makeTokensRoute, type TokensDeps } from "./routes/tokens";
 import { registerAuth, type AuthDeps } from "./auth";
 import type { MessagesDeps } from "./forward";
 
@@ -81,6 +82,11 @@ export interface BuildProxyOptions {
    * supplies createSupabaseWebhookDeps(client).
    */
   webhooks?: WebhookDeps;
+  /**
+   * The token-count API (POST /v1/tokens/count). When omitted, not registered. Commercial mode
+   * reuses the messages counter.
+   */
+  tokens?: TokensDeps;
 }
 
 /**
@@ -142,6 +148,10 @@ export function buildProxy(opts: BuildProxyOptions = {}): FastifyInstance {
 
   if (opts.webhooks) {
     void app.register(makeWebhookRoute(opts.webhooks));
+  }
+
+  if (opts.tokens) {
+    void app.register(makeTokensRoute(opts.tokens));
   }
 
   app.setErrorHandler((err, _req, reply) => {

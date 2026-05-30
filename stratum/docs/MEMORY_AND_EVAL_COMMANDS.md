@@ -57,6 +57,10 @@ Other opt-in proxy APIs (all org-scoped via the auth gate): **config** (`buildPr
 takes an injectable deps object (a fake in tests; a `createSupabase*Deps(client)` helper in prod)
 and is omitted by default.
 
+Billing also exposes (per `docs/API_REFERENCE.md`): `GET /v1/billing/summary` (`?month=YYYY-MM`),
+`GET /v1/billing/records` (paginated raw records), and `POST /v1/tokens/count` (`buildProxy({ tokens })`
+— exact token count for a `{model, messages}` body without proxying).
+
 **Webhooks** (`buildProxy({ webhooks })`): `POST /v1/webhooks/test` sends a signed sample event
 (6 types per `docs/WEBHOOKS.md`) to the org's configured `webhook_url`. Every event carries an
 `X-CQ-Signature: sha256=<hmac>` header (HMAC-SHA256 of the body, per-org `webhook_secret`); delivery
