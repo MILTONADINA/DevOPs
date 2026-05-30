@@ -8,6 +8,12 @@ only steps that need an external account are flagged **[needs: …]**.
 The business side (finding/qualifying/running a partner) is in `DESIGN_PARTNER.md`. This doc is the
 technical "how", current as of the v1.0.0 commercial build.
 
+> **⚡ LIVE NOW (Session 21):** the proxy is deployed to **Vercel production** and publicly reachable at
+> **`https://stratum-miltons-projects-42574343.vercel.app`** — commercial mode, real Supabase, all env set
+> incl. usage persistence. Verified: `/health` 200, `/v1/*` 401 without a key, the auth-bypass fix holds.
+> So **Step 1 (deploy) is DONE for the Vercel path** — skip to Step 2 (mint the partner's key). The only
+> remaining external inputs are a Stripe `sk_test_` key (Step 5) and a paying partner.
+
 ---
 
 ## 0. The single-partner (pilot) architecture — read first
