@@ -7,12 +7,7 @@
  * See docs/TECHNICAL_SPEC.md for the authoritative schema.
  */
 
-export type FactType =
-  | "FunctionChange"
-  | "TechDecision"
-  | "PolicyUpdate"
-  | "Todo"
-  | "VariableChange";
+export type FactType = "FunctionChange" | "TechDecision" | "PolicyUpdate" | "Todo" | "VariableChange";
 
 /**
  * SINGLE SOURCE OF TRUTH for the fact field enums (PB-37). The Zod schemas
@@ -84,9 +79,4 @@ export interface VariableChangeFact extends BaseFact {
   context?: string;
 }
 
-export type AnyFact =
-  | FunctionChangeFact
-  | TechDecisionFact
-  | PolicyUpdateFact
-  | TodoFact
-  | VariableChangeFact;
+export type AnyFact = FunctionChangeFact | TechDecisionFact | PolicyUpdateFact | TodoFact | VariableChangeFact;

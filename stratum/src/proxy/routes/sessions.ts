@@ -101,7 +101,9 @@ export function makeSessionsRoute(deps: SessionsDeps): FastifyPluginCallback {
       const limit = planLimits(plan).concurrentSessions;
       const active = await deps.countActiveSessions(orgId);
       if (active >= limit) {
-        return reply.code(429).send({ type: "error", error: { type: "rate_limit_error", message: `concurrent session limit (${limit}) reached for plan '${plan}'`, limit_type: "concurrent_sessions" } });
+        return reply
+          .code(429)
+          .send({ type: "error", error: { type: "rate_limit_error", message: `concurrent session limit (${limit}) reached for plan '${plan}'`, limit_type: "concurrent_sessions" } });
       }
       const body = (req.body ?? {}) as Record<string, unknown>;
       const model = typeof body["model"] === "string" && body["model"] !== "" ? body["model"] : "claude-opus-4-8";
@@ -169,13 +171,7 @@ export function createSupabaseSessionsDeps(client: SupabaseClient): SessionsDeps
     async endSession(orgId, id) {
       // Scope-check first so a cross-org id is a clean 404, not a silent no-op update.
       if ((await getSession(orgId, id)) === null) return null;
-      const { data, error } = await client
-        .from("sessions")
-        .update({ ended_at: new Date().toISOString() })
-        .eq("id", id)
-        .eq("org_id", orgId)
-        .select(SESSION_COLS)
-        .limit(1);
+      const { data, error } = await client.from("sessions").update({ ended_at: new Date().toISOString() }).eq("id", id).eq("org_id", orgId).select(SESSION_COLS).limit(1);
       if (error) throw new Error(`endSession failed: ${error.message}`);
       return ((data ?? [])[0] as SessionSummary | undefined) ?? null;
     },
@@ -192,7 +188,12 @@ export function createSupabaseSessionsDeps(client: SupabaseClient): SessionsDeps
         originalTokens: rows.reduce((s, r) => s + r.original_tokens, 0),
         quarantinedTokens: rows.reduce((s, r) => s + r.quarantined_tokens, 0),
         savingsUsd: round2(rows.reduce((s, r) => s + r.cost_delta_usd, 0)),
-        feeUsd: round2(Math.max(0, rows.reduce((s, r) => s + r.cq_fee_usd, 0))),
+        feeUsd: round2(
+          Math.max(
+            0,
+            rows.reduce((s, r) => s + r.cq_fee_usd, 0),
+          ),
+        ),
       };
     },
   };

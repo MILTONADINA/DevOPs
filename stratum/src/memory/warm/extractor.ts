@@ -61,7 +61,7 @@ export function extractionPrompt(input: ExtractInput): string {
   return (
     "Extract DURABLE structured facts from the conversation below. Output ONLY a " +
     "JSON array (no prose). NEVER summarize — emit typed records only. Allowed " +
-    `fact_type values: ${FACT_TYPES.join(", ")}. Each object: {\"fact_type\":<one of those>, ` +
+    `fact_type values: ${FACT_TYPES.join(", ")}. Each object: {"fact_type":<one of those>, ` +
     'plus that type\'s fields, "confidence":0..1}. Type fields — FunctionChange: ' +
     `{old_name, new_name?, change_type:${CHANGE_TYPES.join("|")}, file_path?, language?}; ` +
     "TechDecision: {decision_text, domain, rationale?}; PolicyUpdate: {policy_name, old_value?, " +
@@ -110,10 +110,7 @@ function extractJsonArray(raw: string): string | null {
  * @param ctx - session id + commit hash + system clock/id minters.
  * @returns the validated facts (possibly empty).
  */
-export function parseExtractedFacts(
-  raw: string,
-  ctx: { session_id: string; commit_hash?: string; now: () => string; mintId: () => string },
-): AnyFact[] {
+export function parseExtractedFacts(raw: string, ctx: { session_id: string; commit_hash?: string; now: () => string; mintId: () => string }): AnyFact[] {
   const arr = extractJsonArray(raw);
   if (!arr) return [];
   let parsed: unknown;

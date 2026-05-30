@@ -106,12 +106,17 @@ export async function sendStripeInvoice(cfg: StripeConfig, invoice: Invoice): Pr
   const idem = `${invoice.orgId}|${invoice.periodStart}|${invoice.periodEnd}`;
   const customerId = await findOrCreateCustomer(cfg, invoice.orgId);
 
-  await stripePost(cfg, "/v1/invoiceitems", {
-    customer: customerId,
-    amount: usdToCents(invoice.amountDueUsd),
-    currency: "usd",
-    description: `Stratum token-arbitrage fee (${invoice.periodStart} → ${invoice.periodEnd}; 20% of $${invoice.totalSavingsUsd.toFixed(2)} saved)`,
-  }, `${idem}|invoiceitem`);
+  await stripePost(
+    cfg,
+    "/v1/invoiceitems",
+    {
+      customer: customerId,
+      amount: usdToCents(invoice.amountDueUsd),
+      currency: "usd",
+      description: `Stratum token-arbitrage fee (${invoice.periodStart} → ${invoice.periodEnd}; 20% of $${invoice.totalSavingsUsd.toFixed(2)} saved)`,
+    },
+    `${idem}|invoiceitem`,
+  );
 
   const created = await stripePost(cfg, "/v1/invoices", { customer: customerId, "metadata[org_id]": invoice.orgId, collection_method: "send_invoice", days_until_due: 15 }, `${idem}|invoice`);
   const invoiceId = String(created["id"]);

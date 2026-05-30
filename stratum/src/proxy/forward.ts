@@ -91,9 +91,7 @@ export interface MessagesDeps {
  * @returns the validated base URL with any trailing slashes stripped.
  * @throws {Error} if the URL is unparseable or not http(s).
  */
-export function resolveAnthropicBaseUrl(
-  raw: string = process.env["ANTHROPIC_BASE_URL"] ?? "https://api.anthropic.com",
-): string {
+export function resolveAnthropicBaseUrl(raw: string = process.env["ANTHROPIC_BASE_URL"] ?? "https://api.anthropic.com"): string {
   let parsed: URL;
   try {
     parsed = new URL(raw);
@@ -101,9 +99,7 @@ export function resolveAnthropicBaseUrl(
     throw new Error(`ANTHROPIC_BASE_URL is not a parseable URL: ${raw}`);
   }
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-    throw new Error(
-      `ANTHROPIC_BASE_URL must use http:// or https://; got: ${parsed.protocol} (${raw})`,
-    );
+    throw new Error(`ANTHROPIC_BASE_URL must use http:// or https://; got: ${parsed.protocol} (${raw})`);
   }
   return raw.replace(/\/+$/, "");
 }
@@ -142,12 +138,7 @@ export function upstreamIdleMs(): number {
  * @returns the upstream status + response data.
  * @throws re-throws non-HTTP (network) errors for the caller to surface as 500.
  */
-export async function forwardToAnthropic(
-  body: MessagesBody,
-  apiKey: string,
-  baseUrl: string = resolveAnthropicBaseUrl(),
-  passthrough?: ForwardHeaders,
-): Promise<ForwardResult> {
+export async function forwardToAnthropic(body: MessagesBody, apiKey: string, baseUrl: string = resolveAnthropicBaseUrl(), passthrough?: ForwardHeaders): Promise<ForwardResult> {
   const reqHeaders: Record<string, string> = {
     "x-api-key": apiKey,
     // Forward the CLIENT's API version (transparent proxy); default to the stable version if absent.
@@ -181,10 +172,7 @@ export async function forwardToAnthropic(
  * @param client - the Anthropic SDK client.
  * @returns the input token count + per-message breakdown + method flag.
  */
-export async function countTokensExact(
-  body: MessagesBody,
-  client: Anthropic,
-): Promise<TokenCountResult> {
+export async function countTokensExact(body: MessagesBody, client: Anthropic): Promise<TokenCountResult> {
   const result = await client.messages.countTokens({
     model: body.model,
     messages: body.messages as Anthropic.MessageParam[],

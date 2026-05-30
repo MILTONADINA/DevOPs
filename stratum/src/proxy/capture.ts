@@ -139,22 +139,15 @@ export function createCaptureStore(opts: CaptureStoreOptions): CaptureStore {
       redactedRequest = {
         model: input.request.model,
         messages: redact(input.request.messages),
-        ...(input.request.system !== undefined
-          ? { system: redact(input.request.system) }
-          : {}),
-        ...(input.request.tools !== undefined
-          ? { tools: redact(input.request.tools) }
-          : {}),
+        ...(input.request.system !== undefined ? { system: redact(input.request.system) } : {}),
+        ...(input.request.tools !== undefined ? { tools: redact(input.request.tools) } : {}),
         max_tokens: input.request.max_tokens,
       };
       redactedResponse = redact(input.response);
     } catch (redactionError) {
       session.dropped_turns++;
       const err = redactionError as Error;
-      onError(
-        `[PII-redaction FAIL-CLOSED] Turn ${turnNumber} dropped: ${err.name}: ${err.message}. ` +
-          `Per AC-S15-2a-2.2: unredacted content MUST NOT reach disk. Continuing with subsequent turns.`,
-      );
+      onError(`[PII-redaction FAIL-CLOSED] Turn ${turnNumber} dropped: ${err.name}: ${err.message}. ` + `Per AC-S15-2a-2.2: unredacted content MUST NOT reach disk. Continuing with subsequent turns.`);
       // Do NOT push, do NOT increment token totals, do NOT write this turn.
       return false;
     }

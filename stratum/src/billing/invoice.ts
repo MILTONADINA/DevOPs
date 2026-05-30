@@ -60,7 +60,10 @@ export function generateInvoice(orgId: string, plan: string, records: BillableRe
   const totalOriginalTokens = records.reduce((s, r) => s + r.original_tokens, 0);
   const totalQuarantinedTokens = records.reduce((s, r) => s + r.quarantined_tokens, 0);
   const totalSavingsUsd = records.reduce((s, r) => s + r.cost_delta_usd, 0);
-  const rawFeeUsd = Math.max(0, records.reduce((s, r) => s + r.cq_fee_usd, 0));
+  const rawFeeUsd = Math.max(
+    0,
+    records.reduce((s, r) => s + r.cq_fee_usd, 0),
+  );
   const monthlyMinimumUsd = MONTHLY_MINIMUM_USD[plan] ?? 0;
   const amountDueUsd = Math.max(monthlyMinimumUsd, rawFeeUsd);
   const effectivenessPct = totalOriginalTokens > 0 ? ((totalOriginalTokens - totalQuarantinedTokens) / totalOriginalTokens) * 100 : 0;

@@ -146,13 +146,21 @@ export function attestFact(fact: AnyFact, changes: CodeChange[]): AttestationRes
       if (assertedExists !== undefined) {
         const latest = latestChangeTo(assertedExists, changes, anchor, confirm.commitHash);
         if (latest && leavesAbsent(latest, assertedExists)) {
-          return { status: "CONFLICT", conflictCommit: latest.commitHash, conflictDetail: `${assertedExists} was ${latest.changeType} in commit ${latest.commitHash} (${latest.timestampSeconds}) after the claimed change — the memory is stale.` };
+          return {
+            status: "CONFLICT",
+            conflictCommit: latest.commitHash,
+            conflictDetail: `${assertedExists} was ${latest.changeType} in commit ${latest.commitHash} (${latest.timestampSeconds}) after the claimed change — the memory is stale.`,
+          };
         }
       }
       if (assertedGone !== undefined) {
         const latest = latestChangeTo(assertedGone, changes, anchor, confirm.commitHash);
         if (latest && latest.entity === assertedGone && latest.changeType === "added") {
-          return { status: "CONFLICT", conflictCommit: latest.commitHash, conflictDetail: `${assertedGone} was re-added in commit ${latest.commitHash} (${latest.timestampSeconds}) after being deprecated — the memory is stale.` };
+          return {
+            status: "CONFLICT",
+            conflictCommit: latest.commitHash,
+            conflictDetail: `${assertedGone} was re-added in commit ${latest.commitHash} (${latest.timestampSeconds}) after being deprecated — the memory is stale.`,
+          };
         }
       }
       return { status: "CONFIRMED", evidence: asEvidence(confirm) };
@@ -169,7 +177,11 @@ export function attestFact(fact: AnyFact, changes: CodeChange[]): AttestationRes
     // skipped the drift scan and returned CONFIRMED even for a since-deleted variable.)
     const latest = latestChangeTo(fact.var_name, changes, confirm.timestampSeconds, confirm.commitHash);
     if (latest && leavesAbsent(latest, fact.var_name)) {
-      return { status: "CONFLICT", conflictCommit: latest.commitHash, conflictDetail: `${fact.var_name} was ${latest.changeType} in commit ${latest.commitHash} (${latest.timestampSeconds}) after the claimed change — the memory is stale.` };
+      return {
+        status: "CONFLICT",
+        conflictCommit: latest.commitHash,
+        conflictDetail: `${fact.var_name} was ${latest.changeType} in commit ${latest.commitHash} (${latest.timestampSeconds}) after the claimed change — the memory is stale.`,
+      };
     }
     return { status: "CONFIRMED", evidence: asEvidence(confirm) };
   }

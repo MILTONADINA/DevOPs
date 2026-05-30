@@ -224,12 +224,7 @@ export function buildProxy(opts: BuildProxyOptions = {}): FastifyInstance {
     // unconditionally would mask the plugin/framework status (e.g. rate limit).
     const e = err as Error & { statusCode?: number };
     const status = typeof e.statusCode === "number" && e.statusCode >= 400 ? e.statusCode : 500;
-    const type =
-      status === 429
-        ? "rate_limit_error"
-        : status >= 500
-          ? "internal_proxy_error"
-          : "request_error";
+    const type = status === 429 ? "rate_limit_error" : status >= 500 ? "internal_proxy_error" : "request_error";
     logger.error({ err: e.message, status }, "proxy error");
     void reply.status(status).send({
       type: "error",

@@ -8,14 +8,7 @@
  * is the signing + delivery + envelope layer, built ahead.
  */
 
-export const WEBHOOK_EVENT_TYPES = [
-  "conflict.detected",
-  "fact.suppressed",
-  "eval.completed",
-  "session.ended",
-  "invoice.ready",
-  "tee.attestation_failed",
-] as const;
+export const WEBHOOK_EVENT_TYPES = ["conflict.detected", "fact.suppressed", "eval.completed", "session.ended", "invoice.ready", "tee.attestation_failed"] as const;
 
 export type WebhookEventType = (typeof WEBHOOK_EVENT_TYPES)[number];
 

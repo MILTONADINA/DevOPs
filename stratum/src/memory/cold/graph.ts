@@ -117,13 +117,7 @@ export interface KnowledgeGraph {
 export function createKnowledgeGraph(client: SupabaseClient): KnowledgeGraph {
   return {
     async ensureEntity(input: EnsureEntityInput): Promise<string> {
-      const existing = await client
-        .from("knowledge_entities")
-        .select("id")
-        .eq("org_id", input.orgId)
-        .eq("kind", input.kind)
-        .eq("name", input.name)
-        .limit(1);
+      const existing = await client.from("knowledge_entities").select("id").eq("org_id", input.orgId).eq("kind", input.kind).eq("name", input.name).limit(1);
       if (existing.error) throw new Error(`ensureEntity select failed: ${existing.error.message}`);
       const first = ((existing.data ?? []) as { id: string }[])[0];
       if (first) return first.id;

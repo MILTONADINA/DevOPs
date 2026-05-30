@@ -117,13 +117,7 @@ function recordUsageSafe(deps: MessagesDeps, request: FastifyRequest, model: str
  * Streaming branch: forward with SSE, tee each chunk to the client while
  * accumulating the event stream, then capture the (redacted) accumulated turn.
  */
-async function handleStreaming(
-  body: MessagesBody,
-  request: FastifyRequest,
-  reply: FastifyReply,
-  deps: MessagesDeps,
-  start: number,
-): Promise<FastifyReply> {
+async function handleStreaming(body: MessagesBody, request: FastifyRequest, reply: FastifyReply, deps: MessagesDeps, start: number): Promise<FastifyReply> {
   // Count + budget-check BEFORE forwarding (so an over-budget request never reaches upstream).
   const tokens = await deps.countTokens(body).catch(() => ESTIMATED_FALLBACK);
   if (await checkTokenBudget(deps, request, tokens.input_tokens, reply)) return reply;

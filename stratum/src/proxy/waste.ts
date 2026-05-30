@@ -62,9 +62,7 @@ function messagesOf(session: CaptureSession, turnIdx: number): Array<Record<stri
 
 /** Detector: an identical system prompt re-sent on every turn. */
 export function detectSystemRepetition(session: CaptureSession): WasteFinding[] {
-  const systems = session.requests
-    .map((r) => r.request.system)
-    .filter((s): s is unknown => s !== undefined);
+  const systems = session.requests.map((r) => r.request.system).filter((s): s is unknown => s !== undefined);
   if (systems.length < 2) return [];
   const firstKey = JSON.stringify(systems[0]);
   if (!systems.every((s) => JSON.stringify(s) === firstKey)) return [];
@@ -84,9 +82,7 @@ export function detectSystemRepetition(session: CaptureSession): WasteFinding[] 
 
 /** Detector: identical tool definitions re-sent on every turn. */
 export function detectToolRepetition(session: CaptureSession): WasteFinding[] {
-  const tools = session.requests
-    .map((r) => r.request.tools)
-    .filter((t): t is unknown => t !== undefined);
+  const tools = session.requests.map((r) => r.request.tools).filter((t): t is unknown => t !== undefined);
   if (tools.length < 2) return [];
   const firstKey = JSON.stringify(tools[0]);
   if (!tools.every((t) => JSON.stringify(t) === firstKey)) return [];
@@ -110,9 +106,7 @@ export function detectToolRepetition(session: CaptureSession): WasteFinding[] {
  * context. token_estimate = total_input − peak_single_turn (re-sent overhead).
  */
 export function detectContextTax(session: CaptureSession): WasteFinding[] {
-  const inputs = session.requests
-    .map((r) => r.token_counts.input_tokens)
-    .filter((n) => n > 0);
+  const inputs = session.requests.map((r) => r.token_counts.input_tokens).filter((n) => n > 0);
   if (inputs.length < 2) return [];
   const total = inputs.reduce((a, b) => a + b, 0);
   const peak = Math.max(...inputs);
@@ -163,12 +157,7 @@ export function detectDuplicateContent(session: CaptureSession): WasteFinding[] 
   ];
 }
 
-export const WASTE_DETECTORS = [
-  detectSystemRepetition,
-  detectToolRepetition,
-  detectContextTax,
-  detectDuplicateContent,
-] as const;
+export const WASTE_DETECTORS = [detectSystemRepetition, detectToolRepetition, detectContextTax, detectDuplicateContent] as const;
 
 /**
  * Run all waste detectors over a session, returning findings sorted by
@@ -179,7 +168,5 @@ export const WASTE_DETECTORS = [
  * @returns waste findings, highest token_estimate first.
  */
 export function runWasteDetectors(session: CaptureSession): WasteFinding[] {
-  return WASTE_DETECTORS.flatMap((d) => d(session)).sort(
-    (a, b) => b.token_estimate - a.token_estimate,
-  );
+  return WASTE_DETECTORS.flatMap((d) => d(session)).sort((a, b) => b.token_estimate - a.token_estimate);
 }

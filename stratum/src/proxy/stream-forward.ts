@@ -35,12 +35,7 @@ export interface StreamForwardResult {
  * @returns a {@link StreamForwardResult}.
  * @throws on network/transport errors (no HTTP response).
  */
-export async function forwardStreamToAnthropic(
-  body: MessagesBody,
-  apiKey: string,
-  baseUrl: string = resolveAnthropicBaseUrl(),
-  passthrough?: ForwardHeaders,
-): Promise<StreamForwardResult> {
+export async function forwardStreamToAnthropic(body: MessagesBody, apiKey: string, baseUrl: string = resolveAnthropicBaseUrl(), passthrough?: ForwardHeaders): Promise<StreamForwardResult> {
   const headers: Record<string, string> = {
     "x-api-key": apiKey,
     "anthropic-version": passthrough?.anthropicVersion ?? "2023-06-01",
@@ -68,12 +63,16 @@ export async function forwardStreamToAnthropic(
 
   let res;
   try {
-    res = await axios.post(`${baseUrl}/v1/messages`, { ...body, stream: true }, {
-      headers,
-      responseType: "stream",
-      validateStatus: () => true,
-      signal: ac.signal,
-    });
+    res = await axios.post(
+      `${baseUrl}/v1/messages`,
+      { ...body, stream: true },
+      {
+        headers,
+        responseType: "stream",
+        validateStatus: () => true,
+        signal: ac.signal,
+      },
+    );
   } catch (e) {
     clearTimeout(idle);
     throw e; // connect timed out / network error → caller (withStreamRetry) decides

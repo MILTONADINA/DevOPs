@@ -169,8 +169,8 @@ export function accumulateAnthropicStream(events: SseEvent[]): AccumulateResult 
       case "message_delta": {
         const delta = d ? asRecord(d["delta"]) : null;
         if (delta) {
-          if ("stop_reason" in delta) msg.stop_reason = (asString(delta["stop_reason"]) ?? null);
-          if ("stop_sequence" in delta) msg.stop_sequence = (asString(delta["stop_sequence"]) ?? null);
+          if ("stop_reason" in delta) msg.stop_reason = asString(delta["stop_reason"]) ?? null;
+          if ("stop_sequence" in delta) msg.stop_sequence = asString(delta["stop_sequence"]) ?? null;
         }
         const u = d ? asRecord(d["usage"]) : null;
         if (u) msg.usage = { ...msg.usage, ...(asNumber(u["output_tokens"]) !== undefined ? { output_tokens: asNumber(u["output_tokens"]) } : {}) };

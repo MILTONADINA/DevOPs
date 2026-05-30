@@ -57,10 +57,6 @@ export function deriveSessionKey(_masterKey: Uint8Array, _sessionId: string): Pr
  * @returns the {@link EncryptedPayload}.
  * @throws ALWAYS — Phase 4 interface stub (see file header).
  */
-export function encryptSpans(
-  _plaintext: string,
-  _sessionKey: Uint8Array,
-  _attestationNonce: string,
-): Promise<EncryptedPayload> {
+export function encryptSpans(_plaintext: string, _sessionKey: Uint8Array, _attestationNonce: string): Promise<EncryptedPayload> {
   return Promise.reject(new Error(NOT_IMPLEMENTED));
 }

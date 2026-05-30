@@ -15,12 +15,7 @@
  */
 
 import { cosineSimilarity } from "./encoder";
-import {
-  selectRelevantTurns,
-  type KadaneDialParams,
-  type PruneDecision,
-  type HistoryTurn,
-} from "./kadanedial";
+import { selectRelevantTurns, type KadaneDialParams, type PruneDecision, type HistoryTurn } from "./kadanedial";
 
 /** A stored history-turn embedding + when the turn occurred. */
 export interface HistoryEmbedding {
@@ -38,11 +33,7 @@ export interface HistoryEmbedding {
  * @param params - KadaneDial params (λ / g / θ / now).
  * @returns the {@link PruneDecision} (selected + pruned indices + logged scores).
  */
-export function prune(
-  queryEmbedding: Float32Array,
-  history: HistoryEmbedding[],
-  params: KadaneDialParams,
-): PruneDecision {
+export function prune(queryEmbedding: Float32Array, history: HistoryEmbedding[], params: KadaneDialParams): PruneDecision {
   const turns: HistoryTurn[] = history.map((h) => ({
     similarity: cosineSimilarity(queryEmbedding, h.embedding),
     timestampSeconds: h.timestampSeconds,

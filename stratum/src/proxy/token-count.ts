@@ -39,10 +39,7 @@ function stableKey(body: MessagesBody): string {
 
 /** Coarse fallback estimate (~chars/4). Always flagged "estimated", never exact. */
 function estimateTokens(body: MessagesBody): number {
-  const text =
-    JSON.stringify(body.messages ?? "") +
-    JSON.stringify(body.system ?? "") +
-    JSON.stringify(body.tools ?? "");
+  const text = JSON.stringify(body.messages ?? "") + JSON.stringify(body.system ?? "") + JSON.stringify(body.tools ?? "");
   return Math.ceil(text.length / 4);
 }
 

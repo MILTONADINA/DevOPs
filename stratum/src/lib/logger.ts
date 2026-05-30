@@ -14,7 +14,5 @@ import pino from "pino";
 // we conditionally spread the key in rather than setting it to undefined.
 export const logger = pino({
   level: process.env["LOG_LEVEL"] ?? "info",
-  ...(process.env["NODE_ENV"] === "development"
-    ? { transport: { target: "pino-pretty" } }
-    : {}),
+  ...(process.env["NODE_ENV"] === "development" ? { transport: { target: "pino-pretty" } } : {}),
 });

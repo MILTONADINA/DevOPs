@@ -50,15 +50,9 @@ export interface UnderstandOptions {
  * @returns the structured {@link EntityUnderstanding}.
  * @throws {Error} if a graph/vector query fails.
  */
-export async function understandEntity(
-  graph: KnowledgeGraph,
-  orgId: string,
-  name: string,
-  opts: UnderstandOptions = {},
-): Promise<EntityUnderstanding> {
+export async function understandEntity(graph: KnowledgeGraph, orgId: string, name: string, opts: UnderstandOptions = {}): Promise<EntityUnderstanding> {
   const edges = await graph.entityStatus(orgId, name);
-  const pick = (edgeType: string, direction: "incoming" | "outgoing"): string[] =>
-    edges.filter((e) => e.edgeType === edgeType && e.direction === direction).map((e) => e.otherName);
+  const pick = (edgeType: string, direction: "incoming" | "outgoing"): string[] => edges.filter((e) => e.edgeType === edgeType && e.direction === direction).map((e) => e.otherName);
 
   const supersededBy = pick("SUPERSEDES", "incoming");
   const result: EntityUnderstanding = {

@@ -38,9 +38,7 @@ export const FACT_TABLES: Record<FactType, string> = {
 };
 
 /** Reverse of {@link FACT_TABLES}: table name → fact_type (for reads). */
-export const TABLE_FACT_TYPES: Record<string, FactType> = Object.fromEntries(
-  (Object.entries(FACT_TABLES) as [FactType, string][]).map(([ft, table]) => [table, ft]),
-);
+export const TABLE_FACT_TYPES: Record<string, FactType> = Object.fromEntries((Object.entries(FACT_TABLES) as [FactType, string][]).map(([ft, table]) => [table, ft]));
 
 /**
  * DB columns that exist on the fact tables but are NOT part of the {@link AnyFact}

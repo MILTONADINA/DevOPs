@@ -88,10 +88,7 @@ export function withRetry(forward: ForwardFn, config: Partial<RetryConfig> = {})
         return result;
       }
 
-      const delay =
-        result.status === 429
-          ? (parseRetryAfterMs(result.headers) ?? expBackoff(attempt))
-          : expBackoff(attempt);
+      const delay = result.status === 429 ? (parseRetryAfterMs(result.headers) ?? expBackoff(attempt)) : expBackoff(attempt);
       await cfg.sleep(Math.min(cfg.maxDelayMs, delay));
       attempt++;
     }

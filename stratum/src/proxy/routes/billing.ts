@@ -348,10 +348,7 @@ export function createSupabaseBillingDeps(client: SupabaseClient): BillingDeps {
       return row ? row.plan : null;
     },
     async listBillingRecords(orgId: string, since?: string, until?: string): Promise<BillableRecord[]> {
-      let q = client
-        .from("billing_records")
-        .select("session_id, original_tokens, quarantined_tokens, cost_delta_usd, cq_fee_usd, signed_hash")
-        .eq("org_id", orgId);
+      let q = client.from("billing_records").select("session_id, original_tokens, quarantined_tokens, cost_delta_usd, cq_fee_usd, signed_hash").eq("org_id", orgId);
       if (since !== undefined) q = q.gte("created_at", since);
       if (until !== undefined) q = q.lt("created_at", until);
       const { data, error } = await q;
@@ -364,7 +361,15 @@ export function createSupabaseBillingDeps(client: SupabaseClient): BillingDeps {
       if (until !== undefined) q = q.lt("created_at", until);
       const { data, error } = await q;
       if (error) throw new Error(`developerBreakdown failed: ${error.message}`);
-      type Row = { original_tokens: number; quarantined_tokens: number; cq_fee_usd: number; sessions: { developer_id: string | null; developers: { name: string } | { name: string }[] | null } | { developer_id: string | null; developers: { name: string } | { name: string }[] | null }[] | null };
+      type Row = {
+        original_tokens: number;
+        quarantined_tokens: number;
+        cq_fee_usd: number;
+        sessions:
+          | { developer_id: string | null; developers: { name: string } | { name: string }[] | null }
+          | { developer_id: string | null; developers: { name: string } | { name: string }[] | null }[]
+          | null;
+      };
       const map = new Map<string | null, DeveloperBreakdown>();
       for (const row of (data ?? []) as Row[]) {
         const session = Array.isArray(row.sessions) ? row.sessions[0] : row.sessions;
@@ -391,10 +396,7 @@ export function createSupabaseBillingDeps(client: SupabaseClient): BillingDeps {
       return { records: (data ?? []) as BillingRecordFull[], total: count ?? 0 };
     },
     async listInvoices(orgId: string, query: InvoicesQuery): Promise<{ invoices: InvoiceRow[]; total: number }> {
-      let q = client
-        .from("invoices")
-        .select("id, created_at, stripe_invoice_id, amount_cents, currency, status, paid_at", { count: "exact" })
-        .eq("org_id", orgId);
+      let q = client.from("invoices").select("id, created_at, stripe_invoice_id, amount_cents, currency, status, paid_at", { count: "exact" }).eq("org_id", orgId);
       if (query.status !== undefined) q = q.eq("status", query.status);
       const { data, error, count } = await q.order("created_at", { ascending: false }).range(query.offset, query.offset + query.limit - 1);
       if (error) throw new Error(`listInvoices failed: ${error.message}`);

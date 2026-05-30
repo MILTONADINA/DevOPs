@@ -57,7 +57,10 @@ export function isSafeWebhookUrl(raw: string): { ok: true } | { ok: false; reaso
 }
 
 /** Minimal fetch shape for delivery (the global `fetch` satisfies it); injected for testability. */
-export type DeliveryFetch = (url: string, init: { method: string; headers: Record<string, string>; body: string; signal?: AbortSignal; redirect?: "error" | "follow" | "manual" }) => Promise<{ status: number }>;
+export type DeliveryFetch = (
+  url: string,
+  init: { method: string; headers: Record<string, string>; body: string; signal?: AbortSignal; redirect?: "error" | "follow" | "manual" },
+) => Promise<{ status: number }>;
 
 export interface DeliveryResult {
   delivered: boolean;

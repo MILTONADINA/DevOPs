@@ -47,7 +47,7 @@ function hashToUnit(s: string): number {
     h ^= s.charCodeAt(i);
     h = Math.imul(h, 16777619);
   }
-  return (h >>> 0) % 100000 / 100000;
+  return ((h >>> 0) % 100000) / 100000;
 }
 
 /**
