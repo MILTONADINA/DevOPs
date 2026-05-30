@@ -96,6 +96,8 @@ UNVERIFIED facts and are LLM-gated.
 | `npm run audit:repo [-- --max-count N]` | **FREE** | Index a repo's real git history into structured code changes and report them (commits / files / added·deleted·modified). No LLM. |
 | `npm run audit:repo -- --facts <json>` | **FREE** | Attest a JSON array of facts against that history: CONFIRMED (with commit evidence) / UNVERIFIED (→ Tier-2, gated) / CONFLICT (stale memory). A CONFLICT yields a non-zero exit. |
 | `npm run audit:repo -- --facts <json> --persist --org-id <uuid> --session-id <uuid>` | **FREE** | Also record CONFLICTs to `audit_conflicts` (suppressed; trusted FKs, ADR-0012). Needs Supabase creds; skips cleanly without them. |
+| `npm run audit:conflicts [-- --org-id <uuid>] [--all]` | **FREE** | The spec's **alert** half ("CONFLICT ⇒ suppress + alert"): list the unacknowledged Historical-Drift queue from `audit_conflicts` (the table's `WHERE acknowledged = FALSE` partial index). `--all` includes acknowledged. Skips cleanly without Supabase creds. |
+| `npm run audit:conflicts -- --ack <id> [--by <dev-uuid>]` | **FREE** | Acknowledge a conflict (clears it from the alert queue); org-scoped with `--org-id`. Verified end-to-end live (seed → list → ack → re-read). |
 
 Tier-1 is FREE and runs end-to-end today; escalating the UNVERIFIED residue to the
 Tier-2 Llama / Tier-3 Opus models (and wiring the audit as a request-path injection
