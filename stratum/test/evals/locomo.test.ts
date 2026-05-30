@@ -63,6 +63,12 @@ describe("parseLocomoDateTime", () => {
     expect(() => parseLocomoDateTime("sometime last week")).toThrow(/unparseable/);
     expect(() => parseLocomoDateTime("1:00 pm on 8 Smarch, 2023")).toThrow(/unknown month/);
   });
+
+  test("fail-loud on OUT-OF-RANGE fields (not a silently-rolled date; review #4)", () => {
+    expect(() => parseLocomoDateTime("13:00 pm on 8 May, 2023")).toThrow(/out-of-range/); // hour 13 (am/pm is 1-12)
+    expect(() => parseLocomoDateTime("1:99 pm on 8 May, 2023")).toThrow(/out-of-range/); // minute 99
+    expect(() => parseLocomoDateTime("1:00 pm on 31 Feb, 2023")).toThrow(/out-of-range/); // 31 Feb → would roll to March
+  });
 });
 
 describe("parseLocomo", () => {
@@ -125,9 +131,46 @@ describe("sampleQuestions", () => {
     expect(a.map((q) => q.query)).toEqual(b.map((q) => q.query)); // reproducible
   });
 
+  test("spans the timeline: includes the earliest AND the LATEST eligible question (review #3)", () => {
+    // eligible sorted earliest-evidence-first = [cat's name (D1:1), photo (D1:2), Temporal (D2:1)].
+    // Endpoint-inclusive stride at n=2 picks index 0 and the LAST (2); the old floor-stride
+    // picked 0 and 1, silently dropping the latest-evidence question (biasing survival optimistic).
+    const queries = sampleQuestions(conv!, { maxQuestions: 2 }).map((q) => q.query);
+    expect(queries).toContain("What is the cat's name?"); // earliest
+    expect(queries).toContain("Temporal q"); // LATEST — was dropped by the off-by-one
+    expect(queries).not.toContain("What did Bob see in the photo?"); // the middle is skipped at n=2
+  });
+
   test("category filter can be overridden", () => {
     const onlyTemporal = sampleQuestions(conv!, { maxQuestions: 10, categories: [2] });
     expect(onlyTemporal.every((q) => q.category === 2)).toBe(true);
+  });
+});
+
+describe("cross-session timestamp monotonicity (review #6)", () => {
+  test("turns stay strictly increasing even when consecutive sessions share the same minute", () => {
+    const json = JSON.stringify([
+      {
+        sample_id: "close",
+        conversation: {
+          speaker_a: "A",
+          speaker_b: "B",
+          session_1_date_time: "1:00 pm on 8 May, 2023",
+          session_1: [
+            { speaker: "A", dia_id: "D1:1", text: "t1" },
+            { speaker: "B", dia_id: "D1:2", text: "t2" },
+            { speaker: "A", dia_id: "D1:3", text: "t3" },
+          ],
+          session_2_date_time: "1:00 pm on 8 May, 2023", // SAME minute as session_1
+          session_2: [{ speaker: "B", dia_id: "D2:1", text: "t4" }],
+        },
+        qa: [],
+      },
+    ]);
+    const [c] = parseLocomo(json) as [LocomoConversation];
+    const ts = c!.turns.map((t) => t.timestampSeconds);
+    expect(c!.turns).toHaveLength(4);
+    for (let i = 1; i < ts.length; i++) expect(ts[i]!).toBeGreaterThan(ts[i - 1]!); // monotonic across the same-minute boundary
   });
 });
 

@@ -63,7 +63,20 @@ export function parseLongMemDateTime(s: string): number {
   const m = s.trim().match(DATETIME_RE);
   if (!m) throw new Error(`unparseable LongMemEval date: ${JSON.stringify(s)}`);
   const [, year, mon, day, hh, mm] = m;
-  const ms = Date.UTC(Number(year), Number(mon) - 1, Number(day), Number(hh), Number(mm), 0);
+  const monthIdx = Number(mon) - 1;
+  const d = Number(day);
+  const hour = Number(hh);
+  const minute = Number(mm);
+  // Range-check BEFORE Date.UTC (which silently rolls overflow, fabricating a wrong
+  // epoch — the opposite of the fail-loud contract).
+  if (monthIdx < 0 || monthIdx > 11 || d < 1 || d > 31 || hour > 23 || minute > 59) {
+    throw new Error(`out-of-range LongMemEval date: ${JSON.stringify(s)}`);
+  }
+  const ms = Date.UTC(Number(year), monthIdx, d, hour, minute, 0);
+  const back = new Date(ms);
+  if (back.getUTCMonth() !== monthIdx || back.getUTCDate() !== d) {
+    throw new Error(`out-of-range LongMemEval date: ${JSON.stringify(s)}`); // e.g. 31 Feb normalized away
+  }
   return Math.floor(ms / 1000);
 }
 
@@ -93,21 +106,28 @@ function toQuestion(rec: RawRecord, idx: number): LongMemQuestion {
 
   const turns: LongMemTurn[] = [];
   const evidenceIndices: number[] = [];
+  let prevMaxTs = -1; // running watermark → GLOBALLY monotonic timestamps across sessions
   sessions.forEach((rawSession, si) => {
     if (!Array.isArray(rawSession)) return;
     const dateStr = asString(dates[si]);
-    // A missing/blank date is tolerated by spacing sessions 1h apart (deltas only).
-    const sessionEpoch = dateStr ? parseLongMemDateTime(dateStr) : si * 3600;
+    // Fail-LOUD on a missing date (consistent with parseLongMemDateTime) rather than
+    // synthesizing a 1970 epoch (si*3600), which would place the session ~53 years before
+    // the others — breaking chronological order + corrupting the evidence-survival signal.
+    if (!dateStr) throw new Error(`LongMemEval ${questionId}: session ${si} has no haystack_date`);
+    const sessionEpoch = parseLongMemDateTime(dateStr);
+    // base = max(epoch, prevMax+1): a session never starts before the previous ended, so
+    // the flattened turn list is monotonic for ANY input (+ti gives intra-session order).
+    const base = Math.max(sessionEpoch, prevMaxTs + 1);
     rawSession.forEach((rt, ti) => {
       const t = rt as { role?: unknown; content?: unknown; has_answer?: unknown };
       const text = asString(t.content).trim();
       if (!text) return;
       const hasAnswer = t.has_answer === true;
       const gi = turns.length;
-      // +ti seconds for strict intra-session ordering (sub-decay-scale).
-      turns.push({ role: asString(t.role) || "?", text, timestampSeconds: sessionEpoch + ti, sessionIndex: si, hasAnswer });
+      turns.push({ role: asString(t.role) || "?", text, timestampSeconds: base + ti, sessionIndex: si, hasAnswer });
       if (hasAnswer) evidenceIndices.push(gi);
     });
+    prevMaxTs = base + Math.max(0, rawSession.length - 1);
   });
 
   return {
@@ -168,9 +188,17 @@ export function sampleLongMemQuestions(questions: LongMemQuestion[], opts: LongM
   const n = Math.min(opts.maxQuestions, eligible.length);
   if (n <= 0) return [];
   if (n === eligible.length) return eligible;
+  if (n === 1) return [eligible[0]!];
+  // Endpoint-inclusive stride (i=0 → first, i=n-1 → last) so the sample spans the whole
+  // set incl. the last element — plain floor(i·len/n) drops it (review #3).
   const out: LongMemQuestion[] = [];
-  const stride = eligible.length / n;
-  for (let i = 0; i < n; i++) out.push(eligible[Math.min(eligible.length - 1, Math.floor(i * stride))]!);
+  const seen = new Set<number>();
+  for (let i = 0; i < n; i++) {
+    let idx = Math.round((i * (eligible.length - 1)) / (n - 1));
+    while (seen.has(idx) && idx < eligible.length - 1) idx++;
+    seen.add(idx);
+    out.push(eligible[idx]!);
+  }
   return out;
 }
 

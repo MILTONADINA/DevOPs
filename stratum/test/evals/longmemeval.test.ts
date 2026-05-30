@@ -53,6 +53,11 @@ describe("parseLongMemDateTime", () => {
   test("throws (never fabricates) on garbage", () => {
     expect(() => parseLongMemDateTime("last tuesday")).toThrow(/unparseable/);
   });
+  test("fail-loud on out-of-range fields (review #4)", () => {
+    expect(() => parseLongMemDateTime("2023/13/01 (Mon) 17:50")).toThrow(/out-of-range/); // month 13
+    expect(() => parseLongMemDateTime("2023/02/31 (Mon) 17:50")).toThrow(/out-of-range/); // 31 Feb → would roll
+    expect(() => parseLongMemDateTime("2023/04/10 (Mon) 25:00")).toThrow(/out-of-range/); // hour 25
+  });
 });
 
 describe("parseLongMemEval", () => {
@@ -73,6 +78,20 @@ describe("parseLongMemEval", () => {
     expect(q1!.goldenAnswer).toBe("GPS not working");
     expect(q1!.questionType).toBe("temporal-reasoning");
   });
+
+  test("fail-loud when a session has no haystack_date (review #5; no 1970-epoch fallback)", () => {
+    const rec = JSON.stringify([
+      {
+        question_id: "q",
+        question_type: "x",
+        question: "q?",
+        answer: "a",
+        haystack_dates: ["2023/04/10 (Mon) 12:00"], // only ONE date for TWO sessions
+        haystack_sessions: [[{ role: "user", content: "a", has_answer: true }], [{ role: "user", content: "b", has_answer: false }]],
+      },
+    ]);
+    expect(() => parseLongMemEval(rec)).toThrow(/no haystack_date/);
+  });
 });
 
 describe("sampleLongMemQuestions", () => {
@@ -89,6 +108,11 @@ describe("sampleLongMemQuestions", () => {
     const a = sampleLongMemQuestions(qs, { maxQuestions: 1, requireEvidence: false });
     const b = sampleLongMemQuestions(qs, { maxQuestions: 1, requireEvidence: false });
     expect(a.map((q) => q.questionId)).toEqual(b.map((q) => q.questionId));
+  });
+  test("endpoint-inclusive spread: includes first AND last over a larger set (review #3)", () => {
+    const mk = (id: string): LongMemQuestion => ({ questionId: id, questionType: "multi-session", query: "q", goldenAnswer: "a", turns: [{ role: "user", text: "t", timestampSeconds: 1, sessionIndex: 0, hasAnswer: true }], evidenceIndices: [0] });
+    const picked = sampleLongMemQuestions([mk("q00"), mk("q01"), mk("q02"), mk("q03")], { maxQuestions: 2 }).map((q) => q.questionId);
+    expect(picked).toEqual(["q00", "q03"]); // first + LAST (the old floor-stride gave q00,q02 — dropped q03)
   });
 });
 

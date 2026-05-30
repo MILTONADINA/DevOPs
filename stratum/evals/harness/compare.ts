@@ -82,6 +82,11 @@ export function gateMetric(
   min: number,
   maxDegradation: number,
 ): MetricVerdict {
+  // Fail-CLOSED on a non-finite score: a ship gate must never silently PASS input it
+  // cannot interpret (every comparison with NaN is false, which would read as "passed").
+  if (!Number.isFinite(prunedScore) || !Number.isFinite(baselineScore)) {
+    return { metric, prunedScore, baselineScore, delta: NaN, min, passed: false, reason: `non-finite score (pruned=${prunedScore}, baseline=${baselineScore}) — refusing to gate` };
+  }
   const delta = prunedScore - baselineScore;
   const prunedBelowFloor = prunedScore < min;
   const baselineClearedFloor = baselineScore >= min;
@@ -89,7 +94,10 @@ export function gateMetric(
   const droppedBelowFloor = prunedBelowFloor && baselineClearedFloor;
   // Both below floor ⇒ answerer/judge ceiling, not pruning (diagnostic only).
   const baselineBelowFloor = prunedBelowFloor && !baselineClearedFloor;
-  const degradedTooMuch = baselineScore - prunedScore >= maxDegradation;
+  // 1e-9 tolerance (consistent with kadanedial.ts's threshold epsilons) so a NOMINAL
+  // maxDegradation degradation fails deterministically despite float-subtraction drift
+  // (e.g. 1.00−0.95 = 0.05000…04 vs 0.95−0.90 = 0.04999…93 must both count as 5%).
+  const degradedTooMuch = baselineScore - prunedScore >= maxDegradation - 1e-9;
   const passed = !droppedBelowFloor && !degradedTooMuch;
 
   const base: MetricVerdict = { metric, prunedScore, baselineScore, delta, min, passed };

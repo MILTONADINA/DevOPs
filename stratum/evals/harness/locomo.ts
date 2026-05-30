@@ -95,15 +95,27 @@ const SESSION_KEY_RE = /^session_(\d+)$/;
 export function parseLocomoDateTime(s: string): number {
   const m = s.trim().match(DATETIME_RE);
   if (!m) throw new Error(`unparseable LoCoMo date_time: ${JSON.stringify(s)}`);
-  const [, hh, mm, ap, day, monName, year] = m;
+  const [, hh, mm, ap, dayStr, monName, year] = m;
   const monthIdx = MONTHS[(monName ?? "").toLowerCase()];
   if (monthIdx === undefined) throw new Error(`unknown month in LoCoMo date_time: ${JSON.stringify(s)}`);
-  let hour = Number(hh);
+  const rawHour = Number(hh);
   const minute = Number(mm);
+  const day = Number(dayStr);
+  // Range-check BEFORE Date.UTC (which silently rolls overflow into adjacent units,
+  // fabricating a wrong epoch — the opposite of this function's fail-loud contract).
+  if (rawHour < 1 || rawHour > 12 || minute > 59 || day < 1 || day > 31) {
+    throw new Error(`out-of-range LoCoMo date_time: ${JSON.stringify(s)}`);
+  }
+  let hour = rawHour;
   const isPm = (ap ?? "").toLowerCase() === "pm";
   if (hour === 12) hour = isPm ? 12 : 0; // 12 pm = noon, 12 am = midnight
   else if (isPm) hour += 12;
-  const ms = Date.UTC(Number(year), monthIdx, Number(day), hour, minute, 0);
+  const ms = Date.UTC(Number(year), monthIdx, day, hour, minute, 0);
+  // Round-trip guard: reject a date Date.UTC normalized (e.g. 31 Feb → 3 Mar).
+  const d = new Date(ms);
+  if (d.getUTCMonth() !== monthIdx || d.getUTCDate() !== day) {
+    throw new Error(`out-of-range LoCoMo date_time: ${JSON.stringify(s)}`);
+  }
   return Math.floor(ms / 1000);
 }
 
@@ -145,23 +157,28 @@ function toConversation(sample: RawSample, sampleNo: number): LocomoConversation
 
   const turns: LocomoTurn[] = [];
   const diaIndex = new Map<string, number>();
+  let prevMaxTs = -1; // running watermark → keep timestamps GLOBALLY monotonic across sessions
   for (const n of sessionNums) {
     const dt = conv[`session_${n}_date_time`];
     if (typeof dt !== "string") throw new Error(`LoCoMo sample ${sampleId}: session ${n} missing date_time`);
     const sessionEpoch = parseLocomoDateTime(dt);
     const rawTurns = conv[`session_${n}`];
     if (!Array.isArray(rawTurns)) throw new Error(`LoCoMo sample ${sampleId}: session_${n} is not an array`);
+    // +i seconds gives intra-session ordering; base = max(epoch, prevMax+1) guarantees a
+    // session never starts before the previous one ended even if their dates are close
+    // (so the flattened turn list is monotonic — the chronological contract — for ANY input;
+    // for the real corpus sessions are days apart, so base == epoch and decay is unaffected).
+    const base = Math.max(sessionEpoch, prevMaxTs + 1);
     rawTurns.forEach((rt, i) => {
       const t = rt as { speaker?: unknown; dia_id?: unknown; text?: unknown; blip_caption?: unknown };
       const text = turnText(t);
       if (!text) return; // skip a content-free turn (no text, no caption)
       const diaId = asString(t.dia_id) || `D${n}:${i + 1}`;
-      // +i seconds keeps strict monotonic order within a session (sub-decay-scale
-      // — sessions are hours/days apart, so this never affects λ^hours materially).
       const idx = turns.length;
-      turns.push({ diaId, speaker: asString(t.speaker) || "?", text, timestampSeconds: sessionEpoch + i, sessionIndex: n });
+      turns.push({ diaId, speaker: asString(t.speaker) || "?", text, timestampSeconds: base + i, sessionIndex: n });
       if (!diaIndex.has(diaId)) diaIndex.set(diaId, idx);
     });
+    prevMaxTs = base + Math.max(0, rawTurns.length - 1);
   }
   if (turns.length === 0) throw new Error(`LoCoMo sample ${sampleId}: zero usable turns`);
 
@@ -260,12 +277,17 @@ export function sampleQuestions(conv: LocomoConversation, opts: SampleOptions): 
   const n = Math.min(opts.maxQuestions, eligible.length);
   if (n <= 0) return [];
   if (n === eligible.length) return eligible.map((e) => e.q);
+  if (n === 1) return [eligible[0]!.q];
 
-  // Even stride across the timeline-sorted list.
+  // ENDPOINT-INCLUSIVE even stride: i=0 → first, i=n-1 → last, so the sample spans the
+  // WHOLE timeline (incl. the latest-evidence question). A plain floor(i·len/n) stride
+  // drops the final element, biasing the evidence-survival gate optimistic (review #3).
   const out: LocomoQuestion[] = [];
-  const stride = eligible.length / n;
+  const seen = new Set<number>();
   for (let i = 0; i < n; i++) {
-    const idx = Math.min(eligible.length - 1, Math.floor(i * stride));
+    let idx = Math.round((i * (eligible.length - 1)) / (n - 1));
+    while (seen.has(idx) && idx < eligible.length - 1) idx++; // de-dup on rounding collision
+    seen.add(idx);
     out.push(eligible[idx]!.q);
   }
   return out;

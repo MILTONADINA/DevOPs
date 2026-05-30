@@ -46,6 +46,19 @@ describe("gateMetric", () => {
     expect(v.passed).toBe(true);
   });
 
+  test("fail-CLOSED on a non-finite score (never silently passes; review #1)", () => {
+    expect(gateMetric("faithfulness", NaN, 0.95, faithfulnessMin, maxDegradation).passed).toBe(false);
+    expect(gateMetric("faithfulness", 0.95, NaN, faithfulnessMin, maxDegradation).passed).toBe(false);
+    expect(gateMetric("faithfulness", NaN, 0.95, faithfulnessMin, maxDegradation).reason).toMatch(/non-finite/);
+  });
+
+  test("a NOMINAL maxDegradation (5%) degradation FAILS consistently despite float drift (review #2/#8)", () => {
+    // 0.95−0.90 ≈ 0.04999…93 and 1.00−0.95 ≈ 0.05000…04 — both nominal 5%; with the 1e-9
+    // tolerance both must FAIL (a `>=`→`>` or no-tolerance regression flips one of them).
+    expect(gateMetric("faithfulness", 0.9, 0.95, faithfulnessMin, maxDegradation).passed).toBe(false);
+    expect(gateMetric("answerRelevancy", 0.95, 1.0, answerRelevancyMin, maxDegradation).passed).toBe(false);
+  });
+
   // ADR-0016 degradation-dominant attribution — cases use the ACTUAL scores
   // observed in the calibrated LoCoMo run, to prove the gate attributes
   // floor failures to pruning correctly (and not to baseline-quality ceilings).
