@@ -143,8 +143,19 @@ export interface PruneDecision {
  * @returns the decayed scores R_i.
  */
 export function applyTemporalDecay(turns: HistoryTurn[], lambda: number, nowSeconds: number, horizonSeconds = 3600): number[] {
+  // Enforce the documented (0,1] contract loudly: lambda ≤ 0 / NaN would make pow() return NaN, which
+  // bypasses the σ=0 guard (NaN < 1e-9 is false) and silently fail-OPEN to an empty selection. Boundary
+  // validation (config CHECK + validateConfigPatch + OpenAPI) already rejects bad lambda; this is the
+  // algorithm core asserting its own contract so an internal misuse fails loud, not silent.
+  if (!(lambda > 0 && lambda <= 1)) throw new RangeError(`lambda must be in (0,1], got ${lambda}`);
   const unit = horizonSeconds > 0 ? horizonSeconds : 3600; // guard: non-positive ⇒ per-hour
-  return turns.map((t) => t.similarity * Math.pow(lambda, (nowSeconds - t.timestampSeconds) / unit));
+  return turns.map((t) => {
+    // Clamp elapsed to ≥ 0: a future/clock-skewed timestamp (now < t) makes the exponent negative and
+    // pow(lambda<1, neg) > 1 — AMPLIFYING the turn instead of decaying it. The spec domain is
+    // (now − t) ≥ 0, so a future turn decays by factor 1.0 (treated as present), never boosted.
+    const elapsed = Math.max(0, nowSeconds - t.timestampSeconds);
+    return t.similarity * Math.pow(lambda, elapsed / unit);
+  });
 }
 
 /** Population z-score. σ = 0 → returns the input unchanged (spec edge case). */
@@ -158,7 +169,9 @@ export function zScoreNormalize(values: number[]): { normalized: number[]; skipp
   // bit-identical cosines) sum with float drift to std≈5e-17, not 0. An exact
   // `=== 0` guard misses that case and z-normalizes [x,x,x] to [-1,-1,-1],
   // dropping ALL turns. Treat near-zero σ as the spec's σ=0 passthrough.
-  if (std < 1e-9) return { normalized: [...values], skipped: true };
+  // `!(std >= 1e-9)` (not `std < 1e-9`) so a NON-FINITE std (NaN/Infinity from upstream bad data) ALSO
+  // takes the passthrough — `NaN < 1e-9` is false and would divide by NaN, fail-OPEN to all-NaN scores.
+  if (!(std >= 1e-9)) return { normalized: [...values], skipped: true };
   return { normalized: values.map((v) => (v - mean) / std), skipped: false };
 }
 

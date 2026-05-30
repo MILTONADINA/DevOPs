@@ -51,7 +51,10 @@ export const policyUpdateSchema = z.object({
   old_value: z.string().optional(),
   new_value: z.string().min(1),
   policy_type: z.enum(POLICY_TYPES),
-  effective_date: z.string().optional(),
+  // YYYY-MM-DD only: the DB column is DATE, so a free-text value ("next sprint") would pass a bare
+  // z.string() then fail the WHOLE batch insert at the DB — dropping valid co-tabled facts. Validate
+  // here so a malformed date is FAIL-CLOSED-discarded (the one bad fact), matching validateFact's intent.
+  effective_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "must be a YYYY-MM-DD date").optional(),
 });
 
 export const todoSchema = z.object({
@@ -59,7 +62,7 @@ export const todoSchema = z.object({
   fact_type: z.literal("Todo"),
   description: z.string().min(1),
   status: z.enum(TODO_STATUSES),
-  due_date: z.string().optional(),
+  due_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "must be a YYYY-MM-DD date").optional(), // DATE column (see effective_date)
   assigned_to: z.string().optional(),
 });
 

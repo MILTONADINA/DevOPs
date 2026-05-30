@@ -143,13 +143,23 @@ export function makeFakeSupabase(
 
   function makeUpdate(table: string, patch: Row): unknown {
     const filters: Row = {};
+    const apply = (): Row[] => {
+      const matched: Row[] = [];
+      for (const row of rowsOf(table)) if (matchesEq(row, filters)) { Object.assign(row, patch); matched.push(row); }
+      return matched;
+    };
     const builder = {
       eq(col: string, val: unknown) {
         filters[col] = val;
         return builder;
       },
+      // .select() returns the ROWS ACTUALLY UPDATED (real supabase behaviour) — markPromoted uses this
+      // to count matched rows; a 0-row update yields data:[].
+      select(_cols?: string) {
+        return { then(onFulfilled: (v: { data: Row[]; error: null }) => void): void { onFulfilled({ data: apply(), error: null }); } };
+      },
       then(onFulfilled: (v: { data: null; error: null }) => void): void {
-        for (const row of rowsOf(table)) if (matchesEq(row, filters)) Object.assign(row, patch);
+        apply();
         onFulfilled({ data: null, error: null });
       },
     };

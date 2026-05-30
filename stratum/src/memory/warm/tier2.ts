@@ -299,9 +299,12 @@ export function createWarmMemory(client: SupabaseClient): WarmMemory {
       let marked = 0;
       for (const fact of facts) {
         const table = tableForFactType(fact.fact_type);
-        const { error } = await client.from(table).update({ promoted_to_t3: true }).eq("id", fact.id).eq("org_id", orgId);
+        // .select("id") so we count ROWS ACTUALLY UPDATED — a bare update() returns {error:null} even on
+        // a 0-row match (already promoted by a concurrent run / deleted), which would inflate the count to
+        // facts.length and make the caller's `marked !== total` reconciliation guard vacuous (never fire).
+        const { data, error } = await client.from(table).update({ promoted_to_t3: true }).eq("id", fact.id).eq("org_id", orgId).select("id");
         if (error) throw new Error(`markPromoted failed (${table}/${fact.id}): ${error.message}`);
-        marked++;
+        if ((data?.length ?? 0) > 0) marked++;
       }
       return marked;
     },

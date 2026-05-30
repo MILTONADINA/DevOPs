@@ -131,6 +131,42 @@ describe("MemoryManager — fact survives 50 turns", () => {
     expect(persisted).toHaveLength(1);
     expect((persisted[0] as { decision_text?: string }).decision_text).toContain("RS256");
   });
+
+  test("a persist failure re-queues the EXTRACTED FACTS (stable ids) — retry does NOT re-extract → no duplicate ids", async () => {
+    // The pre-fix bug: re-queuing the raw TURNS made the retry re-extract → mintId yields a NEW id →
+    // duplicate facts. The fix re-persists the SAME fact objects, so the retry mints nothing new.
+    let persistCalls = 0;
+    const persistedIds: string[] = [];
+    const warm: WarmMemory = {
+      async persist(facts) {
+        persistCalls++;
+        if (persistCalls === 1) return { persisted: 0, skipped: 0, errors: [{ table: "tech_decisions", message: "transient" }] };
+        for (const f of facts) persistedIds.push(f.id);
+        return { persisted: facts.length, skipped: 0, errors: [] };
+      },
+      async queryRecent() { return []; },
+      async queryUnpromoted() { return []; },
+      async markPromoted() { return 0; },
+      async getFactsByRefs() { return new Map(); },
+    };
+    let seq = 0;
+    const base = createFactExtractor(
+      { complete: (p: string) => Promise.resolve(p.includes("RS256") ? '[{"fact_type":"TechDecision","decision_text":"use RS256","domain":"auth","confidence":0.9}]' : "[]") },
+      { now: () => "2026-05-29T00:00:00Z", mintId: () => `eeeeeeee-eeee-eeee-eeee-${String(++seq).padStart(12, "0")}` }, // VARYING id per extract
+    );
+    let extractCalls = 0;
+    const extractor = { extract: (input: Parameters<typeof base.extract>[0]) => { extractCalls++; return base.extract(input); } };
+    let clockMs = 0;
+    const manager = createMemoryManager({ extractor, warm, context: { orgId: "o", sessionId: "s" }, hotOptions: { windowMs: 1000, now: () => clockMs } });
+
+    await manager.ingest({ role: "user", content: "Decision: use RS256.", timestamp: 0 });
+    clockMs = 5000;
+    await expect(manager.flush()).rejects.toThrow(/persist failed/i);
+    await manager.flush(); // retry
+
+    expect(extractCalls).toBe(1); // extracted ONCE — the retry re-persisted facts, did not re-extract
+    expect(persistedIds).toEqual(["eeeeeeee-eeee-eeee-eeee-000000000001"]); // the ORIGINAL id, not a fresh mint
+  });
 });
 
 describe("MemoryManager — Tier-3 semantic recall (opt-in)", () => {

@@ -104,6 +104,11 @@ export function createMemoryManager(deps: MemoryManagerDeps): MemoryManager {
   // Evicted turns are buffered by the (synchronous) onEvict hook, then drained
   // asynchronously (extract + persist) after each ingest / on flush.
   const evictedBuffer: { role: string; content: string }[] = [];
+  // Facts that were extracted but whose persist FAILED on a prior drain. They are re-persisted with
+  // their ORIGINAL minted ids, so the upsert-on-id retry is genuinely idempotent. Re-queuing the raw
+  // TURNS instead (and re-extracting) would mint BRAND-NEW ids → duplicate facts for every table that
+  // already succeeded in the partial failure.
+  const pendingFacts: AnyFact[] = [];
   const hot = createHotMemory({
     ...(deps.hotOptions ?? {}),
     onEvict: (t: HotTurn) => {
@@ -111,25 +116,37 @@ export function createMemoryManager(deps: MemoryManagerDeps): MemoryManager {
     },
   });
 
+  const persistCtx = (): { orgId: string; sessionId: string } => ({ orgId: deps.context.orgId, sessionId: deps.context.sessionId });
+
   async function drain(): Promise<void> {
+    // 1) Re-persist any facts from a prior failed drain FIRST — same ids ⇒ the upsert is idempotent
+    //    (re-persisting an already-stored fact overwrites its own row; no duplicate is created).
+    if (pendingFacts.length > 0) {
+      const retry = pendingFacts.splice(0, pendingFacts.length);
+      const r = await deps.warm.persist(retry, persistCtx());
+      if (r.errors.length > 0) {
+        pendingFacts.unshift(...retry); // still failing → keep the EXACT facts (ids stable) for next time
+        throw new Error(`MemoryManager.drain: warm re-persist failed, facts re-queued: ${r.errors.map((e) => `${e.table}: ${e.message}`).join("; ")}`);
+      }
+    }
+
     if (evictedBuffer.length === 0) return;
     const turns = evictedBuffer.splice(0, evictedBuffer.length); // take the batch
     let facts: AnyFact[];
     try {
       facts = await deps.extractor.extract({ session_id: deps.context.sessionId, turns });
     } catch (err) {
-      evictedBuffer.unshift(...turns); // extraction failed → re-queue; never lose evicted turns
+      evictedBuffer.unshift(...turns); // extraction failed → re-queue turns (NO ids minted yet, safe)
       throw err;
     }
     if (facts.length === 0) return;
-    // persist() does NOT throw — it returns per-table errors. If any table failed,
-    // the facts are NOT durably stored, so re-queue the turns for the next drain
-    // (rather than silently dropping them) and fail loud. persist upserts on id, so
-    // a retry that re-persists already-stored facts is idempotent (no duplicates).
-    const result = await deps.warm.persist(facts, { orgId: deps.context.orgId, sessionId: deps.context.sessionId });
+    // persist() does NOT throw — it returns per-table errors. On a partial failure, re-queue the
+    // EXTRACTED FACTS (with their already-minted ids), NOT the turns — so the next drain re-presents
+    // the SAME ids and the upsert dedups instead of minting duplicates from a fresh extraction.
+    const result = await deps.warm.persist(facts, persistCtx());
     if (result.errors.length > 0) {
-      evictedBuffer.unshift(...turns);
-      throw new Error(`MemoryManager.drain: warm persist failed, turns re-queued: ${result.errors.map((e) => `${e.table}: ${e.message}`).join("; ")}`);
+      pendingFacts.push(...facts);
+      throw new Error(`MemoryManager.drain: warm persist failed, facts re-queued: ${result.errors.map((e) => `${e.table}: ${e.message}`).join("; ")}`);
     }
   }
 

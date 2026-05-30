@@ -91,7 +91,11 @@ export function createVectorStore(client: SupabaseClient): VectorStore {
         if (r.sourceRef !== undefined) row["source_ref"] = r.sourceRef;
         return row;
       });
-      const { error } = await client.from("memory_vectors").insert(rows);
+      // Upsert (not insert) so a re-run of the promotion job is idempotent: ON CONFLICT
+      // (org_id, source_type, source_ref) DO NOTHING dedups a repeated promotion of the same fact
+      // (the unique index from migration 20260530010000). NULL source_ref rows are unaffected (NULLs
+      // distinct), matching the prior insert behaviour for non-fact-promotion writes.
+      const { error } = await client.from("memory_vectors").upsert(rows, { onConflict: "org_id,source_type,source_ref", ignoreDuplicates: true });
       if (error) throw new Error(`vector upsert failed: ${error.message}`);
       return rows.length;
     },

@@ -44,6 +44,19 @@ describe("applyTemporalDecay — R_i = S_raw × λ^((now−t)/3600)", () => {
     // non-positive horizon guards back to per-hour (never divide-by-zero).
     expect(applyTemporalDecay(turn, 0.5, NOW, 0)[0]).toBeCloseTo(0.5, 10);
   });
+  test("a FUTURE timestamp decays by 1.0 (clamped) — never amplified above present turns", () => {
+    // now < t ⇒ a negative exponent would make λ^neg > 1 (e.g. 0.97^-24 ≈ 2.08), boosting a
+    // clock-skewed/adversarial turn above all real ones. Clamp elapsed to ≥ 0 ⇒ factor 1.0.
+    const [r] = applyTemporalDecay([{ similarity: 0.8, timestampSeconds: NOW + 24 * 3600 }], 0.97, NOW);
+    expect(r).toBe(0.8); // unchanged, not 0.8 × 2.08
+  });
+  test("throws on a λ outside (0,1] (the algorithm asserts its own contract — no silent NaN)", () => {
+    const turn = [{ similarity: 1, timestampSeconds: NOW }];
+    expect(() => applyTemporalDecay(turn, 0, NOW)).toThrow(/lambda must be in/);
+    expect(() => applyTemporalDecay(turn, -0.5, NOW)).toThrow(/lambda must be in/);
+    expect(() => applyTemporalDecay(turn, 1.5, NOW)).toThrow(/lambda must be in/);
+    expect(() => applyTemporalDecay(turn, NaN, NOW)).toThrow(/lambda must be in/);
+  });
 });
 
 describe("zScoreNormalize — population z-score, σ=0 passthrough", () => {
