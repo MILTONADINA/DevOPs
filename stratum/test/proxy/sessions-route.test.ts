@@ -18,6 +18,10 @@ function fakeDeps(): { deps: SessionsDeps; captured: Record<string, unknown> } {
     },
     getSession: (_orgId, id) => Promise.resolve(id === "s1" ? SESSION : null),
     getSessionStats: (_orgId, id) => Promise.resolve(id === "s1" ? STATS : null),
+    endSession: (_orgId, id) => {
+      captured["ended"] = id;
+      return Promise.resolve(id === "s1" ? { ...SESSION, ended_at: "2026-05-30T00:00:00Z" } : null);
+    },
   };
   return { deps, captured };
 }
@@ -48,6 +52,20 @@ describe("GET /v1/sessions/:id", () => {
     await app.ready();
     expect((await app.inject({ method: "GET", url: "/v1/sessions/s1?org-id=o1" })).json()).toEqual(SESSION);
     expect((await app.inject({ method: "GET", url: "/v1/sessions/ghost?org-id=o1" })).statusCode).toBe(404);
+    await app.close();
+  });
+});
+
+describe("DELETE /v1/sessions/:id", () => {
+  test("ends a session (sets ended_at); 404 for an unknown id", async () => {
+    const { deps, captured } = fakeDeps();
+    const app = buildProxy({ rateLimit: false, cors: false, sessions: deps });
+    await app.ready();
+    const res = await app.inject({ method: "DELETE", url: "/v1/sessions/s1?org-id=o1" });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ ended: true, session: { id: "s1", ended_at: "2026-05-30T00:00:00Z" } });
+    expect(captured["ended"]).toBe("s1");
+    expect((await app.inject({ method: "DELETE", url: "/v1/sessions/ghost?org-id=o1" })).statusCode).toBe(404);
     await app.close();
   });
 });

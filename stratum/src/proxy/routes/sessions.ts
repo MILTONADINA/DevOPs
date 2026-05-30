@@ -39,6 +39,8 @@ export interface SessionsDeps {
   getSession: (orgId: string, id: string) => Promise<SessionSummary | null>;
   /** Token stats for a session, or null if the session is not in this org. */
   getSessionStats: (orgId: string, id: string) => Promise<SessionStats | null>;
+  /** End a session (set ended_at); returns the updated session, or null if not in this org. */
+  endSession: (orgId: string, id: string) => Promise<SessionSummary | null>;
 }
 
 function resolveOrg(req: FastifyRequest): string | undefined {
@@ -87,6 +89,15 @@ export function makeSessionsRoute(deps: SessionsDeps): FastifyPluginCallback {
       return stats;
     });
 
+    // DELETE /v1/sessions/:id — end a session (set ended_at); the session.ended trigger (WEBHOOKS.md).
+    app.delete("/v1/sessions/:id", async (req, reply) => {
+      const orgId = resolveOrg(req);
+      if (orgId === undefined) return err(reply, 400, "org id required (authenticate, or pass ?org-id)");
+      const session = await deps.endSession(orgId, (req.params as { id: string }).id);
+      if (session === null) return err(reply, 404, "session not found for this org");
+      return { ended: true, session };
+    });
+
     done();
   };
 }
@@ -107,6 +118,19 @@ export function createSupabaseSessionsDeps(client: SupabaseClient): SessionsDeps
       return (data ?? []) as SessionSummary[];
     },
     getSession,
+    async endSession(orgId, id) {
+      // Scope-check first so a cross-org id is a clean 404, not a silent no-op update.
+      if ((await getSession(orgId, id)) === null) return null;
+      const { data, error } = await client
+        .from("sessions")
+        .update({ ended_at: new Date().toISOString() })
+        .eq("id", id)
+        .eq("org_id", orgId)
+        .select(SESSION_COLS)
+        .limit(1);
+      if (error) throw new Error(`endSession failed: ${error.message}`);
+      return ((data ?? [])[0] as SessionSummary | undefined) ?? null;
+    },
     async getSessionStats(orgId, id) {
       // Scope check first: only an org's own session yields stats (no cross-tenant peeking).
       if ((await getSession(orgId, id)) === null) return null;
