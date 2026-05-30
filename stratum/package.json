@@ -5,6 +5,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "setup": "tsx scripts/setup.ts",
     "dev": "tsx src/proxy/index.ts",
     "build": "tsc --noEmit -p tsconfig.typecheck.json",
     "build:wasm": "cd rust/hot-path && wasm-pack build --target nodejs",

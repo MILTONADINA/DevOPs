@@ -15,7 +15,13 @@ credits).
 
 ```bash
 cd stratum && npm install
+npm run setup            # validate Node/deps/.env + report which capability tiers are live
 ```
+
+`npm run setup` is the one-command readiness check (v0.8.x cold-clone-to-running): it
+creates `.env` from `.env.example` if missing and prints, given your current keys, exactly
+which commands run now (FREE/local always; Supabase + Anthropic tiers when configured).
+Add `-- --fetch-model` to also pre-download the ONNX encoder.
 
 Add to `stratum/.env` (gitignored — never commit):
 
