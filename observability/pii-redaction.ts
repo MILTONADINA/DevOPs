@@ -66,7 +66,22 @@ const PATTERNS = [
   { name: 'cq-key', regex: /cq_(?:live|test)_[A-Za-z0-9_-]{20,}/g },
   // AWS access key ID (fixed width)
   { name: 'aws-key', regex: /AKIA[0-9A-Z]{16}/g },
+  // AWS SECRET access key (40-char base64) — CONTEXT-ANCHORED (PB-26). A bare 40-char base64 pattern
+  // would false-positive on ordinary base64; so this redacts the 40-char value ONLY when it directly
+  // follows a "secret access key" label (variable-length lookbehind, V8/Node 24). The label is NOT
+  // consumed (so it stays for context); the trailing negative lookahead pins it to exactly 40 chars.
+  // Fixed-length value match → linear, no backtracking (quantifier-discipline note above).
+  { name: 'aws-secret', regex: /(?<=(?:aws_?)?secret_?access_?key["':=\s]{1,4})[A-Za-z0-9/+]{40}(?![A-Za-z0-9/+=])/gi },
 ];
+
+/**
+ * Max string length redacted IN FULL. Beyond this, the patterns' per-char constant factor (the email
+ * scan is linear but ~1ms/KB) turns a per-turn redaction of a megabyte paste into a multi-second
+ * event-loop block (PB-24). An oversized leaf is redacted WHOLESALE to a length-tagged placeholder —
+ * O(1) and FAIL-CLOSED (no raw content reaches the artifact), never a multi-second stall. 256 KB covers
+ * any realistic prompt/response while bounding the worst case.
+ */
+export const MAX_REDACT_LEN = 262_144;
 
 /**
  * Redact PII patterns from a single string.
@@ -80,6 +95,8 @@ const PATTERNS = [
  * (Stratum consumes; does NOT duplicate patterns).
  */
 export function redactString(s: string): string {
+  // Oversized input → redact wholesale (PB-24): O(1) + fail-closed, instead of a multi-second per-turn scan.
+  if (s.length > MAX_REDACT_LEN) return `[REDACTED:oversized-${s.length}]`;
   let out = s;
   for (const { name, regex } of PATTERNS) {
     out = out.replace(regex, `[REDACTED:${name}]`);

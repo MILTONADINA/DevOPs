@@ -9,7 +9,7 @@
 // explicitly to prevent the ReDoS bug from reappearing.
 
 import { describe, test, expect } from 'vitest';
-import { redactString, redactValue } from '../../../observability/pii-redaction';
+import { redactString, redactValue, MAX_REDACT_LEN } from '../../../observability/pii-redaction';
 
 // ReDoS-resilience timing helpers. These tests guard against CATASTROPHIC
 // backtracking, whose failure mode on these ~500-600KB inputs is a HANG (O(N²)/
@@ -82,14 +82,42 @@ describe('pii-redaction — pattern detection', () => {
     expect(redactString('AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE'))
       .toBe('AWS_ACCESS_KEY_ID=[REDACTED:aws-key]');
   });
+
+  test('AWS SECRET access key is redacted ONLY in its labeled context (PB-26) — no false positives', () => {
+    // The 40-char secret following a "secret access key" label → redacted (label kept).
+    expect(redactString('aws_secret_access_key=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY'))
+      .toBe('aws_secret_access_key=[REDACTED:aws-secret]');
+    expect(redactString('secretAccessKey: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"'))
+      .toContain('[REDACTED:aws-secret]');
+    // A bare 40-char base64 string with NO secret-key label → NOT redacted (avoids false positives).
+    const bare = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMN'; // 40 chars, no context
+    expect(redactString('hash=' + bare)).toBe('hash=' + bare);
+  });
+});
+
+describe('pii-redaction — oversized input cap (PB-24)', () => {
+  test('a string over MAX_REDACT_LEN is redacted wholesale to a length-tagged placeholder (no multi-second scan)', () => {
+    const big = 'x'.repeat(MAX_REDACT_LEN + 1);
+    expect(redactString(big)).toBe(`[REDACTED:oversized-${MAX_REDACT_LEN + 1}]`);
+  });
+  test('a string at/under the cap is redacted normally', () => {
+    const ok = 'contact user@example.com';
+    expect(redactString(ok)).toBe('contact [REDACTED:email]');
+    expect(redactString('y'.repeat(MAX_REDACT_LEN))).toBe('y'.repeat(MAX_REDACT_LEN)); // exactly at cap → scanned (no match)
+  });
+  test('oversized cap also applies through redactValue (nested leaf)', () => {
+    const out = redactValue({ messages: [{ content: 'z'.repeat(MAX_REDACT_LEN + 5) }] }) as { messages: { content: string }[] };
+    expect(out.messages[0]!.content).toBe(`[REDACTED:oversized-${MAX_REDACT_LEN + 5}]`);
+  });
 });
 
 describe('pii-redaction — bounded quantifiers (ReDoS resilience)', () => {
-  test('500KB of non-PII input completes without catastrophic backtracking', () => {
+  test('a no-PII input AT the redaction cap completes without catastrophic backtracking', () => {
     // Session 15 §2a-2 regression test for the email-regex backtracking bug.
     // Pre-fix: `[a-zA-Z0-9._%+-]+@...` was O(N²) on long no-`@` inputs (would HANG).
-    // Post-fix: bounded `{1,64}` makes it linear-time.
-    const input = 'x'.repeat(500_000);
+    // Post-fix: bounded `{1,64}` makes it linear-time. Sized at MAX_REDACT_LEN-1 — the LARGEST input the
+    // regex ever scans (PB-24 short-circuits anything larger), so this proves linearity at the boundary.
+    const input = 'x'.repeat(MAX_REDACT_LEN - 1);
     let out = '';
     const elapsed = elapsedMs(() => {
       out = redactString(input);
@@ -172,16 +200,16 @@ describe('pii-redaction — upper-bound leak prevention (§2a redo regression)',
     // greedy form matches the whole run in ONE pass → linear.
     let out = '';
     const elapsed = elapsedMs(() => {
-      out = redactString('eyJ'.repeat(200_000)); // ~600KB
+      out = redactString('eyJ'.repeat(80_000)); // ~240KB — under the PB-24 cap, so actually scanned
     });
     expect(out).toBe('[REDACTED:jwt]'); // entire run consumed in one match (a backtracker can't)
     expect(elapsed).toBeLessThan(REDOS_BACKSTOP_MS);
   }, REDOS_TIMEOUT_MS);
 
-  test('ReDoS guard: 100k repeated "eyJa.b" near-matches redact in one linear pass', () => {
+  test('ReDoS guard: repeated "eyJa.b" near-matches redact in one linear pass', () => {
     let out = '';
     const elapsed = elapsedMs(() => {
-      out = redactString('eyJa.b'.repeat(100_000)); // ~600KB of dot-laced near-JWTs
+      out = redactString('eyJa.b'.repeat(40_000)); // ~240KB of dot-laced near-JWTs (under the PB-24 cap → scanned)
     });
     expect(out).toContain('[REDACTED:jwt]');
     expect(out).not.toContain('eyJa.b'.repeat(10));
