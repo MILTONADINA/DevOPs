@@ -61,4 +61,16 @@ describe("buildProxy — rate limiting", () => {
     const g = await app.inject({ method: "GET", url: "/v1/config", headers: { authorization: "Bearer growth-key" } });
     expect(g.statusCode).toBe(200);
   });
+
+  test("commercial responses carry the spec's X-RateLimit-*-Requests headers (RATE_LIMITS.md)", async () => {
+    const resolve = (raw: string) => Promise.resolve(raw === "k" ? { orgId: "o1", keyId: "k" } : null);
+    const config: ConfigDeps = { getConfig: () => Promise.resolve(null), upsertConfig: (_o, p) => Promise.resolve({ lambda: 0.97, gain_shift: 0, theta: 1, zk_enabled: false, audit_enabled: true, webhook_url: null, ...p }) };
+    app = buildProxy({ cors: false, auth: { resolve }, rateLimitByPlan: { getPlan: () => Promise.resolve("starter") }, config });
+    await app.ready();
+    const res = await app.inject({ method: "GET", url: "/v1/config", headers: { authorization: "Bearer k" } });
+    expect(res.statusCode).toBe(200);
+    expect(res.headers["x-ratelimit-limit-requests"]).toBe("20"); // starter = 20/min
+    expect(res.headers["x-ratelimit-remaining-requests"]).toBeDefined();
+    expect(String(res.headers["x-ratelimit-reset-requests"])).toMatch(/^\d{4}-\d{2}-\d{2}T/); // ISO timestamp
+  });
 });

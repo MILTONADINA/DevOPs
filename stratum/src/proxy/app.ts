@@ -127,6 +127,22 @@ export function buildProxy(opts: BuildProxyOptions = {}): FastifyInstance {
         max: async (req) => (typeof req.orgId === "string" && req.orgId !== "" ? planRequestsPerMinute(await resolvePlan(req.orgId)) : planRequestsPerMinute("starter")),
         timeWindow: "1 minute",
       });
+      // Emit the spec's request rate-limit headers (docs/RATE_LIMITS.md) by mapping the limiter's
+      // functional x-ratelimit-* headers to the documented -Requests names (+ ISO reset).
+      app.addHook("onSend", async (_req, reply, payload) => {
+        const limit = reply.getHeader("x-ratelimit-limit");
+        if (limit !== undefined) {
+          void reply.header("x-ratelimit-limit-requests", limit);
+          const remaining = reply.getHeader("x-ratelimit-remaining");
+          if (remaining !== undefined) void reply.header("x-ratelimit-remaining-requests", remaining);
+          const resetSec = reply.getHeader("x-ratelimit-reset");
+          if (resetSec !== undefined) {
+            const secs = Number(resetSec);
+            void reply.header("x-ratelimit-reset-requests", Number.isFinite(secs) ? new Date(Date.now() + secs * 1000).toISOString() : String(resetSec));
+          }
+        }
+        return payload;
+      });
     } else {
       const max = typeof opts.rateLimit === "number" ? opts.rateLimit : parseInt(process.env["RATE_LIMIT_MAX"] ?? "100", 10);
       void app.register(rateLimit, { max, timeWindow: process.env["RATE_LIMIT_WINDOW"] ?? "1 minute" });
