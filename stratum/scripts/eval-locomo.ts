@@ -31,7 +31,8 @@ import { existsSync } from "node:fs";
 import { createOnnxEncoder } from "../src/pruner/encoder";
 import { prune, type HistoryEmbedding } from "../src/pruner/pruner";
 import { DEFAULT_KADANEDIAL, halfLifeHours } from "../src/pruner/kadanedial";
-import { createClaudeAnswerer, createLlmJudge, type Answerer, type Judge } from "../evals/harness/metrics";
+import { createClaudeAnswerer, createLlmJudge, scoreContextRepeated, type Answerer, type Judge } from "../evals/harness/metrics";
+import { summarizeScores } from "../evals/harness/aggregate";
 import { gateScenario } from "../evals/harness/compare";
 import { evaluateSuite, renderReport } from "../evals/harness/report";
 import { DEFAULT_THRESHOLDS, type MetricScores, type ScenarioResult } from "../evals/harness/types";
@@ -82,7 +83,10 @@ interface LambdaOutcome {
   reductionPct: number;
   /** evidence turns that survived pruning / total resolved evidence turns. */
   evidenceSurvival: number;
+  /** Mean pruned scores over the R repeats (the noise-damped point estimate). */
   pruned: MetricScores;
+  /** Per-metric sample std of the pruned scores across the R repeats (judge noise; PB-42). */
+  prunedStd: MetricScores;
 }
 
 interface QuestionOutcome {
@@ -91,7 +95,10 @@ interface QuestionOutcome {
   category: number;
   earliestSession: number;
   fullTurns: number;
+  /** Mean baseline (full-context) scores over the R repeats. */
   baseline: MetricScores;
+  /** Per-metric sample std of the baseline scores across the R repeats. */
+  baselineStd: MetricScores;
   byLambda: LambdaOutcome[];
 }
 
@@ -100,7 +107,7 @@ interface QuestionOutcome {
  * and caching pruned answer/judge by selection signature (so equal selections
  * across λ cost no extra API calls).
  */
-async function runQuestion(
+export async function runQuestion(
   conv: LocomoConversation,
   q: LocomoQuestion,
   queryVec: Float32Array,
@@ -110,17 +117,20 @@ async function runQuestion(
   answerer: Answerer,
   judge: Judge,
   decayHorizonSeconds?: number,
+  repeats = 1,
 ): Promise<QuestionOutcome> {
   const fullText = renderTurns(conv.turns);
   const ev = resolveEvidence(conv, q);
   const earliestSession = ev.indices.length ? conv.turns[ev.indices[0]!]!.sessionIndex : 0;
 
-  // Baseline (full context) — once.
-  const baseAnswer = await answerer.generate(q.query, fullText);
-  const baseline = await judge.score({ query: q.query, context: fullText, answer: baseAnswer });
+  // Baseline (full context) — R repeats, averaged (PB-42 noise damping; R=1 ⇒ one cycle).
+  const baseSummary = summarizeScores(await scoreContextRepeated(answerer, judge, q.query, fullText, repeats));
+  const baseline = baseSummary.mean;
 
   const history: HistoryEmbedding[] = conv.turns.map((t, i) => ({ embedding: turnVecs[i]!, timestampSeconds: t.timestampSeconds }));
-  const cache = new Map<string, MetricScores>();
+  // Cache the SUMMARY (mean+std) by selection signature so identical selections across
+  // λ reuse the R samples — equal selection ⇒ no extra API cost even at R>1.
+  const cache = new Map<string, ReturnType<typeof summarizeScores>>();
   const byLambda: LambdaOutcome[] = [];
 
   // Scale-invariant decay (ADR-0015) when a horizon is supplied; else per-hour λ.
@@ -135,16 +145,15 @@ async function runQuestion(
     const evidenceSurvival = ev.indices.length ? survived / ev.indices.length : 1;
 
     const sig = sel.join(",");
-    let pruned = cache.get(sig);
-    if (!pruned) {
-      const prunedAnswer = await answerer.generate(q.query, prunedText);
-      pruned = await judge.score({ query: q.query, context: prunedText, answer: prunedAnswer });
-      cache.set(sig, pruned);
+    let summary = cache.get(sig);
+    if (!summary) {
+      summary = summarizeScores(await scoreContextRepeated(answerer, judge, q.query, prunedText, repeats));
+      cache.set(sig, summary);
     }
-    byLambda.push({ lambda, selectedIndices: sel, prunedText, reductionPct, evidenceSurvival, pruned });
+    byLambda.push({ lambda, selectedIndices: sel, prunedText, reductionPct, evidenceSurvival, pruned: summary.mean, prunedStd: summary.std });
   }
 
-  return { conv: conv.sampleId, query: q.query, category: q.category, earliestSession, fullTurns: conv.turns.length, baseline, byLambda };
+  return { conv: conv.sampleId, query: q.query, category: q.category, earliestSession, fullTurns: conv.turns.length, baseline, baselineStd: baseSummary.std, byLambda };
 }
 
 export async function main(): Promise<number> {
@@ -172,17 +181,21 @@ export async function main(): Promise<number> {
   // ADR-0015 scale-invariant decay: when >0, decayHorizonSeconds = frac × the
   // conversation's own span (per-hour absolute decay otherwise). 0 = unset.
   const horizonFrac = envFloat("LOCOMO_DECAY_HORIZON_FRAC", 0);
+  // PB-42 noise damping: score each scenario R times + average (judge/answerer are
+  // stochastic; ADR-0015 saw baseline relevancy swing 0–1 at R=1). R=1 ⇒ single shot.
+  const repeats = envInt("LOCOMO_REPEATS", 1);
 
   const conversations = loadLocomo(file).slice(0, nConv);
   const plan = conversations.map((c) => ({ c, qs: sampleQuestions(c, { maxQuestions: nQ, categories: cats }) }));
   const totalQ = plan.reduce((a, p) => a + p.qs.length, 0);
-  const callBudget = totalQ * (2 + 2 * lambdas.length); // baseline(answer+judge) + per-λ(answer+judge)
+  const callBudget = totalQ * repeats * (2 + 2 * lambdas.length); // ×R repeats (PB-42); baseline + per-λ each (answer+judge)
 
   out("CQ Eval Suite — Tier-A LoCoMo (real ONNX encoder + Claude judge)");
   out("=".repeat(64));
   out(`Conversations: ${conversations.length}/10   Questions/conv: ${nQ} (cats ${cats.join(",")})   Sampled questions: ${totalQ}`);
   out(`λ characterized: [${lambdas.join(", ")}]   GATE λ = ${gateLambda} (half-life ${halfLifeHours(gateLambda).toFixed(1)}h)`);
   out(horizonFrac > 0 ? `Decay: SCALE-INVARIANT (ADR-0015) — horizon = ${horizonFrac}×span per conversation` : "Decay: absolute per-hour (documented default)");
+  out(repeats > 1 ? `Judge sampling: R=${repeats} repeats/scenario, AVERAGED (PB-42 noise damping)` : "Judge sampling: single shot (set LOCOMO_REPEATS>1 to damp judge noise — ADR-0015/PB-42)");
   out(`Thresholds: Faithfulness ≥ ${DEFAULT_THRESHOLDS.faithfulnessMin}, Answer-Relevancy ≥ ${DEFAULT_THRESHOLDS.answerRelevancyMin}, max degradation ${DEFAULT_THRESHOLDS.maxDegradation}`);
   out(`Upper-bound model calls: ${callBudget} (Claude Haiku; pruned calls deduped by selection).`);
   out("Note: cat-5 (adversarial/unanswerable) is excluded — it tests refusal, not memory retention.");
@@ -206,7 +219,7 @@ export async function main(): Promise<number> {
     const turnVecs = await encoder.encode(c.turns.map((t) => t.text));
     const queryVecs = await encoder.encode(qs.map((q) => q.query));
     for (let i = 0; i < qs.length; i++) {
-      const o = await runQuestion(c, qs[i]!, queryVecs[i]!, turnVecs, nowSeconds, lambdas, answerer, judge, decayHorizonSeconds);
+      const o = await runQuestion(c, qs[i]!, queryVecs[i]!, turnVecs, nowSeconds, lambdas, answerer, judge, decayHorizonSeconds, repeats);
       outcomes.push(o);
       const gl = o.byLambda[0]!;
       out(
@@ -249,6 +262,17 @@ export async function main(): Promise<number> {
   out(`  AnswerRelevancy pruned ${fmt(meanRelP)}  baseline ${fmt(meanRelB)}  degradation ${fmt(meanRelB - meanRelP)}`);
   out(`  Evidence survival ${(mean(gate.map((g) => g.evidenceSurvival)) * 100).toFixed(1)}%   mean context reduction ${Math.round(mean(gate.map((g) => g.reductionPct)))}%`);
   out(`  Scenarios within threshold: ${scenarios.filter((s) => s.passed).length}/${scenarios.length}`);
+  // Judge noise (PB-42): mean per-scenario sample std across the R repeats. A wide std at
+  // the ship gate means the averaged mean is not yet trustworthy → raise LOCOMO_REPEATS.
+  if (repeats > 1) {
+    out(
+      `  Judge noise (R=${repeats}, mean per-scenario std):  ` +
+        `baseline Faith ±${fmt(mean(outcomes.map((o) => o.baselineStd.faithfulness)))} Relev ±${fmt(mean(outcomes.map((o) => o.baselineStd.answerRelevancy)))}  |  ` +
+        `pruned Faith ±${fmt(mean(gate.map((g) => g.prunedStd.faithfulness)))} Relev ±${fmt(mean(gate.map((g) => g.prunedStd.answerRelevancy)))}`,
+    );
+  } else {
+    out("  Judge noise: single sample/scenario — set LOCOMO_REPEATS>1 to damp (ADR-0015/PB-42).");
+  }
 
   // --- λ characterization (when >1). ---
   if (lambdas.length > 1) {

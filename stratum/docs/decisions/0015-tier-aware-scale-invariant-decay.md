@@ -165,3 +165,27 @@ for the ship decision.)
 - **Leave decay fixed; rely solely on supersession (ADR-0011).** Rejected as
   insufficient: supersession drops *invalidated* turns; it does not restore
   *valid* old evidence that fixed decay crushed. The two are complementary.
+
+## Update — PB-42 repeat-and-average noise-damping mechanism BUILT (default-1)
+
+The §Validation finding above flagged that the judged gate's N=18 sample is too
+noisy to certify a ship decision (baseline Answer-Relevancy swung across [0,1]) and
+called for "a larger sample with repeat-and-average to damp judge noise." That
+mechanism is now built, FREE + fake-tested, behind a default-off knob:
+
+- `summarizeScores` (`evals/harness/aggregate.ts`, pure) reduces R judge samples of
+  one context to a mean (the point estimate the gate consumes) + a Bessel-corrected
+  sample std (the surfaced judge noise).
+- `scoreContextRepeated` (`metrics.ts`) draws R (answer→judge) samples per context
+  (the answerer is re-run each repeat — answer variance dominates).
+- `eval-locomo.ts` gains `LOCOMO_REPEATS` (default **1** ⇒ the prior single-shot path,
+  byte-for-byte). At R>1 the baseline and each λ are averaged over R samples (identical
+  selections across λ still share the cached R samples — no extra cost), and the report
+  prints the mean per-scenario std so a reader can see whether R was large enough.
+
+This does NOT change the ship decision or spend anything: R=1 is unchanged, and a real
+R>1 run still costs R× credits (the explicit precision/credit knob). It makes the
+eventual credit-funded gate run *decisive* (noise-damped) instead of noisy. Unit +
+integration tested with fakes (7 tests, no API): `aggregate.test.ts`,
+`eval-locomo-repeats.test.ts` (incl. the dedup-cache-at-R credit-cost invariant).
+PB-42's *mechanism* is done; PB-42's *larger judged run* remains credit-gated.

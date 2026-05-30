@@ -122,7 +122,7 @@ FREE (evidence survival is a deterministic function of the prune decision).
 |---|---|---|
 | `npm run eval:locomo:survival` | **FREE** | LoCoMo evidence-survival sweep (local ONNX only): absolute-λ vs scale-invariant decay, all conversations. |
 | `npm run eval:longmemeval:survival` | **FREE** | Same, on LongMemEval (the 2nd long-horizon benchmark). |
-| `npm run eval:locomo` | **NEEDS CREDITS** | Judged LoCoMo Tier-A gate (real encoder + Claude judge): faithfulness/relevancy + evidence co-gate. Env: `LOCOMO_CONVERSATIONS`, `LOCOMO_QUESTIONS`, `LOCOMO_LAMBDAS`, `LOCOMO_DECAY_HORIZON_FRAC` (scale-invariant decay, ADR-0015). |
+| `npm run eval:locomo` | **NEEDS CREDITS** | Judged LoCoMo Tier-A gate (real encoder + Claude judge): faithfulness/relevancy + evidence co-gate. Env: `LOCOMO_CONVERSATIONS`, `LOCOMO_QUESTIONS`, `LOCOMO_LAMBDAS`, `LOCOMO_DECAY_HORIZON_FRAC` (scale-invariant decay, ADR-0015), `LOCOMO_REPEATS` (R samples/scenario, averaged — judge-noise damping, PB-42; default 1; cost scales ×R). |
 | `npm run eval:longmemeval` | **NEEDS CREDITS** | Judged LongMemEval Tier-A gate. Env: `LONGMEMEVAL_QUESTIONS`, `LONGMEMEVAL_LAMBDAS`, `LONGMEMEVAL_DECAY_HORIZON_FRAC`. |
 | `npm run eval:tierb` | **NEEDS CREDITS** | Judged dev-set (Tier-B) accuracy gate. |
 

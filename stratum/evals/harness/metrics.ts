@@ -236,3 +236,38 @@ export function createLlmJudge(llm: LlmCompletion = createClaudeCompletion()): J
 export function judgeConfigured(opts: LlmOptions = {}): boolean {
   return Boolean(opts.apiKey ?? process.env["ANTHROPIC_API_KEY"]);
 }
+
+/**
+ * Score a (query, context) pair R times — one (answer → judge) cycle per repeat —
+ * returning every sample for the caller to average ({@link summarizeScores}).
+ *
+ * The answerer + judge are stochastic on long-horizon questions (ADR-0015), so
+ * repeat-and-average is the noise-damping mechanism (PB-42). Runs SEQUENTIALLY
+ * (not in parallel) to stay gentle on the upstream rate limit; cost scales linearly
+ * with `repeats` — the explicit precision/credit knob. R=1 is one cycle, identical
+ * to the prior single-shot path. The answerer is re-run each repeat (not just the
+ * judge) because answer variance is the dominant noise source, not judge variance
+ * alone.
+ *
+ * @param answerer - generates the answer (gated; a fake in tests).
+ * @param judge - scores it (gated; a fake in tests).
+ * @param query - the query under test.
+ * @param context - the context to answer from (pruned OR full baseline).
+ * @param repeats - how many samples to draw (clamped to an integer ≥ 1).
+ * @returns the array of {@link MetricScores} samples (length = the clamped repeats).
+ */
+export async function scoreContextRepeated(
+  answerer: Answerer,
+  judge: Judge,
+  query: string,
+  context: string,
+  repeats = 1,
+): Promise<MetricScores[]> {
+  const r = Number.isFinite(repeats) && repeats >= 1 ? Math.floor(repeats) : 1;
+  const samples: MetricScores[] = [];
+  for (let i = 0; i < r; i++) {
+    const answer = await answerer.generate(query, context);
+    samples.push(await judge.score({ query, context, answer }));
+  }
+  return samples;
+}
