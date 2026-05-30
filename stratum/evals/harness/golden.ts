@@ -24,7 +24,11 @@ import type { GoldenQuery, GoldenResult } from "./types";
 export function checkGoldenQuery(prunedContextText: string, query: GoldenQuery): GoldenResult {
   const missing = query.expectedContains.filter((s) => !prunedContextText.includes(s));
   const leaked = query.expectedNotContains.filter((s) => prunedContextText.includes(s));
-  return { query, passed: missing.length === 0 && leaked.length === 0, missing, leaked };
+  // A query with NO assertions (empty contains AND notContains) must NOT vacuously pass — both
+  // .filter()s are empty so missing/leaked are [], which would otherwise PASS a CRITICAL golden that
+  // proves nothing. Require at least one assertion (defense-in-depth alongside the loader's reject).
+  const hasAssertion = query.expectedContains.length > 0 || query.expectedNotContains.length > 0;
+  return { query, passed: hasAssertion && missing.length === 0 && leaked.length === 0, missing, leaked };
 }
 
 /** Number of CRITICAL golden queries that failed (the hard gate). */

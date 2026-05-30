@@ -51,6 +51,11 @@ export function parseDevScenarios(jsonl: string): DevScenario[] {
     if (!isStringArray(g.contains) || !isStringArray(g.notContains) || typeof g.critical !== "boolean") {
       throw new Error(`tier-b line ${lineNo} (${o.id}): malformed golden`);
     }
+    // A CRITICAL golden with NO assertions (empty contains AND notContains) would pass vacuously,
+    // silently bypassing the critical-100%-pass hard gate. Reject it at load time (fail-closed).
+    if (g.critical && g.contains.length === 0 && g.notContains.length === 0) {
+      throw new Error(`tier-b line ${lineNo} (${o.id}): critical golden has empty contains AND notContains — would pass vacuously`);
+    }
     const turns: DevTurn[] = o.turns.map((t, i) => {
       const tt = t as Partial<DevTurn>;
       if (typeof tt.text !== "string" || typeof tt.ageHours !== "number") {

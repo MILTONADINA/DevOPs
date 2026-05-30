@@ -10,8 +10,8 @@ describe("create-org parseArgs", () => {
   test("--name + --plan", () => {
     expect(parseArgs(["--name", "Acme", "--plan", "growth"])).toMatchObject({ name: "Acme", plan: "growth" });
   });
-  test("an unknown plan falls back to starter (the safe default)", () => {
-    expect(parseArgs(["--name", "X", "--plan", "platinum"]).plan).toBe("starter");
+  test("REJECTS an unknown plan (fail-closed — never silently mis-tier the org's billing)", () => {
+    expect(() => parseArgs(["--name", "X", "--plan", "platinum"])).toThrow(/invalid --plan/);
   });
   test("--with-key + --env test", () => {
     expect(parseArgs(["--name", "X", "--with-key", "--env", "test"])).toMatchObject({ withKey: true, env: "test" });

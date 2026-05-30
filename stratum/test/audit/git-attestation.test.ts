@@ -121,6 +121,22 @@ describe("attestFact — VariableChange + non-code", () => {
   test("VariableChange UNVERIFIED with no change", () => {
     expect(attestFact(varFact({}), []).status).toBe("UNVERIFIED");
   });
+  test("VariableChange CONFLICT when the var is later deleted (review #4 — mirrors the FunctionChange drift scan)", () => {
+    const r = attestFact(varFact({}), [
+      change({ entity: "API_URL", changeType: "modified", commitHash: "mod1", timestampSeconds: 1000 }),
+      change({ entity: "API_URL", changeType: "deleted", commitHash: "del1", timestampSeconds: 2000 }),
+    ]);
+    expect(r.status).toBe("CONFLICT");
+    expect(r.conflictCommit).toBe("del1");
+  });
+  test("VariableChange CONFLICT when the var is later renamed away (review #4)", () => {
+    const r = attestFact(varFact({}), [
+      change({ entity: "API_URL", changeType: "added", commitHash: "add1", timestampSeconds: 1000 }),
+      change({ entity: "API_URL", changeType: "renamed", toEntity: "BASE_URL", commitHash: "ren1", timestampSeconds: 2000 }),
+    ]);
+    expect(r.status).toBe("CONFLICT");
+    expect(r.conflictCommit).toBe("ren1");
+  });
   test("TechDecision (infra) → UNVERIFIED (no deterministic git evidence → Tier-2)", () => {
     const td: TechDecisionFact = { ...base, fact_type: "TechDecision", decision_text: "use Cloudflare Workers", domain: "infrastructure" };
     expect(attestFact(td, [change({})]).status).toBe("UNVERIFIED");

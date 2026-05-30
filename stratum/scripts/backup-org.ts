@@ -25,6 +25,7 @@ const ORG_SCOPED_TABLES = [
   "org_config",
   "sessions",
   "billing_records",
+  "invoices",
   "function_changes",
   "tech_decisions",
   "policy_updates",

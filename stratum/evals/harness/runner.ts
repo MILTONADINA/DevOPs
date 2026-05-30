@@ -143,6 +143,13 @@ export async function main(argv: string[] = []): Promise<number> {
       // imports runScenario from here).
       const { runDevSuite } = await import("./dev-suite");
       const scenarios = loadDevScenarios(tierbFile);
+      // FAIL-CLOSED: a present-but-EMPTY/whitespace dataset would otherwise run 0 scenarios → an empty
+      // suite passes vacuously ("PASS — 0/0") and a ship gate goes green having evaluated NOTHING. The
+      // harness refuses to fabricate scores; an empty dataset is a non-run error, not a pass.
+      if (scenarios.length === 0) {
+        out("eval run errored: dataset present but contained 0 scenarios (empty/whitespace tier-b.jsonl) — refusing to PASS on nothing.");
+        return 1;
+      }
       const encoder = createOnnxEncoder({ cacheDir: join(process.cwd(), "models") });
       const { suite, verdict } = await runDevSuite(scenarios, encoder, createClaudeAnswerer(), createLlmJudge(), EVAL_NOW_SECONDS);
       out(renderReport(suite, verdict));

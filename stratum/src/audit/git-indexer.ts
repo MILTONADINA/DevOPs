@@ -178,6 +178,10 @@ function splitRecords(raw: string, maxTs: number): RawCommit[] {
   const out: RawCommit[] = [];
   const N = pieces.length - 1; // N commits → N+1 pieces
   let header = pieces[0]!; // H1
+  let pending = ""; // orphan bytes from a LEADING record whose header failed to parse (out empty) — must
+  // not be dropped (the newest commit is first; dropping it loses its diff → a missed CONFLICT). Fold
+  // forward onto the next successfully-parsed commit's patch (the symmetric counterpart of the
+  // re-attach-to-previous fail-safe used once a previous record exists).
   for (let i = 1; i <= N; i++) {
     const piece = pieces[i]!;
     let patch = piece; // last piece (i === N) is all patch
@@ -188,8 +192,14 @@ function splitRecords(raw: string, maxTs: number): RawCommit[] {
       nextHeader = split.last;
     }
     const h = parseHeaderLine(header, maxTs);
-    if (h) out.push({ ...h, patch });
-    else if (out.length > 0) out[out.length - 1]!.patch += `\n${header}\n${patch}`; // fail-safe re-attach (header ignored: not a +/- line)
+    if (h) {
+      out.push({ ...h, patch: pending === "" ? patch : `${pending}\n${patch}` });
+      pending = "";
+    } else if (out.length > 0) {
+      out[out.length - 1]!.patch += `\n${header}\n${patch}`; // fail-safe re-attach to the previous record
+    } else {
+      pending += `${pending === "" ? "" : "\n"}${header}\n${patch}`; // leading-header fail: carry forward, never drop
+    }
     if (nextHeader !== undefined) header = nextHeader;
   }
   return out;

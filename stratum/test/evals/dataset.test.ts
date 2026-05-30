@@ -37,7 +37,9 @@ describe("parseDevScenarios", () => {
   test("rejects malformed golden / missing fields", () => {
     expect(() => parseDevScenarios(rec({ id: "x", query: "q", turns: [] }))).toThrow(/golden/);
     expect(() => parseDevScenarios(rec({ id: "x", golden: { contains: [], notContains: [], critical: true } }))).toThrow(/id\/query\/turns/);
-    expect(() => parseDevScenarios(rec({ id: "x", query: "q", golden: { contains: [], notContains: [], critical: true }, turns: [{ text: "t" }] }))).toThrow(/ageHours/);
+    expect(() => parseDevScenarios(rec({ id: "x", query: "q", golden: { contains: ["k"], notContains: [], critical: true }, turns: [{ text: "t" }] }))).toThrow(/ageHours/);
+    // A CRITICAL golden with no assertions must be rejected (it would pass the hard gate vacuously).
+    expect(() => parseDevScenarios(rec({ id: "x", query: "q", golden: { contains: [], notContains: [], critical: true }, turns: [{ text: "t", ageHours: 1 }] }))).toThrow(/pass vacuously/);
   });
 });
 

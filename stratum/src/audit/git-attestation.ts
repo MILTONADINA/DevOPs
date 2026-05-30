@@ -162,7 +162,16 @@ export function attestFact(fact: AnyFact, changes: CodeChange[]): AttestationRes
 
   if (fact.fact_type === "VariableChange") {
     const confirm = changes.find((c) => c.entity === fact.var_name && (c.changeType === "modified" || c.changeType === "added"));
-    return confirm ? { status: "CONFIRMED", evidence: asEvidence(confirm) } : { status: "UNVERIFIED" };
+    if (!confirm) return { status: "UNVERIFIED" };
+    // A confirmed VariableChange asserts the variable EXISTS with its new value. Mirror the
+    // FunctionChange Historical-Drift scan: if a LATER change leaves it absent (deleted/renamed away),
+    // the memory is stale → CONFLICT (suppress + alert), not a stale CONFIRMED. (Previously this path
+    // skipped the drift scan and returned CONFIRMED even for a since-deleted variable.)
+    const latest = latestChangeTo(fact.var_name, changes, confirm.timestampSeconds, confirm.commitHash);
+    if (latest && leavesAbsent(latest, fact.var_name)) {
+      return { status: "CONFLICT", conflictCommit: latest.commitHash, conflictDetail: `${fact.var_name} was ${latest.changeType} in commit ${latest.commitHash} (${latest.timestampSeconds}) after the claimed change — the memory is stale.` };
+    }
+    return { status: "CONFIRMED", evidence: asEvidence(confirm) };
   }
 
   // TechDecision (infra/db): no deterministic git evidence for a decision → Tier-2.

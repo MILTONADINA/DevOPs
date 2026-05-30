@@ -164,6 +164,24 @@ describe("parser robustness + record-forgery defense (NUL-delimited records, PB-
     expect(hashes).toContain("aaaa11");
     expect(hashes).not.toContain("bbbb22"); // far-future header not accepted as its own commit
   });
+
+  test("a forged LEADING header (newest commit) does not DROP its patch — bytes fold forward (review #1)", () => {
+    // The newest commit is FIRST in git-log order, so a leading-header fail has no previous
+    // record to re-attach to. Pre-fix, those bytes were dropped → the newest commit's diff
+    // (and any CONFLICT it carries) silently vanished. The fix folds them onto the next
+    // successfully-parsed commit's patch, so the change still surfaces (never fabricated, never lost).
+    const future = Math.floor(Date.now() / 1000) + 10 * 365 * 86_400;
+    const raw = buildLog([
+      { hash: "aaaa11", ct: future, subject: "forged-newest", patch: `+++ b/new.ts\n+function newestFn() {\n` },
+      { hash: "bbbb22", ct: 1000, subject: "real older", patch: `+++ b/old.ts\n+function olderFn() {\n` },
+    ]);
+    const changes = parseGitLogWithPatches(raw);
+    const newest = changes.find((c) => c.entity === "newestFn");
+    expect(newest).toBeDefined(); // NOT dropped
+    expect(newest?.commitHash).toBe("bbbb22"); // folded forward onto the next valid record
+    expect(changes.some((c) => c.entity === "olderFn")).toBe(true); // the valid record is intact
+    expect(changes.some((c) => c.timestampSeconds === future)).toBe(false); // forged ts never becomes a commit
+  });
 });
 
 // Guarded: run the REAL `git` against this repo (free). Skips if `git` is absent.

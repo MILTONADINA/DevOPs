@@ -32,6 +32,7 @@ export const RESTORE_ORDER = [
   "variable_changes",
   "pruning_logs",
   "billing_records",
+  "invoices",
   "knowledge_entities",
   "knowledge_edges",
   "memory_vectors",

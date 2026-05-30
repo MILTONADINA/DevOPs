@@ -95,6 +95,14 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
   };
   const args = parseArgs(argv);
 
+  // --ack requires --org-id: the conflict id is a GLOBAL primary key, so acking without an org scope
+  // could silence ANOTHER org's drift alert (the org scope was applied only optionally — make it
+  // mandatory on the write path, mirroring backup-org's required --org-id).
+  if (args.ackId !== undefined && (args.orgId === undefined || args.orgId === "")) {
+    out("--ack requires --org-id (refusing to acknowledge a conflict across orgs).");
+    return 1;
+  }
+
   const url = process.env["SUPABASE_URL"];
   const key = process.env["SUPABASE_SERVICE_KEY"];
   if (!url || !key) {

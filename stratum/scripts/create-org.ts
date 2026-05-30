@@ -34,7 +34,11 @@ export function parseArgs(argv: string[]): Args {
         break;
       case "--plan": {
         const p = val();
-        if ((PLANS as readonly string[]).includes(p)) out.plan = p as Plan;
+        // Reject an unknown plan (fail-closed) — silently keeping the 'starter' default would create an
+        // org on the WRONG billing tier (e.g. a typo'd "enterprize" → a $0 floor instead of $499), and the
+        // DB CHECK never catches it because the parser already substituted a valid default.
+        if (!(PLANS as readonly string[]).includes(p)) throw new Error(`invalid --plan "${p}"; expected one of: ${PLANS.join(", ")}`);
+        out.plan = p as Plan;
         break;
       }
       case "--with-key":
