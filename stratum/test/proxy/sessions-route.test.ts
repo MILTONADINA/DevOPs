@@ -1,7 +1,8 @@
 // Tests for the sessions API (list / metadata / stats) via app.inject() with fake deps.
 
 import { describe, test, expect, vi } from "vitest";
-import type { SessionsDeps, SessionSummary, SessionStats } from "../../src/proxy/routes/sessions";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { createSupabaseSessionsDeps, type SessionsDeps, type SessionSummary, type SessionStats } from "../../src/proxy/routes/sessions";
 
 vi.unmock("fastify");
 const { buildProxy } = await import("../../src/proxy/app");
@@ -134,5 +135,31 @@ describe("GET /v1/sessions/:id/stats", () => {
     expect(res.statusCode).toBe(200);
     expect(captured["list"]).toEqual({ orgId: "o7", limit: 3 });
     await app.close();
+  });
+});
+
+describe("createSupabaseSessionsDeps.countActiveSessions — only active EXPLICIT sessions (PB-46)", () => {
+  test("filters org_id + kind='explicit' + ended_at IS NULL (usage buckets excluded from the cap)", async () => {
+    const eqs: [string, unknown][] = [];
+    const isNull: string[] = [];
+    const builder = {
+      select() {
+        return builder;
+      },
+      eq(col: string, val: unknown) {
+        eqs.push([col, val]);
+        return builder;
+      },
+      is(col: string, _val: unknown) {
+        isNull.push(col);
+        return Promise.resolve({ count: 3, error: null });
+      },
+    };
+    const client = { from: () => builder } as unknown as SupabaseClient;
+    const n = await createSupabaseSessionsDeps(client).countActiveSessions("o1");
+    expect(n).toBe(3);
+    expect(eqs).toContainEqual(["org_id", "o1"]);
+    expect(eqs).toContainEqual(["kind", "explicit"]); // PB-46: usage buckets must NOT count toward the cap
+    expect(isNull).toContain("ended_at");
   });
 });

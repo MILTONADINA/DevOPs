@@ -67,7 +67,9 @@ export function createSupabaseUsageRecorder(opts: UsageRecorderOptions): UsageRe
     // Insert under one shared promise, stored SYNCHRONOUSLY (before the first await) so a concurrent
     // caller for the same key awaits this insert instead of issuing a second one.
     const created = (async (): Promise<string> => {
-      const { data, error } = await opts.client.from("sessions").insert({ org_id: orgId, model }).select("id").limit(1);
+      // kind='usage' (PB-46): this is a daily USAGE bucket, never "ended", so it must NOT count toward
+      // the concurrent-session cap (which counts active EXPLICIT sessions). See sessions.kind migration.
+      const { data, error } = await opts.client.from("sessions").insert({ org_id: orgId, model, kind: "usage" }).select("id").limit(1);
       if (error) throw new Error(`ensureSession failed: ${error.message}`);
       const id = ((data ?? [])[0] as { id: string } | undefined)?.id;
       if (id === undefined || id === "") throw new Error("ensureSession returned no id");

@@ -153,12 +153,14 @@ export function createSupabaseSessionsDeps(client: SupabaseClient): SessionsDeps
       return row ? row.plan : null;
     },
     async countActiveSessions(orgId) {
-      const { count, error } = await client.from("sessions").select("id", { count: "exact", head: true }).eq("org_id", orgId).is("ended_at", null);
+      // Count active EXPLICIT sessions only (PB-46): kind='usage' rows are daily usage buckets created
+      // by the request path, never ended, and must not consume the org's concurrent-session cap.
+      const { count, error } = await client.from("sessions").select("id", { count: "exact", head: true }).eq("org_id", orgId).eq("kind", "explicit").is("ended_at", null);
       if (error) throw new Error(`countActiveSessions failed: ${error.message}`);
       return count ?? 0;
     },
     async createSession(orgId, model) {
-      const { data, error } = await client.from("sessions").insert({ org_id: orgId, model }).select(SESSION_COLS).limit(1);
+      const { data, error } = await client.from("sessions").insert({ org_id: orgId, model, kind: "explicit" }).select(SESSION_COLS).limit(1);
       if (error) throw new Error(`createSession failed: ${error.message}`);
       const row = (data ?? [])[0] as SessionSummary | undefined;
       if (!row) throw new Error("createSession returned no row");

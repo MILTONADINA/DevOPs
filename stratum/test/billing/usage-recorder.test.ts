@@ -41,7 +41,7 @@ describe("createSupabaseUsageRecorder", () => {
 
     const session = inserts.find((i) => i.table === "sessions");
     const billing = inserts.find((i) => i.table === "billing_records");
-    expect(session?.row).toEqual({ org_id: "org-1", model: "claude-sonnet-4-6" });
+    expect(session?.row).toEqual({ org_id: "org-1", model: "claude-sonnet-4-6", kind: "usage" }); // PB-46: a usage bucket, not an explicit session
     expect(billing?.row).toMatchObject({ org_id: "org-1", session_id: "sess-1", original_tokens: 8000, quarantined_tokens: 8000, api_price_per_token: 0.000003 });
 
     // The signed_hash verifies against the immutable inputs (tamper-proof, like every billing row).
