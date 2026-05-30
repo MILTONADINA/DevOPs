@@ -52,8 +52,10 @@ the same invoice engine + read path as `npm run invoice`.
 Other opt-in proxy APIs (all org-scoped via the auth gate): **config** (`buildProxy({ config })`)
 — `GET`/`PATCH /v1/config` for pruning params (λ/θ/gain_shift) + flags; **memory**
 (`buildProxy({ memory })`) — `GET /v1/memory/facts`, `DELETE /v1/memory/facts/:id?table=`
-(suppress), `GET /v1/memory/conflicts`. Each takes an injectable deps object (a fake in tests; a
-`createSupabase*Deps(client)` helper in prod) and is omitted by default.
+(suppress), `GET /v1/memory/conflicts`; **sessions** (`buildProxy({ sessions })`) — `GET
+/v1/sessions`, `/:id`, `/:id/stats` (token totals + savings, with cross-tenant isolation). Each
+takes an injectable deps object (a fake in tests; a `createSupabase*Deps(client)` helper in prod)
+and is omitted by default.
 
 `npm run create-api-key -- --org-id <uuid> --name "<label>" [--env test]` mints a multi-tenant
 API key, stores **only its SHA-256 hash** in `api_keys` (a DB leak never exposes usable keys),

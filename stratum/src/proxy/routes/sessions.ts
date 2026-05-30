@@ -1,9 +1,127 @@
 /**
- * GET /v1/sessions — Session management endpoints.
+ * Session API (Phase 1) — list an org's sessions + per-session token stats.
  *
- * GET /v1/sessions/:id       → Session metadata
- * GET /v1/sessions/:id/stats → Token counts and savings
- * GET /v1/sessions           → List sessions for org
+ *   GET /v1/sessions[?org-id&limit]   → the org's sessions (newest first).
+ *   GET /v1/sessions/:id[?org-id]     → one session's metadata (org-scoped; 404 otherwise).
+ *   GET /v1/sessions/:id/stats[?org-id] → that session's token totals + savings (from billing_records).
+ *
+ * Org scope comes from req.orgId (the auth gate) with a ?org-id fallback. The store is INJECTED
+ * (SessionsDeps) so the route is testable via app.inject() with no DB; createSupabaseSessionsDeps
+ * wires the sessions table + billing_records. A session is only ever returned to its OWNING org.
  */
 
-// TODO: Implement session routes (Phase 1)
+import type { FastifyInstance, FastifyPluginCallback, FastifyReply, FastifyRequest } from "fastify";
+import type { SupabaseClient } from "@supabase/supabase-js";
+
+export interface SessionSummary {
+  id: string;
+  created_at: string;
+  ended_at: string | null;
+  model: string;
+  lambda: number;
+  gain_shift: number;
+  theta: number;
+  zk_enabled: boolean;
+  audit_enabled: boolean;
+}
+
+export interface SessionStats {
+  sessionId: string;
+  billingRecords: number;
+  originalTokens: number;
+  quarantinedTokens: number;
+  savingsUsd: number;
+  feeUsd: number;
+}
+
+export interface SessionsDeps {
+  listSessions: (orgId: string, limit: number) => Promise<SessionSummary[]>;
+  getSession: (orgId: string, id: string) => Promise<SessionSummary | null>;
+  /** Token stats for a session, or null if the session is not in this org. */
+  getSessionStats: (orgId: string, id: string) => Promise<SessionStats | null>;
+}
+
+function resolveOrg(req: FastifyRequest): string | undefined {
+  if (typeof req.orgId === "string" && req.orgId !== "") return req.orgId;
+  const v = (req.query as Record<string, unknown>)["org-id"];
+  return typeof v === "string" && v !== "" ? v : undefined;
+}
+
+function intParam(req: FastifyRequest, name: string, def: number): number {
+  const v = (req.query as Record<string, unknown>)[name];
+  const n = typeof v === "string" ? Number.parseInt(v, 10) : NaN;
+  return Number.isFinite(n) && n > 0 ? n : def;
+}
+
+function err(reply: FastifyReply, code: number, message: string): FastifyReply {
+  return reply.code(code).send({ type: "error", error: { type: "request_error", message } });
+}
+
+/**
+ * Build the sessions API plugin.
+ *
+ * @param deps - the session store (a fake in tests, Supabase in prod).
+ * @returns a plugin registering the session routes.
+ */
+export function makeSessionsRoute(deps: SessionsDeps): FastifyPluginCallback {
+  return function sessionsPlugin(app: FastifyInstance, _opts, done): void {
+    app.get("/v1/sessions", async (req, reply) => {
+      const orgId = resolveOrg(req);
+      if (orgId === undefined) return err(reply, 400, "org id required (authenticate, or pass ?org-id)");
+      return { sessions: await deps.listSessions(orgId, intParam(req, "limit", 50)) };
+    });
+
+    app.get("/v1/sessions/:id", async (req, reply) => {
+      const orgId = resolveOrg(req);
+      if (orgId === undefined) return err(reply, 400, "org id required (authenticate, or pass ?org-id)");
+      const session = await deps.getSession(orgId, (req.params as { id: string }).id);
+      if (session === null) return err(reply, 404, "session not found for this org");
+      return session;
+    });
+
+    app.get("/v1/sessions/:id/stats", async (req, reply) => {
+      const orgId = resolveOrg(req);
+      if (orgId === undefined) return err(reply, 400, "org id required (authenticate, or pass ?org-id)");
+      const stats = await deps.getSessionStats(orgId, (req.params as { id: string }).id);
+      if (stats === null) return err(reply, 404, "session not found for this org");
+      return stats;
+    });
+
+    done();
+  };
+}
+
+const SESSION_COLS = "id, created_at, ended_at, model, lambda, gain_shift, theta, zk_enabled, audit_enabled";
+
+/** Live session store over Supabase (sessions table + billing_records). */
+export function createSupabaseSessionsDeps(client: SupabaseClient): SessionsDeps {
+  const getSession = async (orgId: string, id: string): Promise<SessionSummary | null> => {
+    const { data, error } = await client.from("sessions").select(SESSION_COLS).eq("id", id).eq("org_id", orgId).limit(1);
+    if (error) throw new Error(`getSession failed: ${error.message}`);
+    return ((data ?? [])[0] as SessionSummary | undefined) ?? null;
+  };
+  return {
+    async listSessions(orgId, limit) {
+      const { data, error } = await client.from("sessions").select(SESSION_COLS).eq("org_id", orgId).order("created_at", { ascending: false }).limit(limit);
+      if (error) throw new Error(`listSessions failed: ${error.message}`);
+      return (data ?? []) as SessionSummary[];
+    },
+    getSession,
+    async getSessionStats(orgId, id) {
+      // Scope check first: only an org's own session yields stats (no cross-tenant peeking).
+      if ((await getSession(orgId, id)) === null) return null;
+      const { data, error } = await client.from("billing_records").select("original_tokens, quarantined_tokens, cost_delta_usd, cq_fee_usd").eq("org_id", orgId).eq("session_id", id);
+      if (error) throw new Error(`getSessionStats failed: ${error.message}`);
+      const rows = (data ?? []) as { original_tokens: number; quarantined_tokens: number; cost_delta_usd: number; cq_fee_usd: number }[];
+      const round2 = (n: number): number => Math.round((n + Number.EPSILON) * 100) / 100;
+      return {
+        sessionId: id,
+        billingRecords: rows.length,
+        originalTokens: rows.reduce((s, r) => s + r.original_tokens, 0),
+        quarantinedTokens: rows.reduce((s, r) => s + r.quarantined_tokens, 0),
+        savingsUsd: round2(rows.reduce((s, r) => s + r.cost_delta_usd, 0)),
+        feeUsd: round2(Math.max(0, rows.reduce((s, r) => s + r.cq_fee_usd, 0))),
+      };
+    },
+  };
+}
