@@ -12,7 +12,7 @@
 
 import type { FastifyInstance, FastifyPluginCallback, FastifyReply, FastifyRequest } from "fastify";
 import { PassThrough } from "node:stream";
-import type { MessagesBody, MessagesDeps, TokenCountResult } from "../forward";
+import type { ForwardHeaders, MessagesBody, MessagesDeps, TokenCountResult } from "../forward";
 import { isStreamingRequest } from "../stream-forward";
 import { createSseParser, accumulateAnthropicStream } from "../sse";
 import { emitTurnTelemetry } from "../telemetry";
@@ -22,6 +22,17 @@ declare module "fastify" {
     /** Per-minute token-budget state (set by the budget gate; emitted as X-RateLimit-*-Tokens). */
     tokenBudgetHeaders?: { limit: number; remaining: number };
   }
+}
+
+/** The client headers a transparent proxy forwards upstream: the API version + any beta opt-ins. */
+function passthroughHeaders(request: FastifyRequest): ForwardHeaders {
+  const out: ForwardHeaders = {};
+  const v = request.headers["anthropic-version"];
+  if (typeof v === "string" && v !== "") out.anthropicVersion = v;
+  const b = request.headers["anthropic-beta"];
+  const beta = Array.isArray(b) ? b.join(",") : b;
+  if (typeof beta === "string" && beta !== "") out.anthropicBeta = beta;
+  return out;
 }
 
 /** Extract output_tokens from a response/usage object (0 if absent). */
@@ -106,7 +117,7 @@ async function handleStreaming(
 
   let sf;
   try {
-    sf = await deps.forwardStream(body, deps.apiKey);
+    sf = await deps.forwardStream(body, deps.apiKey, passthroughHeaders(request));
   } catch (e) {
     return reply.status(502).send({
       type: "error",
@@ -221,7 +232,7 @@ export function makeMessagesRoute(deps: MessagesDeps): FastifyPluginCallback {
       // result (not a throw); a throw here is a genuine network/transport error.
       let forwarded;
       try {
-        forwarded = await deps.forward(body, deps.apiKey);
+        forwarded = await deps.forward(body, deps.apiKey, passthroughHeaders(request));
       } catch (e) {
         request.log?.error?.({ err: (e as Error).message }, "upstream forward failed");
         return reply.status(502).send({

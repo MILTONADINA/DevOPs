@@ -41,6 +41,18 @@ export interface ForwardResult {
   headers?: Record<string, string>;
 }
 
+/**
+ * Client request headers a TRANSPARENT proxy must pass through to Anthropic: the API version the
+ * client targets, and any `anthropic-beta` opt-ins (dropping these silently degrades a partner's
+ * beta features). The proxy supplies its own auth (`x-api-key`); these are the client's intent.
+ */
+export interface ForwardHeaders {
+  /** Client's `anthropic-version` (defaults to "2023-06-01" upstream when absent). */
+  anthropicVersion?: string;
+  /** Client's `anthropic-beta` (comma-joined if the client sent several). */
+  anthropicBeta?: string;
+}
+
 export interface TokenCountResult {
   input_tokens: number;
   /** "exact" (SDK countTokens) or "estimated" (fallback). Never silently exact. */
@@ -50,9 +62,9 @@ export interface TokenCountResult {
 
 /** Deps the /v1/messages route needs — injectable so tests avoid real network. */
 export interface MessagesDeps {
-  forward: (body: MessagesBody, apiKey: string) => Promise<ForwardResult>;
+  forward: (body: MessagesBody, apiKey: string, passthrough?: ForwardHeaders) => Promise<ForwardResult>;
   /** Streaming forward (axios responseType:'stream'); used when the client asks for SSE. */
-  forwardStream: (body: MessagesBody, apiKey: string) => Promise<StreamForwardResult>;
+  forwardStream: (body: MessagesBody, apiKey: string, passthrough?: ForwardHeaders) => Promise<StreamForwardResult>;
   countTokens: (body: MessagesBody) => Promise<TokenCountResult>;
   capture: CaptureStore;
   apiKey: string;
@@ -107,13 +119,20 @@ export async function forwardToAnthropic(
   body: MessagesBody,
   apiKey: string,
   baseUrl: string = resolveAnthropicBaseUrl(),
+  passthrough?: ForwardHeaders,
 ): Promise<ForwardResult> {
+  const reqHeaders: Record<string, string> = {
+    "x-api-key": apiKey,
+    // Forward the CLIENT's API version (transparent proxy); default to the stable version if absent.
+    "anthropic-version": passthrough?.anthropicVersion ?? "2023-06-01",
+    "content-type": "application/json",
+  };
+  // Pass through anthropic-beta so a partner's beta opt-ins are not silently dropped.
+  if (passthrough?.anthropicBeta !== undefined && passthrough.anthropicBeta !== "") {
+    reqHeaders["anthropic-beta"] = passthrough.anthropicBeta;
+  }
   const res = await axios.post(`${baseUrl}/v1/messages`, body, {
-    headers: {
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-      "content-type": "application/json",
-    },
+    headers: reqHeaders,
     // Let the caller see 4xx/5xx bodies rather than throwing on them.
     validateStatus: () => true,
   });
@@ -167,14 +186,14 @@ export function createDefaultMessagesDeps(): MessagesDeps {
   const outputFile = path.join(process.cwd(), "data", "sessions", `session-${sessionId}.json`);
 
   // Forward with retry/backoff (429 Retry-After / 5xx jitter / network 1-retry).
-  const forward = withRetry((body, key) => forwardToAnthropic(body, key, baseUrl));
+  const forward = withRetry((body, key, passthrough) => forwardToAnthropic(body, key, baseUrl, passthrough));
   // Exact token counting with hash-cache + flagged heuristic fallback.
   const counter = createTokenCounter(client);
 
   return {
     apiKey,
     forward,
-    forwardStream: (body, key) => forwardStreamToAnthropic(body, key, baseUrl),
+    forwardStream: (body, key, passthrough) => forwardStreamToAnthropic(body, key, baseUrl, passthrough),
     countTokens: (body) => counter.count(body),
     capture: createCaptureStore({ sessionId, outputFile }),
     telemetry: resolveTelemetrySink(),

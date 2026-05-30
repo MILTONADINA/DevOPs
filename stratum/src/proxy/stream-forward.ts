@@ -14,7 +14,7 @@
  */
 
 import axios from "axios";
-import { resolveAnthropicBaseUrl, type MessagesBody } from "./forward";
+import { resolveAnthropicBaseUrl, type ForwardHeaders, type MessagesBody } from "./forward";
 
 export interface StreamForwardResult {
   status: number;
@@ -37,14 +37,19 @@ export async function forwardStreamToAnthropic(
   body: MessagesBody,
   apiKey: string,
   baseUrl: string = resolveAnthropicBaseUrl(),
+  passthrough?: ForwardHeaders,
 ): Promise<StreamForwardResult> {
+  const headers: Record<string, string> = {
+    "x-api-key": apiKey,
+    "anthropic-version": passthrough?.anthropicVersion ?? "2023-06-01",
+    "content-type": "application/json",
+    accept: "text/event-stream",
+  };
+  if (passthrough?.anthropicBeta !== undefined && passthrough.anthropicBeta !== "") {
+    headers["anthropic-beta"] = passthrough.anthropicBeta;
+  }
   const res = await axios.post(`${baseUrl}/v1/messages`, body, {
-    headers: {
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-      "content-type": "application/json",
-      accept: "text/event-stream",
-    },
+    headers,
     responseType: "stream",
     validateStatus: () => true,
   });

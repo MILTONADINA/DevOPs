@@ -12,9 +12,9 @@
  * timers or nondeterministic jitter.
  */
 
-import type { ForwardResult, MessagesBody } from "./forward";
+import type { ForwardResult, ForwardHeaders, MessagesBody } from "./forward";
 
-export type ForwardFn = (body: MessagesBody, apiKey: string) => Promise<ForwardResult>;
+export type ForwardFn = (body: MessagesBody, apiKey: string, passthrough?: ForwardHeaders) => Promise<ForwardResult>;
 
 export interface RetryConfig {
   /** Max retries for 429/5xx (network errors get exactly one retry). Default 3. */
@@ -63,7 +63,7 @@ export function withRetry(forward: ForwardFn, config: Partial<RetryConfig> = {})
     return Math.min(cfg.maxDelayMs, Math.round(base + jitter));
   };
 
-  return async (body: MessagesBody, apiKey: string): Promise<ForwardResult> => {
+  return async (body: MessagesBody, apiKey: string, passthrough?: ForwardHeaders): Promise<ForwardResult> => {
     let networkRetried = false;
     let attempt = 0;
 
@@ -71,7 +71,7 @@ export function withRetry(forward: ForwardFn, config: Partial<RetryConfig> = {})
     while (true) {
       let result: ForwardResult;
       try {
-        result = await forward(body, apiKey);
+        result = await forward(body, apiKey, passthrough);
       } catch (err) {
         if (!networkRetried) {
           networkRetried = true;

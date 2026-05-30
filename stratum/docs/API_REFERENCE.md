@@ -24,6 +24,12 @@ X-CQ-Dry-Run: true             Count tokens and prune, but don't forward to Anth
 X-CQ-Disable-Pruning: true     Measure only, no pruning (Phase 1 behavior)
 ```
 
+**Transparent header passthrough:** as a drop-in proxy, `anthropic-version` and `anthropic-beta`
+on your request are forwarded upstream unchanged — your SDK's API version is honored and beta
+opt-ins (e.g. `anthropic-beta`) are NOT dropped. When absent, the proxy defaults the version to
+`2023-06-01`. (The proxy supplies its own `x-api-key` to Anthropic; you authenticate to CQ with your
+CQ key via `Authorization: Bearer` or `x-api-key`.)
+
 **Response:** Identical to Anthropic API response, plus:
 ```json
 {
