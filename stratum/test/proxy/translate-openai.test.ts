@@ -146,4 +146,77 @@ describe("createOpenAIStreamTranslator — streaming round-trip through the real
     expect(r.message.role).toBe("assistant");
     expect(r.message.stop_reason).toBe("end_turn");
   });
+
+  // Validate the Anthropic block-lifecycle invariant: exactly ONE content block open at a time, each closed
+  // (content_block_stop) before the next opens, and all closed by the end.
+  function blocksWellFormed(sse: string): boolean {
+    let open: number | null = null;
+    for (const ev of createSseParser().push(sse)) {
+      const d = ev.data as Record<string, unknown> | null;
+      const type = d && typeof d["type"] === "string" ? (d["type"] as string) : ev.event;
+      if (type === "content_block_start") {
+        if (open !== null) return false; // a block is already open → overlap (protocol violation)
+        open = d ? (d["index"] as number) : null;
+      } else if (type === "content_block_stop") {
+        if (open === null || (d && d["index"] !== open)) return false;
+        open = null;
+      }
+    }
+    return open === null;
+  }
+  function rawSSE(chunks: unknown[]): string {
+    const tr = createOpenAIStreamTranslator("gpt-4o");
+    let s = "";
+    for (const c of chunks) s += tr.push(c).join("");
+    return s + tr.end().join("");
+  }
+
+  test("text preamble then a tool call: blocks are non-overlapping (text stopped before the tool starts)", () => {
+    const chunks = [
+      { id: "c1", choices: [{ delta: { content: "Let me check." } }] },
+      { choices: [{ delta: { tool_calls: [{ index: 0, id: "call_1", function: { name: "lookup", arguments: '{"q":"x"}' } }] } }] },
+      { choices: [{ delta: {}, finish_reason: "tool_calls" }], usage: { prompt_tokens: 5, completion_tokens: 3 } },
+    ];
+    expect(blocksWellFormed(rawSSE(chunks))).toBe(true); // would FAIL pre-fix (text block left open when tool opened)
+    const r = accumulateAnthropicStream(createSseParser().push(rawSSE(chunks)));
+    expect(r.message.content[0]).toMatchObject({ type: "text", text: "Let me check." });
+    expect(r.message.content[1]).toMatchObject({ type: "tool_use", name: "lookup" });
+    expect((r.message.content[1] as Record<string, unknown>)["partial_json"]).toBe('{"q":"x"}');
+    expect(r.message.stop_reason).toBe("tool_use");
+  });
+
+  test("parallel tool calls (interleaved fragments) → two complete, sequential, non-overlapping tool_use blocks", () => {
+    const chunks = [
+      { id: "c", choices: [{ delta: { tool_calls: [{ index: 0, id: "call_a", function: { name: "f1", arguments: "" } }, { index: 1, id: "call_b", function: { name: "f2", arguments: "" } }] } }] },
+      { choices: [{ delta: { tool_calls: [{ index: 0, function: { arguments: '{"a":1}' } }, { index: 1, function: { arguments: '{"b":2}' } }] } }] },
+      { choices: [{ delta: {}, finish_reason: "tool_calls" }], usage: { prompt_tokens: 4, completion_tokens: 6 } },
+    ];
+    expect(blocksWellFormed(rawSSE(chunks))).toBe(true);
+    const r = accumulateAnthropicStream(createSseParser().push(rawSSE(chunks)));
+    const tools = r.message.content.filter((b) => (b as Record<string, unknown>)["type"] === "tool_use") as Record<string, unknown>[];
+    expect(tools).toHaveLength(2);
+    expect(tools[0]).toMatchObject({ id: "call_a", name: "f1" });
+    expect(tools[0]!["partial_json"]).toBe('{"a":1}');
+    expect(tools[1]).toMatchObject({ id: "call_b", name: "f2" });
+    expect(tools[1]!["partial_json"]).toBe('{"b":2}');
+  });
+});
+
+describe("anthropicToOpenAIRequest — tool_choice + system separator (audit fixes)", () => {
+  const withTools = (toolChoice: unknown): Record<string, unknown> =>
+    anthropicToOpenAIRequest("gpt-4o", { model: "gpt-4o", messages: [{ role: "user", content: "x" }], max_tokens: 16, tools: [{ name: "f", input_schema: { type: "object" } }], ...(toolChoice !== undefined ? { tool_choice: toolChoice } : {}) } as unknown as MessagesBody, false) as Record<string, unknown>;
+
+  test("translates every tool_choice variant (Claude Code forces tool use)", () => {
+    expect(withTools({ type: "auto" })["tool_choice"]).toBe("auto");
+    expect(withTools({ type: "any" })["tool_choice"]).toBe("required");
+    expect(withTools({ type: "required" })["tool_choice"]).toBe("required");
+    expect(withTools({ type: "none" })["tool_choice"]).toBe("none");
+    expect(withTools({ type: "tool", name: "f" })["tool_choice"]).toEqual({ type: "function", function: { name: "f" } });
+    expect(withTools(undefined)["tool_choice"]).toBeUndefined(); // omitted when the client didn't send it
+  });
+
+  test("multi-block system prompt joins with a blank line (not run together)", () => {
+    const req = anthropicToOpenAIRequest("gpt-4o", { model: "gpt-4o", system: [{ type: "text", text: "You are helpful." }, { type: "text", text: "Respond in JSON." }], messages: [{ role: "user", content: "x" }], max_tokens: 16 } as unknown as MessagesBody, false) as Record<string, unknown>;
+    expect((req["messages"] as Record<string, unknown>[])[0]).toEqual({ role: "system", content: "You are helpful.\n\nRespond in JSON." });
+  });
 });

@@ -23,8 +23,13 @@ function buildHeaders(creds: ProviderCredentials): Record<string, string> {
   return h;
 }
 
-/** Translate a non-2xx OpenAI error body into an Anthropic-shaped error object (the client always sees Anthropic). */
+/** Translate a non-2xx OpenAI error body into an Anthropic-shaped error object (the client always sees Anthropic).
+ *  AUTH errors (401/403) are NEVER forwarded verbatim — OpenAI 401 bodies embed a fragment of the API key
+ *  ("Incorrect API key provided: sk-…"), so echoing them would leak the operator's upstream key to clients. */
 function openAIErrorToAnthropic(status: number, data: unknown): { type: "error"; error: { type: string; message: string } } {
+  if (status === 401 || status === 403) {
+    return { type: "error", error: { type: "authentication_error", message: `upstream authentication error (HTTP ${status}) — check the provider API key configured on the proxy` } };
+  }
   let message = `upstream error (HTTP ${status})`;
   if (typeof data === "string" && data !== "") message = data;
   else {
@@ -110,8 +115,11 @@ export const openAIProvider: Provider = {
           for (const ev of parser.push(chunk.toString())) for (const s of translator.push(ev.data)) yield s;
         }
         for (const ev of parser.flush()) for (const s of translator.push(ev.data)) yield s;
-        for (const s of translator.end()) yield s; // closing events (content_block_stop / message_delta / message_stop)
       } finally {
+        // Emit the closing events in finally so they're produced even if the upstream stream errors/aborts
+        // mid-flight — the client always gets a well-formed message_delta+message_stop (with whatever usage
+        // arrived), and any usage collected before an abort is not lost. end()'s `ended` guard prevents dups.
+        for (const s of translator.end()) yield s;
         clearTimeout(idle); // stream ended / consumer stopped → disarm
       }
     }

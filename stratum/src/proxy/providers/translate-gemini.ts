@@ -33,7 +33,7 @@ function flattenSystem(system: unknown): string {
       const r = asRecord(b);
       return r && asString(r["text"]) !== undefined ? (r["text"] as string) : "";
     })
-    .join("");
+    .join("\n\n"); // separate system blocks with a blank line — never run them together
 }
 
 /* ----------------------------------- request: Anthropic → Gemini ----------------------------------- */
@@ -71,7 +71,14 @@ export function anthropicToGeminiRequest(body: MessagesBody): Record<string, unk
         } else if (t === "image") {
           const src = asRecord(blk["source"]);
           const data = src ? asString(src["data"]) : undefined;
-          if (src && src["type"] === "base64" && data !== undefined) parts.push({ inlineData: { mimeType: asString(src["media_type"]) ?? "image/png", data } });
+          if (src && src["type"] === "base64" && data !== undefined) {
+            parts.push({ inlineData: { mimeType: asString(src["media_type"]) ?? "image/png", data } });
+          } else if (src && src["type"] === "url") {
+            // URL-sourced image → Gemini fileData (else the image would be silently dropped and Gemini
+            // would answer as if no image were sent).
+            const url = asString(src["url"]);
+            if (url !== undefined) parts.push({ fileData: { fileUri: url, mimeType: asString(src["media_type"]) ?? "image/jpeg" } });
+          }
         } else if (t === "tool_use") {
           const id = asString(blk["id"]) ?? "";
           const name = asString(blk["name"]) ?? "";
@@ -97,7 +104,19 @@ export function anthropicToGeminiRequest(body: MessagesBody): Record<string, unk
         }
       }
     }
-    if (parts.length > 0) contents.push({ role, parts });
+    if (parts.length > 0) {
+      // Gemini requires a content entry carrying functionResponse parts to contain ONLY those parts —
+      // mixing text/image with functionResponse in one entry returns 400 INVALID_ARGUMENT. Split a mixed
+      // user turn into separate entries (function responses first, then the text/image parts).
+      const fnResp = parts.filter((p) => "functionResponse" in p);
+      const other = parts.filter((p) => !("functionResponse" in p));
+      if (fnResp.length > 0 && other.length > 0) {
+        contents.push({ role, parts: fnResp });
+        contents.push({ role, parts: other });
+      } else {
+        contents.push({ role, parts });
+      }
+    }
   }
 
   const out: Record<string, unknown> = { contents };
@@ -135,7 +154,11 @@ export function anthropicToGeminiRequest(body: MessagesBody): Record<string, unk
 
 /** Map a Gemini finishReason to an Anthropic stop_reason. */
 export function mapGeminiFinish(reason: string | undefined, sawToolCall: boolean): string {
-  if (sawToolCall) return "tool_use";
+  // Only report tool_use when generation stopped NORMALLY with a tool call. A SAFETY/RECITATION/other stop
+  // that happened to include a partial functionCall must NOT be masked as tool_use — the client would try
+  // to run a tool against a filtered/aborted response.
+  const normalStop = reason === undefined || reason === "" || reason === "STOP";
+  if (sawToolCall && normalStop) return "tool_use";
   switch (reason) {
     case "MAX_TOKENS":
       return "max_tokens";
@@ -265,6 +288,12 @@ export function createGeminiStreamTranslator(model: string): GeminiStreamTransla
           const fc = asRecord(part["functionCall"]);
           if (fc !== null) {
             sawTool = true;
+            // Close the open text block before opening a tool block — Anthropic SSE requires non-overlapping,
+            // sequential content blocks (a text part may precede a functionCall in the same/earlier chunk).
+            if (textOpen) {
+              out.push(sse("content_block_stop", { index: textIndex }));
+              textOpen = false;
+            }
             const idx = nextIndex++;
             out.push(sse("content_block_start", { index: idx, content_block: { type: "tool_use", id: `gemini_tool_${toolSeq++}`, name: asString(fc["name"]) ?? "", input: {} } }));
             out.push(sse("content_block_delta", { index: idx, delta: { type: "input_json_delta", partial_json: JSON.stringify(fc["args"] ?? {}) } }));
@@ -286,8 +315,15 @@ export function createGeminiStreamTranslator(model: string): GeminiStreamTransla
       ended = true;
       const out: string[] = [];
       ensureStart(out);
-      if (textOpen) out.push(sse("content_block_stop", { index: textIndex }));
-      out.push(sse("message_delta", { delta: { stop_reason: stopReason ?? (sawTool ? "tool_use" : "end_turn"), stop_sequence: null }, usage: usage ?? { output_tokens: 0 } }));
+      if (textOpen) {
+        out.push(sse("content_block_stop", { index: textIndex }));
+        textOpen = false;
+      }
+      // Explicit input_tokens:0 when no usageMetadata arrived so the accumulator overwrites the placeholder.
+      // If a finishReason WAS seen, stopReason already reflects it (mapGeminiFinish gates tool_use on a
+      // normal stop, so SAFETY/RECITATION are never masked). Only when NONE arrived do we infer tool_use
+      // from whether a tool block was actually emitted.
+      out.push(sse("message_delta", { delta: { stop_reason: stopReason ?? (sawTool ? "tool_use" : "end_turn"), stop_sequence: null }, usage: usage ?? { input_tokens: 0, output_tokens: 0 } }));
       out.push(sse("message_stop", {}));
       return out;
     },

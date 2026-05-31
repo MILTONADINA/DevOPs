@@ -12,8 +12,12 @@ import { isAbort, lowerHeaders } from "./http";
 import { anthropicToGeminiRequest, createGeminiStreamTranslator, geminiResponseToAnthropic } from "./translate-gemini";
 import type { Provider, ProviderCredentials } from "./types";
 
-/** Translate a non-2xx Gemini error body into an Anthropic-shaped error object. */
+/** Translate a non-2xx Gemini error body into an Anthropic-shaped error object. AUTH errors (401/403) are
+ *  never forwarded verbatim (defense-in-depth — keep upstream key/credential detail out of client responses). */
 function geminiErrorToAnthropic(status: number, data: unknown): { type: "error"; error: { type: string; message: string } } {
+  if (status === 401 || status === 403) {
+    return { type: "error", error: { type: "authentication_error", message: `upstream authentication error (HTTP ${status}) — check the provider API key configured on the proxy` } };
+  }
   let message = `upstream error (HTTP ${status})`;
   if (typeof data === "string" && data !== "") message = data;
   else {
@@ -101,8 +105,10 @@ export const geminiProvider: Provider = {
           for (const ev of parser.push(chunk.toString())) for (const s of translator.push(ev.data)) yield s;
         }
         for (const ev of parser.flush()) for (const s of translator.push(ev.data)) yield s;
-        for (const s of translator.end()) yield s;
       } finally {
+        // Emit closing events in finally so a mid-stream upstream error/abort still yields a well-formed
+        // message_delta+message_stop (end()'s `ended` guard prevents duplicates on the normal path).
+        for (const s of translator.end()) yield s;
         clearTimeout(idle);
       }
     }

@@ -28,12 +28,15 @@ function asNumber(v: unknown): number | undefined {
   return typeof v === "number" && Number.isFinite(v) ? v : undefined;
 }
 
-/** Parse a JSON arguments string defensively; an unparseable/empty string yields {} (never throws). */
+/** Parse a JSON arguments string defensively; an unparseable/empty string yields {} (never throws —
+ *  a pure translation fn must not throw — but WARNS so silent tool-input loss from a misbehaving upstream
+ *  is observable rather than invisible). */
 function safeJson(s: string | undefined): unknown {
   if (s === undefined || s === "") return {};
   try {
     return JSON.parse(s);
-  } catch {
+  } catch (err) {
+    console.warn(`[translate-openai] unparseable tool-call arguments (substituting {}): ${String(err)}; raw: ${s.slice(0, 200)}`);
     return {};
   }
 }
@@ -48,7 +51,7 @@ function flattenSystem(system: unknown): string {
       const r = asRecord(b);
       return r && asString(r["text"]) !== undefined ? (r["text"] as string) : "";
     })
-    .join("");
+    .join("\n\n"); // separate system blocks with a blank line — never run them together
 }
 
 /** OpenAI reasoning models reject `temperature` and want `max_completion_tokens` instead of `max_tokens`. */
@@ -194,6 +197,21 @@ export function anthropicToOpenAIRequest(model: string, body: MessagesBody, stre
       .filter((x) => x !== null);
   }
 
+  // tool_choice: Anthropic → OpenAI (only meaningful when tools are present). Claude Code's agentic loop
+  // sends {type:"any"|"required"} or {type:"tool", name} to FORCE a tool call; dropping it silently lets
+  // OpenAI default to "auto" and answer in text instead, breaking the loop.
+  const tc = asRecord(raw["tool_choice"]);
+  if (tc !== null && out["tools"] !== undefined) {
+    const tcType = asString(tc["type"]);
+    if (tcType === "auto") out["tool_choice"] = "auto";
+    else if (tcType === "any" || tcType === "required") out["tool_choice"] = "required";
+    else if (tcType === "none") out["tool_choice"] = "none";
+    else if (tcType === "tool") {
+      const name = asString(tc["name"]);
+      if (name !== undefined && name !== "") out["tool_choice"] = { type: "function", function: { name } };
+    }
+  }
+
   if (stream) {
     out["stream"] = true;
     out["stream_options"] = { include_usage: true }; // so the final chunk carries prompt/completion tokens for billing
@@ -286,11 +304,15 @@ export interface OpenAIStreamTranslator {
 }
 
 /**
- * Create a stateful translator from OpenAI streamed chunks to Anthropic SSE events. Emits the canonical
- * Anthropic sequence: message_start → (content_block_start/_delta per text + tool call) → content_block_stop
- * → message_delta (stop_reason + usage) → message_stop. The final usage carries BOTH input_tokens (OpenAI
- * prompt_tokens) and output_tokens so the proxy can bill the exact upstream count (the accumulator merges
- * input_tokens from message_delta — see sse.ts).
+ * Create a stateful translator from OpenAI streamed chunks to Anthropic SSE events. TEXT streams live
+ * (the latency-sensitive part); TOOL CALLS are BUFFERED and emitted as complete, sequential tool_use blocks
+ * at end(). This is deliberate: OpenAI delivers tool-call argument fragments per index and may interleave
+ * parallel calls, which cannot be faithfully re-emitted as Anthropic's strict, one-open-block-at-a-time
+ * protocol (content_block_start → content_block_delta* → content_block_stop, non-overlapping, ascending
+ * index) while streaming. Buffering guarantees a protocol-correct sequence:
+ *   message_start → [text block] → [tool0 block] → [tool1 block] → message_delta → message_stop
+ * The final message_delta carries BOTH input_tokens (OpenAI prompt_tokens) and output_tokens (the accumulator
+ * merges input_tokens — see sse.ts) so the proxy bills the exact upstream count.
  *
  * @param model - the model id to report in message_start.
  * @returns an {@link OpenAIStreamTranslator}.
@@ -301,7 +323,9 @@ export function createOpenAIStreamTranslator(model: string): OpenAIStreamTransla
   let textOpen = false;
   let textIndex = -1;
   let nextIndex = 0;
-  const toolByOpenAIIndex = new Map<number, number>(); // OpenAI tool_call index → Anthropic content-block index
+  // Buffered tool calls keyed by OpenAI tool_call index (Map preserves insertion = arrival order). id/name
+  // take the first non-empty value; args accumulate the streamed fragments. Emitted at end().
+  const toolBuf = new Map<number, { id: string; name: string; args: string }>();
   let stopReason: string | undefined;
   let usage: { input_tokens: number; output_tokens: number } | undefined;
   let messageId = "msg_openai";
@@ -323,15 +347,17 @@ export function createOpenAIStreamTranslator(model: string): OpenAIStreamTransla
       const chunk = asRecord(value);
       if (chunk === null) return out;
 
+      // Capture the id BEFORE message_start is emitted (which is deferred to the first text delta or end(),
+      // so a role-only/id-less first chunk doesn't lock in the "msg_openai" fallback).
       const id = asString(chunk["id"]);
-      if (id !== undefined) messageId = id;
-      ensureStart(out);
+      if (id !== undefined && id !== "") messageId = id;
 
       const choice = asRecord((asArray(chunk["choices"]) ?? [])[0]);
       if (choice !== null) {
         const delta = asRecord(choice["delta"]) ?? {};
         const text = asString(delta["content"]);
         if (text !== undefined && text !== "") {
+          ensureStart(out);
           if (!textOpen) {
             textOpen = true;
             textIndex = nextIndex++;
@@ -346,14 +372,17 @@ export function createOpenAIStreamTranslator(model: string): OpenAIStreamTransla
             if (c === null) continue;
             const oaIndex = asNumber(c["index"]) ?? 0;
             const fn = asRecord(c["function"]) ?? {};
-            let aiIndex = toolByOpenAIIndex.get(oaIndex);
-            if (aiIndex === undefined) {
-              aiIndex = nextIndex++;
-              toolByOpenAIIndex.set(oaIndex, aiIndex);
-              out.push(sse("content_block_start", { index: aiIndex, content_block: { type: "tool_use", id: asString(c["id"]) ?? `call_${aiIndex}`, name: asString(fn["name"]) ?? "", input: {} } }));
+            let buf = toolBuf.get(oaIndex);
+            if (buf === undefined) {
+              buf = { id: "", name: "", args: "" };
+              toolBuf.set(oaIndex, buf);
             }
+            const cid = asString(c["id"]);
+            if (cid !== undefined && cid !== "" && buf.id === "") buf.id = cid; // id may arrive on a later fragment
+            const nm = asString(fn["name"]);
+            if (nm !== undefined && nm !== "" && buf.name === "") buf.name = nm;
             const args = asString(fn["arguments"]);
-            if (args !== undefined && args !== "") out.push(sse("content_block_delta", { index: aiIndex, delta: { type: "input_json_delta", partial_json: args } }));
+            if (args !== undefined) buf.args += args;
           }
         }
         const fr = asString(choice["finish_reason"]);
@@ -371,9 +400,24 @@ export function createOpenAIStreamTranslator(model: string): OpenAIStreamTransla
       ended = true;
       const out: string[] = [];
       ensureStart(out); // a zero-chunk stream still emits a well-formed (empty) message
-      if (textOpen) out.push(sse("content_block_stop", { index: textIndex }));
-      for (const aiIndex of toolByOpenAIIndex.values()) out.push(sse("content_block_stop", { index: aiIndex }));
-      out.push(sse("message_delta", { delta: { stop_reason: stopReason ?? "end_turn", stop_sequence: null }, usage: usage ?? { output_tokens: 0 } }));
+      if (textOpen) {
+        out.push(sse("content_block_stop", { index: textIndex }));
+        textOpen = false;
+      }
+      // Flush buffered tool calls as complete, sequential blocks (ascending index, one open at a time).
+      let i = 0;
+      for (const buf of toolBuf.values()) {
+        const idx = nextIndex++;
+        out.push(sse("content_block_start", { index: idx, content_block: { type: "tool_use", id: buf.id !== "" ? buf.id : `call_${i}`, name: buf.name, input: {} } }));
+        if (buf.args !== "") out.push(sse("content_block_delta", { index: idx, delta: { type: "input_json_delta", partial_json: buf.args } }));
+        out.push(sse("content_block_stop", { index: idx }));
+        i++;
+      }
+      // Explicit input_tokens:0 when no usage chunk arrived (e.g. upstream truncated) so the accumulator
+      // overwrites message_start's placeholder rather than leaving a stale value; billing then falls back
+      // to the pre-flight count (the upstream simply never sent the exact one).
+      const finalStop = stopReason ?? (toolBuf.size > 0 ? "tool_use" : "end_turn");
+      out.push(sse("message_delta", { delta: { stop_reason: finalStop, stop_sequence: null }, usage: usage ?? { input_tokens: 0, output_tokens: 0 } }));
       out.push(sse("message_stop", {}));
       return out;
     },

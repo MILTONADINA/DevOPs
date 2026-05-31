@@ -105,4 +105,72 @@ describe("createGeminiStreamTranslator — round-trip through the real accumulat
     expect(block["partial_json"]).toBe('{"q":"hi"}');
     expect(r.message.usage).toEqual({ input_tokens: 3, output_tokens: 5 });
   });
+
+  function blocksWellFormed(sse: string): boolean {
+    let open: number | null = null;
+    for (const ev of createSseParser().push(sse)) {
+      const d = ev.data as Record<string, unknown> | null;
+      const type = d && typeof d["type"] === "string" ? (d["type"] as string) : ev.event;
+      if (type === "content_block_start") {
+        if (open !== null) return false;
+        open = d ? (d["index"] as number) : null;
+      } else if (type === "content_block_stop") {
+        if (open === null || (d && d["index"] !== open)) return false;
+        open = null;
+      }
+    }
+    return open === null;
+  }
+
+  test("text then functionCall: the text block is closed before the tool block (non-overlapping)", () => {
+    const tr = createGeminiStreamTranslator("gemini-2.5-pro");
+    let sse = "";
+    for (const c of [
+      { candidates: [{ content: { parts: [{ text: "I will call the tool." }] } }] },
+      { candidates: [{ content: { parts: [{ functionCall: { name: "lookup", args: { q: "x" } } }] }, finishReason: "STOP" }], usageMetadata: { promptTokenCount: 5, candidatesTokenCount: 8 } },
+    ]) sse += tr.push(c).join("");
+    sse += tr.end().join("");
+    expect(blocksWellFormed(sse)).toBe(true); // would FAIL pre-fix (text block left open when the tool block opened)
+    const r = accumulateAnthropicStream(createSseParser().push(sse));
+    expect(r.message.content[0]).toMatchObject({ type: "text", text: "I will call the tool." });
+    expect(r.message.content[1]).toMatchObject({ type: "tool_use", name: "lookup" });
+    expect(r.message.stop_reason).toBe("tool_use");
+  });
+});
+
+describe("anthropicToGeminiRequest + mapGeminiFinish — audit fixes", () => {
+  test("user turn mixing tool_result + text → TWO separate Gemini contents (functionResponse isolated)", () => {
+    const body = {
+      model: "gemini-2.5-pro",
+      max_tokens: 64,
+      messages: [
+        { role: "assistant", content: [{ type: "tool_use", id: "call_1", name: "f", input: {} }] },
+        { role: "user", content: [{ type: "tool_result", tool_use_id: "call_1", content: "42" }, { type: "text", text: "now explain" }] },
+      ],
+    } as unknown as MessagesBody;
+    const contents = (anthropicToGeminiRequest(body) as Record<string, unknown>)["contents"] as Record<string, unknown>[];
+    const userEntries = contents.filter((c) => c["role"] === "user");
+    expect(userEntries).toHaveLength(2); // functionResponse and text are NOT mixed in one content (Gemini 400)
+    const fnEntry = userEntries.find((c) => "functionResponse" in (c["parts"] as Record<string, unknown>[])[0]!)!;
+    expect(fnEntry).toBeDefined();
+    expect((fnEntry["parts"] as Record<string, unknown>[]).every((p) => "functionResponse" in p)).toBe(true); // functionResponse entry is pure
+  });
+
+  test("URL-sourced image → Gemini fileData (not silently dropped)", () => {
+    const body: MessagesBody = { model: "gemini-2.5-pro", max_tokens: 64, messages: [{ role: "user", content: [{ type: "image", source: { type: "url", url: "https://x/y.png", media_type: "image/png" } }] }] };
+    const parts = ((anthropicToGeminiRequest(body) as Record<string, unknown>)["contents"] as Record<string, unknown>[])[0]!["parts"] as Record<string, unknown>[];
+    expect(parts[0]).toEqual({ fileData: { fileUri: "https://x/y.png", mimeType: "image/png" } });
+  });
+
+  test("multi-block system prompt joins with a blank line", () => {
+    const body = { model: "gemini-2.5-pro", max_tokens: 16, system: [{ type: "text", text: "A" }, { type: "text", text: "B" }], messages: [{ role: "user", content: "x" }] } as unknown as MessagesBody;
+    expect((anthropicToGeminiRequest(body) as Record<string, unknown>)["systemInstruction"]).toEqual({ parts: [{ text: "A\n\nB" }] });
+  });
+
+  test("mapGeminiFinish does NOT mask a SAFETY/RECITATION stop as tool_use, even if a tool call was emitted", () => {
+    expect(mapGeminiFinish("SAFETY", true)).toBe("end_turn");
+    expect(mapGeminiFinish("RECITATION", true)).toBe("end_turn");
+    expect(mapGeminiFinish("STOP", true)).toBe("tool_use"); // a normal stop with a tool call is genuine tool_use
+    expect(mapGeminiFinish(undefined, true)).toBe("tool_use"); // no finishReason but a tool block was emitted
+  });
 });
