@@ -11,6 +11,8 @@ dist/
 api/index.js
 .vercel/
 vercel-src/local-test.mjs
+public/
+# ^ build output: the buildCommand copies vercel-src/landing.html → public/index.html on deploy.
 
 # Dependencies
 node_modules/

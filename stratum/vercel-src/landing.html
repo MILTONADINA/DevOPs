@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Stratum — stop paying the Context Tax</title>
+<meta name="description" content="A drop-in, Anthropic-compatible LLM gateway for Anthropic, OpenAI, Gemini, OpenRouter and local models. It measures the redundant context in every request and prunes it — you pay just 20% of what you save." />
+<style>
+  :root{
+    --bg:#070b16; --bg2:#0b1120; --panel:#0e1626; --line:#1e293b; --line2:#243049;
+    --ink:#e8edf7; --muted:#93a1bd; --faint:#5b6987;
+    --indigo:#6366f1; --violet:#8b5cf6; --cyan:#22d3ee; --green:#10b981; --amber:#f59e0b;
+    --grad:linear-gradient(110deg,#818cf8,#a78bfa 45%,#22d3ee);
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font:16px/1.6 -apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased; overflow-x:hidden;
+  }
+  a{color:inherit;text-decoration:none}
+  .wrap{max-width:1080px;margin:0 auto;padding:0 24px}
+  .grad{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .glow{position:fixed;inset:-30% 0 auto 0;height:680px;z-index:0;pointer-events:none;
+    background:radial-gradient(60% 60% at 50% 0%,rgba(99,102,241,.22),rgba(34,211,238,.06) 45%,transparent 70%);filter:blur(8px)}
+  .pill{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;color:var(--muted);
+    border:1px solid var(--line2);background:rgba(255,255,255,.02);padding:5px 11px;border-radius:99px}
+  .dot{width:7px;height:7px;border-radius:99px;background:var(--green);box-shadow:0 0 0 0 rgba(16,185,129,.6);animation:pulse 2.2s infinite}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(16,185,129,.5)}70%{box-shadow:0 0 0 7px rgba(16,185,129,0)}100%{box-shadow:0 0 0 0 rgba(16,185,129,0)}}
+
+  /* nav */
+  nav{position:sticky;top:0;z-index:10;backdrop-filter:blur(10px);
+    background:rgba(7,11,22,.72);border-bottom:1px solid var(--line)}
+  nav .wrap{display:flex;align-items:center;justify-content:space-between;height:62px}
+  .brand{display:flex;align-items:center;gap:11px;font-weight:800;letter-spacing:-.02em;font-size:18px}
+  .mark{width:26px;height:26px;border-radius:8px;background:var(--grad);
+    display:grid;place-items:center;color:#0b1120;font-weight:900;font-size:15px;box-shadow:0 6px 20px rgba(99,102,241,.4)}
+  .navlinks{display:flex;gap:26px;align-items:center;font-size:14px;color:var(--muted)}
+  .navlinks a:hover{color:var(--ink)}
+  .btn{display:inline-flex;align-items:center;gap:8px;font-weight:600;font-size:14px;
+    padding:9px 16px;border-radius:10px;border:1px solid var(--line2);transition:.15s}
+  .btn.primary{background:var(--grad);color:#0b1120;border:0;box-shadow:0 8px 24px rgba(99,102,241,.35)}
+  .btn.primary:hover{filter:brightness(1.07);transform:translateY(-1px)}
+  .btn.ghost:hover{border-color:var(--violet);color:#fff;background:rgba(139,92,246,.08)}
+  @media(max-width:720px){.navlinks .hide{display:none}}
+
+  /* hero */
+  header{position:relative;z-index:1;padding:84px 0 56px;text-align:center}
+  h1{font-size:clamp(34px,6vw,60px);line-height:1.04;letter-spacing:-.03em;margin:20px auto 0;max-width:14ch;font-weight:850}
+  .sub{color:var(--muted);font-size:clamp(16px,2.4vw,20px);max-width:62ch;margin:20px auto 0}
+  .sub b{color:var(--ink)}
+  .cta{display:flex;gap:14px;justify-content:center;margin-top:32px;flex-wrap:wrap}
+  .cta .btn{padding:13px 22px;font-size:15px}
+  .providers{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:42px}
+  .chip{font-size:13px;color:var(--muted);border:1px solid var(--line);border-radius:99px;padding:7px 14px;background:rgba(255,255,255,.015)}
+  .chip b{color:var(--ink);font-weight:600}
+
+  /* sections */
+  section{position:relative;z-index:1;padding:54px 0}
+  .eyebrow{font-size:12.5px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--violet);text-align:center}
+  h2{font-size:clamp(26px,4vw,38px);letter-spacing:-.02em;text-align:center;margin:10px auto 8px;font-weight:800}
+  .lead{color:var(--muted);text-align:center;max-width:58ch;margin:0 auto 36px}
+
+  .steps{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+  .step{background:linear-gradient(180deg,var(--panel),var(--bg2));border:1px solid var(--line);border-radius:16px;padding:24px}
+  .step .n{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;font-weight:800;color:#0b1120;background:var(--grad);margin-bottom:14px}
+  .step h3{margin:0 0 6px;font-size:17px}
+  .step p{margin:0;color:var(--muted);font-size:14.5px}
+
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:22px;transition:.18s}
+  .card:hover{border-color:var(--line2);transform:translateY(-3px);box-shadow:0 18px 40px rgba(0,0,0,.35)}
+  .card .ico{font-size:22px;margin-bottom:10px}
+  .card h3{margin:0 0 6px;font-size:16.5px;letter-spacing:-.01em}
+  .card p{margin:0;color:var(--muted);font-size:14px}
+
+  /* code */
+  .code{max-width:760px;margin:0 auto;background:#070c18;border:1px solid var(--line2);border-radius:14px;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,.45)}
+  .code .bar{display:flex;align-items:center;gap:7px;padding:11px 14px;border-bottom:1px solid var(--line)}
+  .code .bar i{width:11px;height:11px;border-radius:99px;display:inline-block}
+  .code .bar i:nth-child(1){background:#ef4444}.code .bar i:nth-child(2){background:#f59e0b}.code .bar i:nth-child(3){background:#10b981}
+  .code .bar span{margin-left:8px;font-size:12px;color:var(--faint)}
+  .code pre{margin:0;padding:18px 20px;font:13.5px/1.7 "SFMono-Regular",Consolas,"Liberation Mono",monospace;color:#cdd7ee;overflow-x:auto}
+  .code .c{color:var(--faint)} .code .k{color:#a78bfa} .code .s{color:#34d399} .code .u{color:#22d3ee}
+
+  /* cta band */
+  .band{background:linear-gradient(120deg,rgba(99,102,241,.14),rgba(34,211,238,.08));border:1px solid var(--line2);border-radius:22px;padding:42px;text-align:center}
+  .band h2{margin:0 0 8px}
+  .band p{color:var(--muted);margin:0 auto 22px;max-width:52ch}
+
+  footer{border-top:1px solid var(--line);margin-top:36px;padding:30px 0;color:var(--faint);font-size:13.5px}
+  footer .wrap{display:flex;justify-content:space-between;align-items:center;gap:18px;flex-wrap:wrap}
+  footer a{color:var(--muted)} footer a:hover{color:var(--ink)}
+  .flinks{display:flex;gap:20px;flex-wrap:wrap}
+
+  @media(max-width:760px){.steps,.grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="glow"></div>
+
+<nav><div class="wrap">
+  <a class="brand" href="/"><span class="mark">S</span>Stratum</a>
+  <div class="navlinks">
+    <a class="hide" href="#how">How it works</a>
+    <a class="hide" href="#features">Features</a>
+    <a href="/docs">API</a>
+    <a class="btn ghost" href="/billing">Dashboard</a>
+  </div>
+</div></nav>
+
+<header><div class="wrap">
+  <span class="pill"><span class="dot"></span> Live gateway · savings engine in calibration</span>
+  <h1>Stop paying the <span class="grad">Context&nbsp;Tax</span>.</h1>
+  <p class="sub">Stratum is a <b>drop‑in, Anthropic‑compatible gateway</b> that sits in front of every LLM call — across Anthropic, OpenAI, Gemini, OpenRouter, and local models. It measures the redundant context you re‑send on every turn and prunes it. <b>You pay just 20% of what you save.</b></p>
+  <div class="cta">
+    <a class="btn primary" href="/billing">Open the CFO Dashboard →</a>
+    <a class="btn ghost" href="/docs">Read the API reference</a>
+  </div>
+  <div class="providers">
+    <span class="chip"><b>Anthropic</b></span>
+    <span class="chip"><b>OpenAI</b></span>
+    <span class="chip"><b>Gemini</b></span>
+    <span class="chip"><b>OpenRouter</b></span>
+    <span class="chip"><b>Local</b> · Ollama / vLLM</span>
+  </div>
+</div></header>
+
+<section id="how"><div class="wrap">
+  <div class="eyebrow">How it works</div>
+  <h2>One line to install. Three steps to value.</h2>
+  <p class="lead">Stratum is transparent — it speaks the Anthropic API, so your existing tools and SDKs don't change. You point them at it once.</p>
+  <div class="steps">
+    <div class="step"><div class="n">1</div><h3>Point your base URL here</h3><p>Set <code>ANTHROPIC_BASE_URL</code> to your Stratum endpoint and authenticate with your key. Every request now flows through the gateway — no code changes.</p></div>
+    <div class="step"><div class="n">2</div><h3>We measure &amp; prune</h3><p>Each turn is token‑counted with the provider's <i>exact</i> usage, the wasted re‑sent context is identified, and (as the engine activates) pruned — with a published &lt;5% quality gate.</p></div>
+    <div class="step"><div class="n">3</div><h3>You pay 20% of savings</h3><p>Your provider bill drops; Stratum invoices 20% of the measured reduction. No savings, no fee — every dollar is signed and reconcilable in the CFO dashboard.</p></div>
+  </div>
+</div></section>
+
+<section id="features"><div class="wrap">
+  <div class="eyebrow">Why Stratum</div>
+  <h2>Infrastructure‑grade, by design.</h2>
+  <p class="lead">Built as production infrastructure — not a plugin. Exact accounting, multi‑provider, and adversarially hardened.</p>
+  <div class="grid">
+    <div class="card"><div class="ico">🔌</div><h3>Drop‑in compatible</h3><p>Speaks the Anthropic Messages API. Claude Code, the SDKs, and any Anthropic‑shaped client work unchanged — just a new base URL.</p></div>
+    <div class="card"><div class="ico">🌐</div><h3>Run anywhere</h3><p>One endpoint routes to Anthropic, OpenAI, Gemini, OpenRouter, or a local OpenAI‑compatible server by model id — request, response, and streaming faithfully translated.</p></div>
+    <div class="card"><div class="ico">🎯</div><h3>Exact token accounting</h3><p>Billing uses the upstream‑confirmed input/output token counts — never an estimate. The numbers are provable, signed, and dispute‑proof.</p></div>
+    <div class="card"><div class="ico">✂️</div><h3>Context pruning</h3><p>The KadaneDial engine ranks and removes irrelevant re‑sent context, gated behind a published faithfulness eval so quality never silently degrades.</p></div>
+    <div class="card"><div class="ico">🛡️</div><h3>Security‑hardened</h3><p>Row‑level security on every table, append‑only financial ledger, PII redaction, and multiple adversarial audits &amp; a full pentest.</p></div>
+    <div class="card"><div class="ico">📊</div><h3>Transparent billing</h3><p>A CFO dashboard + signed audit trail show exactly what was saved and what was charged, down to the session — auth, invoice, paid, reconciled.</p></div>
+  </div>
+</div></section>
+
+<section><div class="wrap">
+  <div class="eyebrow">Drop‑in</div>
+  <h2>Change one variable. That's it.</h2>
+  <p class="lead">Your tooling keeps working. Stratum measures, optimizes, and bills every call from then on.</p>
+  <div class="code">
+    <div class="bar"><i></i><i></i><i></i><span>your environment</span></div>
+<pre><span class="c"># point any Anthropic-compatible client at Stratum</span>
+<span class="k">export</span> ANTHROPIC_BASE_URL=<span class="u">https://your-stratum.vercel.app</span>
+<span class="k">export</span> ANTHROPIC_API_KEY=<span class="s">cq_live_•••••••••••••••</span>
+
+<span class="c"># run your tool unchanged — Claude Code, an SDK, a curl:</span>
+curl <span class="u">$ANTHROPIC_BASE_URL</span>/v1/messages \
+  -H <span class="s">"x-api-key: $ANTHROPIC_API_KEY"</span> \
+  -H <span class="s">"content-type: application/json"</span> \
+  -d <span class="s">'{"model":"claude-opus-4-8","max_tokens":256,</span>
+<span class="s">      "messages":[{"role":"user","content":"hello"}]}'</span></pre>
+  </div>
+</div></section>
+
+<section><div class="wrap">
+  <div class="band">
+    <h2>Cut the waste. Keep 80% of the savings.</h2>
+    <p>Open the dashboard to watch usage and savings in real time, or read the contract to integrate in minutes.</p>
+    <div class="cta" style="margin-top:6px">
+      <a class="btn primary" href="/billing">Open the CFO Dashboard →</a>
+      <a class="btn ghost" href="/docs">API reference</a>
+    </div>
+  </div>
+</div></section>
+
+<footer><div class="wrap">
+  <div><span class="grad" style="font-weight:800">Stratum</span> &nbsp;·&nbsp; the token‑arbitrage LLM gateway</div>
+  <div class="flinks">
+    <a href="/billing">Dashboard</a>
+    <a href="/docs">API</a>
+    <a href="/openapi.json">OpenAPI</a>
+    <a href="/health">Status</a>
+  </div>
+</div></footer>
+
+</body>
+</html>
