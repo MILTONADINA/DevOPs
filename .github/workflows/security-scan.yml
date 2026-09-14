@@ -31,6 +31,12 @@ jobs:
       - uses: gitleaks/gitleaks-action@dcedce43c6f43de0b836d1fe38946645c9c638dc  # v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Dedicated CI-only config (governance/gitleaks-ci.toml), NOT
+          # governance/gitleaks-tier3.toml and NOT a root .gitleaks.toml --
+          # see that file's header comment for why each of those would
+          # widen this allowlist's scope beyond intent. gitleaks-action
+          # honors GITLEAKS_CONFIG as an explicit --config-equivalent path.
+          GITLEAKS_CONFIG: governance/gitleaks-ci.toml
           # gitleaks-action posts a PR comment by default. On pull_request events
           # the default GITHUB_TOKEN is read-only, so the comment POST returns
           # 403 "Resource not accessible by integration" and fails the job —
@@ -95,7 +101,18 @@ jobs:
 
       - name: Install DeepTeam
         if: steps.path-filter.outputs.should_run == 'true'
-        run: pip install deepteam
+        # Use `python3 -m pip install`, not bare `pip install`: actions/setup-python
+        # updates PATH for this job, but a bare `pip` name can still resolve to a
+        # different pip shim (e.g. a runner-image system pip) than the `python3`
+        # the next step imports against, so the install silently lands in the
+        # wrong site-packages even though the step reports success. `python3 -m
+        # pip` pins the install to the exact interpreter used by the pre-flight
+        # `python3 -c "import deepteam"` check in scripts/run-redteam.sh.
+        # (No setup-python `cache:` key is set here and there's a single
+        # python-version across both steps in this job, so this isn't a
+        # cache-staleness or version-drift issue -- it's pip/python3 PATH
+        # divergence.)
+        run: python3 -m pip install deepteam
 
       - name: Run DeepTeam OWASP_ASI_2026 red-team
         if: steps.path-filter.outputs.should_run == 'true'
