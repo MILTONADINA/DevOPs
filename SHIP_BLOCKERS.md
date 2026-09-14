@@ -1,0 +1,314 @@
+# Ship Blockers — Gaps Between Now and a Shippable Masterpiece
+
+**Produced**: 2026-09-14, via a systematic audit (3 parallel investigations covering
+DevOps core, Stratum, and cross-cutting consistency) that checked actual runtime
+state — ran the test commands, ran the claim validator, checked live CI run
+history, computed real hashes — rather than trusting what docs claim.
+
+**Headline finding**: the most serious gaps here are not "features not yet built."
+They are **claims the project already makes about itself that are currently
+false** — a validator that doesn't validate, CI that's been silently red for a
+week, a pruner that fails its own benchmark, test suites that don't run. A
+masterpiece can't be built on top of broken instrumentation. Section 1 is the
+priority; everything else is real but lower urgency.
+
+---
+
+## 1. Critical — active defects, not missing features
+
+These are things the project currently *claims* are true (in docs, in its own
+"sealed" closures) that are not true right now. Fix these before anything else,
+because they're what everything else would be verified against.
+
+### 1.1 The claim/proof-of-work system — the project's own flagship differentiator — is ~97% non-functional
+
+Running `npm run validate:claims` for real: **only 3 of 97 claims currently
+validate** (`claim-2026-05-22-{001,002,004}`). 92 of the 94 failures are
+`git_sha does not exist in this repository`, confirmed via `git cat-file -t`
+(fails) against a full, non-shallow `git log --all` (296 commits) — the
+commits genuinely don't exist anymore. Almost certainly caused by GitHub
+squash-merges rewriting SHAs (CHANGELOG.md itself documents "§2f
+infrastructure landed... via PRs #18 + #19").
+
+This is not a stale-signature footnote — it's the core mechanism the README
+leads with ("you cannot ask an agent if it is in a loop; you must prove it
+mathematically") silently returning false positives on "sealed" work for
+months.
+
+**Action**: decide policy — either re-anchor historical claims to their
+squash-merge commit SHA (if recoverable from PR history via `gh pr view
+--json mergeCommit`), or formally accept pre-squash-merge claims as
+permanently unverifiable and change the validator to distinguish
+"unverifiable due to history rewrite" from "failed verification." Silently
+reporting 97% failure with no distinction is itself a defect.
+
+### 1.2 CI has been silently red for 7+ days on `main`, including a sealed Phase 2 security control
+
+Confirmed via `gh run list` / `gh run view --log-failed`:
+
+- **"Security scan"** workflow — failing on every scheduled run from
+  2026-09-08 through 2026-09-14 (7/7). Root cause: the DeepTeam OWASP-ASI
+  red-team step — **one of Phase 2 Area B's sealed "✅ Closed" deliverables**
+  — errors `ERROR: DeepTeam not installed` despite `pip install` reporting
+  success immediately above it in the same job (environment/PATH bug in the
+  workflow, not a code defect). A previously-sealed security control has
+  regressed in CI and nobody caught it.
+- **"Refresh Sigstore trust bundle"** workflow — failing daily:
+  `curl: (22) 404` against `https://tuf-repo-cdn.sigstore.dev/targets/trusted_root.json`
+  (upstream Sigstore TUF path changed). The offline verification trust
+  bundle (`.workflow/sigstore/trust-bundle.json`) has not been refreshed.
+- Separately, gitleaks is flagging `stratum/test/billing/verify-stripe.test.ts:16,20`
+  as containing real Stripe secrets — **confirmed false positive** (they're
+  literal test fixtures for a key-classifier unit test), but there's no
+  allowlist entry, so it blocks the pipeline regardless.
+
+**Action**: fix the DeepTeam install step (likely a venv/PATH issue in the
+workflow YAML), fix or replace the Sigstore TUF URL, add a gitleaks allowlist
+entry for the test fixture file. All three are small, mechanical fixes —
+there's no excuse for CI staying red this long undetected. Consider adding
+a notification (Slack/email) on scheduled-workflow failure so this doesn't
+recur silently.
+
+### 1.3 Neither project's test suite currently runs
+
+- **DevOps core**: there is no root-level `test` script in `package.json` at
+  all. The one eval mechanism that exists — `test:skills` — crashes
+  immediately: `Cannot find module '.../governance/skill-evals/run-evals.js'`.
+  `governance/skill-evals/registry.yml` defines real eval prompts and
+  expected behaviors for skills, but **nothing has ever executed them** —
+  it's a spec with no runner behind it.
+- **Stratum**: `npm test` → `sh: node_modules/.bin/vitest: Permission denied`
+  (the binary is `-rw-r--r--`, missing the execute bit). Bypassing via
+  `node node_modules/vitest/vitest.mjs run` hits a second, deeper break:
+  `Cannot find module @rollup/rollup-darwin-arm64` (the known npm
+  optional-dependencies bug; needs `rm -rf node_modules package-lock.json &&
+  npm i`). **The test-count claims in `docs/LAUNCH_READINESS.md` (e.g. "246
+  pass + 5 todo", "97 passing + 5 todo") cannot currently be independently
+  verified.**
+
+**Action**: (a) `chmod +x` the vitest binary or force a clean reinstall for
+Stratum, verify the rollup native module resolves; (b) either write the
+missing `governance/skill-evals/run-evals.js` runner for DevOps-core, or
+remove the dangling `test:skills` script until it's real; (c) add both to
+CI so this can't silently regress again.
+
+### 1.4 Stratum's pruner — the single most defensible piece of differentiated IP in the whole project — fails its own real benchmark
+
+Per ADR-0014, running the actual published, judged LoCoMo benchmark: at
+λ=0.97 (the documented **shipping default**), evidence survival was **1.4%**
+— the pruner discards 98.6% of the evidence needed to answer questions,
+while the LLM plausibly "bluffs" an answer from recent context, nearly
+fooling the original eval gate. ADR-0016 found the gate itself was measuring
+the wrong thing and fixed it (degradation-dominant + evidence-survival
+co-gate) — but **even after that fix, the calibrated config still fails
+11/18 scenarios**. Next validation round is blocked on API credits
+(`docs/MEMORY_AND_EVAL_COMMANDS.md:133` marks `eval:locomo` "NEEDS CREDITS").
+
+This directly bears on the earlier conversation in this session where the
+pruner was identified as the most legitimate unsolved-problem the project
+addresses — that's still true of the *design*, but the *current calibrated
+implementation does not yet meet its own bar*. Do not ship pruning live
+(it's correctly still shadow-mode) until this is fixed and re-verified.
+
+**Action**: fund and run the next judged validation round; do not represent
+pruning as "validated" anywhere until it passes its own gate on the real
+benchmark, not just the dev set.
+
+### 1.5 Unpatched dependency vulnerabilities in Stratum — partially resolved 2026-09-14
+
+**Update 2026-09-14**: the original "11 vulnerabilities, 1 critical, all in
+`tar`" figure was stale by the time this was actually worked (dependency
+drift since the initial audit) — the real count at fix time was **26
+vulnerabilities (3 critical, 17 high, 6 moderate)** across many packages,
+not just `tar`. Ran `npm audit fix` (no `--force`) via the graph-engineering
+pipeline (sprint cycle `phase0-003-npm-audit`), independently re-verified by
+the pipeline's own security and validator stages plus a human (me) re-running
+`npm audit` directly: **resolved 26 → 14 (16 packages fixed), `package.json`
+untouched, no silent `--force`.**
+
+**3 critical vulnerabilities remain, deliberately not auto-fixed**: `tar`,
+`vitest`, `@vitest/coverage-v8` — all require `npm audit fix --force`, which
+would force a semver-major bump (`vitest` 5.0.0, `supabase` 2.117.0). The
+pipeline correctly declined to apply this unattended and flagged it for
+human review rather than silently accepting a breaking major-version
+upgrade. 8 packages total need `--force` (also: `@vitest/mocker`, `esbuild`,
+`vite`, `vite-node`, `supabase`); 2 (`@huggingface/transformers`, `sharp`)
+have no fix available upstream at all yet.
+
+**Action**: fix committed (partial). Remaining decision — whether to accept
+the `vitest`/`supabase` major-version bumps via `--force` — needs an
+explicit human call, not an autonomous one; the version bumps could carry
+real breaking changes worth testing deliberately rather than forcing blind.
+
+### 1.6 A stale signature was introduced *this session*
+
+`goal-loop`'s `SKILL.md` was edited (removing the dead `researcher` subagent
+reference) but `governance/skill-manifest.yml`'s `sha256`/signature for it
+were never regenerated — spot-checking 5 manifest entries by computing
+sha256 directly confirmed `proof-of-work`, `baton-handoff`,
+`session-summary`, `spec-extraction` all match; `goal-loop` does not. Same
+failure pattern as the already-documented PB-13, now recurring on a
+different skill, introduced by this very session's work.
+
+**Action**: dispatch `release-sign.yml` to re-sign the current skill set
+(this will also need to happen after removing the 3 skills earlier this
+session, since the manifest was hand-edited, not re-signed).
+
+### 1.7 No lockfile at the DevOps-core repo root
+
+No `package-lock.json` / `yarn.lock` / `pnpm-lock.yaml` and no
+`node_modules` exist at all. Dependency versions aren't pinned, builds
+aren't reproducible. (Stratum has its own lockfile situation covered
+separately in 1.3/1.5.)
+
+**Action**: run `npm install` and commit the resulting lockfile.
+
+---
+
+## 2. Architecture-reality divergence
+
+### 2.1 Stratum's production runtime doesn't match its own governing architecture decision
+
+ADR-0005 chose **Cloudflare Workers + Durable Objects** as *the* production
+runtime specifically for sub-50ms edge latency and stateful sessions —
+Fastify was explicitly scoped as only the "Phase 1 local dev" fallback. But
+the actual live deployment (confirmed earlier this session: real Vercel URL,
+health-checked, real Supabase) **is Vercel**, and the Workers path's core
+primitive — `SessionDurableObject` in `stratum/src/proxy/worker.ts:70` —
+**literally returns `{"error":{"type":"not_implemented"}}`**. The
+foundational infrastructure decision that the pruner and billing systems
+were architected around was never realized in what's actually running.
+
+**Action**: either finish the Workers/Durable Objects path for real, or
+formally supersede ADR-0005 with a new ADR documenting Vercel as the actual
+production choice and re-evaluating whether the latency/statefulness
+properties it was chosen for still matter given what's actually deployed.
+Leaving the architecture record contradicting the real deployment is itself
+a "masterpiece" defect — it means nobody can trust the ADRs as ground truth.
+
+### 2.2 `plan.md`'s Phase 3 tracking is wrong in both directions
+
+The entire v0.5.x checklist in `plan.md:174-224` is unchecked `[ ]`,
+including Tier-2 memory — which is actually **built and live**
+(`stratum/src/memory/warm/tier2.ts`, confirmed earlier this session).
+Correcting that undercount also surfaces genuinely missing scope that was
+being obscured by the blanket "unbuilt" framing:
+- `stratum/src/memory/cold/{pinecone,neo4j}.ts` are confirmed pure stubs (9
+  and 12 lines, `// TODO: Implement`) — Tier-3 cold memory doesn't exist.
+- DevOps-core's `hooks/universal/session-start/load-baton.sh` has **zero
+  references** to Stratum facts/tier2 — the actual cross-repo integration
+  that Phase 3 Option B was supposed to deliver (DevOps core querying
+  Stratum's memory at session start) hasn't been started.
+- The v0.5.x §4f knowledge-graph-view feature (~30h estimated) is entirely
+  unbuilt.
+
+**Action**: update `plan.md` to reflect what's actually built vs. actually
+missing, so future planning isn't working from a false baseline.
+
+---
+
+## 3. Unproven in the real world
+
+### 3.1 Stratum's commercial flow has never run end-to-end
+
+`docs/COMMERCIAL_ONBOARDING.md`'s full 6-step pilot flow (deploy → org/key
+provisioning → partner integrates → usage visible → invoice generated →
+payment collected) is fully built in code but has never been exercised with
+a real paying partner. Two literal blockers remain: a container-host account
+(step 1) and a live Stripe key (step 5). Zero real-world proof the billing
+math, invoice generation, and payment collection actually work together
+under real conditions.
+
+### 3.2 No re-verification of the Phase 2 sealed security posture since the CI regression
+
+The Phase 2 closure (`governance/changelog/PHASE-2-CLOSURE.md`) sealed A.11
+sec-review PASS for ASI02/ASI04 — but that sign-off predates the DeepTeam CI
+gate breaking (see 1.2). Nothing has re-confirmed the sealed posture still
+holds since the automated check meant to continuously verify it went dark.
+
+**Action**: once 1.2 is fixed and CI is green again, do a manual
+re-confirmation that nothing has drifted in the interim, since the automated
+safety net was off for over a week.
+
+---
+
+## 4. Known, honestly-scoped future work
+
+These are real gaps between "now" and "masterpiece," but they're correctly
+labeled as not-yet-built rather than silently broken — lower urgency than
+Sections 1–3.
+
+- **Phases 4–6 of the 6-phase build** (design-phase skills, SRE/operate,
+  self-improvement loop) — entirely unbuilt. This is roughly half the
+  originally-scoped product.
+- **Multi-tool adapters** (Codex, Cursor, Gemini CLI, Copilot, Windsurf) —
+  zero references anywhere in `plan.md`, `blueprint.md`, or
+  `governance/changelog/ROADMAP.md`. Confirmed **permanently aspirational**,
+  not merely unscheduled. README's opening pitch still names all 8 tools
+  (now with an honesty caveat added this session) — worth deciding whether
+  to actually build the adapters or narrow the pitch to "Claude Code, with a
+  path to more."
+- **`librarian` subagent** — confirmed still a pure placeholder per its own
+  file (`Status: CONTRACT placeholder... NOT active until Phase 3 ships`).
+  Its dependency `facts.ts` is partially real; `pinecone.ts`/`neo4j.ts` are
+  stubs (see 2.2).
+- **`integrations-curator` subagent** — fully built but has zero test/eval
+  coverage and no evidence it has ever actually been invoked (`.workflow/state/`
+  shows no artifacts it would produce). Built-but-never-exercised is its own
+  category of risk before calling it shippable.
+- **Stratum Tier-3 cold memory** (Neo4j graph store, Pinecone semantic
+  store) — stub-only, see 2.2.
+- **Stratum Phase 4 TEE encryption path** (`src/proxy/tee/*`,
+  `src/pruner/crypto.ts`) — deliberately unbuilt; the code throws rather
+  than faking encryption, which is the *correct* honest behavior per its own
+  ADR-0009 reasoning. Not a defect, just a real remaining gap.
+- **Polish backlog** (DevOps-core items only — Stratum's own PB items are
+  tracked separately): PB-13 (stale cosign signatures on
+  `prompt-injection-defense`, blocked on GitHub Actions billing — worth
+  re-checking whether this is still the real blocker given the CI findings
+  above), PB-16 (git tags use `-a` not `-s`, unsigned — LOW severity), PB-21
+  (coupled to PB-13, auto-closes with it).
+
+---
+
+## 5. Already fixed this session (for the record, not action items)
+
+- Stale Zep reference left in `CLAUDE.md` after this session's own Zep
+  removal — fixed.
+- Leftover `"karpathy"` keyword in `package.json` after this session's own
+  karpathy-guidelines removal — fixed.
+- `.claude/settings.json` hooks wired and proven live (sealed-ref block,
+  LAUNCH_READINESS date-sync).
+- Phase-status docs reconciled (README/CHANGELOG were stuck describing
+  Phase 1 as in-progress despite Phase 2 being shipped).
+- 3 redundant process skills, the `researcher` subagent, and the Zep memory
+  backend removed as genuinely redundant with existing tools/native
+  platform features; all references updated or explicitly noted rather than
+  silently deleted.
+
+---
+
+## Recommended order of attack
+
+Given the "no shortcuts" bar, sequence matters — fix the instruments before
+trusting what they report:
+
+1. **Fix both CI gates** (1.2) — quick, mechanical, and until they're green
+   nothing else can be trusted as continuously verified going forward.
+2. **Fix both test suites** (1.3) — nothing can be honestly called "done"
+   without a working test harness under it.
+3. **Resolve the claim-validator SHA-loss problem** (1.1) — either recover
+   history or change the policy; 97% silent failure is not an acceptable
+   steady state for the project's flagship mechanism.
+4. **`npm audit fix`** for the critical Stratum vulnerability (1.5).
+5. **Re-sign skills** via `release-sign.yml` (1.6), covering both the
+   `goal-loop` drift and this session's skill removals.
+6. **Resolve the ADR-0005 vs. reality divergence** (2.1) — pick a real
+   architecture and make the record match it.
+7. **Fund and run the next pruner validation round** (1.4) — do not
+   represent pruning as validated anywhere until it passes its own gate.
+8. Correct `plan.md`'s Phase 3 tracking (2.2) so future planning isn't
+   working from a false baseline.
+9. Everything in Section 4 is legitimate roadmap work — sequence after the
+   above, since building more on top of broken instrumentation just
+   compounds the problem.
