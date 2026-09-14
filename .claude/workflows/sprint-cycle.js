@@ -1,0 +1,230 @@
+export const meta = {
+  name: 'sprint-cycle',
+  description: 'Run one graph-engineering sprint cycle (plan -> code -> test -> review -> security -> validate) for one backlog item',
+  phases: [
+    { title: 'Plan', detail: 'planner decomposes the backlog item into atomic tasks' },
+    { title: 'Build', detail: 'coder implements, tester writes/runs tests, per task' },
+    { title: 'Verify', detail: 'reviewer + security + validator sign off' },
+    { title: 'Release', detail: 'summarize the cycle outcome' },
+  ],
+}
+
+// governance/graph/role-mapping.md is the durable spec this script implements.
+// This Workflow does NOT commit, push, open a PR, or run any deploy action --
+// those stay outside its scope, gated by hooks/universal/pre-tool/deploy-gate.sh
+// and human approval (/sprint-approve) per the approved plan
+// (.claude/plans/indexed-launching-cocke.md). Phase 0 requires a human
+// checkpoint at every step -- this script produces the cycle's results for a
+// human to review; it does not act on them unattended.
+
+const backlogItem = args && args.backlogItem
+const cycleId = (args && args.cycleId) || 'unnamed-cycle'
+
+if (!backlogItem) {
+  throw new Error('sprint-cycle requires args.backlogItem -- the backlog item id/description to work (see SHIP_BLOCKERS.md)')
+}
+
+log(`Starting sprint cycle "${cycleId}" for backlog item: ${backlogItem}`)
+
+phase('Plan')
+const plan = await agent(
+  `You are acting as the 'planner' role in the DevOPs graph-engineering pipeline (see governance/graph/role-mapping.md at the repo root). Read the backlog item below and, if it references SHIP_BLOCKERS.md or plan.md, read the relevant section there for full context:
+
+Backlog item: "${backlogItem}"
+
+Decompose it into a small ordered list of atomic, independently-verifiable tasks. Do not write or edit any code yourself -- this is decomposition only. Do not expand scope beyond what the backlog item actually asks for. If anything about the item is ambiguous or underspecified, report it as an ambiguity rather than guessing at intent.
+
+HARD CONSTRAINT: do not include any task whose job is to stage, commit, or push a git change, open a pull request, or run any deploy/publish command. This pipeline's scope ends at implementation + verification (coder/tester/reviewer/security/validator) -- committing and pushing are a separate, explicitly human-reviewed step outside this Workflow, never an autonomous task in your plan.`,
+  {
+    label: 'planner',
+    phase: 'Plan',
+    model: 'opus',
+    schema: {
+      type: 'object',
+      properties: {
+        tasks: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              id: { type: 'string' },
+              description: { type: 'string' },
+              files_likely_touched: { type: 'array', items: { type: 'string' } },
+            },
+            required: ['id', 'description'],
+          },
+        },
+        ambiguities: { type: 'array', items: { type: 'string' } },
+      },
+      required: ['tasks'],
+    },
+  }
+)
+
+if (!plan || !plan.tasks || plan.tasks.length === 0) {
+  throw new Error(`planner produced no tasks for backlog item "${backlogItem}" -- cycle cannot proceed`)
+}
+
+log(`Planner produced ${plan.tasks.length} task(s)` + (plan.ambiguities && plan.ambiguities.length ? `, ${plan.ambiguities.length} ambiguity(ies) flagged -- see result.plan.ambiguities` : ''))
+
+phase('Build')
+// Sequential per task, not parallel: tasks from the same backlog item may
+// touch overlapping files, and Phase 0 favors safety over throughput (see
+// the approved plan). coder and tester run one after another per task so
+// tester always sees that task's real diff.
+const buildResults = []
+for (const task of plan.tasks) {
+  const coderResult = await agent(
+    `You are acting as the 'coder' role in the DevOPs graph-engineering pipeline. Implement exactly this atomic task -- surgical edits only, nothing beyond its stated scope:
+
+Task id: ${task.id}
+Description: ${task.description}
+Likely files: ${JSON.stringify(task.files_likely_touched || [])}
+
+Report what you actually changed (it may differ from "likely files" above).
+
+HARD CONSTRAINT: do not run \`git add\`, \`git commit\`, \`git push\`, or any deploy/publish command, even if the task description above seems to call for it. Leave changes uncommitted in the working tree. Committing is a separate, explicitly human-reviewed step outside this pipeline's scope.`,
+    {
+      label: `coder:${task.id}`,
+      phase: 'Build',
+      model: 'opus',
+      schema: {
+        type: 'object',
+        properties: {
+          task_id: { type: 'string' },
+          files_changed: { type: 'array', items: { type: 'string' } },
+          summary: { type: 'string' },
+        },
+        required: ['task_id', 'summary'],
+      },
+    }
+  )
+
+  const testerResult = await agent(
+    `You are acting as the 'tester' role in the DevOPs graph-engineering pipeline. For the task just implemented (id ${task.id}: ${task.description}), write and/or run whatever tests are appropriate to verify it, and produce a proof artifact per this project's proof-of-work convention (skills/universal/process/proof-of-work/SKILL.md at the repo root): the actual command run, its exit code, and a tail of its output. Report pass/fail honestly -- do not paper over a failure or claim success without having actually run something.
+
+Coder's report for this task: ${JSON.stringify(coderResult)}`,
+    {
+      label: `tester:${task.id}`,
+      phase: 'Build',
+      model: 'opus',
+      schema: {
+        type: 'object',
+        properties: {
+          task_id: { type: 'string' },
+          command: { type: 'string' },
+          exit_code: { type: 'number' },
+          passed: { type: 'boolean' },
+          output_tail: { type: 'string' },
+        },
+        required: ['task_id', 'passed'],
+      },
+    }
+  )
+
+  buildResults.push({ task, coderResult, testerResult })
+}
+
+const failedTasks = buildResults.filter(r => r.testerResult && r.testerResult.passed === false)
+if (failedTasks.length > 0) {
+  log(`${failedTasks.length} of ${buildResults.length} task(s) failed testing -- cycle still proceeds to Verify so reviewer/security/validator see the failure, but it should not be approved.`)
+}
+
+phase('Verify')
+const reviewResult = await agent(
+  `You are acting as the 'reviewer' role in the DevOPs graph-engineering pipeline. Review this cycle's changes against the original backlog item and its spec.
+
+Backlog item: "${backlogItem}"
+Tasks: ${JSON.stringify(plan.tasks)}
+Build results: ${JSON.stringify(buildResults.map(r => ({ task: r.task.id, coder: r.coderResult, tester: r.testerResult })))}
+
+Check spec-anchoring (does every changed line trace to one of the tasks above, or to the backlog item itself?) and general diff quality. Report any violations plainly -- do not soften a real finding.`,
+  {
+    label: 'reviewer',
+    phase: 'Verify',
+    model: 'opus',
+    schema: {
+      type: 'object',
+      properties: {
+        approved: { type: 'boolean' },
+        violations: { type: 'array', items: { type: 'string' } },
+      },
+      required: ['approved'],
+    },
+  }
+)
+
+const securityResult = await agent(
+  `You are acting as the 'security' role in the DevOPs graph-engineering pipeline, per subagents/universal/security.md's scoping at the repo root -- you are the only role in this pipeline permitted to invoke the pentest MCP tools, and only if this task's nature genuinely requires it; do not exceed your declared scope. Run the tiered security scan stack (gitleaks, semgrep, dependency check as applicable) on this cycle's changes.
+
+Backlog item: "${backlogItem}"
+Build results: ${JSON.stringify(buildResults.map(r => ({ task: r.task.id, coder: r.coderResult })))}
+
+Report findings above threshold plainly, or confirm none were found.`,
+  {
+    label: 'security',
+    phase: 'Verify',
+    model: 'opus',
+    schema: {
+      type: 'object',
+      properties: {
+        passed: { type: 'boolean' },
+        findings: { type: 'array', items: { type: 'string' } },
+      },
+      required: ['passed'],
+    },
+  }
+)
+
+const validatorResult = await agent(
+  `You are acting as the 'validator' role in the DevOPs graph-engineering pipeline -- independent final re-verification, the last check before this cycle could be considered for a PR. Re-run the tester's proofs yourself rather than trusting the reported output where feasible; recompute exit codes rather than assuming they're accurate.
+
+Backlog item: "${backlogItem}"
+Build results: ${JSON.stringify(buildResults.map(r => ({ task: r.task.id, coder: r.coderResult, tester: r.testerResult })))}
+Reviewer result: ${JSON.stringify(reviewResult)}
+Security result: ${JSON.stringify(securityResult)}
+
+Decide whether this cycle is ready for a PR. Do NOT sign off if any task's test failed, the reviewer found violations, or security found findings above threshold. State your reason either way.`,
+  {
+    label: 'validator',
+    phase: 'Verify',
+    model: 'opus',
+    schema: {
+      type: 'object',
+      properties: {
+        signed_off: { type: 'boolean' },
+        reason: { type: 'string' },
+      },
+      required: ['signed_off', 'reason'],
+    },
+  }
+)
+
+phase('Release')
+const readyForPR = !!(validatorResult && validatorResult.signed_off) && failedTasks.length === 0
+
+const cycleOutcome = {
+  cycleId,
+  backlogItem,
+  taskIds: plan.tasks.map(t => t.id),
+  anyTestFailed: failedTasks.length > 0,
+  reviewApproved: !!(reviewResult && reviewResult.approved),
+  securityPassed: !!(securityResult && securityResult.passed),
+  validatorSignedOff: !!(validatorResult && validatorResult.signed_off),
+  readyForPR,
+}
+
+log(`Cycle "${cycleId}" outcome: ${readyForPR ? 'READY for PR (pending human review)' : 'NOT ready'}`)
+if (!readyForPR) {
+  log(`Validator reason: ${validatorResult ? validatorResult.reason : 'validator did not return a result'}`)
+}
+
+return {
+  cycleOutcome,
+  plan,
+  buildResults,
+  reviewResult,
+  securityResult,
+  validatorResult,
+  note: 'This Workflow does not commit, push, open a PR, or run any deploy/git-push action -- those remain outside its scope, gated by hooks/universal/pre-tool/deploy-gate.sh and explicit human approval (/sprint-approve) per governance/graph/. Whoever ran /sprint is responsible for reviewing this outcome, writing it into .workflow/state/graph-cycles/ and governance/graph/stability-dashboard.md, and deciding next steps -- Phase 0 has no autonomous continuation.',
+}

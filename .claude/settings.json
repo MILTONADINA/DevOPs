@@ -1,0 +1,32 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.command // empty' | { cmd=$(cat); [ -z \"$cmd\" ] && exit 0; H=hooks/universal/pre-tool/block-sealed-refs.sh; if [ ! -x \"$H\" ]; then echo \"HOOK MISSING/NOT EXECUTABLE: $H -- failing closed\" >&2; exit 2; fi; \"$H\" \"$cmd\"; }",
+            "statusMessage": "Checking sealed-ref safety..."
+          },
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.command // empty' | { cmd=$(cat); [ -z \"$cmd\" ] && exit 0; H=hooks/universal/pre-tool/deploy-gate.sh; if [ ! -x \"$H\" ]; then echo \"HOOK MISSING/NOT EXECUTABLE: $H -- failing closed\" >&2; exit 2; fi; \"$H\" \"$cmd\"; }",
+            "statusMessage": "Checking graph deploy-gate..."
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.file_path // .tool_response.filePath // empty' | { read -r f; [ -z \"$f\" ] && exit 0; hooks/universal/post-tool/sync-lr-refined-date.sh \"$f\" || true; }"
+          }
+        ]
+      }
+    ]
+  }
+}

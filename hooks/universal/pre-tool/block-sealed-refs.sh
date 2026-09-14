@@ -48,8 +48,17 @@ DESTRUCTIVE_GIT_PATTERNS=(
     "git[[:space:]]+filter-repo"
 )
 
-# Quick exit: not a git command, allow
-if ! echo "$COMMAND" | grep -qE '^[[:space:]]*git[[:space:]]'; then
+# Quick exit: not a git command, allow.
+#
+# SECURITY (found by the graph's own security stage, 2026-09-14, while
+# auditing a sibling hook with the identical pattern): this filter was
+# anchored to the START of the command, so `cd . && git tag -d v0.2.0` (or
+# any prefix before `git`) bypassed sealed-ref protection entirely. Fixed
+# to match `git` as a whole word anywhere in the command, not just as the
+# first token. See hooks/universal/pre-tool/deploy-gate.sh for the same
+# fix and fuller writeup, and .claude/settings.json for the companion fix
+# (the wrapper only read the first line of a multi-line command).
+if ! echo "$COMMAND" | grep -qE '(^|[;&|(]|[[:space:]])git([[:space:]]|$)'; then
     exit 0
 fi
 

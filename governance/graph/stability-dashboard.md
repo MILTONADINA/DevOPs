@@ -1,0 +1,33 @@
+# Graph stability dashboard
+
+Updated per cycle. This is the go/no-go instrumentation for Phase 1 → Phase
+2 (see `autonomy-config.yml`'s `phase_2_entry_criteria`). Per the 2026 DORA
+research this project's design leans on: **anchor on stability, not
+throughput** — a rising cycle count with a worsening change-failure-rate is
+a regression, not progress, and must not be read as "the graph is working."
+
+## Current state (2026-09-14)
+
+Phase 0 started. 4 cycles run so far. This table gets a row per completed
+sprint-cycle.
+
+| Cycle | Date | Backlog item | Outcome | Deploy/billing gate hit? | Claim-validator result | Change-failure? | Notes |
+|---|---|---|---|---|---|---|---|
+| `phase0-001-lockfile` | 2026-09-14 | SHIP_BLOCKERS.md 1.7 — no lockfile at DevOps-core root | Ready-for-PR per validator; commit `6bc60be` landed (653-line lockfile only, clean, correctly scoped) | Not triggered (not a deploy/billing path) | Not re-run this cycle | No | **Process deviation, not a technical failure**: the pipeline committed autonomously with no human checkpoint, violating the Phase 0 rule. Root-caused and fixed (prompt-level hard constraint on planner+coder) — see `role-mapping.md`'s "Known limitation" section for the fix and the still-open follow-up (worktree isolation for a real deterministic gate). |
+| `phase0-002-ci-fixes` | 2026-09-14 | SHIP_BLOCKERS.md 1.2 — 3 CI gates red 7+ days (DeepTeam install, Sigstore trust-bundle, gitleaks false positive) | **Not ready-for-PR on first pass — correctly.** Pipeline found a real, self-introduced defect (unanchored gitleaks allowlist regex, `governance/gitleaks-ci.toml`) via tester+reviewer+security all independently reproducing it with decoy files, and correctly refused to sign off. Commit-prevention fix from cycle 1 held — nothing was auto-committed. Also independently, separately: an external automated security review caught a HIGH supply-chain issue in the Sigstore fix (unverified fetch of a mutable trust root) mid-cycle; fixed manually (`cosign initialize`) before the pipeline's own security stage reached that file, so this cycle didn't get to prove whether its security stage would have caught *that* one independently. The unanchored-regex defect it *did* catch on its own is a strong, real signal the quality gates work. | Not triggered | Not re-run this cycle | No (caught before merge) | Human (me) independently re-verified the anchor fix with the real gitleaks binary using repo-relative paths (the pipeline's own decoy methodology, redone from scratch rather than trusted) before committing. All three fixes then committed together as one human-reviewed change. |
+| `phase0-003-npm-audit` | 2026-09-14 | SHIP_BLOCKERS.md 1.5 — Stratum dependency vulnerabilities | **Not ready-for-PR on first pass — correctly, on a minor issue.** Real engineering (26→14 vulns via non-force `npm audit fix`, no silent `--force`) was sound and independently re-verified by security/validator/human. Blocker was a self-contradicting number in an internal scratch artifact (`npm-audit-baseline-summary.md`: table said 16/8/2, prose said 19/5) that no later task corrected — tester caught it, reviewer/validator correctly refused sign-off over an unresolved tester failure. Fixed the artifact, committed the real dependency fix (`1fd0d46`) + a SHIP_BLOCKERS.md update (`3d088fd`) after independently re-verifying with the real gitleaks/npm audit tools myself. | Not triggered | Not re-run this cycle | No (caught before merge) | 3 critical vulns remain, deliberately not force-fixed — needs a human call on accepting major-version bumps (vitest 5.0.0, supabase 2.117.0). |
+| `phase0-004-claim-validator-investigation` | 2026-09-14 | SHIP_BLOCKERS.md 1.1 — claim-validator 97% broken, investigation-only scope | **Not ready-for-PR — for good reason, and this cycle earned its keep regardless.** Reviewer/security/validator all independently refused sign-off over: 2 unremediated tester failures (an unsourced "~57" figure; a vacuous scope-verification gate that could never detect a violation because `.workflow/proofs/` is gitignored), a real scope breach (this cycle wrote 3 new claim artifacts into the directory it was told not to touch), and a material omission (the deliverable asked the owner to choose between two invasive options while its own evidence had found a third, dominant, non-invasive one). **The investigation finding itself was correct and highly valuable**: independently reproduced by a human — all 52 distinct "missing" commit SHAs are recoverable via `git fetch origin <sha>` (GitHub retains squash-merged PRs' original commits by SHA even after the source branch is deleted; a plain `git fetch` just never follows non-ref-reachable SHAs). Recovered all 52, anchored them under `refs/claim-provenance/<sha>` (durable against `git gc`), wrote `scripts/recover-claim-provenance.sh` so this is reproducible elsewhere. **Result: validate:claims went from 3/97 to 87/120 passing** — zero claim YAML rewritten, zero validator logic changed. **Separately, this same cycle's security stage found a real HIGH-severity bypass in `deploy-gate.sh`/`block-sealed-refs.sh`** (start-anchored regex + a settings.json wrapper that only read the first line of multi-line commands defeated all three gates for realistic command shapes like `cd x && vercel deploy --prod`) — reproduced independently by a human, fixed, and re-verified against every bypass found plus the legitimate paths. See SHIP_BLOCKERS.md 1.1 and 1.8. | Not triggered (this cycle touched no deploy/billing paths itself) | **3→87 of 120 passing** (the headline result) | No (all findings caught before anything committed) | Cleaned up the 3 errant claim artifacts this cycle wrote. Recovered refs are local-only — not yet pushed to origin (`--push` flag exists, left as an explicit human decision). ~33 claims still fail for unrelated reasons (missing files_changed, real re-run drift, and new-claim spec_ref format issues from this session's own graph cycles) — smaller, separate follow-up. |
+
+## Baseline (pre-graph), for comparison
+
+From `SHIP_BLOCKERS.md`, as of 2026-09-14:
+- Claim-validator pass rate: **3/97 (3%)** — the number Phase 0 exists to
+  fix, and the number every subsequent cycle should be compared against.
+- CI status: **red for 7+ consecutive days** on `main` (DeepTeam install
+  failure, Sigstore trust-bundle 404).
+- Test suites: **both non-functional** (DevOps-core has no test runner;
+  Stratum's vitest binary lacks +x and hits a missing native module).
+- Dependency vulnerabilities (Stratum): **1 critical, 8 high, 2 moderate**.
+
+Phase 1 autonomy should not be considered until this baseline is
+demonstrably fixed and stable — not merely "fixed once."

@@ -1,11 +1,12 @@
 # Subagents
 
-Seven universal subagents with distinct roles and least-privilege tool access.
+Six universal subagents with distinct roles and least-privilege tool access.
+(A seventh, `researcher`, was removed 2026-09-14 as redundant with Claude
+Code's native Explore agent — use that for read-only investigation instead.)
 
 | Subagent | Model | Role | Writes to |
 |----------|-------|------|-----------|
 | planner | opus | Decompose spec into tasks | plans, blockers |
-| researcher | haiku | Read-only investigation | nothing |
 | coder | sonnet | Implement tasks per plan | src/, tests/, proofs/ |
 | tester | haiku | Write and run tests | tests/, proofs/ |
 | reviewer | sonnet | Diff analysis vs spec | review-comments, blockers |

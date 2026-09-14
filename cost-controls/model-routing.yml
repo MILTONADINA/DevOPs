@@ -1,62 +1,66 @@
 # cost-controls/model-routing.yml
 #
-# Three-tier routing. Documented 50-80% cost reduction vs. all-Sonnet baseline.
-# Read by Claude Code subagent definitions and the orchestrator.
+# Updated 2026-09-14 at user request: all graph-engineering subagents route
+# to Opus; Fable is the orchestrator ("boss/CTO") -- the top-level entity
+# that runs sprint-cycle.js and interprets its results, i.e. the main
+# Claude Code session. This is a deliberate move away from the prior
+# cost-tiered routing (Haiku/Sonnet/Opus split) toward uniform subagent
+# quality, accepting the cost tradeoff. See governance/graph/role-mapping.md
+# for the role spec this routing serves.
+#
+# Mechanical note: this file is NOT self-enforcing. The main session's model
+# (intended: Fable) is chosen by the user via /model -- no config file can
+# switch a running session's own model. Subagent routing IS enforced, via
+# explicit `model:` options on each agent() call in
+# .claude/workflows/sprint-cycle.js.
 
 models:
   haiku:
-    id: claude-haiku-4-5
+    id: claude-haiku-4-5-20251001
     cost_per_mtok_input_usd: 1.00
     cost_per_mtok_output_usd: 5.00
     context_window: 200000
     use_for:
-      - routine code edits
-      - classification
-      - extraction
-      - short-context coding
-      - code review (lint-level)
-      - documentation generation
-      - test execution (low reasoning)
+      - not currently used by graph subagent routing (kept for reference/override)
 
   sonnet:
-    id: claude-sonnet-4-6
+    id: claude-sonnet-5
     cost_per_mtok_input_usd: 3.00
     cost_per_mtok_output_usd: 15.00
     context_window: 1000000
     use_for:
-      - default for complex implementation
-      - bug fixes
-      - standard refactoring
-      - code review (deep)
-      - long-context tasks
+      - not currently used by graph subagent routing (kept for reference/override)
 
   opus:
-    id: claude-opus-4-7
+    id: claude-opus-5
     cost_per_mtok_input_usd: 5.00
     cost_per_mtok_output_usd: 25.00
     context_window: 1000000
     use_for:
-      - architecture decisions
-      - novel problem solving
-      - planning phase only (advisor strategy)
-      - complex multi-file refactoring
+      - all graph-engineering subagent roles (planner/coder/tester/reviewer/security/validator)
 
-# Subagent routing
+  fable:
+    id: claude-fable-5-1
+    use_for:
+      - orchestrator ("boss/CTO") -- the top-level session running sprint-cycle.js
+      - selected by the user via /model for the main session; not set by this file
+
+# Subagent routing -- all Opus, per user directive 2026-09-14
 subagents:
-  planner: opus      # architecture decisions
-  researcher: haiku  # read-heavy, low reasoning
-  coder: sonnet      # the workhorse
-  tester: haiku      # test execution
-  reviewer: sonnet   # diff analysis
-  security: sonnet   # scan interpretation
-  validator: opus    # independent final verification
+  planner: opus
+  coder: opus
+  tester: opus
+  reviewer: opus
+  security: opus
+  validator: opus
 
-# Advisor strategy: Opus plans, Sonnet/Haiku implements
+orchestrator: fable   # the main session; see mechanical note above -- documentation, not enforcement
+
+# Advisor strategy retired 2026-09-14: with all subagent roles on a single
+# tier (opus), a plan/implement/review model split no longer applies. Left
+# here, disabled, for history -- delete once nobody needs the old context.
 advisor_strategy:
-  enabled: true
-  planning_phase_model: opus
-  implementation_phase_model: sonnet
-  review_phase_model: haiku
+  enabled: false
 
 # Batch API (50% discount for non-real-time work)
 batch_api:

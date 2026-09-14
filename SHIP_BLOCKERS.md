@@ -20,27 +20,44 @@ These are things the project currently *claims* are true (in docs, in its own
 "sealed" closures) that are not true right now. Fix these before anything else,
 because they're what everything else would be verified against.
 
-### 1.1 The claim/proof-of-work system — the project's own flagship differentiator — is ~97% non-functional
+### 1.1 The claim/proof-of-work system — resolved 2026-09-14, was ~97% non-functional
 
-Running `npm run validate:claims` for real: **only 3 of 97 claims currently
-validate** (`claim-2026-05-22-{001,002,004}`). 92 of the 94 failures are
-`git_sha does not exist in this repository`, confirmed via `git cat-file -t`
-(fails) against a full, non-shallow `git log --all` (296 commits) — the
-commits genuinely don't exist anymore. Almost certainly caused by GitHub
-squash-merges rewriting SHAs (CHANGELOG.md itself documents "§2f
-infrastructure landed... via PRs #18 + #19").
+**Original finding**: only 3 of 97 claims validated. 92 failures were
+`git_sha does not exist in this repository`.
 
-This is not a stale-signature footnote — it's the core mechanism the README
-leads with ("you cannot ask an agent if it is in a loop; you must prove it
-mathematically") silently returning false positives on "sealed" work for
-months.
+**Root cause was wrong-ish**: not destroyed history, and not primarily
+squash-merges rewriting SHAs away. The commits were never gone — GitHub
+retains a squash-merged PR's original commits, reachable by SHA via its API
+and via `git fetch origin <sha>`, for a long time after the source branch
+is deleted. A plain `git fetch origin` only follows *existing* branch/tag
+refs, so it never pulled these back in — that's the actual mechanism, not
+history destruction.
 
-**Action**: decide policy — either re-anchor historical claims to their
-squash-merge commit SHA (if recoverable from PR history via `gh pr view
---json mergeCommit`), or formally accept pre-squash-merge claims as
-permanently unverifiable and change the validator to distinguish
-"unverifiable due to history rewrite" from "failed verification." Silently
-reporting 97% failure with no distinction is itself a defect.
+**Fix applied**: `scripts/recover-claim-provenance.sh` — fetches each
+missing SHA individually (`git fetch origin <sha>`, verified 52/52 distinct
+missing SHAs recoverable this way) and anchors it under
+`refs/claim-provenance/<sha>` so it survives `git gc` (a plain fetch only
+updates the ephemeral `FETCH_HEAD`, which the next fetch overwrites,
+leaving the object unreachable and prunable again). Zero claim YAML
+rewritten, zero validator logic changed, nothing force-pushed or deleted.
+
+**Result**: `npm run validate:claims` went from **3/97 to 87/120 passing**
+(total claim count grew slightly from graph-engineering-cycle proof
+artifacts created during this session). The recovered refs are local-only
+so far — **not yet pushed to origin** (`scripts/recover-claim-provenance.sh
+--push` does that; left as an explicit human decision rather than a
+default, since it writes new refs to the shared remote).
+
+**Remaining 33 failures are a different, smaller, separate issue**, not
+part of this item's original scope: 11 "missing or empty files_changed",
+10 "re-run exit code 1 != expected 0" (real drift, needs individual
+triage), and ~12 "invalid spec_ref" — mostly on *new* claims the
+graph-engineering pipeline's own tester subagents created this session as
+proof artifacts, using spec_ref values (like `"graph task T9"`) that don't
+match the validator's expected format. Worth a follow-up fix to
+`sprint-cycle.js`'s tester prompt so future cycles produce claims that
+actually validate; not urgent since it doesn't affect the historical-claim
+recovery this item was about.
 
 ### 1.2 CI has been silently red for 7+ days on `main`, including a sealed Phase 2 security control
 
@@ -162,6 +179,53 @@ aren't reproducible. (Stratum has its own lockfile situation covered
 separately in 1.3/1.5.)
 
 **Action**: run `npm install` and commit the resulting lockfile.
+
+### 1.8 The deploy-gate/sealed-ref hooks were bypassable — found and fixed 2026-09-14
+
+The graph-engineering pipeline's own security stage (cycle
+`phase0-004-claim-validator-investigation`) found, and a human independently
+reproduced before trusting it, a real bypass in the exact safety mechanism
+this session's graph work was relying on all along:
+
+- Both `hooks/universal/pre-tool/deploy-gate.sh` and
+  `hooks/universal/pre-tool/block-sealed-refs.sh` anchored their detection
+  regex to the *start* of the command (`^[[:space:]]*verb`). Anything where
+  the verb wasn't the literal first token — `cd stratum && vercel deploy
+  --prod`, `npx vercel deploy --prod`, `VERCEL_TOKEN=x vercel deploy
+  --prod`, `cd . && git tag -d v0.2.0` — bypassed the gate entirely,
+  exiting 0 before any gate logic ran. This applied to production-deploy
+  detection, the billing-path four-eyes check (same gate), and sealed-ref
+  protection.
+- Separately, `.claude/settings.json`'s wrapper for both hooks used a
+  single `read -r cmd`, which only captures one line of piped input — a
+  multi-line command (e.g. a heredoc, or any script whose first line is
+  benign) had every line after the first silently discarded before the
+  hook ever saw it, defeating both gates generically regardless of the
+  regex fix.
+- Also fixed: the wrapper now fails *closed* (exit 2) if a hook script is
+  missing or not executable, rather than silently exiting 127 (which
+  Claude Code does not treat as a block) — a gate whose absence was
+  previously indistinguishable from a pass.
+
+**Fixed**: unanchored the regexes (word-boundary matching instead of
+start-anchored), changed both wrapper commands to `cmd=$(cat)` (reads all
+lines, not just the first), and added the fail-closed executable check.
+Re-verified against all 4 originally-bypassing deploy commands, the
+multi-line bypass, and the sealed-ref bypass — all now correctly blocked
+(exit 2) — plus regression-tested the legitimate paths (safe commands,
+valid approval markers, billing four-eyes with distinct approvers) to
+confirm nothing over-blocks. See
+`governance/graph/stability-dashboard.md` cycle
+`phase0-004-claim-validator-investigation` for the full writeup.
+
+**Why this matters beyond the immediate fix**: this was found through
+exactly the process this project's constitution calls for — an independent
+security review catching a real gap in a control everyone (including the
+human) had been trusting — and it's worth remembering that "6 tests passed
+earlier this session" (the original deploy-gate.sh build) tested only the
+literal command shapes, not realistic variations. Test gates against
+realistic invocation patterns (`cd x &&`, `npx`, env-var prefixes,
+multi-line), not just the cleanest-case command string.
 
 ---
 
