@@ -48,7 +48,7 @@ so far — **not yet pushed to origin** (`scripts/recover-claim-provenance.sh
 --push` does that; left as an explicit human decision rather than a
 default, since it writes new refs to the shared remote).
 
-**Remaining 33 failures are a different, smaller, separate issue**, not
+**Remaining failures (33 at first count, 29 after the 1.3 cycle's remediation — 97/126 passing) are a different, smaller, separate issue**, not
 part of this item's original scope: 11 "missing or empty files_changed",
 10 "re-run exit code 1 != expected 0" (real drift, needs individual
 triage), and ~12 "invalid spec_ref" — mostly on *new* claims the
@@ -58,6 +58,8 @@ match the validator's expected format. Worth a follow-up fix to
 `sprint-cycle.js`'s tester prompt so future cycles produce claims that
 actually validate; not urgent since it doesn't affect the historical-claim
 recovery this item was about.
+
+**Update, later 2026-09-14**: the invalid-spec_ref root cause is fixed going forward — `.claude/workflows/sprint-cycle.js`'s tester and security prompts now state the claim schema (next-free id, a `specs/` anchor, tracked-only `files_changed`, a re-runnable `test_command`, the hash formula, no dependence on npm verbosity or on HEAD equalling a fixed SHA). The ~10 existing invalid-spec_ref claims from cycles 1–4 and the 7 legacy `claim-2026-05-22-*` re-run failures remain to be triaged individually; none affect the historical-claim recovery this item was about.
 
 ### 1.2 CI has been silently red for 7+ days on `main`, including a sealed Phase 2 security control
 

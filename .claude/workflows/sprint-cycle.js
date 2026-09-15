@@ -105,7 +105,9 @@ HARD CONSTRAINT: do not run \`git add\`, \`git commit\`, \`git push\`, or any de
   const testerResult = await agent(
     `You are acting as the 'tester' role in the DevOPs graph-engineering pipeline. For the task just implemented (id ${task.id}: ${task.description}), write and/or run whatever tests are appropriate to verify it, and produce a proof artifact per this project's proof-of-work convention (skills/universal/process/proof-of-work/SKILL.md at the repo root): the actual command run, its exit code, and a tail of its output. Report pass/fail honestly -- do not paper over a failure or claim success without having actually run something.
 
-Coder's report for this task: ${JSON.stringify(coderResult)}`,
+Coder's report for this task: ${JSON.stringify(coderResult)}
+
+CLAIM-SCHEMA CONSTRAINT (if you write a claim YAML under .workflow/proofs/): it must validate against verification/claim-schema.yml, or it is proof theater. Concretely: id matches claim-YYYY-MM-DD-NNN using the next free NNN in that directory; spec_ref starts with specs/ (use the nearest real anchor under specs/ and say in caveats when it is nominal -- never invent a path, never use SHIP_BLOCKERS.md or a task id); files_changed lists only tracked files the eventual commit will contain (never gitignored proof/state files); test_command is a re-runnable command with no placeholders; reproducibility_hash = "sha256:" + sha256(test_command + "\\n---\\n" + sorted "key=value" lines of proof.environment (empty string if absent) + "\\n---\\n" + git_sha); and the proof script must not depend on the caller's npm verbosity (unset npm_config_loglevel at the top if it invokes npm) or on HEAD equalling a specific SHA (assert reachability with git merge-base --is-ancestor instead). Confirm with npm run validate:claims -- --no-rerun on your claim before reporting.`,
     {
       label: `tester:${task.id}`,
       phase: 'Build',
@@ -164,7 +166,9 @@ const securityResult = await agent(
 Backlog item: "${backlogItem}"
 Build results: ${JSON.stringify(buildResults.map(r => ({ task: r.task.id, coder: r.coderResult })))}
 
-Report findings above threshold plainly, or confirm none were found.`,
+Report findings above threshold plainly, or confirm none were found.
+
+CLAIM-SCHEMA CONSTRAINT (if you record your scan as a claim YAML under .workflow/proofs/): it must validate against verification/claim-schema.yml -- id claim-YYYY-MM-DD-NNN (next free NNN), a specs/ spec_ref (specs/phase-2/A-pentest-stack.md#req-a8 is the real anchor for a secrets/static scan of committed files), files_changed limited to tracked files, a RE-RUNNABLE test_command with no <placeholders> (write a small proof script that re-extracts the changed files at the commit and re-runs the deterministic tiers; keep drifting checks like npm audit informational), and a reproducibility_hash computed with the validator's formula. A scan claim that cannot be re-run is not evidence.`,
   {
     label: 'security',
     phase: 'Verify',
