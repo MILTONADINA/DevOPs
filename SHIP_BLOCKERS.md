@@ -61,6 +61,35 @@ recovery this item was about.
 
 **Update, later 2026-09-14**: the invalid-spec_ref root cause is fixed going forward — `.claude/workflows/sprint-cycle.js`'s tester and security prompts now state the claim schema (next-free id, a `specs/` anchor, tracked-only `files_changed`, a re-runnable `test_command`, the hash formula, no dependence on npm verbosity or on HEAD equalling a fixed SHA). The ~10 existing invalid-spec_ref claims from cycles 1–4 and the 7 legacy `claim-2026-05-22-*` re-run failures remain to be triaged individually; none affect the historical-claim recovery this item was about.
 
+**Triage of the remaining failures, 2026-09-15** (each re-run by hand, not
+taken from the validator's one-line reason):
+
+- `claim-2026-09-14-001`–`022` (cycles 1–4, 22 claims): non-`specs/`
+  spec_refs (`governance/graph/tasks.md#…`, `SHIP_BLOCKERS.md#…`, bare
+  task ids), `git_sha` pinned to the pre-work HEAD rather than the commit
+  that carries the work, and empty `files_changed` on the verification-only
+  claims. Mechanical to fix with the 023–029 precedent (re-pin, nominal
+  `specs/` anchor disclosed in caveats, tracked files of that commit, hash
+  recomputed); being done as a graph workflow.
+- `claim-2026-05-22-009` (`req-9-clean-tree`): transient — fails only while
+  cycle 6's files are uncommitted. `-012` (`req-12-validate-claims`): runs
+  the validator itself and fails until the claims above are fixed.
+- `-076` (`req-E2-manifest-fields`): `goal-loop` and
+  `prompt-injection-defense` were edited after signing (sha256 mismatch);
+  `-078`/`-079` (`req-E5`/`req-E6`): both check scripts target
+  `skills/universal/process/karpathy-guidelines/`, deleted by the
+  redundancy audit. All three are item 1.6 (re-sign via `release-sign.yml`,
+  re-point the E-series checks at a surviving signed skill).
+- `-098` (redactor ReDoS/leak): its structural assertion requires the
+  literal `{1,64}@` email bound to remain in
+  `stratum/src/observability/pii-redaction.ts`; commits `ce04c87` and
+  `5dcbbae` replaced that bound with a left-anchored lookbehind design
+  (documented in the source as the ReDoS fix). The behavioural checks
+  still pass; the structural one must be updated to the current design —
+  the code moved on deliberately, the proof did not.
+- Not a claim defect — **see 1.9**: `claim-2026-05-22-013` (`req-13-repo-private`)
+  fails because the repository is now public.
+
 ### 1.2 CI has been silently red for 7+ days on `main`, including a sealed Phase 2 security control
 
 Confirmed via `gh run list` / `gh run view --log-failed`:
@@ -394,6 +423,29 @@ class as the original finding, one regex further down. Unanchored to the
 same word-boundary form and verified in a fresh worktree with a staged
 `stratum/src/billing/` file: `cd . && git commit …` is now blocked with
 "needs TWO approval markers".
+
+### 1.9 The repository is PUBLIC while REQ-1 requires it to be private — needs a human decision
+
+Found 2026-09-15 while triaging the legacy claim failures:
+`gh repo view MILTONADINA/DevOPs --json visibility` → `PUBLIC`
+(`isPrivate: false`). `claim-2026-05-22-013` (`req-13-repo-private`,
+REQ-1) last passed on 2026-05-29 with "repository is PRIVATE"; the
+repository's metadata `updated_at` is 2026-09-10, so the change predates
+this session (nothing in this session touches repository settings). The
+project's own portfolio material describes its source repos as private.
+
+**What this means**: everything pushed to `origin` since at least
+2026-09-10 — including this branch's 12 commits pushed on 2026-09-15 — is
+world-readable. The tracked tree scans clean (gitleaks + the custom rules,
+claim 013), and nothing under `.workflow/` is tracked, so no secret is
+exposed by the code; but SHIP_BLOCKERS.md, the governance records and the
+polish-backlog references in them are now public documents.
+
+**Not acted on**: changing repository visibility is an outward, deliberate
+decision, not an autonomous remediation. Either flip the repository back
+to private (REQ-1 stands and the claim passes again) or retire REQ-1 and
+its claim with a written rationale. Until one of those happens this item
+stays open and `claim-2026-05-22-013` correctly fails.
 
 ---
 
