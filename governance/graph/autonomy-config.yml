@@ -59,10 +59,26 @@ kill_switch:
   commands: ["/graph-halt", "/graph-resume"]
   checked_by: "hooks/universal/pre-tool/deploy-gate.sh"
 
+# RESOLVED 2026-09-14: the "separate explicit decision" gates.production_deploy
+# and gates.billing_path_change required has been made. User deferred to
+# recommendation ("for all questions I will go by your best recommendation");
+# recommendation is KEEP both gates permanently -- see the "RESOLVED" section
+# at the top of .claude/plans/indexed-launching-cocke.md for full reasoning.
+# This is not provisional: phase_2_entry_criteria below governs
+# merge_to_main.phase_2 ONLY. production_deploy and billing_path_change do
+# not have an entry-criteria path to loosening at all anymore -- reopening
+# them requires a new, separately-reasoned decision, not accumulated clean
+# cycles.
+production_autonomy_decision:
+  status: resolved
+  decision: gates_stay_permanent
+  decided: "2026-09-14"
+  decided_by: "user, deferred to model recommendation"
+
 phase_2_entry_criteria:
   # ALL must hold before Phase 2 is even considered -- and even then, only
   # merge_to_main.phase_2 loosens. production_deploy and billing_path_change
-  # stay human-required indefinitely absent a separate explicit decision.
+  # stay human-required permanently (see production_autonomy_decision above).
   min_clean_phase_1_cycles: null  # to be set with the user before Phase 1 starts
   claim_validator_pass_rate_healthy: null  # target set once Phase 0 restores it
   change_failure_rate: steady_or_improving
