@@ -1,10 +1,10 @@
 # cost-controls/model-routing.yml
 #
-# Settled 2026-09-14 (user directive, final of three same-day changes):
-# Fable is the orchestrator ("boss/CTO" -- the main Claude Code session
-# running sprint-cycle.js, which the user selects via /model); all
-# graph-engineering subagents route to Opus for workflow runs. See
-# governance/graph/role-mapping.md for the role spec this routing serves.
+# 2026-09-14 (user directive): Fable is the orchestrator ("boss/CTO" -- the
+# main Claude Code session running sprint-cycle.js, which the user selects
+# via /model); all graph-engineering subagents route to Sonnet at MAX
+# reasoning effort for workflow runs (`model: 'sonnet', effort: 'max'` per
+# agent() call). See governance/graph/role-mapping.md for the role spec.
 #
 # Mechanical note: this file is NOT self-enforcing. The main session's model
 # (intended: Fable) is chosen by the user via /model -- no config file can
@@ -27,7 +27,7 @@ models:
     cost_per_mtok_output_usd: 15.00
     context_window: 1000000
     use_for:
-      - not currently used by graph subagent routing (kept for reference/override)
+      - all graph-engineering subagent roles (planner/coder/tester/reviewer/security/validator) in workflow runs, at effort max
 
   opus:
     id: claude-opus-5
@@ -35,21 +35,22 @@ models:
     cost_per_mtok_output_usd: 25.00
     context_window: 1000000
     use_for:
-      - all graph-engineering subagent roles (planner/coder/tester/reviewer/security/validator) in workflow runs
+      - not currently used by graph subagent routing (kept for reference/override)
 
   fable:
     id: claude-fable-5-1
     use_for:
       - orchestrator ("boss/CTO") -- the top-level session running sprint-cycle.js; selected by the user via /model for the main session, not set by this file
 
-# Subagent routing -- all Opus, per user directive 2026-09-14 (settled)
+# Subagent routing -- all Sonnet at effort max, per user directive 2026-09-14
+subagent_effort: max
 subagents:
-  planner: opus
-  coder: opus
-  tester: opus
-  reviewer: opus
-  security: opus
-  validator: opus
+  planner: sonnet
+  coder: sonnet
+  tester: sonnet
+  reviewer: sonnet
+  security: sonnet
+  validator: sonnet
 
 orchestrator: fable   # the main session; see mechanical note above -- documentation, not enforcement
 

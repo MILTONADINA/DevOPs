@@ -14,11 +14,11 @@ other.
 ## Model assignment (updated 2026-09-14, user directive)
 
 All six sprint-cycle subagent roles (planner/coder/tester/reviewer/
-security/validator) run on **Opus**, set explicitly per `agent()` call in
-`.claude/workflows/sprint-cycle.js` (`model: 'opus'`) — not inherited from
-whatever the orchestrating session happens to be running, since that would
-silently drift with the user's own model choice. (Settled after three
-same-day changes on 2026-09-14; this is the final state.) See
+security/validator) run on **Sonnet at max reasoning effort**, set
+explicitly per `agent()` call in `.claude/workflows/sprint-cycle.js`
+(`model: 'sonnet', effort: 'max'`) — not inherited from whatever the
+orchestrating session happens to be running, since that would silently
+drift with the user's own model choice. See
 `cost-controls/model-routing.yml` for the full routing table.
 
 **Fable is the orchestrator** ("boss/CTO") — the top-level entity running
