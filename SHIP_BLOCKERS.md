@@ -86,7 +86,7 @@ there's no excuse for CI staying red this long undetected. Consider adding
 a notification (Slack/email) on scheduled-workflow failure so this doesn't
 recur silently.
 
-### 1.3 Neither project's test suite currently runs
+### 1.3 Neither project's test suite currently runs — partially resolved 2026-09-14
 
 - **DevOps core**: there is no root-level `test` script in `package.json` at
   all. The one eval mechanism that exists — `test:skills` — crashes
@@ -108,6 +108,95 @@ Stratum, verify the rollup native module resolves; (b) either write the
 missing `governance/skill-evals/run-evals.js` runner for DevOps-core, or
 remove the dangling `test:skills` script until it's real; (c) add both to
 CI so this can't silently regress again.
+
+**Update 2026-09-14 — partially resolved.** Actions (a) and (b) are done;
+(c) was not part of this backlog item and remains open. Worked via the
+graph-engineering pipeline (cycle `ship-blockers-1-3`); every figure below
+is taken from that cycle's capture files under
+`.workflow/state/graph-cycles/ship-blockers-1-3/`, not from memory.
+
+**(b) DevOps-core — resolved by removal, not by writing the runner.**
+`test:skills` was removed from the root `package.json` (T1), and the
+header of `governance/skill-evals/registry.yml` now states plainly that no
+runner exists and none of its prompts has ever been executed (T2). Option
+(ii) "remove the dangling script" was chosen over option (i) "write
+`run-evals.js`" because the registry is 4 skills × 1 prompt each, with
+prose `expected_behavior` strings — the only honest runner for that is an
+LLM-as-judge harness, which is Phase 6 scope and needs API budget; a
+string-match stub would have been a fake test. `npm run test:skills` now
+fails with npm's own `Missing script: "test:skills"` (exit 1) instead of
+the `Cannot find module .../run-evals.js` crash. **DevOps-core still has
+no root `test` script.** That is the honest current state; this item did
+not change it.
+
+**(a) Stratum — the symptom diagnosis was right, but the cause was
+incomplete.** `stratum/node_modules` was installed on Windows. Evidence:
+every entry in `node_modules/.bin` has `.cmd`/`.ps1` siblings; all 91
+non-symlink files there are dated May 28 and were mode 644; the only 2
+entries that are symlinks (`js-yaml`, `nanoid`) are the ones npm re-linked
+on macOS on 2026-09-14. A Windows install explains BOTH halves of the
+original finding at once — npm on Windows writes shim *scripts* rather
+than symlinks, and NTFS carries no execute bit for them to arrive with, so
+`.bin/vitest` came over as a plain 644 file; and a Windows install never
+selects the `@rollup/rollup-darwin-arm64` optional package, so the darwin
+native binary was simply absent. Sequence (times from file mtimes and the
+capture files):
+
+- 16:18 — baseline capture (`npm-test-baseline-2026-09-14.txt`,
+  `npm-test-fallback-baseline-2026-09-14.txt`,
+  `stratum-test-baseline-summary.md`): `npm test` exit 126 (`Permission
+  denied`), fallback exit 1 (`Cannot find module
+  @rollup/rollup-darwin-arm64`). The original finding reproduced exactly.
+- 16:19 — 1.5's `npm audit fix` install ran (`node_modules/.bin/` and
+  `node_modules/@rollup/rollup-darwin-arm64/` mtimes). That reinstall
+  resolved the rollup half **incidentally, before this item was worked**.
+  It re-linked only 2 shims and did not touch `.bin/vitest`'s mode.
+- 16:50 — the 1.5 cycle's own T7 re-run (`stratum-test-postfix-diff.md`;
+  also `ship-blockers-1-5/final-verification-summary.md` §3) recorded
+  `npm test` **still exit 126, byte-identical** to the baseline, and only
+  the `vitest.mjs` fallback passing (101 files / 825 pass + 5 todo). So the
+  claim that "T7/T8 ran `npm test` successfully" was inaccurate — T7 ran
+  the fallback, and T8 invoked `node_modules/typescript/lib/tsc.js`
+  directly for the same reason (`.bin/tsc` is another 644 shim; see that
+  summary's §5).
+- 20:21 — this cycle's fix: `chmod +x node_modules/.bin/vitest`, and
+  nothing else. After it, `npm test` (`vitest run`) produced, verbatim from
+  `npm-test-postchmod-2026-09-14.txt`:
+
+```
+ Test Files  101 passed (101)
+      Tests  825 passed | 5 todo (830)
+```
+
+with exit code 0. No reinstall, no lockfile change, no dependency change:
+`git status` on `stratum/package.json` and `stratum/package-lock.json` is
+clean (1.5's own lockfile change was already committed in `1fd0d46`), so
+the 1.5 boundary was respected. The pipeline's tester stage re-ran
+`npm test` independently two minutes later with the same result
+(`npm-test-postchmod-tester-rerun-2026-09-14.txt`).
+
+**Caveat — the fix is not durable.** `node_modules/` is gitignored
+(`stratum/.gitignore:18`), so the `chmod` lives only in this machine's
+checkout and will be lost by any future sync of `node_modules` from the
+Windows checkout; the other 90 shim files (including `tsc`) are still mode
+644. A lockfile-respecting `npm ci` on macOS would regenerate every `.bin`
+entry as a symlink and fix this properly, but a reinstall was outside this
+item's allowed fixes and was not run. Tracked as PB-51 in
+`.workflow/state/polish-backlog.md` (T5).
+
+**LAUNCH_READINESS.** The "246 pass + 5 todo" and "97 passing + 5 todo"
+figures quoted in the original finding above are older in-document session
+snapshots (both sit in that doc's line-3 "Last refined" history
+paragraph), not its current claim. The doc's most recent headline figure —
+"Suite **825 pass + 5 todo**" at `docs/LAUNCH_READINESS.md:169` —
+**matches** the independently reproduced `npm test` run above (825 passed,
+5 todo, 101 files). No `LAUNCH_READINESS.md` edit was made by this item
+(the one-line "Last refined" date bump in the working tree predates this
+cycle).
+
+**(c) still open**: adding both suites to CI was not in this item's scope
+and has not been done, so nothing yet prevents the Stratum suite from
+silently regressing again.
 
 ### 1.4 Stratum's pruner — the single most defensible piece of differentiated IP in the whole project — fails its own real benchmark
 

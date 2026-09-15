@@ -1,7 +1,14 @@
 # governance/skill-evals/registry.yml
 #
 # For each skill, a small test set that demonstrates it's working.
-# Phase 6 will run these automatically and track regression.
+#
+# STATUS: no runner exists. None of these prompts has ever been executed.
+# `npm run test:skills` was removed 2026-09-14 (SHIP_BLOCKERS.md 1.3) because
+# it pointed at a non-existent `run-evals.js`.
+#
+# A real runner must load each skill, send the prompt, and judge the response
+# against `expected_behavior` (LLM-as-judge, needs API budget). That is
+# Phase 6 scope. Until then this file is a spec, not a test.
 
 evals:
   - skill: process/proof-of-work
