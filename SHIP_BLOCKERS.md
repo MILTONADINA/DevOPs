@@ -48,7 +48,7 @@ so far — **not yet pushed to origin** (`scripts/recover-claim-provenance.sh
 --push` does that; left as an explicit human decision rather than a
 default, since it writes new refs to the shared remote).
 
-**Remaining failures (33 at first count, 29 after the 1.3 cycle's remediation — 97/126 passing) are a different, smaller, separate issue**, not
+**Remaining failures (33 at first count, 29 after the 1.3 cycle's remediation — 97/126 passing; 97/130 on 2026-09-15 after the third adversarial pass, the 4 new failures being cycle 6's own claims 032–035, which validate once that cycle's files are committed) are a different, smaller, separate issue**, not
 part of this item's original scope: 11 "missing or empty files_changed",
 10 "re-run exit code 1 != expected 0" (real drift, needs individual
 triage), and ~12 "invalid spec_ref" — mostly on *new* claims the
@@ -186,6 +186,28 @@ entry as a symlink and fix this properly, but a reinstall was outside this
 item's allowed fixes and was not run. Tracked as PB-51 in
 `.workflow/state/polish-backlog.md` (T5).
 
+**Update 2026-09-15 — PB-51 evidence for the human call.** The reinstall
+was exercised for real, but in an isolated `git worktree` (a scratchpad
+copy of this checkout; the working tree's `node_modules` was not touched):
+`npm ci` in `stratum/` (npm 11.16.0, lockfile unchanged) completed in 12 s
+and produced 31 symlinked, executable `.bin` entries (0 regular files,
+0 non-executable), with `@rollup/rollup-darwin-arm64` present. There,
+`npm run typecheck` exits 0 (no more exit 126) and `npm test` exits 0 with
+`Test Files 101 passed (101)` / `Tests 823 passed | 2 skipped | 5 todo
+(830)`. The two skipped tests are the "real dataset integrity" cases in
+`test/evals/locomo.test.ts` and `test/evals/longmemeval.test.ts`, which skip
+only because the gitignored datasets
+(`stratum/evals/datasets/{locomo10,longmemeval_oracle}.json`) are absent
+from a fresh worktree — in this checkout they are present and pass. npm
+11's new `allow-scripts` gate reported the esbuild/workerd postinstalls as
+pending approval, but their platform binaries were present and nothing
+failed. So `npm ci` on macOS is the durable fix with no observed
+regression; it stays a human call only because it replaces the whole
+gitignored `node_modules`. The three proofs that fingerprinted the current
+`node_modules` (claims 027/028/029) now branch on its state and were
+verified against that worktree in both states, so running `npm ci` will
+not break them.
+
 **LAUNCH_READINESS.** The "246 pass + 5 todo" and "97 passing + 5 todo"
 figures quoted in the original finding above are older in-document session
 snapshots (both sit in that doc's line-3 "Last refined" history
@@ -317,6 +339,53 @@ earlier this session" (the original deploy-gate.sh build) tested only the
 literal command shapes, not realistic variations. Test gates against
 realistic invocation patterns (`cd x &&`, `npx`, env-var prefixes,
 multi-line), not just the cleanest-case command string.
+
+**Addendum 2026-09-15 — a second wrapper defect, the inverse failure
+mode.** The `.claude/settings.json` wrappers resolved
+`hooks/universal/pre-tool/*.sh` relative to the *current working
+directory*. Claude Code's Bash working directory persists between calls, so
+after one command ended in `cd stratum && …`, every subsequent Bash command
+was refused with "HOOK MISSING/NOT EXECUTABLE … failing closed" — the
+fail-closed check from the fix above working exactly as designed, on a false
+premise (the hook existed; the cwd had moved). Failing closed was the right
+default (the alternative, silently running unguarded from a subdirectory,
+is the original bypass class), but a gate that locks the operator out of
+`git status` from a subdirectory is not usable. **Fixed**: all three
+wrappers (both PreToolUse and the PostToolUse one) now resolve the project
+root from `CLAUDE_PROJECT_DIR`, falling back to `git rev-parse
+--show-toplevel`, `cd` there before invoking the hook (so the hooks' own
+root-relative paths — `.workflow/state/graph-halt`, `events.jsonl`,
+`git diff --cached` — resolve correctly too), and still fail closed if the
+root cannot be resolved or the script is missing. Verified: commands run
+again from any subdirectory, and `git push --dry-run --tags` is still
+blocked with no approval marker — on this checkout only, as it turned out;
+see the next paragraph for why that verification was incomplete.
+
+**What the third adversarial pass found in that addendum (2026-09-15).**
+(1) The three hook scripts' executable bit had **never been committed**
+(tracked mode `100644`; this checkout has `core.fileMode=false`, so the
+local `chmod +x` was invisible to `git status`) — on any fresh checkout the
+wrapper's own fail-closed check would have refused *every* Bash command,
+so "verified: commands run again" was true only on this machine. Fixed
+twice over: the mode bits are now committed (`git update-index
+--chmod=+x hooks/universal/**/*.sh`), and the wrappers invoke the hooks
+via `bash "$H"` after a `-f` existence check, so executability is no
+longer a precondition. (2) With `CLAUDE_PROJECT_DIR` unset, the
+`git rev-parse` fallback resolves whatever repo the cwd is in — a scratch
+worktree with a forged approval marker flipped the gate to ALLOW when the
+wrapper was invoked by hand. Claude Code always sets
+`CLAUDE_PROJECT_DIR` for hook subprocesses (pinned to the session's
+project root, independent of cwd) and, as observed, resets the Bash cwd
+to the project root after every command, so the fallback is unreachable
+from a CLI session; it is kept for out-of-band invocation but now prints a
+`HOOK WARNING` line whenever it is used, so its use is observable. The
+gate's safety in any other harness is contingent on that variable.
+(3) `cd ""` is a silent no-op in sh, so the "cannot resolve the project
+root" branch never fired; the wrapper now tests for an empty root
+explicitly. (4) The PostToolUse wrapper could skip the LR-date sync with
+no trace; it now says so on stderr. (5) Both hooks `unset GIT_DIR
+GIT_WORK_TREE`, which would otherwise redirect their `git diff` calls to
+another repository regardless of cwd.
 
 ---
 

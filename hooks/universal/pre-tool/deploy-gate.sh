@@ -21,6 +21,10 @@
 #   governance/graph/autonomy-config.yml
 
 set -euo pipefail
+# An inherited GIT_DIR/GIT_WORK_TREE would redirect every git call below to
+# another repository regardless of the cwd the wrapper set (third adversarial
+# pass, 2026-09-15); the gate must only ever inspect the repo it runs in.
+unset GIT_DIR GIT_WORK_TREE
 
 COMMAND="${1:-}"
 CYCLE_ID="${DEVOPS_GRAPH_CYCLE_ID:-current}"

@@ -40,7 +40,8 @@
 # stratum/test/billing/verify-stripe.test.ts:16,20 as containing real
 # Stripe secrets — confirmed false positive, blocking CI).
 
-# Extends the default gitleaks rule set; no custom rules.
+# Extends the default gitleaks rule set, plus the three custom rules at the
+# bottom of this file.
 [extend]
 useDefault = true
 
@@ -55,3 +56,47 @@ description = "CI gitleaks-action allowlist: known false-positive literal key-sh
 paths = [
   '''^stratum/test/billing/verify-stripe\.test\.ts$''',
 ]
+
+# Custom rules (added 2026-09-14 after an adversarial review of the
+# SHIP_BLOCKERS 1.3 / 1.7 security proofs planted three realistic secrets
+# in a lockfile and every tier passed them). gitleaks' built-in
+# generic-api-key rule only fires when a keyword such as "secret" or
+# "key" sits near the value, so a bare vendor-prefixed key dropped into
+# a lockfile, a fixture or a data file is invisible to it, and the
+# built-in openai-api-key rule predates the sk-proj- format. These three
+# are the highest-value gaps for THIS repo: Stratum is a multi-provider
+# LLM gateway (Anthropic + OpenAI keys are exactly what would leak) and
+# the Google OAuth client-secret shape has no default rule at all.
+# Verified 2026-09-14: 0 hits across the tracked tree (the documented
+# `sk-ant-...` placeholders are too short to match), and each rule
+# catches a planted realistic-length key.
+
+[[rules]]
+id = "devops-google-oauth-client-secret"
+description = "Google OAuth client secret (GOCSPX-...)"
+regex = '''\bGOCSPX-[A-Za-z0-9_-]{20,}'''
+keywords = ["GOCSPX-"]
+
+[[rules]]
+id = "devops-openai-project-api-key"
+description = "OpenAI project-scoped API key (sk-proj-...)"
+regex = '''\bsk-proj-[A-Za-z0-9_-]{40,}'''
+keywords = ["sk-proj-"]
+
+[[rules]]
+id = "devops-anthropic-api-key"
+description = "Anthropic API key (sk-ant-...)"
+regex = '''\bsk-ant-[A-Za-z0-9_-]{40,}'''
+keywords = ["sk-ant-"]
+
+# Added 2026-09-15 (third adversarial pass): a connection URI carrying a
+# password (postgres://user:pass@host, mongodb+srv://..., redis://:pass@...,
+# amqp://...) has no vendor prefix and no nearby keyword, so nothing above
+# sees it. Any scheme; a non-empty password of 8+ characters before '@'.
+# Verified 2026-09-15: 0 hits across the tracked tree (registry/tarball
+# URLs, git+ssh://git@... and http://localhost:4080/... do not match).
+[[rules]]
+id = "devops-connection-string-credential"
+description = "Connection URI carrying a credential of 8+ chars before the @ (scheme://user:pw@host)"
+regex = '''\b[a-z][a-z0-9+.-]*://[^:/\s"']*:[^@/\s"']{8,}@'''
+keywords = ["://"]

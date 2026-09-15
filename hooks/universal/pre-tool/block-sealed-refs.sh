@@ -20,6 +20,9 @@
 #   .workflow/state/baton.md (per-session reminder of sealed-ref discipline)
 
 set -euo pipefail
+# An inherited GIT_DIR/GIT_WORK_TREE would redirect git to another repository
+# regardless of cwd (third adversarial pass, 2026-09-15).
+unset GIT_DIR GIT_WORK_TREE
 
 COMMAND="${1:-}"
 

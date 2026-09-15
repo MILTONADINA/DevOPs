@@ -27,7 +27,14 @@ if (!backlogItem) {
 log(`Starting sprint cycle "${cycleId}" for backlog item: ${backlogItem}`)
 
 phase('Plan')
-const plan = await agent(
+// Continuation support: when a cycle's prompts change mid-run (e.g. the tester
+// prompt was hardened after the cycle started), the Workflow resume cache
+// cannot replay the later stages. The orchestrator may then pass the earlier
+// run's `plan` and `priorBuildResults` (from that run's journal.jsonl) so the
+// planner is not re-run and completed tasks are carried forward unchanged.
+let plan = (args && args.plan) || null
+if (plan) log(`Using the precomputed plan from prior run ${(args && args.resumedFrom) || '(unspecified)'} (${plan.tasks ? plan.tasks.length : 0} tasks); planner not re-run`)
+else plan = await agent(
   `You are acting as the 'planner' role in the DevOPs graph-engineering pipeline (see governance/graph/role-mapping.md at the repo root). Read the backlog item below and, if it references SHIP_BLOCKERS.md or plan.md, read the relevant section there for full context:
 
 Backlog item: "${backlogItem}"
@@ -74,7 +81,14 @@ phase('Build')
 // the approved plan). coder and tester run one after another per task so
 // tester always sees that task's real diff.
 const buildResults = []
+const priorBuild = (args && Array.isArray(args.priorBuildResults)) ? args.priorBuildResults : []
 for (const task of plan.tasks) {
+  const done = priorBuild.find(r => r && r.task && r.task.id === task.id)
+  if (done) {
+    buildResults.push(done)
+    log(`Skipping ${task.id}: completed in prior run ${(args && args.resumedFrom) || '(unspecified)'} -- its coder/tester results are carried forward for review`)
+    continue
+  }
   const coderResult = await agent(
     `You are acting as the 'coder' role in the DevOPs graph-engineering pipeline. Implement exactly this atomic task -- surgical edits only, nothing beyond its stated scope:
 
