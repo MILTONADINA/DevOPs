@@ -32,17 +32,31 @@ in any project:
 
 ### Hooks
 
-Claude Code hooks are configured via `.claude/settings.json`. The DevOPs
-installer wires the universal hooks from `~/DevOPs/hooks/universal/` into
-your project automatically. **As of this checkout, `.claude/settings.json`
-does not exist and `.claude/` is empty — hooks are NOT currently wired.** If
-hook-driven behavior (e.g. sealed-ref blocking) seems absent, check whether
-this file exists before assuming the hook logic itself is broken.
+Claude Code hooks are configured via `.claude/settings.json`, which is
+tracked in this repo and wires three hooks (since commit `3c81635`,
+2026-09-14; hardened in `027c159`, 2026-09-15):
 
-Two project-specific hooks are defined and ready to wire in:
+- PreToolUse on `Bash` → `hooks/universal/pre-tool/block-sealed-refs.sh` —
+  blocks destructive git operations against sealed refs (the v0.2.0 tag,
+  archival branches). Exit 2 with an explanation. References blueprint §3.
+- PreToolUse on `Bash` → `hooks/universal/pre-tool/deploy-gate.sh` — the
+  graph-engineering production/billing gate: deploy-shaped commands need a
+  human approval marker, billing-path commits/pushes need two from distinct
+  approvers, and `.workflow/state/graph-halt` halts everything consequential.
+  See `governance/graph/` and SHIP_BLOCKERS.md 1.8.
+- PostToolUse on `Write|Edit` → `hooks/universal/post-tool/sync-lr-refined-date.sh`
+  — bumps `docs/LAUNCH_READINESS.md`'s "Last refined" date when `plan.md`
+  is edited. Date only, never the math sections. References blueprint §11.1.
 
-- `hooks/universal/pre-tool/block-sealed-refs.sh` — blocks destructive git operations against sealed refs (v0.2.0 tag, archival branches). Returns exit 2 with explanation on attempt. References blueprint §3.
-- `hooks/universal/post-tool/sync-lr-refined-date.sh` — auto-bumps `docs/LAUNCH_READINESS.md` "Last refined" date when `plan.md` is edited. Light-touch: date only, never the math sections. References blueprint §11.1 refresh triggers.
+The wrappers in `settings.json` resolve the project root from
+`CLAUDE_PROJECT_DIR` (git top-level as a warned fallback), `cd` there, and
+invoke each hook via `bash` — so a `cd` into a subdirectory cannot lock the
+session out and the hooks' own root-relative paths resolve correctly. They
+fail **closed** (exit 2, which Claude Code treats as a block) if the root
+cannot be resolved or a hook script is missing; a bare "HOOK … failing
+closed" error on every Bash command therefore means the checkout is
+broken, not that the gate logic is. Hook edits in `settings.json` are
+picked up by the running session (verified 2026-09-15).
 
 ### Slash commands
 
@@ -83,23 +97,28 @@ Each subagent has its own permission scope (see `subagents/universal/*.md`).
 
 ### Model routing
 
-`cost-controls/model-routing.yml` is loaded at session start. Default routing:
+`cost-controls/model-routing.yml` is the routing record (user directive,
+2026-09-14):
 
-- Planner subagent → Opus 4.7 (architecture decisions)
-- Researcher subagent → Haiku 4.5 (read-heavy, low-reasoning)
-- Coder subagent → Sonnet 4.6 (the workhorse)
-- Tester subagent → Haiku 4.5 (test execution; little reasoning)
-- Reviewer subagent → Sonnet 4.6 (diff analysis)
-- Security subagent → Sonnet 4.6 (scan interpretation)
-- Validator subagent → Opus 4.7 (independent re-verification)
+- Orchestrator ("boss/CTO" — the main session running
+  `.claude/workflows/sprint-cycle.js`) → Fable 5.1, chosen by the user via
+  `/model`; no config file can switch a running session's own model.
+- Every graph-engineering subagent role (planner, coder, tester, reviewer,
+  security, validator) → Sonnet 5 at **max** reasoning effort. This IS
+  enforced: each `agent()` call in `sprint-cycle.js` passes
+  `model: 'sonnet', effort: 'max'`.
+- Haiku 4.5 and Opus 5 are listed in the file for reference/override only;
+  nothing routes to them today.
 
-Override per session by editing `cost-controls/model-routing.yml`.
+Override per session by editing `cost-controls/model-routing.yml` and the
+`model:`/`effort:` options in `sprint-cycle.js` together — the yml is
+documentation, the script is the enforcement.
 
 ### Extended thinking
 
-For complex architectural decisions, the Planner subagent should use extended
-thinking with `xhigh` effort. For Opus 4.7, this is the default. For all other
-work, default thinking is sufficient.
+Every pipeline role already runs at max effort (above). Outside the
+pipeline, default thinking is sufficient for routine work; reserve higher
+effort for architecture decisions and adversarial verification passes.
 
 ### Memory
 

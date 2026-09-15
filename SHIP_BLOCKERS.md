@@ -385,7 +385,15 @@ root" branch never fired; the wrapper now tests for an empty root
 explicitly. (4) The PostToolUse wrapper could skip the LR-date sync with
 no trace; it now says so on stderr. (5) Both hooks `unset GIT_DIR
 GIT_WORK_TREE`, which would otherwise redirect their `git diff` calls to
-another repository regardless of cwd.
+another repository regardless of cwd. (6) Found while preparing the push,
+by reading the gate rather than by a review lens: the original fix
+unanchored the quick-exit filter and the deploy patterns but left the
+**billing four-eyes trigger** start-anchored, so `cd x && git commit` of a
+billing-path change skipped the two-approver check — the same bypass
+class as the original finding, one regex further down. Unanchored to the
+same word-boundary form and verified in a fresh worktree with a staged
+`stratum/src/billing/` file: `cd . && git commit …` is now blocked with
+"needs TWO approval markers".
 
 ---
 

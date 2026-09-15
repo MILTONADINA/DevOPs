@@ -129,10 +129,14 @@ if [[ -n "$is_deploy" ]]; then
 fi
 
 # --- Billing-path four-eyes check (git commit / git push only) ---
-if echo "$COMMAND" | grep -qE '^[[:space:]]*git[[:space:]]+(commit|push)'; then
+# Word-boundary match, not start-anchored: the 1.8 fix unanchored the
+# quick-exit filter and the deploy patterns above but left this trigger
+# anchored, so `cd x && git commit` of a billing-path change skipped the
+# four-eyes check entirely (found 2026-09-15 while preparing a push).
+if echo "$COMMAND" | grep -qE '(^|[;&|(]|[[:space:]])git[[:space:]]+(commit|push)([[:space:]]|$)'; then
     touches_billing=""
     changed_files=""
-    if echo "$COMMAND" | grep -qE '^[[:space:]]*git[[:space:]]+commit'; then
+    if echo "$COMMAND" | grep -qE '(^|[;&|(]|[[:space:]])git[[:space:]]+commit([[:space:]]|$)'; then
         changed_files=$(git diff --cached --name-only 2>/dev/null || true)
     else
         # git push: check what's outgoing relative to the upstream, if known
