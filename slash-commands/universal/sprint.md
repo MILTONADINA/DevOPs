@@ -26,6 +26,7 @@ the current phase and gate configuration.
 ```
 Workflow({ scriptPath: ".claude/workflows/sprint-cycle.js", args: { backlogItem: "<id or description>", cycleId: "<a short identifier for this run>" } })
 ```
+Watch the cycle live at http://127.0.0.1:4081 (override the port with `GRAPH_DASHBOARD_PORT`).
 
 The Workflow pipelines the backlog item through planner → coder → tester →
 reviewer → security → validator, phase-tagged (Plan/Build/Verify/Release),
