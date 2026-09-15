@@ -1,10 +1,10 @@
 # cost-controls/model-routing.yml
 #
-# Updated 2026-09-14 at user request: all graph-engineering subagents AND
-# the orchestrator now route to Fable. (Briefly: subagents on Opus,
-# Fable as orchestrator only -- superseded same day when the user asked for
-# subagents to use Fable too.) See governance/graph/role-mapping.md for the
-# role spec this routing serves.
+# Settled 2026-09-14 (user directive, final of three same-day changes):
+# Fable is the orchestrator ("boss/CTO" -- the main Claude Code session
+# running sprint-cycle.js, which the user selects via /model); all
+# graph-engineering subagents route to Opus for workflow runs. See
+# governance/graph/role-mapping.md for the role spec this routing serves.
 #
 # Mechanical note: this file is NOT self-enforcing. The main session's model
 # (intended: Fable) is chosen by the user via /model -- no config file can
@@ -35,22 +35,21 @@ models:
     cost_per_mtok_output_usd: 25.00
     context_window: 1000000
     use_for:
-      - not currently used by graph subagent routing (kept for reference/override; was the subagent tier for a few hours on 2026-09-14 before superseded by fable)
+      - all graph-engineering subagent roles (planner/coder/tester/reviewer/security/validator) in workflow runs
 
   fable:
     id: claude-fable-5-1
     use_for:
       - orchestrator ("boss/CTO") -- the top-level session running sprint-cycle.js; selected by the user via /model for the main session, not set by this file
-      - all graph-engineering subagent roles (planner/coder/tester/reviewer/security/validator)
 
-# Subagent routing -- all Fable, per user directive 2026-09-14
+# Subagent routing -- all Opus, per user directive 2026-09-14 (settled)
 subagents:
-  planner: fable
-  coder: fable
-  tester: fable
-  reviewer: fable
-  security: fable
-  validator: fable
+  planner: opus
+  coder: opus
+  tester: opus
+  reviewer: opus
+  security: opus
+  validator: opus
 
 orchestrator: fable   # the main session; see mechanical note above -- documentation, not enforcement
 

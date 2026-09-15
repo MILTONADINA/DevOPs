@@ -38,7 +38,7 @@ HARD CONSTRAINT: do not include any task whose job is to stage, commit, or push 
   {
     label: 'planner',
     phase: 'Plan',
-    model: 'fable',
+    model: 'opus',
     schema: {
       type: 'object',
       properties: {
@@ -87,7 +87,7 @@ HARD CONSTRAINT: do not run \`git add\`, \`git commit\`, \`git push\`, or any de
     {
       label: `coder:${task.id}`,
       phase: 'Build',
-      model: 'fable',
+      model: 'opus',
       schema: {
         type: 'object',
         properties: {
@@ -107,7 +107,7 @@ Coder's report for this task: ${JSON.stringify(coderResult)}`,
     {
       label: `tester:${task.id}`,
       phase: 'Build',
-      model: 'fable',
+      model: 'opus',
       schema: {
         type: 'object',
         properties: {
@@ -142,7 +142,7 @@ Check spec-anchoring (does every changed line trace to one of the tasks above, o
   {
     label: 'reviewer',
     phase: 'Verify',
-    model: 'fable',
+    model: 'opus',
     schema: {
       type: 'object',
       properties: {
@@ -164,7 +164,7 @@ Report findings above threshold plainly, or confirm none were found.`,
   {
     label: 'security',
     phase: 'Verify',
-    model: 'fable',
+    model: 'opus',
     schema: {
       type: 'object',
       properties: {
@@ -188,7 +188,7 @@ Decide whether this cycle is ready for a PR. Do NOT sign off if any task's test 
   {
     label: 'validator',
     phase: 'Verify',
-    model: 'fable',
+    model: 'opus',
     schema: {
       type: 'object',
       properties: {
