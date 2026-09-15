@@ -14,17 +14,18 @@ other.
 ## Model assignment (updated 2026-09-14, user directive)
 
 All six sprint-cycle subagent roles (planner/coder/tester/reviewer/
-security/validator) run on **Opus**, set explicitly per `agent()` call in
-`.claude/workflows/sprint-cycle.js` (`model: 'opus'`) — not inherited from
+security/validator) run on **Fable**, set explicitly per `agent()` call in
+`.claude/workflows/sprint-cycle.js` (`model: 'fable'`) — not inherited from
 whatever the orchestrating session happens to be running, since that would
-silently drift with the user's own model choice. See
-`cost-controls/model-routing.yml` for the full routing table.
+silently drift with the user's own model choice. (Briefly Opus for a few
+hours on 2026-09-14, before the user asked for Fable across the board.)
+See `cost-controls/model-routing.yml` for the full routing table.
 
-**Fable is the orchestrator** ("boss/CTO") — the top-level entity running
-`sprint-cycle.js` and interpreting its results, i.e. the main Claude Code
-session. This is documentation, not enforcement: no config file can switch
-a running session's own model, so the user selects Fable via `/model` for
-the main session themselves.
+**Fable is also the orchestrator** ("boss/CTO") — the top-level entity
+running `sprint-cycle.js` and interpreting its results, i.e. the main
+Claude Code session. Choosing the session's own model is documentation,
+not enforcement: no config file can switch a running session's own model,
+so the user selects Fable via `/model` for the main session themselves.
 
 ## Roles
 

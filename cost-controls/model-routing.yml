@@ -1,12 +1,10 @@
 # cost-controls/model-routing.yml
 #
-# Updated 2026-09-14 at user request: all graph-engineering subagents route
-# to Opus; Fable is the orchestrator ("boss/CTO") -- the top-level entity
-# that runs sprint-cycle.js and interprets its results, i.e. the main
-# Claude Code session. This is a deliberate move away from the prior
-# cost-tiered routing (Haiku/Sonnet/Opus split) toward uniform subagent
-# quality, accepting the cost tradeoff. See governance/graph/role-mapping.md
-# for the role spec this routing serves.
+# Updated 2026-09-14 at user request: all graph-engineering subagents AND
+# the orchestrator now route to Fable. (Briefly: subagents on Opus,
+# Fable as orchestrator only -- superseded same day when the user asked for
+# subagents to use Fable too.) See governance/graph/role-mapping.md for the
+# role spec this routing serves.
 #
 # Mechanical note: this file is NOT self-enforcing. The main session's model
 # (intended: Fable) is chosen by the user via /model -- no config file can
@@ -37,22 +35,22 @@ models:
     cost_per_mtok_output_usd: 25.00
     context_window: 1000000
     use_for:
-      - all graph-engineering subagent roles (planner/coder/tester/reviewer/security/validator)
+      - not currently used by graph subagent routing (kept for reference/override; was the subagent tier for a few hours on 2026-09-14 before superseded by fable)
 
   fable:
     id: claude-fable-5-1
     use_for:
-      - orchestrator ("boss/CTO") -- the top-level session running sprint-cycle.js
-      - selected by the user via /model for the main session; not set by this file
+      - orchestrator ("boss/CTO") -- the top-level session running sprint-cycle.js; selected by the user via /model for the main session, not set by this file
+      - all graph-engineering subagent roles (planner/coder/tester/reviewer/security/validator)
 
-# Subagent routing -- all Opus, per user directive 2026-09-14
+# Subagent routing -- all Fable, per user directive 2026-09-14
 subagents:
-  planner: opus
-  coder: opus
-  tester: opus
-  reviewer: opus
-  security: opus
-  validator: opus
+  planner: fable
+  coder: fable
+  tester: fable
+  reviewer: fable
+  security: fable
+  validator: fable
 
 orchestrator: fable   # the main session; see mechanical note above -- documentation, not enforcement
 
