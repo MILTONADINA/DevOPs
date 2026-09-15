@@ -48,7 +48,7 @@ so far — **not yet pushed to origin** (`scripts/recover-claim-provenance.sh
 --push` does that; left as an explicit human decision rather than a
 default, since it writes new refs to the shared remote).
 
-**Remaining failures (33 at first count, 29 after the 1.3 cycle's remediation — 97/126 passing; 97/130 on 2026-09-15 after the third adversarial pass under the full, re-running `npm run validate:claims` — 104/130 under `--no-rerun`, the difference being seven legacy `claim-2026-05-22-*` proofs whose re-run now exits 1 (pre-existing drift, on the triage list below); the 4 newest failures are cycle 6's own claims 032–035, which validate once that cycle's files are committed) are a different, smaller, separate issue**, not
+**Remaining failures (33 at first count, 29 after the 1.3 cycle's remediation — 97/126 passing; 97/130 on 2026-09-15 after the third adversarial pass under the full, re-running `npm run validate:claims` — 104/130 under `--no-rerun`, the difference being seven legacy `claim-2026-05-22-*` proofs whose re-run now exits 1 (pre-existing drift, on the triage list below); the 4 newest failures are cycle 6's own claims 032–035, which validate once that cycle's files are committed; **122/132 full / 126/132 `--no-rerun` after the triage below was completed later on 2026-09-15** — see "Outcome of the triage") are a different, smaller, separate issue**, not
 part of this item's original scope: 11 "missing or empty files_changed",
 10 "re-run exit code 1 != expected 0" (real drift, needs individual
 triage), and ~12 "invalid spec_ref" — mostly on *new* claims the
@@ -68,9 +68,23 @@ taken from the validator's one-line reason):
   spec_refs (`governance/graph/tasks.md#…`, `SHIP_BLOCKERS.md#…`, bare
   task ids), `git_sha` pinned to the pre-work HEAD rather than the commit
   that carries the work, and empty `files_changed` on the verification-only
-  claims. Mechanical to fix with the 023–029 precedent (re-pin, nominal
-  `specs/` anchor disclosed in caveats, tracked files of that commit, hash
-  recomputed); being done as a graph workflow.
+  claims. Fixed the same day with the 023–029 precedent (re-pinned to the
+  commit that carries the work, a nominal `specs/` anchor disclosed in a
+  dated caveat, that commit's tracked files, hash recomputed): **all 22
+  validate** under both validator modes. Four of their proof scripts were
+  also hardened on the way, each with a dated caveat in its YAML — `-009`
+  (the old Sigstore TUF URL's 404 is informational; the pin is read from
+  the carrying commit and checked against `git ls-remote` of
+  `sigstore/cosign-installer`), `-015` (asserts the commit touches nothing
+  under `stratum/`), `-017` (rewritten against captured before/after audit
+  JSON with counted assertions; the live audit is informational) and
+  `-019` (exact lines read from the captured 2026-09-14 dry-run artifacts,
+  the live dry-run informational, npm verbosity unset). `-017` also exposed
+  that a cleanup `trap … EXIT` reports exit 0 after a mid-script syntax
+  error (bash hands the trap `$?=0`), so a broken proof "passed" — every
+  proof edited this session now writes a PASS marker only on its genuine
+  success path and the trap fails closed without it; injected syntax
+  errors now exit non-zero.
 - `claim-2026-05-22-009` (`req-9-clean-tree`): transient — fails only while
   cycle 6's files are uncommitted. `-012` (`req-12-validate-claims`): runs
   the validator itself and fails until the claims above are fixed.
@@ -99,6 +113,23 @@ taken from the validator's one-line reason):
   again. The code moved on deliberately; the proof had not.
 - Not a claim defect — **see 1.9**: `claim-2026-05-22-013` (`req-13-repo-private`)
   fails because the repository is now public.
+
+**Outcome of the triage (2026-09-15, later the same day)**: `npm run
+validate:claims` reports **122/132** under the full re-running mode and
+**126/132** under `--no-rerun`. Every remaining failure has a named cause
+and none is an unexplained proof defect:
+
+| Claim(s) | Cause | Clears when |
+|---|---|---|
+| `claim-2026-09-14-032`–`035`, `claim-2026-09-15-099`, `-100` (6) | cycle 6's own claims; their `files_changed` (`scripts/graph-dashboard/`, `tests/graph-dashboard/`) are not yet committed | cycle 6's files land in a commit |
+| `claim-2026-05-22-009` (`req-9-clean-tree`) | the same uncommitted cycle-6 work dirties the tree | same commit |
+| `claim-2026-05-22-012` (`req-12-validate-claims`) | runs the validator itself; passes only when everything else does | the rows above and below |
+| `claim-2026-05-22-076` (`req-E2-manifest-fields`) | item 1.6 — two skills edited after signing | the `release-sign.yml` re-sign (CI, human-triggered) |
+| `claim-2026-05-22-013` (`req-13-repo-private`) | item 1.9 — the repository is public | a human decision on visibility |
+
+The four `--no-rerun`-only differences are 009/012/076/013 (their YAMLs
+are structurally sound; only the re-run fails). The last two rows are
+human decisions, not work the graph can do.
 
 ### 1.2 CI has been silently red for 7+ days on `main`, including a sealed Phase 2 security control
 
