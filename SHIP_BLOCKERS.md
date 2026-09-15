@@ -75,18 +75,28 @@ taken from the validator's one-line reason):
   cycle 6's files are uncommitted. `-012` (`req-12-validate-claims`): runs
   the validator itself and fails until the claims above are fixed.
 - `-076` (`req-E2-manifest-fields`): `goal-loop` and
-  `prompt-injection-defense` were edited after signing (sha256 mismatch);
-  `-078`/`-079` (`req-E5`/`req-E6`): both check scripts target
-  `skills/universal/process/karpathy-guidelines/`, deleted by the
-  redundancy audit. All three are item 1.6 (re-sign via `release-sign.yml`,
-  re-point the E-series checks at a surviving signed skill).
+  `prompt-injection-defense` were edited after signing (sha256 mismatch)
+  — item 1.6, needs the CI re-sign via `release-sign.yml`; still failing,
+  correctly. `-078`/`-079` (`req-E5`/`req-E6`): both check scripts
+  targeted `skills/universal/process/karpathy-guidelines/`, deleted by the
+  redundancy audit; re-pointed 2026-09-15 at `process/proof-of-work`
+  (signed in the same CI run, manifest hash still matching) with dated
+  caveats, and both validate again. Two things found on the way: `cosign`
+  was not installed on this machine at all (the checks' locator accepted a
+  bare `cosign` candidate without a PATH lookup, so the failure surfaced as
+  "skill missing"); v2.4.3 — the version `release-sign.yml` pins — is now
+  at `~/bin/cosign`, installed from the GitHub release with its published
+  sha256 verified, and the locator probes each candidate with
+  `cosign version`.
 - `-098` (redactor ReDoS/leak): its structural assertion requires the
   literal `{1,64}@` email bound to remain in
   `stratum/src/observability/pii-redaction.ts`; commits `ce04c87` and
   `5dcbbae` replaced that bound with a left-anchored lookbehind design
   (documented in the source as the ReDoS fix). The behavioural checks
-  still pass; the structural one must be updated to the current design —
-  the code moved on deliberately, the proof did not.
+  never stopped passing; the structural one was updated the same day to
+  assert the invariant the claim actually needs (a start-anchored,
+  finitely bounded local-part), with a dated caveat — `-098` validates
+  again. The code moved on deliberately; the proof had not.
 - Not a claim defect — **see 1.9**: `claim-2026-05-22-013` (`req-13-repo-private`)
   fails because the repository is now public.
 
