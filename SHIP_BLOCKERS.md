@@ -131,6 +131,19 @@ The four `--no-rerun`-only differences are 009/012/076/013 (their YAMLs
 are structurally sound; only the re-run fails). The last two rows are
 human decisions, not work the graph can do.
 
+**After landing cycle 6 (`30d59a1`, 2026-09-15)**: **139/139 under
+`--no-rerun`** and **137/139 under the full re-running validator**. The
+first three rows of the table above cleared as predicted (cycle 6's
+claims — now thirteen, 032–035 and 099–107 — were re-pinned to the
+carrying commit with recomputed hashes and dated caveats; 009 and 012
+pass on the clean tree). One new proof defect surfaced at landing and was
+fixed the same hour: `claim-2026-09-14-032` compared `HEAD:package.json`
+against the live file, an assertion that inverts the moment the change is
+committed — it now compares the carrying commit against its parent, with
+a reachability check whose negative branch was exercised. What remains is
+exactly the two human items: **013 (item 1.9, repository visibility) and
+076 (item 1.6, the `release-sign.yml` re-sign)**.
+
 ### 1.2 CI has been silently red for 7+ days on `main`, including a sealed Phase 2 security control
 
 Confirmed via `gh run list` / `gh run view --log-failed`:
