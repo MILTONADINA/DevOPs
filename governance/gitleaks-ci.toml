@@ -40,7 +40,7 @@
 # stratum/test/billing/verify-stripe.test.ts:16,20 as containing real
 # Stripe secrets — confirmed false positive, blocking CI).
 
-# Extends the default gitleaks rule set, plus the three custom rules at the
+# Extends the default gitleaks rule set, plus the four custom rules at the
 # bottom of this file.
 [extend]
 useDefault = true
@@ -92,11 +92,14 @@ keywords = ["sk-ant-"]
 # Added 2026-09-15 (third adversarial pass): a connection URI carrying a
 # password (postgres://user:pass@host, mongodb+srv://..., redis://:pass@...,
 # amqp://...) has no vendor prefix and no nearby keyword, so nothing above
-# sees it. Any scheme; a non-empty password of 8+ characters before '@'.
-# Verified 2026-09-15: 0 hits across the tracked tree (registry/tarball
-# URLs, git+ssh://git@... and http://localhost:4080/... do not match).
+# sees it. Any scheme, case-insensitive; a credential of 8+ characters
+# before '@' (the user part may be empty). Known residual: a URL of the form
+# scheme://host:<8+ digits>@other also matches -- it fails toward a manual
+# look, not a miss. Verified 2026-09-15: 0 hits across the tracked tree
+# (registry/tarball URLs, git+ssh://git@... and http://localhost:4080/...
+# do not match).
 [[rules]]
 id = "devops-connection-string-credential"
 description = "Connection URI carrying a credential of 8+ chars before the @ (scheme://user:pw@host)"
-regex = '''\b[a-z][a-z0-9+.-]*://[^:/\s"']*:[^@/\s"']{8,}@'''
+regex = '''(?i)\b[a-z][a-z0-9+.-]*://[^:/\s"']*:[^@/\s"']{8,}@'''
 keywords = ["://"]

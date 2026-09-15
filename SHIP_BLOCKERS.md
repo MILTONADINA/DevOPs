@@ -48,7 +48,7 @@ so far — **not yet pushed to origin** (`scripts/recover-claim-provenance.sh
 --push` does that; left as an explicit human decision rather than a
 default, since it writes new refs to the shared remote).
 
-**Remaining failures (33 at first count, 29 after the 1.3 cycle's remediation — 97/126 passing; 97/130 on 2026-09-15 after the third adversarial pass, the 4 new failures being cycle 6's own claims 032–035, which validate once that cycle's files are committed) are a different, smaller, separate issue**, not
+**Remaining failures (33 at first count, 29 after the 1.3 cycle's remediation — 97/126 passing; 97/130 on 2026-09-15 after the third adversarial pass under the full, re-running `npm run validate:claims` — 104/130 under `--no-rerun`, the difference being seven legacy `claim-2026-05-22-*` proofs whose re-run now exits 1 (pre-existing drift, on the triage list below); the 4 newest failures are cycle 6's own claims 032–035, which validate once that cycle's files are committed) are a different, smaller, separate issue**, not
 part of this item's original scope: 11 "missing or empty files_changed",
 10 "re-run exit code 1 != expected 0" (real drift, needs individual
 triage), and ~12 "invalid spec_ref" — mostly on *new* claims the
