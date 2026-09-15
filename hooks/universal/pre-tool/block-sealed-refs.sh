@@ -120,6 +120,10 @@ EOF
 
 # Log the block
 mkdir -p .workflow/state
-echo "{\"ts\":$(date -u +%s),\"event\":\"sealed_ref_block\",\"ref\":\"$sealed_ref_hit\",\"pattern\":\"$destructive_match\",\"command\":$(echo "$COMMAND" | jq -R . 2>/dev/null || echo "\"$COMMAND\"")}" >> .workflow/state/events.jsonl
+# jq --arg escapes every field; the prior `jq -R .` was line-oriented and
+# split multi-line commands across several JSONL lines (found 2026-09-14).
+jq -cn --arg ts "$(date -u +%s)" --arg ref "$sealed_ref_hit" --arg pattern "$destructive_match" --arg command "$COMMAND" \
+    '{ts:($ts|tonumber),event:"sealed_ref_block",ref:$ref,pattern:$pattern,command:$command}' \
+    >> .workflow/state/events.jsonl 2>/dev/null || true
 
 exit 2

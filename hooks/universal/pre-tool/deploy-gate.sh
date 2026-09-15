@@ -54,7 +54,14 @@ block() {
 ╚═══════════════════════════════════════════════════════════════════╝
 EOF
     mkdir -p .workflow/state
-    echo "{\"ts\":$(date -u +%s),\"event\":\"deploy_gate_block\",\"cycle\":\"$CYCLE_ID\",\"reason\":\"$reason\",\"command\":$(echo "$COMMAND" | jq -R . 2>/dev/null || echo "\"$COMMAND\"")}" >> .workflow/state/events.jsonl
+    # Build the event with jq --arg so every field is JSON-escaped. The prior
+    # `echo ... | jq -R .` encoded only the FIRST line of a multi-line
+    # command (jq -R is line-oriented), splitting one event across several
+    # lines and corrupting the JSONL -- found 2026-09-14 once the
+    # settings.json wrapper started passing multi-line commands through.
+    jq -cn --arg ts "$(date -u +%s)" --arg cycle "$CYCLE_ID" --arg reason "$reason" --arg command "$COMMAND" \
+        '{ts:($ts|tonumber),event:"deploy_gate_block",cycle:$cycle,reason:$reason,command:$command}' \
+        >> .workflow/state/events.jsonl 2>/dev/null || true
     exit 2
 }
 
