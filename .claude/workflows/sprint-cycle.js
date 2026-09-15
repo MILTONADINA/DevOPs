@@ -82,6 +82,10 @@ phase('Build')
 // tester always sees that task's real diff.
 const buildResults = []
 const priorBuild = (args && Array.isArray(args.priorBuildResults)) ? args.priorBuildResults : []
+// A task whose coder finished but whose tester did not (e.g. the tester
+// stalled and the run was killed): carry the coder result forward and run
+// only the tester, so the coder is not re-run on top of its own output.
+const priorCoder = (args && Array.isArray(args.priorCoderResults)) ? args.priorCoderResults : []
 for (const task of plan.tasks) {
   const done = priorBuild.find(r => r && r.task && r.task.id === task.id)
   if (done) {
@@ -89,7 +93,9 @@ for (const task of plan.tasks) {
     log(`Skipping ${task.id}: completed in prior run ${(args && args.resumedFrom) || '(unspecified)'} -- its coder/tester results are carried forward for review`)
     continue
   }
-  const coderResult = await agent(
+  const codedBefore = priorCoder.find(r => r && r.task && r.task.id === task.id)
+  if (codedBefore) log(`${task.id}: coder result carried forward from prior run ${(args && args.resumedFrom) || '(unspecified)'}; running the tester only`)
+  const coderResult = codedBefore ? codedBefore.coderResult : await agent(
     `You are acting as the 'coder' role in the DevOPs graph-engineering pipeline. Implement exactly this atomic task -- surgical edits only, nothing beyond its stated scope:
 
 Task id: ${task.id}
@@ -120,6 +126,8 @@ HARD CONSTRAINT: do not run \`git add\`, \`git commit\`, \`git push\`, or any de
     `You are acting as the 'tester' role in the DevOPs graph-engineering pipeline. For the task just implemented (id ${task.id}: ${task.description}), write and/or run whatever tests are appropriate to verify it, and produce a proof artifact per this project's proof-of-work convention (skills/universal/process/proof-of-work/SKILL.md at the repo root): the actual command run, its exit code, and a tail of its output. Report pass/fail honestly -- do not paper over a failure or claim success without having actually run something.
 
 Coder's report for this task: ${JSON.stringify(coderResult)}
+
+STALL RULES (a tester that makes no tool progress for 3 minutes is killed and the whole cycle fails): never run a server or watcher in the foreground of a Bash call -- start it in the background with a bounded wait and kill it before you return; put a timeout on every network call; if a tool you were told to use (for example a Playwright/browser MCP tool) is not available in your tool list, do NOT wait, poll or retry for it -- do the closest verification you can with the tools you have, state explicitly in your report that the browser step was not performed and why, and let passed reflect only the assertions you actually ran.
 
 CLAIM-SCHEMA CONSTRAINT (if you write a claim YAML under .workflow/proofs/): it must validate against verification/claim-schema.yml, or it is proof theater. Concretely: id matches claim-YYYY-MM-DD-NNN using the next free NNN in that directory; spec_ref starts with specs/ (use the nearest real anchor under specs/ and say in caveats when it is nominal -- never invent a path, never use SHIP_BLOCKERS.md or a task id); files_changed lists only tracked files the eventual commit will contain (never gitignored proof/state files); test_command is a re-runnable command with no placeholders; reproducibility_hash = "sha256:" + sha256(test_command + "\\n---\\n" + sorted "key=value" lines of proof.environment (empty string if absent) + "\\n---\\n" + git_sha); and the proof script must not depend on the caller's npm verbosity (unset npm_config_loglevel at the top if it invokes npm) or on HEAD equalling a specific SHA (assert reachability with git merge-base --is-ancestor instead). Confirm with npm run validate:claims -- --no-rerun on your claim before reporting. When the claim is about a commit, assert exact-set invariants against THAT commit's content (git show <git_sha>:<path>), never against the live working tree -- later commits and concurrent cycles legitimately change it -- and check only durable invariants ("X is absent") live. If a scanner is part of the proof, the proof must fail when the scanner scanned nothing, and must be shown to fail on a planted positive (e.g. gitleaks' default config silently skips files named package-lock.json).`,
     {
