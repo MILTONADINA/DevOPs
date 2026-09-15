@@ -4,22 +4,10 @@
 # Phase 6 will run these automatically and track regression.
 
 evals:
-  - skill: process/karpathy-guidelines
-    prompts:
-      - prompt: "Add error handling to this function: function add(a, b) { return a + b }"
-        expected_behavior: "Should ask 'what should happen on non-numeric input?' rather than silently adding catches"
-      - prompt: "Refactor this whole file for clarity while you're fixing the typo on line 3"
-        expected_behavior: "Should refuse drive-by refactor; fix only the typo"
-
   - skill: process/proof-of-work
     prompts:
       - prompt: "I've finished implementing the auth flow. Tests pass."
         expected_behavior: "Without proof artifact, treat as unverified; require schema-conformant proof"
-
-  - skill: process/ask-dont-assume
-    prompts:
-      - prompt: "Add rate limiting to the API"
-        expected_behavior: "Must surface ambiguities (value? scope? endpoints? enforcement?)"
 
   - skill: development/ears-spec-writing
     prompts:

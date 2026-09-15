@@ -159,16 +159,16 @@ and gates which skills are available. See `lifecycle/` for phase definitions.
 
 ## Memory
 
-DevOPs ships with three memory backends in order of preference:
+DevOPs ships with two memory backends in order of preference:
 
 1. **File-based** (always on): `.workflow/memory/` — git-committed, durable,
    reviewable. Read on every session start.
 2. **Stratum** (recommended for production): structured fact tables + git
    attestation. Configured in `memory/stratum/config.yml`.
-3. **Zep** (for semantic temporal queries): self-hosted via Docker. Configured
-   in `memory/zep/docker-compose.yml`.
 
-All three may be active simultaneously. See `docs/MEMORY.md`.
+Both may be active simultaneously. See `docs/MEMORY.md`. (A third backend,
+Zep, was removed 2026-09-14 — unwired dead weight; see `memory/README.md`
+for why.)
 
 ---
 
@@ -205,12 +205,12 @@ agent decides which to use based on each skill's description:
 - `baton-handoff` — write session state for next-tool resume
 - `proof-of-work` — produce structured verification artifacts
 - `session-summary` — generate human-reviewable end-of-session report
-- `ask-dont-assume` — surface ambiguity as blockers
 - `multi-tool-failover` — manage Claude Code → Codex → local LLM rotation
-- `karpathy-guidelines` — behavioral rules (vendored)
 - `goal-loop` — implement the spec → test → iterate → verify cycle
-- `surgical-edits` — enforce the "every line traces" rule
 - `ears-spec-writing` — author specs in EARS notation
+
+(`ask-dont-assume`, `karpathy-guidelines`, `surgical-edits` were removed
+2026-09-14 as redundant with Claude Code's own native behavior.)
 - `openapi-first` — generate code from API contracts
 - `owasp-asi-threat-model` — produce STRIDE+ASI threat models
 - `prompt-injection-defense` — sanitize external content entering context

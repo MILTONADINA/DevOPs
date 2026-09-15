@@ -6,7 +6,6 @@ Understand the problem before building. Users, constraints, success metrics.
 
 ## Skills bundle
 
-- process/ask-dont-assume
 - process/spec-extraction
 - development/ears-spec-writing
 
@@ -14,7 +13,7 @@ Understand the problem before building. Users, constraints, success metrics.
 
 - User interviews (or proxy: PM, client, support tickets)
 - Constraint mapping (regulatory, technical, business)
-- Existing-system research (researcher subagent)
+- Existing-system research (native Explore agent)
 - Threat surface initial scan
 - First-draft EARS specs for top user journeys
 

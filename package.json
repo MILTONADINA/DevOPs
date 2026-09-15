@@ -35,8 +35,7 @@
     "subagents",
     "verification",
     "proof-of-work",
-    "stratum",
-    "karpathy"
+    "stratum"
   ],
   "author": "Milton Adina",
   "license": "MIT",

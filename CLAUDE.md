@@ -17,8 +17,9 @@ Claude Code-specific augmentation.
 
 ### Skills location
 
-DevOPs skills are at `~/DevOPs/skills/universal/` and project-local
-`.claude/skills/`. Skills are discovered automatically by Claude Code.
+DevOPs skills live in the project-local `skills/universal/` directory (there
+is no `~/DevOPs/` install on this machine). Claude Code also auto-discovers
+`.claude/skills/` if present.
 
 ### Plugin manifest
 
@@ -33,9 +34,12 @@ in any project:
 
 Claude Code hooks are configured via `.claude/settings.json`. The DevOPs
 installer wires the universal hooks from `~/DevOPs/hooks/universal/` into
-your project automatically.
+your project automatically. **As of this checkout, `.claude/settings.json`
+does not exist and `.claude/` is empty — hooks are NOT currently wired.** If
+hook-driven behavior (e.g. sealed-ref blocking) seems absent, check whether
+this file exists before assuming the hook logic itself is broken.
 
-Project-specific hooks added Session 14:
+Two project-specific hooks are defined and ready to wire in:
 
 - `hooks/universal/pre-tool/block-sealed-refs.sh` — blocks destructive git operations against sealed refs (v0.2.0 tag, archival branches). Returns exit 2 with explanation on attempt. References blueprint §3.
 - `hooks/universal/post-tool/sync-lr-refined-date.sh` — auto-bumps `docs/LAUNCH_READINESS.md` "Last refined" date when `plan.md` is edited. Light-touch: date only, never the math sections. References blueprint §11.1 refresh triggers.
@@ -57,13 +61,16 @@ DevOPs ships with these slash commands:
 - `/emit-claim` — wrap the spec → check → log → YAML → validator → commit ritual for cleaner claim emission
 
 **Anti-fabrication binding for status reporting**: Whenever the user asks for "status", "launch readiness", "where are we", "give me a report", or invokes `/launch-readiness` — the response MUST be derived from `blueprint.md` + `plan.md` + `docs/LAUNCH_READINESS.md` + `.workflow/state/{baton,session-handoff,polish-backlog}.md` + live git/gh outputs. Never fabricate figures, version-progress numbers, validator counts, or polish-backlog states. See `blueprint.md §11.1` for the canonical format + anti-fabrication rule.
+The underlying check is `npm run validate:claims`, which `/verify-claims`
+wraps.
 
 ### Subagent roles
 
-DevOPs ships nine universal subagents. Spawn them via the Task tool:
+DevOPs ships eight universal subagents. Spawn them via the Task tool. (A
+ninth, `researcher`, was removed 2026-09-14 as redundant with Claude Code's
+native Explore agent type — use that for codebase/doc investigation instead.)
 
 - `planner` — reads spec, decomposes into atomic tasks; never writes code
-- `researcher` — investigates codebase, external docs, prior decisions
 - `coder` — executes one atomic task at a time, surgical edits only
 - `tester` — writes/runs tests, produces proof artifacts
 - `reviewer` — reads diffs against spec + principles, blocks on violations
@@ -96,17 +103,22 @@ work, default thinking is sufficient.
 
 ### Memory
 
-The Stratum proxy (if configured) intercepts Claude Code calls. To enable:
+Stratum (`stratum/`) is this project's memory/gateway subsystem — one
+project, not a separate product (it was merged in as a subtree specifically
+so it would stop being one). Live, deployed (Fastify proxy + multi-provider
+gateway + Supabase-backed 3-tier memory + CFO dashboard) — not a
+hypothetical. See `stratum/` for current architecture; this file won't stay
+current with it.
+
+To route Claude Code calls through the local Stratum proxy:
 
 ```bash
 export ANTHROPIC_BASE_URL=http://localhost:4080
 ```
 
-Stratum will prune context using the CQ-Extended KadaneDial algorithm (when
-Phase 2 is complete) and log structured facts to its Supabase fact tables.
-
-For semantic temporal queries, Zep is available via the
-`@agentmemory/zep` MCP server. See `memory/zep/README.md`.
+(The Zep MCP backend for semantic temporal queries was removed 2026-09-14 as
+unwired dead weight — see `memory/README.md` for why. That kind of query is
+currently unsupported.)
 
 ---
 
@@ -114,3 +126,5 @@ For semantic temporal queries, Zep is available via the
 
 For per-machine settings or experiments, create `.claude/local.md`. It is
 gitignored and loaded automatically by Claude Code.
+This is Claude-Code-only. For an override that should also apply to
+Codex/Cursor, use `AGENTS.override.md` (defined in `AGENTS.md`) instead.

@@ -89,8 +89,8 @@ curl -sSfL https://github.com/sigstore/cosign/releases/download/v2.4.0/cosign-li
 cosign verify-blob \
   --certificate-identity-regexp 'https://github.com/MILTONADINA/DevOPs/' \
   --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
-  --signature skills/universal/process/karpathy-guidelines/SKILL.md.sig \
-  skills/universal/process/karpathy-guidelines/SKILL.md
+  --signature skills/universal/process/proof-of-work/SKILL.md.sig \
+  skills/universal/process/proof-of-work/SKILL.md
 ```
 
 Expected output on a valid signature: `Verified OK`. Expected output on
@@ -103,8 +103,8 @@ trust-bundle:
 ```bash
 cosign verify-blob \
   --bundle-path .workflow/sigstore/trust-bundle.json \
-  --signature skills/universal/process/karpathy-guidelines/SKILL.md.sig \
-  skills/universal/process/karpathy-guidelines/SKILL.md
+  --signature skills/universal/process/proof-of-work/SKILL.md.sig \
+  skills/universal/process/proof-of-work/SKILL.md
 ```
 
 The trust bundle is the Sigstore root-of-trust at a frozen point in
@@ -245,7 +245,7 @@ project's `.claude/skills/`. Per spec F (REQ-F1 through REQ-F7):
 ```bash
 # Default (recommended) — production install of DevOPs into a project
 node analyzer/install.ts --target /path/to/my-project
-# ✓ verified: skills/universal/process/karpathy-guidelines/SKILL.md
+# ✓ verified: skills/universal/process/proof-of-work/SKILL.md
 # ✓ verified: skills/universal/security/prompt-injection-defense/SKILL.md
 # ...
 # installed=N verified=N overridden=0 skipped=0 failed=0

@@ -51,7 +51,7 @@
 - Automated threat modeling from system sketches
 - C4 diagram generation skill
 - ERD generation from data classes
-- ADR template completion via researcher subagent
+- ADR template completion (via the native Explore agent — the dedicated `researcher` subagent was removed 2026-09-14 as redundant)
 - Performance budgets per feature
 - Accessibility budgets (WCAG 2.2 AA enforcement)
 
