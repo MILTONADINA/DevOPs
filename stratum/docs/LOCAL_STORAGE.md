@@ -113,8 +113,14 @@ checks key-based scope and bounded node/edge reads. The graph schema now
 rejects cross-organization edge references. Run
 `npm run db:verify-graph-integrity` to check insert and update rejection for
 foreign entity and session references. The read API supplies graph nodes and
-edges; source ingestion, node summaries, and the dashboard graph view remain
-separate work.
+edges. Run `npm run db:verify-source-graph` for a disposable source fixture
+round-trip and idempotence check. To ingest a selected project-local JS/TS
+subtree for an existing organization, set `INGEST_ORG_ID` to its UUID, optionally
+set `SOURCE_SUBDIR` (default `stratum/src`), and run
+`npm run db:with-env -- npm run ingest-source-graph` from `stratum/`. This creates
+File and top-level Function nodes with source-derived summaries plus DECLARES
+and relative-import DEPENDS_ON edges. Cross-language parsing, Tier-2 links,
+model-generated summaries, and the dashboard graph view remain separate work.
 
 Run `npm run db:verify-recovery` for a disposable organization backup and
 restore check. It exports a session, suppressed fact, audit status, and conflict

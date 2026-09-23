@@ -269,7 +269,7 @@ Each `statuses` item has `fact_table`, `fact_id`, `status` (`CONFIRMED`,
 Return a bounded Tier-3 graph snapshot for the authenticated organization.
 In personal mode, pass `?org-id=<uuid>`. `limit` defaults to 100 entities and
 is capped at 500. The response contains `entities` (`id`, `kind`, `name`,
-`session_id`) and at most 500 `edges` (`id`, `edge_type`, `from_entity`,
+`session_id`, `file_path`, `summary`) and at most 500 `edges` (`id`, `edge_type`, `from_entity`,
 `to_entity`); both endpoints of every edge are in the returned entity set.
 
 ---
