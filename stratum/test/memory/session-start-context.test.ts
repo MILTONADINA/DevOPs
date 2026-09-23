@@ -12,6 +12,26 @@ const base: SessionContextOptions = {
 };
 
 describe("session-start memory bridge", () => {
+  test("allows only the exact allowlisted local API origin", async () => {
+    const local = { ...base, supabaseUrl: "http://127.0.0.1:54321/", allowlistText: "127.0.0.1", task: "" };
+    const { client } = makeFakeSupabase();
+    let calls = 0;
+    const deps = {
+      makeClient: (_url: string, _key: string) => { calls++; return client; },
+      encode: () => { throw new Error("must not encode without a task"); },
+    };
+    expect(await retrieveSessionContext(local, deps)).toContain('"recentFacts":[]');
+    expect(calls).toBe(1);
+    for (const url of [
+      "http://localhost:54321/", "http://127.0.0.1:54322/",
+      "http://127.0.0.1:54321/rest/v1/", "http://user@127.0.0.1:54321/",
+      "http://127.0.0.1.evil.test:54321/", "http://project.supabase.co/",
+    ]) {
+      expect(await retrieveSessionContext({ ...local, supabaseUrl: url }, deps)).toBeNull();
+    }
+    expect(calls).toBe(1);
+  });
+
   test("missing or mismatched binding and disallowed host make no client call", async () => {
     const invalid = [
       { boundRoot: "/other" }, { orgId: "not-a-uuid" }, { serviceKey: "" },

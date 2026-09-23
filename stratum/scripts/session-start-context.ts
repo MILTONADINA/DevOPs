@@ -44,7 +44,8 @@ function isAllowed(opts: SessionContextOptions): boolean {
   if (!opts.projectRoot || opts.projectRoot !== opts.boundRoot || !ORG_ID.test(opts.orgId) || !opts.serviceKey) return false;
   let url: URL;
   try { url = new URL(opts.supabaseUrl); } catch { return false; }
-  if (url.protocol !== "https:" || url.username || url.password || url.port || url.pathname !== "/" || url.search || url.hash) return false;
+  const localUrl = opts.supabaseUrl === "http://127.0.0.1:54321" || opts.supabaseUrl === "http://127.0.0.1:54321/";
+  if ((!localUrl && (url.protocol !== "https:" || url.port)) || url.username || url.password || url.pathname !== "/" || url.search || url.hash) return false;
   const hosts = opts.allowlistText.split(/\r?\n/).map((line) => line.trim()).filter((line) => line && !line.startsWith("#"));
   return hosts.includes(url.hostname);
 }
