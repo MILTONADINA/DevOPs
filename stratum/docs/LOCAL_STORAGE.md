@@ -80,6 +80,13 @@ loopback HTTP OpenAI-compatible endpoint before starting the commercial proxy.
 Without those settings, no memory extraction runs. The database session is
 created per successful request; raw turns are not stored in PostgreSQL.
 
+Run `npm run db:verify-request-survival` to check that a fact extracted from
+the first authenticated message remains in the local database after 50 later
+message requests and is returned by the project-bound SessionStart bridge.
+The check uses a loopback fake extraction model and cleans up its organization,
+key, sessions, and fact. It verifies the request and recall wiring, not a live
+Claude hook or real-model extraction quality.
+
 Run `npm run db:verify-recovery` for a disposable organization backup and
 restore check. It exports a session, suppressed fact, audit status, and conflict
 to a temporary file under the ignored `backups/` directory, deletes the rows,
