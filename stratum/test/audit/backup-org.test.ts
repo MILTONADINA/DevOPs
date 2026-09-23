@@ -3,7 +3,11 @@
 // seeded throwaway org (see the commit's live-verification notes).
 
 import { describe, test, expect } from "vitest";
-import { parseArgs, summarizeBackup, totalRows, backupFilename, type BackupFile } from "../../scripts/backup-org";
+import { parseArgs, summarizeBackup, totalRows, backupFilename, ORG_SCOPED_TABLES, type BackupFile } from "../../scripts/backup-org";
+
+test("org backup includes the per-fact audit statuses", () => {
+  expect(ORG_SCOPED_TABLES).toContain("audit_statuses");
+});
 
 describe("parseArgs", () => {
   test("defaults: no org, no out, not pretty", () => {

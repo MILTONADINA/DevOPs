@@ -61,6 +61,7 @@ const HTML = `<!doctype html>
   .auth input { flex: 1; min-width: 240px; padding: .4rem .6rem; border: 1px solid #8884; border-radius: 6px; background: transparent; color: inherit; font: inherit; }
   .auth button { padding: .4rem .9rem; border: 1px solid #8884; border-radius: 6px; background: transparent; color: inherit; cursor: pointer; }
   .drift { border: 2px solid #e5484d; border-radius: 8px; padding: .75rem 1rem; margin-bottom: 1rem; color: #b4232b; }
+  .audit-confirmed { color: #13824b; font-weight: 700; } .audit-unverified { color: #986000; font-weight: 700; } .audit-conflict { color: #b4232b; font-weight: 700; }
   code { background: #8882; padding: .1rem .3rem; border-radius: 4px; }
 </style></head>
 <body>
@@ -71,6 +72,9 @@ const HTML = `<!doctype html>
   <div class="auth"><input id="key" type="password" autocomplete="off" placeholder="CQ API key (commercial mode)" /><button id="load-conflicts" type="button">Load alerts</button></div>
   <p id="drift-status" class="note">Enter a CQ API key, or use ?org-id= in personal mode.</p>
   <div id="drift" class="drift" role="alert" hidden><strong id="drift-count"></strong><table><thead><tr><th>Fact</th><th>Claimed</th><th>Actual</th><th>Commit</th></tr></thead><tbody id="drift-rows"></tbody></table></div>
+  <h2>Audit status</h2>
+  <p id="audit-status" class="note">Enter a CQ API key, or use ?org-id= in personal mode.</p>
+  <table id="audit-status-table"><thead><tr><th>Fact</th><th>Status</th><th>Evidence commit</th><th>Audited</th></tr></thead><tbody></tbody></table>
   <h2>Waste findings</h2>
   <table id="waste"><thead><tr><th>Type</th><th>Severity</th><th>~Tokens</th><th>Detail</th></tr></thead><tbody></tbody></table>
   <h2>Sessions</h2>
@@ -104,6 +108,8 @@ const HTML = `<!doctype html>
     const status = document.getElementById('drift-status');
     const banner = document.getElementById('drift');
     const driftRows = document.getElementById('drift-rows');
+    const auditStatus = document.getElementById('audit-status');
+    const auditRows = document.querySelector('#audit-status-table tbody');
     const org = new URLSearchParams(location.search).get('org-id') || '';
     keyInput.value = sessionStorage.getItem('cq_dashboard_key') || '';
     let loading = false;
@@ -112,7 +118,7 @@ const HTML = `<!doctype html>
       if (loading || document.hidden) return;
       const current = generation;
       const key = keyInput.value.trim();
-      if (!key && !org) { status.textContent = 'Enter a CQ API key, or use ?org-id= in personal mode.'; banner.hidden = true; driftRows.replaceChildren(); return; }
+      if (!key && !org) { status.textContent = 'Enter a CQ API key, or use ?org-id= in personal mode.'; auditStatus.textContent = status.textContent; banner.hidden = true; driftRows.replaceChildren(); auditRows.replaceChildren(); return; }
       loading = true;
       const url = '/v1/memory/conflicts?limit=10' + (key ? '' : '&org-id=' + encodeURIComponent(org));
       try {
@@ -126,8 +132,25 @@ const HTML = `<!doctype html>
         banner.hidden = conflicts.length === 0;
         document.getElementById('drift-count').textContent = conflicts.length + ' unacknowledged Historical Drift alert(s)';
         status.textContent = conflicts.length ? 'Conflicts are suppressed from memory injection.' : 'No unacknowledged Historical Drift alerts.';
+        try {
+          const statusUrl = '/v1/memory/audit-statuses?limit=10' + (key ? '' : '&org-id=' + encodeURIComponent(org));
+          const statusResponse = await fetch(statusUrl, { headers: key ? { Authorization: 'Bearer ' + key } : {}, cache: 'no-store' });
+          if (!statusResponse.ok) throw new Error(statusResponse.status === 401 ? 'Invalid or missing CQ API key.' : 'Audit status lookup failed (' + statusResponse.status + ').');
+          const statusData = await statusResponse.json();
+          if (current !== generation) return;
+          const statuses = Array.isArray(statusData.statuses) ? statusData.statuses : [];
+          auditRows.replaceChildren();
+          statuses.forEach(s => {
+            const tr = row([s.fact_table + ':' + s.fact_id, s.status, s.evidence_commit || '—', s.audited_at]);
+            tr.children[1].className = s.status === 'CONFIRMED' ? 'audit-confirmed' : s.status === 'UNVERIFIED' ? 'audit-unverified' : s.status === 'CONFLICT' ? 'audit-conflict' : '';
+            auditRows.appendChild(tr);
+          });
+          auditStatus.textContent = statuses.length ? statuses.length + ' audited fact(s).' : 'No facts audited yet.';
+        } catch (error) {
+          if (current === generation) { auditRows.replaceChildren(); auditStatus.textContent = error.message || String(error); }
+        }
       } catch (error) {
-        if (current === generation) { banner.hidden = true; driftRows.replaceChildren(); status.textContent = error.message || String(error); }
+        if (current === generation) { banner.hidden = true; driftRows.replaceChildren(); auditRows.replaceChildren(); status.textContent = error.message || String(error); auditStatus.textContent = status.textContent; }
       } finally {
         loading = false;
         if (current !== generation) void loadConflicts();

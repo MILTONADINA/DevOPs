@@ -37,6 +37,7 @@ export const RESTORE_ORDER = [
   "knowledge_edges",
   "memory_vectors",
   "audit_conflicts",
+  "audit_statuses",
   "api_keys",
 ] as const;
 

@@ -20,7 +20,7 @@ import { join } from "node:path";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 /** Org-scoped tables filtered directly by `org_id` (organizations is by `id`; pruning_logs by session). */
-const ORG_SCOPED_TABLES = [
+export const ORG_SCOPED_TABLES = [
   "developers",
   "org_config",
   "sessions",
@@ -35,6 +35,7 @@ const ORG_SCOPED_TABLES = [
   "knowledge_edges",
   "memory_vectors",
   "audit_conflicts",
+  "audit_statuses",
   "api_keys",
 ] as const;
 

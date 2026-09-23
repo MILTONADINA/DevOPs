@@ -126,6 +126,8 @@ describe("dashboard route", () => {
     const res = await app.inject({ method: "GET", url: "/dashboard" });
     expect(res.statusCode).toBe(200);
     expect(res.payload).toContain("/v1/memory/conflicts");
+    expect(res.payload).toContain("/v1/memory/audit-statuses");
+    expect(res.payload).toContain("Audit status");
     expect(res.payload).toContain("Historical Drift");
     expect(res.payload).toContain("Authorization: 'Bearer '");
     expect(res.payload).toContain("sessionStorage");
@@ -167,6 +169,8 @@ describe("dashboard route", () => {
       calls.push({ url, headers: opts?.headers });
       return { ok: !(failAuth && url.startsWith("/v1/memory/conflicts")), status: failAuth ? 401 : 200, json: async () => url === "/dashboard/api"
         ? { note: hostile, session_count: 0, total_turns: 0, total_dropped_turns: 0, total_input_tokens: 0, total_output_tokens: 0, estimated_cost_usd: 0, top_waste_type: hostile, waste: [{ type: hostile, severity: "high", token_estimate: 1, description: hostile }], sessions: [] }
+        : url.startsWith("/v1/memory/audit-statuses")
+          ? { statuses: [{ fact_table: "function_changes", fact_id: "f1", status: hostile, evidence_commit: hostile, audited_at: "t" }] }
         : { conflicts: [{ fact_table: "function_changes", fact_id: "f1", claimed_state: hostile, actual_state: hostile, conflict_commit: "c1" }] } };
     };
     const storage = new Map<string, string>();
@@ -188,9 +192,12 @@ describe("dashboard route", () => {
     byId("key").value = "cq_test_secret";
     byId("load-conflicts").listeners.get("click")!();
     await vi.waitFor(() => expect(byId("drift-rows").children).toHaveLength(1));
+    await vi.waitFor(() => expect(byId("#audit-status-table tbody").children).toHaveLength(1));
     expect(calls[1]).toEqual({ url: "/v1/memory/conflicts?limit=10", headers: { Authorization: "Bearer cq_test_secret" } });
+    expect(calls[2]).toEqual({ url: "/v1/memory/audit-statuses?limit=10", headers: { Authorization: "Bearer cq_test_secret" } });
     expect(byId("drift").hidden).toBe(false);
     expect(byId("drift-rows").children[0]!.children[1]!.textContent).toBe(hostile);
+    expect(byId("#audit-status-table tbody").children[0]!.children[1]!.textContent).toBe(hostile);
     expect([...ids.values()].flatMap((n) => n.children).every((n) => n.tag !== "img")).toBe(true);
     expect(storage.get("cq_dashboard_key")).toBe("cq_test_secret");
     expect(intervalMs).toBeLessThan(5000);
