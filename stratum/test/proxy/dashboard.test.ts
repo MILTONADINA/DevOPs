@@ -163,19 +163,23 @@ describe("dashboard route", () => {
     };
     const hostile = '<img src=x onerror="alert(1)">';
     const calls: Array<{ url: string; headers?: Record<string, string> }> = [];
+    let relatedFacts = [{ id: "fact-1", kind: "TechDecision", summary: hostile }];
+    let relatedError = false;
     let holdRelated = false;
     let releaseRelated: (() => void) | undefined;
     const fetch = async (url: string, options: { headers?: Record<string, string> }) => {
       calls.push({ url, headers: options.headers });
+      const factsAtRequest = relatedFacts;
       if (url.startsWith("/v1/memory/graph/related-facts") && holdRelated && url.includes("src%2Fa.ts")) {
         await new Promise<void>((resolve) => {
           releaseRelated = resolve;
         });
       }
       return {
-        ok: true,
+        ok: !(relatedError && url.startsWith("/v1/memory/graph/related-facts")),
+        status: relatedError ? 503 : 200,
         json: async () => {
-          if (url.startsWith("/v1/memory/graph/related-facts")) return { facts: [{ id: "fact-1", kind: "TechDecision", summary: hostile }] };
+          if (url.startsWith("/v1/memory/graph/related-facts")) return { facts: factsAtRequest };
           if (url.startsWith("/v1/memory/graph/files") && !url.includes("after="))
             return { files: [{ id: "c", kind: "File", name: "src/c.ts", file_path: "src/c.ts", summary: "Dependency first" }], next: "src/c.ts" };
           if (url.startsWith("/v1/memory/graph/files"))
@@ -232,6 +236,44 @@ describe("dashboard route", () => {
     expect(byId("relations").children).toHaveLength(1);
     await vi.waitFor(() => expect(byId("details").children.find((node) => node.tag === "section")?.children[1]?.tag).toBe("ul"));
     expect(byId("details").children.find((node) => node.tag === "section")!.children[1]!.children[0]!.textContent).toBe("TechDecision: " + hostile);
+    const factLabel = "TechDecision: " + hostile;
+    const factNodes = () => byId("viewport").children.filter((node) => node.attrs.get("aria-label") === factLabel);
+    expect(factNodes()).toHaveLength(1);
+    expect(byId("viewport").children.filter((node) => node.tag === "line")).toHaveLength(2);
+    factNodes()[0]!.listeners.get("click")!({ stopPropagation: () => undefined });
+    expect(byId("details").children[0]!.textContent).toBe(factLabel);
+    expect(byId("relations").children[0]!.children[0]!.textContent).toContain(hostile);
+    byId("viewport")
+      .children.find((node) => node.attrs.get("aria-label") === hostile)!
+      .listeners.get("click")!({ stopPropagation: () => undefined });
+    await vi.waitFor(() => expect(factNodes()).toHaveLength(1));
+    holdRelated = true;
+    byId("viewport")
+      .children.find((node) => node.attrs.get("aria-label") === hostile)!
+      .listeners.get("click")!({ stopPropagation: () => undefined });
+    relatedFacts = [];
+    holdRelated = false;
+    byId("viewport")
+      .children.find((node) => node.attrs.get("aria-label") === hostile)!
+      .listeners.get("click")!({ stopPropagation: () => undefined });
+    await vi.waitFor(() => expect(byId("details").children.find((node) => node.tag === "section")?.children[1]?.textContent).toBe("No active facts linked to this file."));
+    expect(factNodes()).toHaveLength(0);
+    expect(byId("viewport").children.filter((node) => node.tag === "line")).toHaveLength(1);
+    releaseRelated?.();
+    await Promise.resolve();
+    expect(factNodes()).toHaveLength(0);
+    relatedFacts = Array.from({ length: 51 }, (_, index) => ({ id: `fact-${index}`, kind: "TechDecision", summary: `decision ${index}` }));
+    byId("viewport")
+      .children.find((node) => node.attrs.get("aria-label") === hostile)!
+      .listeners.get("click")!({ stopPropagation: () => undefined });
+    await vi.waitFor(() => expect(byId("viewport").children.filter((node) => node.attrs.get("aria-label")?.startsWith("TechDecision: decision "))).toHaveLength(50));
+    relatedError = true;
+    byId("viewport")
+      .children.find((node) => node.attrs.get("aria-label") === hostile)!
+      .listeners.get("click")!({ stopPropagation: () => undefined });
+    await vi.waitFor(() => expect(byId("details").children.find((node) => node.tag === "section")?.children[1]?.textContent).toBe("Related facts unavailable (503)."));
+    expect(byId("viewport").children.some((node) => node.attrs.get("aria-label")?.startsWith("TechDecision:"))).toBe(false);
+    relatedError = false;
     expect(calls.find((call) => call.url.startsWith("/v1/memory/graph/related-facts"))).toEqual({
       url: "/v1/memory/graph/related-facts?file=src%2Fa.ts",
       headers: { Authorization: "Bearer cq_test_key" },
@@ -240,10 +282,12 @@ describe("dashboard route", () => {
     byId("search-query").value = "needle";
     byId("search").listeners.get("click")!({ stopPropagation: () => undefined });
     await vi.waitFor(() => expect(byId("status").textContent).toContain("1 matching node"));
+    expect(byId("viewport").children.some((node) => node.attrs.get("aria-label")?.startsWith("TechDecision:"))).toBe(false);
     expect(calls.find((call) => call.url.startsWith("/v1/memory/graph/search"))).toEqual({
       url: "/v1/memory/graph/search?q=needle",
       headers: { Authorization: "Bearer cq_test_key" },
     });
+    relatedFacts = [{ id: "fact-1", kind: "TechDecision", summary: hostile }];
     holdRelated = true;
     byId("details").children[1]!.children[0]!.children[0]!.listeners.get("click")!({ stopPropagation: () => undefined });
     expect(byId("details").children[0]!.textContent).toBe(hostile);

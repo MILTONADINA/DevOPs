@@ -42,6 +42,8 @@ const keyInput = document.getElementById('key');
 const org = new URLSearchParams(location.search).get('org-id') || '';
 keyInput.value = sessionStorage.getItem('cq_dashboard_key') || '';
 let nodes = [], edges = [], byId = new Map(), visible = new Set(), selected = null;
+let selectionVersion = 0;
+const factNodesByFile = new Map();
 let tour = [], tourIndex = -1, tourHadCycle = false;
 let x = 0, y = 0, scale = 1, dragging = null;
 function element(tag, value) { const node = document.createElement(tag); if (value != null) node.textContent = String(value); return node; }
@@ -57,14 +59,9 @@ function positions(items) {
   });
   return points;
 }
-function select(id) {
-  const node = byId.get(id);
-  if (!node) return;
-  selected = id;
+function renderRelations(id) {
   const attached = edges.filter(e => e.from_entity === id || e.to_entity === id);
   attached.forEach(e => { visible.add(e.from_entity); visible.add(e.to_entity); });
-  details.replaceChildren(element('h2', node.name), element('p', 'Type: ' + node.kind),
-    element('p', 'Path: ' + (node.file_path || '—')), element('p', node.summary || 'No summary available.'), relations);
   relations.replaceChildren();
   attached.forEach(e => {
     const other = byId.get(e.from_entity === id ? e.to_entity : e.from_entity);
@@ -76,10 +73,48 @@ function select(id) {
     item.appendChild(button); relations.appendChild(item);
   });
   if (!attached.length) relations.appendChild(element('li', 'No relationships in this snapshot.'));
-  draw();
-  if (node.file_path) void showRelated(id, node.file_path);
 }
-async function showRelated(id, filePath) {
+function clearFactNodes(fileId) {
+  const previous = factNodesByFile.get(fileId);
+  if (!previous) return;
+  nodes = nodes.filter(node => !previous.nodes.has(node.id));
+  edges = edges.filter(edge => !previous.edges.has(edge.id));
+  previous.nodes.forEach(id => { byId.delete(id); visible.delete(id); });
+  factNodesByFile.delete(fileId);
+}
+function resetFactNodes() {
+  for (const fileId of factNodesByFile.keys()) clearFactNodes(fileId);
+  selectionVersion++;
+}
+function syncFactNodes(fileId, facts) {
+  clearFactNodes(fileId);
+  const added = { nodes: new Set(), edges: new Set() };
+  for (const fact of facts) {
+    if (!fact || !['FunctionChange', 'TechDecision'].includes(fact.kind) || typeof fact.id !== 'string' || !fact.id || typeof fact.summary !== 'string') continue;
+    const nodeId = 'fact:' + fact.kind + ':' + fact.id;
+    if (added.nodes.has(nodeId)) continue;
+    const edgeId = 'source-fact:' + fileId + ':' + fact.kind + ':' + fact.id;
+    const node = { id: nodeId, kind: fact.kind, name: fact.kind + ': ' + fact.summary.slice(0, 160), file_path: null, summary: fact.summary };
+    nodes.push(node); byId.set(nodeId, node); visible.add(nodeId);
+    edges.push({ id: edgeId, edge_type: 'HAS_FACT', from_entity: fileId, to_entity: nodeId });
+    added.nodes.add(nodeId); added.edges.add(edgeId);
+  }
+  factNodesByFile.set(fileId, added);
+  renderRelations(fileId);
+  draw();
+}
+function select(id) {
+  const node = byId.get(id);
+  if (!node) return;
+  selected = id;
+  const version = ++selectionVersion;
+  details.replaceChildren(element('h2', node.name), element('p', 'Type: ' + node.kind),
+    element('p', 'Path: ' + (node.file_path || '—')), element('p', node.summary || 'No summary available.'), relations);
+  renderRelations(id);
+  draw();
+  if (node.file_path) void showRelated(id, node.file_path, node.kind === 'File', version);
+}
+async function showRelated(id, filePath, isFile, version) {
   const section = element('section');
   const heading = element('h3', 'Related Tier-2 facts');
   section.append(heading, element('p', 'Loading…'));
@@ -90,14 +125,18 @@ async function showRelated(id, filePath) {
     const response = await fetch(url, { headers: key ? { Authorization: 'Bearer ' + key } : {}, cache: 'no-store' });
     if (!response.ok) throw new Error('Related facts unavailable (' + response.status + ').');
     const data = await response.json();
-    if (selected !== id) return;
-    const facts = Array.isArray(data.facts) ? data.facts : [];
+    if (selected !== id || selectionVersion !== version) return;
+    const facts = Array.isArray(data.facts) ? data.facts.slice(0, 50) : [];
+    if (isFile) syncFactNodes(id, facts);
     if (!facts.length) { section.replaceChildren(heading, element('p', 'No active facts linked to this file.')); return; }
     const list = element('ul');
     facts.forEach(fact => list.appendChild(element('li', fact.kind + ': ' + fact.summary)));
     section.replaceChildren(heading, list);
   } catch (error) {
-    if (selected === id) section.replaceChildren(heading, element('p', error.message || String(error)));
+    if (selected === id && selectionVersion === version) {
+      if (isFile) syncFactNodes(id, []);
+      section.replaceChildren(heading, element('p', error.message || String(error)));
+    }
   }
 }
 function draw() {
@@ -112,7 +151,7 @@ function draw() {
   shown.forEach(node => {
     const point = points.get(node.id);
     const group = vector('g', { transform: 'translate(' + point.x + ' ' + point.y + ')', tabindex: 0, role: 'button', 'aria-label': node.name });
-    const circle = vector('circle', { r: node.id === selected ? 17 : 12, fill: node.kind === 'File' ? '#35a6ae' : '#b67ade', stroke: '#fff', 'stroke-width': node.id === selected ? 2 : 0 });
+    const circle = vector('circle', { r: node.id === selected ? 17 : 12, fill: node.kind === 'File' ? '#35a6ae' : node.id.startsWith('fact:') ? '#d9a254' : '#b67ade', stroke: '#fff', 'stroke-width': node.id === selected ? 2 : 0 });
     const label = vector('text', { x: 18, y: 4, fill: '#fff', 'font-size': 12 });
     label.textContent = node.name.length > 30 ? node.name.slice(-30) : node.name;
     group.append(circle, label);
@@ -134,6 +173,9 @@ svg.addEventListener('pointercancel', () => { dragging = null; });
 async function load() {
   const key = keyInput.value.trim();
   if (!key && !org) { status.textContent = 'Enter a CQ API key, or use ?org-id= in personal mode.'; return; }
+  resetFactNodes(); selected = null; draw();
+  relations.replaceChildren();
+  details.replaceChildren(element('h2', 'Node details'), element('p', 'Loading graph…'), relations);
   if (key) sessionStorage.setItem('cq_dashboard_key', key); else sessionStorage.removeItem('cq_dashboard_key');
   status.textContent = 'Loading graph…';
   try {
@@ -153,6 +195,7 @@ async function load() {
     status.textContent = nodes.length + ' nodes, ' + edges.length + ' edges loaded. Showing ' + visible.size + ' nodes; select one to reveal neighbors.' + (nodes.length === 500 ? ' Snapshot may be truncated at 500 nodes.' : '');
   } catch (error) {
     nodes = []; edges = []; byId = new Map(); visible = new Set(); draw();
+    details.replaceChildren(element('h2', 'Node details'), element('p', 'Graph unavailable.'), relations);
     status.textContent = error.message || String(error);
   }
 }
@@ -161,6 +204,9 @@ async function search() {
   const query = document.getElementById('search-query').value.trim();
   if (!key && !org) { status.textContent = 'Enter a CQ API key, or use ?org-id= in personal mode.'; return; }
   if (query.length < 2 || query.length > 100) { status.textContent = 'Search needs 2 to 100 characters.'; return; }
+  resetFactNodes(); selected = null; draw();
+  relations.replaceChildren();
+  details.replaceChildren(element('h2', 'Search results'), element('p', 'Searching graph…'), relations);
   if (key) sessionStorage.setItem('cq_dashboard_key', key); else sessionStorage.removeItem('cq_dashboard_key');
   status.textContent = 'Searching graph…';
   try {
@@ -185,7 +231,10 @@ async function search() {
     x = svg.clientWidth / 2; y = svg.clientHeight / 2; scale = 1;
     draw();
     status.textContent = matches.length + ' matching node(s). Select one to reveal its neighbors.';
-  } catch (error) { status.textContent = error.message || String(error); }
+  } catch (error) {
+    details.replaceChildren(element('h2', 'Search results'), element('p', 'Search unavailable.'), relations);
+    status.textContent = error.message || String(error);
+  }
 }
 function orderTour(files, dependencies) {
   const sorted = [...files].sort((a, b) => a.name.localeCompare(b.name));
@@ -263,6 +312,7 @@ async function startTour() {
     const files = await fetchTourPages('/v1/memory/graph/files', 'files', key);
     const dependencies = await fetchTourPages('/v1/memory/graph/dependencies', 'edges', key);
     const result = orderTour(files, dependencies);
+    resetFactNodes();
     tour = result.ordered; tourHadCycle = result.cycle; tourIndex = tour.length ? 0 : -1;
     byId = new Map([...byId, ...files.map(file => [file.id, file])]);
     nodes = [...byId.values()];
