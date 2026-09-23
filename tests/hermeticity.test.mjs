@@ -4,7 +4,7 @@ import { readFileSync, readdirSync, mkdtempSync, writeFileSync, rmSync } from 'n
 import path from 'node:path';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
-const forbidden = /\b(?:execFileSync|execSync|spawnSync|spawn|exec)\s*\(\s*(['"`])(git|brew|xcodebuild|xcrun|npm|npx)\1/g;
+const forbidden = /\b(?:execFileSync|execSync|spawnSync|spawn|exec)\s*\(\s*(['"`])(git|brew|xcodebuild|xcrun|npm|npx)(?=\1|\s)/g;
 
 function violations(file) {
   const source = readFileSync(file, 'utf8').split('\n')
@@ -32,6 +32,8 @@ test('toolchain subprocess calls in tests are reported with file and line', () =
     writeFileSync(file, 'const x = ' + 'execFileSync' + "('git', ['rev-parse']);\n");
     assert.deepEqual(violations(file), [`${file}:1`]);
     writeFileSync(file, 'const x = ' + 'execFileSync' + "(\n  'git', ['rev-parse']);\n");
+    assert.deepEqual(violations(file), [`${file}:1`]);
+    writeFileSync(file, 'const x = ' + 'execSync' + "('git rev-parse --show-toplevel');\n");
     assert.deepEqual(violations(file), [`${file}:1`]);
   } finally {
     rmSync(dir, { recursive: true, force: true });

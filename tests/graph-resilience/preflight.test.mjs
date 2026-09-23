@@ -8,6 +8,16 @@ import { createHash } from 'node:crypto';
 const ROOT = path.resolve(import.meta.dirname, '..', '..');
 const PREFLIGHT = path.join(ROOT, 'scripts', 'graph-preflight.sh');
 
+test('declared Node engine supports import.meta.dirname used by graph scripts', () => {
+  const manifest = JSON.parse(readFileSync(path.join(ROOT, 'package.json')));
+  const lock = JSON.parse(readFileSync(path.join(ROOT, 'package-lock.json')));
+  const minimum = /^>=(\d+)\.(\d+)\.(\d+)$/.exec(manifest.engines.node);
+  assert.ok(minimum, 'engines.node must declare a minimum version');
+  const [major, minor] = minimum.slice(1).map(Number);
+  assert.ok(major > 20 || (major === 20 && minor >= 11), 'import.meta.dirname needs Node 20.11 or newer');
+  assert.equal(lock.packages[''].engines.node, manifest.engines.node);
+});
+
 test('check-only reports an Xcode git failure without trying a repair', () => {
   const dir = mkdtempSync(path.join(ROOT, '.workflow', 'state', 'graph-preflight-test-'));
   try {
