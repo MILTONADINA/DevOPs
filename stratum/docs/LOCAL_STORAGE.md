@@ -128,8 +128,11 @@ personal mode. The view shows up to 500 current nodes, their in-snapshot edges,
 source paths and summaries; selecting a node reveals its neighbors. It warns
 when the snapshot may be truncated. Its search box uses the scoped fuzzy
 name API to find nodes beyond that snapshot and reveal their immediate
-neighbors. Run `npm run db:verify-graph-search` for a disposable 501-node
-search check. Semantic search, tours, and pagination are separate gates.
+neighbors. Start tour loads every organization File and DEPENDS_ON page, then
+shows dependencies before files that import them with Previous/Next controls.
+Run `npm run db:verify-graph-search` for a disposable 501-file/500-edge search
+and traversal check. Semantic node search, generated narration, and real-browser
+verification remain separate gates.
 
 Run `npm run db:verify-recovery` for a disposable organization backup and
 restore check. It exports a session, suppressed fact, audit status, and conflict

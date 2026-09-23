@@ -7,6 +7,7 @@
  *   GET    /v1/memory/audit-statuses[?org-id&limit] → the org's latest persisted audit outcomes.
  *   GET    /v1/memory/graph[?org-id&limit]          → bounded org-scoped entities and edges.
  *   GET    /v1/memory/graph/search?q=...             → bounded fuzzy matches and neighbors.
+ *   GET    /v1/memory/graph/files|dependencies       → scoped source-graph pages.
  *
  * Org scope comes from req.orgId (the auth gate) with a ?org-id fallback. The store is INJECTED
  * (MemoryDeps) so the route is testable via app.inject() with no DB; createSupabaseMemoryDeps wires
@@ -48,6 +49,16 @@ export interface GraphSearchResult extends GraphSnapshot {
   matches: string[];
 }
 
+export interface GraphFilePage {
+  files: GraphSnapshot["entities"];
+  next: string | null;
+}
+
+export interface GraphDependencyPage {
+  edges: GraphSnapshot["edges"];
+  next: string | null;
+}
+
 export interface MemoryDeps {
   listFacts: (orgId: string, limit: number) => Promise<AnyFact[]>;
   /** Suppress fact `id` in `table` for `orgId`; returns whether a row was affected. */
@@ -56,9 +67,12 @@ export interface MemoryDeps {
   listAuditStatuses: (orgId: string, limit: number) => Promise<AuditStatusSummary[]>;
   listGraph: (orgId: string, limit: number) => Promise<GraphSnapshot>;
   searchGraph: (orgId: string, query: string) => Promise<GraphSearchResult>;
+  listGraphFiles: (orgId: string, limit: number, after?: string) => Promise<GraphFilePage>;
+  listGraphDependencies: (orgId: string, limit: number, after?: string) => Promise<GraphDependencyPage>;
 }
 
 const VALID_FACT_TABLES = new Set(Object.values(FACT_TABLES));
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function resolveOrg(req: FastifyRequest): string | undefined {
   if (typeof req.orgId === "string" && req.orgId !== "") return req.orgId;
@@ -73,6 +87,18 @@ function intParam(req: FastifyRequest, name: string, def: number): number {
   const v = (req.query as Record<string, unknown>)[name];
   const n = typeof v === "string" ? Number.parseInt(v, 10) : NaN;
   return Number.isFinite(n) && n > 0 ? Math.min(n, 500) : def; // cap (mirrors billing) — no unbounded ?limit
+}
+
+function pageParams(req: FastifyRequest, cursorKind: "name" | "uuid"): { limit: number; after?: string } | null {
+  const query = req.query as Record<string, unknown>;
+  const rawLimit = query["limit"];
+  if (rawLimit !== undefined && (typeof rawLimit !== "string" || !/^[1-9][0-9]*$/.test(rawLimit))) return null;
+  const limit = rawLimit === undefined ? 500 : Number(rawLimit);
+  if (!Number.isSafeInteger(limit) || limit > 500) return null;
+  const after = query["after"];
+  if (after === undefined) return { limit };
+  if (typeof after !== "string" || !after || (cursorKind === "uuid" ? !UUID.test(after) : after.length > 1024)) return null;
+  return { limit, after };
 }
 
 function err(reply: FastifyReply, code: number, message: string): FastifyReply {
@@ -131,6 +157,22 @@ export function makeMemoryRoute(deps: MemoryDeps): FastifyPluginCallback {
       const query = typeof raw === "string" ? raw.trim() : "";
       if (query.length < 2 || query.length > 100) return err(reply, 400, "q must be 2 to 100 characters");
       return deps.searchGraph(orgId, query);
+    });
+
+    app.get("/v1/memory/graph/files", async (req, reply) => {
+      const orgId = resolveOrg(req);
+      if (orgId === undefined) return err(reply, 400, "org id required (authenticate, or pass ?org-id)");
+      const page = pageParams(req, "name");
+      if (!page) return err(reply, 400, "invalid graph page limit or after cursor");
+      return deps.listGraphFiles(orgId, page.limit, page.after);
+    });
+
+    app.get("/v1/memory/graph/dependencies", async (req, reply) => {
+      const orgId = resolveOrg(req);
+      if (orgId === undefined) return err(reply, 400, "org id required (authenticate, or pass ?org-id)");
+      const page = pageParams(req, "uuid");
+      if (!page) return err(reply, 400, "invalid graph page limit or after cursor");
+      return deps.listGraphDependencies(orgId, page.limit, page.after);
     });
 
     done();
@@ -197,6 +239,34 @@ export function createSupabaseMemoryDeps(client: SupabaseClient): MemoryDeps {
       const entities = [...matches, ...((related?.data ?? []) as GraphSnapshot["entities"])];
       const known = new Set(entities.map((entity) => entity.id));
       return { matches: ids, entities, edges: edges.filter((edge) => known.has(edge.from_entity) && known.has(edge.to_entity)) };
+    },
+    async listGraphFiles(orgId, limit, after) {
+      let request = client
+        .from("knowledge_entities")
+        .select("id,kind,name,session_id,file_path,summary")
+        .eq("org_id", orgId)
+        .eq("kind", "File")
+        .order("name")
+        .limit(limit + 1);
+      if (after !== undefined) request = request.gt("name", after);
+      const result = await request;
+      if (result.error) throw new Error(`listGraphFiles failed: ${result.error.message}`);
+      const files = ((result.data ?? []) as GraphSnapshot["entities"]).slice(0, limit);
+      return { files, next: (result.data ?? []).length > limit ? files.at(-1)!.name : null };
+    },
+    async listGraphDependencies(orgId, limit, after) {
+      let request = client
+        .from("knowledge_edges")
+        .select("id,edge_type,from_entity,to_entity")
+        .eq("org_id", orgId)
+        .eq("edge_type", "DEPENDS_ON")
+        .order("id")
+        .limit(limit + 1);
+      if (after !== undefined) request = request.gt("id", after);
+      const result = await request;
+      if (result.error) throw new Error(`listGraphDependencies failed: ${result.error.message}`);
+      const edges = ((result.data ?? []) as GraphSnapshot["edges"]).slice(0, limit);
+      return { edges, next: (result.data ?? []).length > limit ? edges.at(-1)!.id : null };
     },
   };
 }
