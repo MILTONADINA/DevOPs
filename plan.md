@@ -186,9 +186,11 @@ Borrowed from [obra/superpowers](https://github.com/obra/superpowers). Extends o
 Tier 3 graph/vector latency is measured on the approved Supabase implementation;
 Zod gates all writes; the DevOPs session-start hook retrieves relevant facts.
 **Status (2026-09-23)**: hot, warm, Supabase graph/vector, promotion code,
-memory API, and the read-only `understand-codebase` CLI exist. The simulated
-50-turn survival test passes.
-The session-start bridge is absent; the Tier-2 latency gate remains open.
+memory API, read-only `understand-codebase` CLI, and a scoped Claude
+SessionStart recall bridge exist. The simulated 50-turn survival test passes.
+Live session-start binding/retrieval and the Tier-2 latency gate remain open.
+The paid Supabase project is retired; ADR-0020 selects the free local CLI
+stack for development, not production release readiness.
 ADR-0013 replaces Pinecone/Neo4j as v0.5 ship dependencies while keeping
 their adapter interfaces available. The original ~100h estimate is stale and
 must be recalculated after the open gates are reconciled.
@@ -231,7 +233,12 @@ must be recalculated after the open gates are reconciled.
 - [ ] **Nightly Tier 2 → Tier 3 promotion job**. The idempotent
   `npm run promote` script exists; a scheduled operator invocation is still
   required before calling nightly promotion complete.
-- [ ] **DevOPs session-start hook integration** (~8h). Extend `hooks/universal/session-start/load-baton.sh` to query Stratum facts: current project's recent Tier 2 facts + Tier 3 semantic search for current task context. Inject top-N facts into agent context via constitution layer.
+- [x] **Claude SessionStart recall bridge**. The scoped, bounded bridge reads
+  current-project Tier 2 facts and local semantic matches; see
+  `stratum/scripts/session-start-context.ts` and PR #42.
+- [ ] **Live session-start binding and recall**. Configure a trusted project/org
+  mapping and local database credentials, then measure retrieval/injection in
+  a real Claude session. Other tools' session-start adapters remain open.
 - [x] **50-turn survival test**: `stratum/test/memory/manager.test.ts` proves a
   decision evicted from hot memory is extracted, persisted, and recalled after
   50 unrelated turns using a fake model and database. A separate live memory
@@ -451,7 +458,7 @@ Update after every version ships. Snapshot at last update:
 | v0.2.0 (foundation + Stratum subtree) | **SHIPPED** | ~155h | — | Sealed `aca4982` |
 | v0.3.x (Phase 0 + Phase 1 + first-party Anthropic integrations + red/green TDD explicit) | NOT STARTED | 0 | ~115h | Friend can clone + setup + see live dashboard; `/security-review` GitHub Action gates PRs |
 | v0.4.x (Phase 2 pruner + subagent-driven-development autonomous loops) | NOT STARTED | 0 | ~135h | Eval GREEN; zero Tier C regressions; 1 week no degradation; pilot autonomous loop succeeds on one Phase 2 sub-task |
-| v0.5.x (Phase 3 memory + knowledge-graph view) | NOT STARTED | 0 | ~130h | Fact-survives-50-turn; tier latencies met; `/understand-codebase` works on this repo |
+| v0.5.x (Phase 3 memory + knowledge-graph view) | IN PROGRESS | not recalculated | not recalculated | 50-turn survival test; live session-start recall; tier latencies met; `/understand-codebase` works on this repo |
 | v0.6.x (Phase 5 audit) | NOT STARTED | 0 | ~60h | CONFLICT in <5s; Opus <1% escalation |
 | v0.7.x (Phase 4 TEE + Claude Code Security reasoning-based release gate) | NOT STARTED | 0 | ~84h | Modified-PCR rejected; <15ms latency; security reviewer signoff; Claude Code Security clean release |
 | v0.8.x (polish + operator-ready) | NOT STARTED | 0 | ~50h | <5min cold-clone-to-running; backup tested |

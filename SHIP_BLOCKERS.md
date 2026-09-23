@@ -562,11 +562,12 @@ the original provider-specific stubs, but it no longer describes Tier 3 as a
 whole. `stratum/src/memory/cold/{graph,vectors}.ts` implements the approved
 Supabase graph/pgvector path; its migrations and live checks are recorded in
 ADR-0013. `stratum/scripts/understand-codebase.ts` supplies a CLI foundation.
-The DevOPs session-start bridge, a scheduled promotion invocation, Tier-2
-<50ms p95 release evidence, and the graph dashboard/search/tours remain open.
-The provider-specific latency targets need a binding Supabase replacement
-after the deployment topology is chosen. See the updated v0.5 section of
-`plan.md` for the itemized state.
+PR #42 added a scoped Claude SessionStart bridge; live project/org binding and
+recall remain open. A scheduled promotion invocation, Tier-2 <50ms p95
+release evidence, and the graph dashboard/search/tours also remain open.
+ADR-0020 selects a local Supabase CLI stack for development after the owner
+retired the paid project; production latency and storage gates still need a
+deployed topology. See the updated v0.5 section of `plan.md` for itemized state.
 
 ---
 
