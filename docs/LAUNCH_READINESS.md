@@ -52,8 +52,9 @@ removes stale nodes after refresh; a real Chrome check verified navigation and
 literal text (claim 055). Offline semantic node search is verified against
 local PostgreSQL and ONNX (claim 056). Deterministic tour narration uses
 source summaries and direct graph edges. Rust and Python declarations and
-local dependencies are indexed in the local graph; model-generated source
-summaries remain open. The historical effort
+local dependencies are indexed in the local graph. An opt-in loopback model
+summary path is locally wired and guarded; real-model quality remains open.
+The historical effort
 percentage below has not been recalculated.
 
 The Claude semantic review job reported a visible skip on these PRs because
