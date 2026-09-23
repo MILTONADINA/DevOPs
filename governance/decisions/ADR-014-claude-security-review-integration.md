@@ -8,6 +8,12 @@
 
 **Accepted** (Session 15, 2026-05-28). Landed on `main` via PR #18 at squash-merge SHA `9cfcc75`.
 
+**2026-09-23 amendment**: The owner has no Anthropic API key. Until one is
+configured, the workflow emits a visible skip rather than an authentication
+failure. Claude semantic review is advisory and must not be claimed as run
+when skipped. The public repository now requires approval for all external
+contributor workflow runs (`all_external_contributors`).
+
 ## Context
 
 The DevOPs masterpiece envelope (per `blueprint.md §6` quality bar) requires production-grade security review on every change to `main`. Three review mechanisms exist:
@@ -50,9 +56,9 @@ Wire `anthropics/claude-code-security-review` as a PR-gating GitHub Action workf
 
 ### Required secret
 
-`CLAUDE_API_KEY` (Anthropic API key with both Claude API + Claude Code usage enabled). Configured at https://github.com/MILTONADINA/DevOPs/settings/secrets/actions. The workflow runs without the secret will result in API authentication failures from the action itself — there's no agent-side bypass.
+`CLAUDE_API_KEY` (Anthropic API key with both Claude API + Claude Code usage enabled). Configured at https://github.com/MILTONADINA/DevOPs/settings/secrets/actions. Without it, the workflow visibly skips the action and reports that no Claude review ran.
 
-**Bootstrap order**: this ADR + workflow lands BEFORE the secret is configured. The first PR after merge that lacks the secret will surface the failure-mode to the user, who then configures the secret out-of-band. Subsequent PRs run normally.
+**Bootstrap order**: this ADR + workflow lands BEFORE the secret is configured. PRs without the key require direct review of security-sensitive changes; subsequent PRs run Claude review once a key is configured.
 
 ## Consequences
 
@@ -67,7 +73,7 @@ Wire `anthropics/claude-code-security-review` as a PR-gating GitHub Action workf
 ### Negative
 
 - **Cost per PR**: Opus 4.7 analysis of diff is non-trivial. Bounded by `claudecode-timeout: 20` (max 20min of analysis) + `exclude-directories` (focuses on real code). For solo-dev v0.2.x repo with ~1-2 PRs per session, cost should stay well under $5 per PR. Re-evaluate cost trajectory at v0.4.x when MCS subagent autonomous loops are landing (PR volume could spike).
-- **Prompt-injection caveat** per upstream README: the action is NOT hardened against prompt-injection attacks. Repo is private (solo-dev + Dependabot) until v0.8.x friends-install; risk surface bounded. **When the repo opens up, this workflow MUST be paired with branch-protection "Require approval for all external contributors" workflow-run gating.** Flagged here as a v0.8.x precondition.
+- **Prompt-injection caveat** per upstream README: the action is NOT hardened against prompt-injection attacks. The repository is public, and GitHub's `all_external_contributors` workflow-run approval policy was enabled on 2026-09-23.
 - **External dependency on `CLAUDE_API_KEY` validity**. Key rotation must be coordinated. The action will fail noisily on auth errors; no silent failure mode.
 - **SHA pin churn**: upstream has no release cadence yet; quarterly SHA re-verification is a manual governance task. When upstream publishes a release tag, the pin discipline simplifies (tag SHA → release SHA).
 
@@ -80,7 +86,7 @@ Wire `anthropics/claude-code-security-review` as a PR-gating GitHub Action workf
 
 1. **Quarterly**: re-check `gh api repos/anthropics/claude-code-security-review/commits/main` for new SHA. Bump pin if upstream has security-relevant updates. Test on a no-op PR before bumping prod.
 2. **At first published release tag**: switch SHA pin from main-branch-commit to release-tag-commit. Update this ADR + workflow comment.
-3. **At v0.8.x friends-install milestone**: pair this workflow with branch-protection external-contributor gating. Update `governance/policies/external-prs.md` (TBD).
+3. **At v0.8.x friends-install milestone**: re-check the external-contributor approval policy and update `governance/policies/external-prs.md` (TBD).
 4. **At cost-spike incident**: if a single PR's analysis exceeds ~$10 (e.g., very large diff + slow model), reduce `claudecode-timeout` or add stricter `exclude-directories` to constrain scope.
 5. **At known false-positive pattern**: configure `false-positive-filtering-instructions` pointing to a `governance/security/fp-filter.txt` file.
 
