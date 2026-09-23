@@ -2,12 +2,12 @@ name: Release sign skills
 
 # Phase 2 area E / E.03 -- Sigstore signing workflow.
 # Triggers:
-#   workflow_dispatch -- manual invocation for testing (E.04 first run)
-#   push of tags matching v\d+\.\d+\.\d+ -- production release-tag signing
+#   workflow_dispatch on a release branch -- sign and commit via PR
+#   push of tags matching v\d+\.\d+\.\d+ -- verify tagged artifacts
 #
 # REQ-E3 (AC-E3.1): WHEN a release tag matching v<major>.<minor>.<patch>
-# is pushed, THE SYSTEM SHALL run this workflow to produce .sig files for
-# every changed skill and update governance/skill-manifest.yml.
+# is pushed, THE SYSTEM SHALL verify the signatures and manifest already
+# reviewed in the release PR (see REQ-E3 amendment).
 #
 # REQ-E1 (AC-E1.1): every universal SKILL.md gets a corresponding .sig
 # file alongside it.
@@ -39,10 +39,8 @@ jobs:
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
         with:
-          # The default GITHUB_TOKEN with contents:write can push back to
-          # feature branches (not protected main; that's intentional --
-          # signing on main happens via tag push, which lands as a new
-          # commit on main via this workflow's push step).
+          # Signing dispatches push only to feature branches. Tag runs verify
+          # the already-reviewed artifacts without writing to protected main.
           token: ${{ secrets.GITHUB_TOKEN }}
           ref: ${{ github.ref }}
           fetch-depth: 0
@@ -68,7 +66,16 @@ jobs:
       - name: Install PyYAML for manifest update
         run: pip install --quiet pyyaml
 
+      - name: Require a branch for signing dispatch
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          [[ "${GITHUB_REF}" == refs/heads/* ]] || {
+            echo 'Signing dispatch must target a release branch.' >&2
+            exit 1
+          }
+
       - name: Sign each universal SKILL.md
+        if: github.event_name == 'workflow_dispatch'
         id: sign
         env:
           COSIGN_EXPERIMENTAL: '1'  # legacy flag, harmless on v2.x
@@ -106,6 +113,7 @@ jobs:
           echo "Signed ${SIGNED_COUNT} / ${TOTAL_COUNT} universal SKILL.md files."
 
       - name: Update governance/skill-manifest.yml with signature metadata
+        if: github.event_name == 'workflow_dispatch'
         run: |
           python3 - <<'PYEOF'
           import yaml, hashlib, os, datetime, subprocess
@@ -159,6 +167,7 @@ jobs:
           PYEOF
 
       - name: Commit signatures + updated manifest back
+        if: github.event_name == 'workflow_dispatch'
         run: |
           set -euo pipefail
           git config user.name 'github-actions[bot]'
@@ -172,20 +181,53 @@ jobs:
             exit 0
           fi
 
-          git commit -m "ci(sigstore): sign $(find skills/universal -name 'SKILL.md.sig' -type f | wc -l) universal skills via cosign ${COSIGN_VERSION} [skip ci]"
+          git commit -m "ci(sigstore): sign $(find skills/universal -name 'SKILL.md.sig' -type f | wc -l) universal skills via cosign ${COSIGN_VERSION}"
 
-          # Push back to the same ref. For workflow_dispatch on a feature
-          # branch, this lands on the feature branch. For a release-tag
-          # push, github.ref is the tag (refs/tags/v...) and we don't push
-          # back to a tag -- branch-target the canonical main instead.
-          REF="${GITHUB_REF}"
-          if [[ "${REF}" == refs/tags/* ]]; then
-            echo "Tag-driven signing -- pushing manifest commit to main."
-            git push origin HEAD:main
-          else
-            echo "Branch-driven signing -- pushing back to ${GITHUB_REF_NAME}."
-            git push origin HEAD:${GITHUB_REF_NAME}
-          fi
+          git push origin "HEAD:${GITHUB_REF_NAME}"
+
+      - name: Verify tagged release skills and manifest
+        if: github.event_name == 'push'
+        run: |
+          set -euo pipefail
+          [[ "${GITHUB_REF_NAME}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+            echo 'Invalid release tag name.' >&2
+            exit 1
+          }
+          git merge-base --is-ancestor HEAD origin/main || {
+            echo 'Release tag does not point to a main commit.' >&2
+            exit 1
+          }
+          python3 - <<'PYEOF'
+          import hashlib
+          import re
+          import subprocess
+          from pathlib import Path
+          import yaml
+
+          skills = set(Path('skills/universal').rglob('SKILL.md'))
+          manifest = yaml.safe_load(Path('governance/skill-manifest.yml').read_text())
+          entries = manifest['skills']
+          assert skills, 'No universal skills found'
+          assert {Path(entry['path']) for entry in entries} == skills, 'Manifest skill set differs from shipped skills'
+          identity_prefix = 'https://github.com/MILTONADINA/DevOPs/.github/workflows/release-sign.yml@refs/heads/'
+          identity = '^' + re.escape(identity_prefix)
+          for entry in entries:
+              skill = Path(entry['path'])
+              signature = Path(entry['sig_path'])
+              bundle = Path(entry['bundle_path'])
+              assert signature == Path(str(skill) + '.sig'), f'Wrong signature path: {skill}'
+              assert bundle == Path(str(skill) + '.bundle'), f'Wrong bundle path: {skill}'
+              assert signature.is_file() and bundle.is_file(), f'Missing signature or bundle: {skill}'
+              assert hashlib.sha256(skill.read_bytes()).hexdigest() == entry['sha256'], f'Stale manifest hash: {skill}'
+              assert entry['signed_by'].startswith(identity_prefix), f'Wrong signing identity: {skill}'
+              subprocess.run([
+                  'cosign', 'verify-blob', '--bundle', str(bundle),
+                  '--certificate-identity-regexp', identity,
+                  '--certificate-oidc-issuer', 'https://token.actions.githubusercontent.com',
+                  str(skill),
+              ], check=True, stdout=subprocess.DEVNULL)
+          print(f'Verified {len(entries)} signed universal skills.')
+          PYEOF
 
       - name: Upload signing logs
         if: always()

@@ -2,7 +2,7 @@
 
 **Spec ID**: process/phase-1-ship
 **Status**: approved
-**Last updated**: 2026-05-22
+**Last updated**: 2026-09-23
 **Owner**: miltonadina
 **Reviewers**: miltonadina
 
@@ -11,7 +11,7 @@
 ## Context
 
 This spec covers publishing the validated + polished Phase 1 build to a
-private GitHub repository at `MILTONADINA/DevOPs`. It drives Prompt 2 of
+GitHub repository at `MILTONADINA/DevOPs`. It drives Prompt 2 of
 the DevOPs methodology execution. Scope is **push + hygiene + polish-
 backlog filing only** — no code changes, no history modification, and no
 v0.1.0 tag.
@@ -49,8 +49,12 @@ This spec file itself becomes the 9th commit and is pushed as a follow-up.
 
 ## Functional requirements (EARS)
 
-### REQ-1 (Ubiquitous) — Private repository exists
-THE SYSTEM SHALL ensure a private GitHub repository at `MILTONADINA/DevOPs` exists with the documented description.
+### REQ-1 (Ubiquitous) — Public repository exists
+THE SYSTEM SHALL ensure a public GitHub repository at `MILTONADINA/DevOPs` exists with the documented description.
+
+The owner approved public visibility on 2026-09-23. This supersedes the original
+private-visibility requirement; repository content and credentials must still
+meet the existing public-release security controls.
 
 ### REQ-2 (Ubiquitous) — Push all 8 Phase 1 commits as-is
 THE SYSTEM SHALL push the local `main` branch's eight Phase 1 commits to `origin/main` with no history modification (no squash, no rebase, no force).
@@ -68,7 +72,7 @@ THE SYSTEM SHALL file the four Phase 1 polish-backlog items (PB-3, PB-4, PB-5, P
 ### AC-1.1 (maps to REQ-1)
 **Given** the GitHub repository `MILTONADINA/DevOPs`
 **When** `gh repo view MILTONADINA/DevOPs --json visibility` is executed
-**Then** the output contains `"visibility":"PRIVATE"`.
+**Then** the output contains `"visibility":"PUBLIC"`.
 
 ### AC-2.1 (maps to REQ-2)
 **Given** the local `main` branch at HEAD `f178d05` (before this ship spec is committed)

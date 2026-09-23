@@ -48,13 +48,14 @@ recorded per-entry in `governance/skill-manifest.yml` under
 ## Signing identity
 
 The signing identity is the **GitHub Actions workflow's OIDC identity**
-on the `phase-2-security-depth` branch (later: `main`) of
-`MILTONADINA/DevOPs`. The identity is bound to:
+on the release branch of `MILTONADINA/DevOPs`. The signing workflow commits
+the resulting artifacts to that branch for PR review; a release-tag run
+verifies the merged artifacts without writing to protected `main`. The
+identity is bound to:
 
 - Repository: `https://github.com/MILTONADINA/DevOPs`
-- Ref: the workflow's `github.ref` at signing time (e.g.,
-  `refs/tags/v0.2.0` for a release-tag signing, or
-  `refs/heads/phase-2-security-depth` for workflow_dispatch testing)
+- Ref: the dispatched release branch (for example,
+  `refs/heads/work/finish-devops-roadmap`)
 - Workflow file: `.github/workflows/release-sign.yml`
 - Job: `sign`
 
@@ -79,17 +80,14 @@ identity.
 To verify a SKILL.md against its signature locally:
 
 ```bash
-# Install cosign if not present (one-time, per the version pin in
-# .github/workflows/release-sign.yml; check current pin before
-# installing).
-curl -sSfL https://github.com/sigstore/cosign/releases/download/v2.4.0/cosign-linux-amd64 \
-  -o ~/bin/cosign && chmod +x ~/bin/cosign
+# Use the pinned cosign version in .github/workflows/release-sign.yml.
+# scripts/graph-preflight.sh can install the pinned, checksum-matched release.
 
 # Verify a specific skill. The .sig file lives alongside the SKILL.md.
 cosign verify-blob \
   --certificate-identity-regexp 'https://github.com/MILTONADINA/DevOPs/' \
   --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
-  --signature skills/universal/process/proof-of-work/SKILL.md.sig \
+  --bundle skills/universal/process/proof-of-work/SKILL.md.bundle \
   skills/universal/process/proof-of-work/SKILL.md
 ```
 

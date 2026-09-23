@@ -13,17 +13,13 @@
 # Required repository secret: CLAUDE_API_KEY (Anthropic API key with both Claude
 # API + Claude Code usage enabled). Configure at:
 #   https://github.com/MILTONADINA/DevOPs/settings/secrets/actions
-# Until the secret is configured, the action step fails on authentication — there
-# is NO graceful secret-presence skip (the job-level `if:` only skips DRAFT PRs).
-# That auth failure is the expected bootstrap-window state and does not block PR
-# merge (this workflow's findings are advisory, not a required status check).
+# Without the secret, the action step is visibly skipped. This review is
+# advisory; a skipped run is not evidence that Claude analyzed the PR.
 #
 # Security caveat (from upstream README): this action is NOT hardened against
 # prompt-injection attacks and should only be used to review TRUSTED PRs. Repo
-# is private (solo-dev + Dependabot) for v0.2.x — risk surface bounded. When
-# the repo opens up to external contributors (v0.8.x friends-install +
-# v1.0.0 commercial), this workflow MUST be paired with branch-protection
-# "Require approval for all external contributors" workflow-run gating.
+# is public as of the owner's 2026-09-23 decision. External contributor
+# workflow runs require approval before this action sees untrusted PR content.
 
 name: Claude Code Security Review
 
@@ -40,20 +36,31 @@ jobs:
   security-review:
     name: Claude semantic security review
     runs-on: ubuntu-latest
-    # Skip DRAFT PRs only (don't burn analysis cost on incomplete work). This
-    # guard does NOT check for the CLAUDE_API_KEY secret — a missing secret
-    # surfaces as an auth failure in the action step below, which is the
-    # expected bootstrap-window state and is non-blocking for merge.
+    # Skip draft PRs. A missing key is reported by the first step below.
     if: ${{ github.event.pull_request.draft == false }}
     timeout-minutes: 25
     steps:
+      - name: Check Claude API key availability
+        id: key
+        env:
+          CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY }}
+        run: |
+          if [ -z "$CLAUDE_API_KEY" ]; then
+            echo 'SKIP: CLAUDE_API_KEY is unset; Claude semantic review did not run.'
+            echo 'present=false' >> "$GITHUB_OUTPUT"
+          else
+            echo 'present=true' >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Checkout PR head
+        if: steps.key.outputs.present == 'true'
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 2
 
       - name: Anthropic Claude Code Security Review
+        if: steps.key.outputs.present == 'true'
         # SHA-pinned to upstream main @ 2026-02-11 (no releases/tags published).
         # Re-verify quarterly; bump SHA when upstream publishes a release tag.
         uses: anthropics/claude-code-security-review@0c6a49f1fa56a1d472575da86a94dbc1edb78eda  # main @ 2026-02-11

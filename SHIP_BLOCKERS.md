@@ -111,8 +111,9 @@ taken from the validator's one-line reason):
   assert the invariant the claim actually needs (a start-anchored,
   finitely bounded local-part), with a dated caveat — `-098` validates
   again. The code moved on deliberately; the proof had not.
-- Not a claim defect — **see 1.9**: `claim-2026-05-22-013` (`req-13-repo-private`)
-  fails because the repository is now public.
+- Not a claim defect — **see 1.9**: `claim-2026-05-22-013` failed when the
+  repository became public; the owner resolved the visibility decision on
+  2026-09-23 and the proof now checks the public requirement.
 
 **Outcome of the triage (2026-09-15, later the same day)**: `npm run
 validate:claims` reports **122/132** under the full re-running mode and
@@ -125,7 +126,7 @@ and none is an unexplained proof defect:
 | `claim-2026-05-22-009` (`req-9-clean-tree`) | the same uncommitted cycle-6 work dirties the tree | same commit |
 | `claim-2026-05-22-012` (`req-12-validate-claims`) | runs the validator itself; passes only when everything else does | the rows above and below |
 | `claim-2026-05-22-076` (`req-E2-manifest-fields`) | item 1.6 — two skills edited after signing | the `release-sign.yml` re-sign (CI, human-triggered) |
-| `claim-2026-05-22-013` (`req-13-repo-private`) | item 1.9 — the repository is public | a human decision on visibility |
+| `claim-2026-05-22-013` (historically `req-13-repo-private`) | item 1.9 — resolved 2026-09-23 | public-visibility proof |
 
 The four `--no-rerun`-only differences are 009/012/076/013 (their YAMLs
 are structurally sound; only the re-run fails). The last two rows are
@@ -478,7 +479,7 @@ same word-boundary form and verified in a fresh worktree with a staged
 `stratum/src/billing/` file: `cd . && git commit …` is now blocked with
 "needs TWO approval markers".
 
-### 1.9 The repository is PUBLIC while REQ-1 requires it to be private — needs a human decision
+### 1.9 Repository visibility decision — resolved 2026-09-23
 
 Found 2026-09-15 while triaging the legacy claim failures:
 `gh repo view MILTONADINA/DevOPs --json visibility` → `PUBLIC`
@@ -500,6 +501,11 @@ decision, not an autonomous remediation. Either flip the repository back
 to private (REQ-1 stands and the claim passes again) or retire REQ-1 and
 its claim with a written rationale. Until one of those happens this item
 stays open and `claim-2026-05-22-013` correctly fails.
+
+**Resolution (2026-09-23)**: the owner chose to keep the repository public.
+REQ-1 and AC-1.1 now require public visibility; the claim's check was updated
+to prove the current requirement. The historical text above records the
+original decision point and no longer describes an open blocker.
 
 ---
 
