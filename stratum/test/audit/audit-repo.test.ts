@@ -3,8 +3,39 @@
 // exercised by the live `npm run audit:repo`; here we lock the pure logic only.
 
 import { describe, test, expect } from "vitest";
-import { parseArgs, summarizeIndex } from "../../scripts/audit-repo";
+import { mkdtempSync, rmdirSync, symlinkSync, unlinkSync } from "node:fs";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { parseArgs, resolveFactsPath, summarizeIndex } from "../../scripts/audit-repo";
 import type { CodeChange } from "../../src/audit/git-attestation";
+
+const projectRoot = fileURLToPath(new URL("../../../", import.meta.url));
+
+describe("resolveFactsPath", () => {
+  test("accepts a regular project-local file", () => {
+    const file = join(projectRoot, "stratum", "package.json");
+    expect(resolveFactsPath(file)).toBe(file);
+  });
+
+  test("rejects parent traversal and symlinks before reading", () => {
+    expect(() => resolveFactsPath(join(projectRoot, "..", "outside.json"))).toThrow(/outside project root/);
+    const dir = mkdtempSync(join(projectRoot, ".workflow", "state", "audit-input-"));
+    const link = join(dir, "facts.json");
+    try {
+      symlinkSync(join(projectRoot, "stratum", "package.json"), link);
+      expect(() => resolveFactsPath(link)).toThrow(/symbolic link/);
+    } finally {
+      unlinkSync(link);
+      rmdirSync(dir);
+    }
+  });
+
+  test("rejects secret-like paths before reading", () => {
+    for (const name of [".env", ".env.local", "private.pem", "private.key"]) {
+      expect(() => resolveFactsPath(join(projectRoot, "stratum", name))).toThrow(/secret/);
+    }
+  });
+});
 
 describe("parseArgs", () => {
   test("defaults: no facts, maxCount 100, no persist", () => {
