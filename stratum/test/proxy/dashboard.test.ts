@@ -165,8 +165,10 @@ describe("dashboard route", () => {
     const calls: Array<{ url: string; headers?: Record<string, string> }> = [];
     const hostile = '<img src=x onerror="alert(1)">';
     let failAuth = false;
+    let stallAuditStatus = false;
     const fetch = async (url: string, opts?: { headers?: Record<string, string> }) => {
       calls.push({ url, headers: opts?.headers });
+      if (stallAuditStatus && url.startsWith("/v1/memory/audit-statuses")) return new Promise<never>(() => undefined);
       return { ok: !(failAuth && url.startsWith("/v1/memory/conflicts")), status: failAuth ? 401 : 200, json: async () => url === "/dashboard/api"
         ? { note: hostile, session_count: 0, total_turns: 0, total_dropped_turns: 0, total_input_tokens: 0, total_output_tokens: 0, estimated_cost_usd: 0, top_waste_type: hostile, waste: [{ type: hostile, severity: "high", token_estimate: 1, description: hostile }], sessions: [] }
         : url.startsWith("/v1/memory/audit-statuses")
@@ -182,9 +184,10 @@ describe("dashboard route", () => {
       addEventListener: () => undefined,
     };
     let intervalMs = 0;
+    let onInterval = () => undefined;
     runInNewContext(script!, {
       document, fetch, sessionStorage: { getItem: (k: string) => storage.get(k) ?? null, setItem: (k: string, v: string) => { storage.set(k, v); }, removeItem: (k: string) => { storage.delete(k); } },
-      location: { search: "" }, URLSearchParams, setInterval: (_fn: () => void, ms: number) => { intervalMs = ms; return 1; }, encodeURIComponent,
+      location: { search: "" }, URLSearchParams, setInterval: (fn: () => void, ms: number) => { onInterval = fn; intervalMs = ms; return 1; }, encodeURIComponent,
     });
     await vi.waitFor(() => expect(byId("#waste tbody").children).toHaveLength(1));
     expect(calls.map((c) => c.url)).toEqual(["/dashboard/api"]);
@@ -210,6 +213,14 @@ describe("dashboard route", () => {
     byId("load-conflicts").listeners.get("click")!();
     expect(calls.filter((c) => c.url.startsWith("/v1/memory/conflicts"))).toHaveLength(2);
     expect(storage.has("cq_dashboard_key")).toBe(false);
+
+    byId("key").value = "cq_test_secret";
+    failAuth = false;
+    stallAuditStatus = true;
+    byId("load-conflicts").listeners.get("click")!();
+    await vi.waitFor(() => expect(calls.filter((c) => c.url.startsWith("/v1/memory/audit-statuses"))).toHaveLength(2));
+    onInterval();
+    await vi.waitFor(() => expect(calls.filter((c) => c.url.startsWith("/v1/memory/conflicts"))).toHaveLength(4));
   });
 
   test("async session reader is awaited", async () => {
