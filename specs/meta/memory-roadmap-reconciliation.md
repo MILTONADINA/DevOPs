@@ -1,6 +1,6 @@
 # v0.5 memory roadmap reconciliation
 
-**Date**: 2026-09-23  
+**Date**: 2026-09-23
 **Source**: `SHIP_BLOCKERS.md` §2.2 and the owner's instruction to complete the
 remaining DevOPs roadmap.
 
