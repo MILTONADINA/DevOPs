@@ -254,6 +254,16 @@ List all detected Historical Drift conflicts.
 }
 ```
 
+### GET /v1/memory/audit-statuses
+
+List the authenticated organization's latest persisted Tier-1 audit outcomes,
+newest first. In personal mode, pass `?org-id=<uuid>`. `limit` defaults to 50
+and is capped at 500. A missing row means unaudited; manual suppression does
+not create a `CONFLICT` badge.
+
+Each `statuses` item has `fact_table`, `fact_id`, `status` (`CONFIRMED`,
+`UNVERIFIED`, or `CONFLICT`), `audited_at`, `evidence_commit`, and `detail`.
+
 ---
 
 ## Configuration

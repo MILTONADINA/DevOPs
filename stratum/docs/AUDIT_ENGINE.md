@@ -248,10 +248,15 @@ claimed state, contradictory detail, and commit. Replaying the same audit
 does not create another alert or reset its acknowledgement. New contradictory
 evidence creates a separate record. Existing records written before this
 identity rule retain their original IDs and may have historical duplicates.
-The `persist_audit_conflicts` service-role RPC suppresses the matching typed
-fact and writes its alert in one transaction. It rejects facts outside the
-trusted organization; a failed batch rolls back every suppression and alert.
-Deploy the migration before using `audit:repo --persist` with this version.
+The `persist_audit_results` service-role RPC records the latest status of each
+audited fact in `audit_statuses`. A CONFLICT also suppresses the matching typed
+fact and writes its alert in the same transaction. It rejects facts outside the
+trusted organization; a failed batch rolls back every status, suppression, and
+alert. A later non-conflict audit does not clear a suppressed fact's CONFLICT
+status. The dashboard reads statuses through the scoped
+`/v1/memory/audit-statuses` API and renders status badges as text. Deploy both
+September 2026 audit migrations before using `audit:repo --persist` with this
+version.
 
 ```typescript
 interface AuditConflict {

@@ -68,22 +68,27 @@ function conflictId(parts: readonly string[]): string {
 }
 
 /**
- * Suppress typed CONFLICT facts and persist their Historical Drift alerts in one
- * database transaction. CONFIRMED / UNVERIFIED are not logged here. org/session are
+ * Persist each deterministic outcome, suppressing CONFLICT facts and inserting
+ * their Historical Drift alerts in one database transaction. org/session are
  * trusted FKs (ADR-0012), never derived from the fact.
  *
  * @param client - a configured Supabase client (service-role).
- * @param audited - the audit results (only CONFLICTs are written).
+ * @param audited - the audit results.
  * @param ctx - trusted org/session FKs.
  * Replaying the same evidence does not replace an existing acknowledgement.
  * @returns the number of new conflict records inserted.
  * @throws {Error} if suppression or alert persistence fails.
  */
-export async function persistConflicts(client: SupabaseClient, audited: AuditedFact[], ctx: AuditContext): Promise<number> {
+export async function persistAuditResults(client: SupabaseClient, audited: AuditedFact[], ctx: AuditContext): Promise<number> {
   const rows = audited
-    .filter((a) => a.result.status === "CONFLICT")
     .map((a) => {
       const table = tableForFactType(a.fact.fact_type);
+      if (a.result.status !== "CONFLICT") return {
+        fact_table: table,
+        fact_id: a.fact.id,
+        status: a.result.status,
+        ...(a.result.evidence?.commitHash !== undefined ? { evidence_commit: a.result.evidence.commitHash } : {}),
+      };
       const claimed = factToText(a.fact);
       const actual = a.result.conflictDetail ?? "conflict";
       const commit = a.result.conflictCommit ?? "";
@@ -91,15 +96,21 @@ export async function persistConflicts(client: SupabaseClient, audited: AuditedF
         id: conflictId([ctx.orgId, table, a.fact.id, claimed, actual, commit]),
         fact_table: table,
         fact_id: a.fact.id,
+        status: "CONFLICT",
         claimed_state: claimed,
         actual_state: actual,
         ...(a.result.conflictCommit !== undefined ? { conflict_commit: a.result.conflictCommit } : {}),
       };
     });
   if (rows.length === 0) return 0;
-  const { data, error } = await client.rpc("persist_audit_conflicts", {
+  const { data, error } = await client.rpc("persist_audit_results", {
     p_org_id: ctx.orgId, p_session_id: ctx.sessionId, p_rows: rows,
   });
-  if (error) throw new Error(`persistConflicts failed: ${error.message}`);
+  if (error) throw new Error(`persistAuditResults failed: ${error.message}`);
   return data as number;
+}
+
+/** Compatibility entry point for callers that only persist conflicts. */
+export async function persistConflicts(client: SupabaseClient, audited: AuditedFact[], ctx: AuditContext): Promise<number> {
+  return persistAuditResults(client, audited.filter((a) => a.result.status === "CONFLICT"), ctx);
 }

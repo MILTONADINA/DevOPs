@@ -2,7 +2,7 @@
 // injected fake deps (no DB). Composes the Tier-2 warm adapter + audit_conflicts in prod.
 
 import { describe, test, expect, vi } from "vitest";
-import type { MemoryDeps, ConflictSummary } from "../../src/proxy/routes/memory";
+import type { MemoryDeps, ConflictSummary, AuditStatusSummary } from "../../src/proxy/routes/memory";
 import type { AnyFact } from "../../src/types/facts";
 
 vi.unmock("fastify");
@@ -10,6 +10,7 @@ const { buildProxy } = await import("../../src/proxy/app");
 
 const FACT = { id: "f1", fact_type: "Todo", description: "do x" } as unknown as AnyFact;
 const CONFLICT: ConflictSummary = { id: "c1", detected_at: "t", fact_table: "function_changes", fact_id: "x", claimed_state: "a", actual_state: "b", conflict_commit: null, acknowledged: false };
+const STATUS: AuditStatusSummary = { fact_table: "function_changes", fact_id: "f1", status: "CONFIRMED", audited_at: "t", evidence_commit: "abc", detail: null };
 
 function fakeDeps(): { deps: MemoryDeps; captured: Record<string, unknown> } {
   const captured: Record<string, unknown> = {};
@@ -25,6 +26,10 @@ function fakeDeps(): { deps: MemoryDeps; captured: Record<string, unknown> } {
     listConflicts: (orgId, limit) => {
       captured["conflicts"] = { orgId, limit };
       return Promise.resolve([CONFLICT]);
+    },
+    listAuditStatuses: (orgId, limit) => {
+      captured["statuses"] = { orgId, limit };
+      return Promise.resolve([STATUS]);
     },
   };
   return { deps, captured };
@@ -46,6 +51,19 @@ describe("GET /v1/memory/facts", () => {
     const app = buildProxy({ rateLimit: false, cors: false, memory: fakeDeps().deps });
     await app.ready();
     expect((await app.inject({ method: "GET", url: "/v1/memory/facts" })).statusCode).toBe(400);
+    await app.close();
+  });
+});
+
+describe("GET /v1/memory/audit-statuses", () => {
+  test("lists persisted outcomes within the authenticated organization", async () => {
+    const { deps, captured } = fakeDeps();
+    const app = buildProxy({ rateLimit: false, cors: false, auth: { resolve: (r) => Promise.resolve(r === "k" ? { orgId: "o9", keyId: "i" } : null) }, memory: deps });
+    await app.ready();
+    const res = await app.inject({ method: "GET", url: "/v1/memory/audit-statuses?org-id=other&limit=3", headers: { authorization: "Bearer k" } });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ statuses: [STATUS] });
+    expect(captured["statuses"]).toEqual({ orgId: "o9", limit: 3 });
     await app.close();
   });
 });

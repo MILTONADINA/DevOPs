@@ -2,7 +2,7 @@
 // CONFLICTs to audit_conflicts (fake Supabase — no real DB/git/LLM).
 
 import { describe, test, expect } from "vitest";
-import { auditFacts, summarizeAudit, persistConflicts } from "../../src/audit/audit-engine";
+import { auditFacts, summarizeAudit, persistConflicts, persistAuditResults } from "../../src/audit/audit-engine";
 import type { CodeChange } from "../../src/audit/git-attestation";
 import type { AnyFact, FunctionChangeFact } from "../../src/types/facts";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -32,6 +32,21 @@ describe("auditFacts + summarizeAudit", () => {
   });
 });
 
+test("persistAuditResults sends every Tier-1 outcome to one scoped transaction", async () => {
+  const calls: { name: string; args: Record<string, unknown> }[] = [];
+  const client = { rpc: async (name: string, args: Record<string, unknown>) => {
+    calls.push({ name, args });
+    return { data: 1, error: null };
+  } } as unknown as SupabaseClient;
+  expect(await persistAuditResults(client, auditFacts(FACTS, CHANGES), { orgId: "org-9", sessionId: "sess-9" })).toBe(1);
+  expect(calls).toHaveLength(1);
+  expect(calls[0]?.name).toBe("persist_audit_results");
+  expect(calls[0]?.args).toMatchObject({ p_org_id: "org-9", p_session_id: "sess-9" });
+  const rows = calls[0]?.args["p_rows"] as { status: string; fact_table: string; fact_id: string }[];
+  expect(rows.map((r) => [r.fact_id, r.status])).toEqual([["f1", "CONFIRMED"], ["f2", "CONFLICT"], ["f3", "UNVERIFIED"]]);
+  expect(rows[1]).toMatchObject({ fact_table: "function_changes", fact_id: "f2" });
+});
+
 describe("persistConflicts", () => {
   function auditDb(failInsert = false) {
     const store: Record<string, Record<string, unknown>[]> = {
@@ -45,14 +60,14 @@ describe("persistConflicts", () => {
     const client = {
       rpc: async (name: string, args: Record<string, unknown>) => {
         calls.push({ name, ...args });
-        if (name !== "persist_audit_conflicts") return { data: null, error: { message: "wrong RPC" } };
+        if (name !== "persist_audit_results") return { data: null, error: { message: "wrong RPC" } };
         const rows = args["p_rows"] as Record<string, unknown>[];
         const org = args["p_org_id"];
         const pendingFacts = store["function_changes"]!.map((r) => ({ ...r }));
         const pendingConflicts = store["audit_conflicts"]!.map((r) => ({ ...r }));
         let inserted = 0;
         for (const row of rows) {
-          if (row["fact_table"] !== "function_changes") return { data: null, error: { message: "unsupported table" } };
+          if (row["fact_table"] !== "function_changes" || row["status"] !== "CONFLICT") return { data: null, error: { message: "unsupported table or status" } };
           const fact = pendingFacts.find((r) => r["id"] === row["fact_id"] && r["org_id"] === org);
           if (!fact) return { data: null, error: { message: "missing fact in organization" } };
           fact["is_suppressed"] = true;
@@ -113,7 +128,7 @@ describe("persistConflicts", () => {
     expect(String(rows[0]!["claimed_state"])).toContain("oldFn"); // factToText of the conflicting fact
     expect(String(rows[0]!["actual_state"])).toContain("newFn"); // the conflict detail
     expect(store["function_changes"]![0]!["is_suppressed"]).toBe(true);
-    expect(calls[0]).toMatchObject({ name: "persist_audit_conflicts", p_org_id: "org-9", p_session_id: "sess-9" });
+    expect(calls[0]).toMatchObject({ name: "persist_audit_results", p_org_id: "org-9", p_session_id: "sess-9" });
   });
 
   test("no conflicts → no write, returns 0", async () => {
@@ -126,7 +141,7 @@ describe("persistConflicts", () => {
 
   test("a failed insert rolls back fact suppression and reports the error", async () => {
     const { client, store } = auditDb(true);
-    await expect(persistConflicts(client, auditFacts(FACTS, CHANGES), { orgId: "o", sessionId: "s" })).rejects.toThrow(/persistConflicts failed/);
+    await expect(persistConflicts(client, auditFacts(FACTS, CHANGES), { orgId: "o", sessionId: "s" })).rejects.toThrow(/persistAuditResults failed/);
     expect(store["function_changes"]![0]!["is_suppressed"]).toBe(false);
     expect(store["audit_conflicts"]).toEqual([]);
   });
