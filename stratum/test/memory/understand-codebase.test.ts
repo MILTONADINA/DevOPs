@@ -128,6 +128,7 @@ function fakeClient(opts: { org?: { id: string }[]; entityStatus?: unknown[]; ma
           limit: () => Promise.resolve({ data: opts.org ?? [], error: null }),
           // getFactsByRefs: .eq("org_id").in("id", refs) → fact rows (awaited, no .limit())
           in: () => Promise.resolve({ data: opts.facts ?? [], error: null }),
+          eq: () => ({ in: () => Promise.resolve({ data: opts.facts ?? [], error: null }) }),
         }),
       }),
     }),
@@ -199,7 +200,10 @@ describe("main() orchestration (injected fakes — no DB, no model, no API)", ()
   });
 
   test("query-only mode dispatches to vector search + renders matches; uses injected encode (no model download)", async () => {
-    const client = fakeClient({ matches: [{ id: "v1", source_type: "fact", source_ref: "f-1", similarity: 0.9 }] });
+    const client = fakeClient({
+      matches: [{ id: "v1", source_type: "fact", source_ref: "f-1", similarity: 0.9 }],
+      facts: [{ id: "f-1", created_at: "2026-05-29T00:00:00Z", org_id: "o1", session_id: "s1", confidence: 0.9, is_verified: false, is_suppressed: false, promoted_to_t3: true, decision_text: "use Supabase", domain: "db" }],
+    });
     let encoded = "";
     const { code, output } = await run(["--org-id", "o1", "--query", "where deploy"], {
       makeClient: () => client,
@@ -212,5 +216,25 @@ describe("main() orchestration (injected fakes — no DB, no model, no API)", ()
     expect(encoded).toBe("where deploy"); // the injected encoder was used, not the real ONNX one
     expect(output).toContain("Semantic search");
     expect(output).toContain("fact:f-1");
+  });
+
+  test("query and entity-neighbour output omit unresolved fact pointers", async () => {
+    const client = fakeClient({
+      entityStatus: [],
+      matches: [
+        { id: "v1", source_type: "fact", source_ref: "f-active", similarity: 0.9 },
+        { id: "v2", source_type: "fact", source_ref: "f-suppressed", similarity: 0.8 },
+      ],
+      facts: [{ id: "f-active", created_at: "2026-05-29T00:00:00Z", org_id: "o1", session_id: "s1", confidence: 0.9, is_verified: false, is_suppressed: false, promoted_to_t3: true, decision_text: "use Supabase", domain: "db" }],
+    });
+    const deps = { makeClient: () => client, encode: () => Promise.resolve(new Array(384).fill(0)) };
+    const query = await run(["--org-id", "o1", "--query", "deploy"], deps);
+    expect(query.code).toBe(0);
+    expect(query.output).toContain("fact:f-active");
+    expect(query.output).not.toContain("f-suppressed");
+    const entity = await run(["--org-id", "o1", "--entity", "deploy", "--query", "deploy"], deps);
+    expect(entity.code).toBe(0);
+    expect(entity.output).toContain("fact:f-active");
+    expect(entity.output).not.toContain("f-suppressed");
   });
 });
