@@ -7,6 +7,16 @@
             "type": "command",
             "command": "bash \"${CLAUDE_PROJECT_DIR:-.}/hooks/universal/session-start/graph-preflight.sh\" || true",
             "statusMessage": "Checking graph environment..."
+          },
+          {
+            "type": "command",
+            "command": "ROOT=\"${CLAUDE_PROJECT_DIR:-.}\"; (cd \"$ROOT\" && bash hooks/universal/session-start/load-baton.sh) || true",
+            "statusMessage": "Loading DevOPs baton..."
+          },
+          {
+            "type": "command",
+            "command": "ROOT=\"${CLAUDE_PROJECT_DIR:-.}\"; if [ -x \"$ROOT/stratum/node_modules/.bin/tsx\" ]; then (cd \"$ROOT\" && stratum/node_modules/.bin/tsx stratum/scripts/session-start-context.ts) || true; fi",
+            "statusMessage": "Recalling Stratum facts..."
           }
         ]
       }
