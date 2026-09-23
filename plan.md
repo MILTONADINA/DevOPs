@@ -293,7 +293,7 @@ dashboard landed; the historical ~60h estimate is stale.
 
 ### 5c. audit_conflicts table + dashboard alerts
 
-- [x] **Audit schema migrations**. `audit_conflicts` is in the initial schema; the September migrations add atomic conflict suppression and per-fact `audit_statuses`. All 16 migrations applied in the loopback-only local Compose stack; a rolled-back SQL audit write and scoped API read passed. Deployed behavior remains unverified.
+- [x] **Audit schema migrations**. `audit_conflicts` is in the initial schema; the September migrations add atomic conflict suppression and per-fact `audit_statuses`. All 16 migrations applied in the loopback-only local Compose stack; a rolled-back SQL audit write and scoped API read passed. A disposable real-Git `audit:repo --persist` run also verified local suppression, status, and alert. Deployed behavior remains unverified.
 - [ ] **CONFLICT alert pipeline** (~4h). Deterministic audit writes conflicts
   to `audit_conflicts` idempotently. The dashboard now reads the protected,
   organization-scoped conflict API and refreshes every 3s while visible.
