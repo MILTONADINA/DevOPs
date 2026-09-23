@@ -1,4 +1,4 @@
-/** Deterministic JS/TS and Rust source declarations and local file dependencies. */
+/** Deterministic JS/TS, Rust, and Python declarations and local dependencies. */
 import { posix } from "node:path";
 import ts from "typescript";
 
@@ -21,7 +21,7 @@ export interface SourceEdge {
 const extensions = [".ts", ".tsx", ".js", ".jsx"];
 
 function rustTopLevel(source: string): string {
-  const clean = [...source];
+  const clean = source.split("");
   const blank = (start: number, end: number): void => {
     for (let at = start; at < end; at++) if (clean[at] !== "\n") clean[at] = " ";
   };
@@ -85,6 +85,53 @@ function rustModuleTarget(file: string, module: string, known: Set<string>): str
   return [`${base}/${module}.rs`, `${base}/${module}/mod.rs`].find((candidate) => known.has(candidate));
 }
 
+function pythonCode(source: string): string {
+  const clean = source.split("");
+  const blank = (start: number, end: number): void => {
+    for (let at = start; at < end; at++) if (clean[at] !== "\n") clean[at] = " ";
+  };
+  for (let i = 0; i < source.length; ) {
+    if (source[i] === "#") {
+      const end = source.indexOf("\n", i);
+      blank(i, end < 0 ? source.length : end);
+      i = end < 0 ? source.length : end;
+    } else if (source[i] === '"' || source[i] === "'") {
+      const quote = source[i]!;
+      const start = i;
+      const triple = source.startsWith(quote.repeat(3), i);
+      i += triple ? 3 : 1;
+      while (i < source.length) {
+        if (source[i] === "\\") {
+          i += 2;
+          continue;
+        }
+        if (triple && source.startsWith(quote.repeat(3), i)) {
+          i += 3;
+          break;
+        }
+        if (!triple && source[i] === quote) {
+          i++;
+          break;
+        }
+        i++;
+      }
+      blank(start, Math.min(i, source.length));
+    } else i++;
+  }
+  return clean.join("");
+}
+
+function pythonModuleTarget(file: string, module: string, known: Set<string>): string | undefined {
+  const dots = /^\.+/.exec(module)?.[0].length ?? 0;
+  let base = posix.dirname(file);
+  for (let i = 1; i < dots; i++) base = posix.dirname(base);
+  const name = module.slice(dots).replaceAll(".", "/");
+  if (!name) return undefined;
+  const target = posix.join(base, name);
+  if (target.startsWith("../") || target.startsWith("/")) return undefined;
+  return [`${target}.py`, `${target}/__init__.py`].find((candidate) => known.has(candidate));
+}
+
 function resolveImport(importer: string, specifier: string, known: Set<string>): string | undefined {
   if (!specifier.startsWith("./") && !specifier.startsWith("../")) return undefined;
   const base = posix.normalize(posix.join(posix.dirname(importer), specifier));
@@ -99,6 +146,44 @@ export function indexSourceFiles(files: SourceFileInput[]): { entities: SourceEn
   const entities: SourceEntity[] = [];
   const edges: SourceEdge[] = [];
   for (const file of [...files].sort((a, b) => a.path.localeCompare(b.path))) {
+    if (file.path.endsWith(".py")) {
+      const lines = pythonCode(file.source)
+        .split("\n")
+        .filter((line) => line && !/^\s/.test(line));
+      const functions = [...new Set(lines.map((line) => /^(?:async\s+)?def\s+([A-Za-z_][A-Za-z_0-9]*)\s*\(/.exec(line)?.[1]).filter((name): name is string => name !== undefined))];
+      const summary = `Source file ${file.path}${functions.length ? `; declares ${functions.join(", ")}` : ""}`.slice(0, 300);
+      entities.push({ kind: "File", name: file.path, filePath: file.path, summary });
+      const targets = new Set<string>();
+      for (const line of lines) {
+        const imported = /^import\s+(.+)$/.exec(line);
+        if (imported) {
+          for (const item of imported[1]!.split(",")) {
+            const target = pythonModuleTarget(file.path, item.trim().split(/\s+as\s+/)[0]!, known);
+            if (target && target !== file.path) targets.add(target);
+          }
+        }
+        const from = /^from\s+([.A-Za-z_0-9]+)\s+import\s+(.+)$/.exec(line);
+        if (from) {
+          const module = from[1]!;
+          const target = pythonModuleTarget(file.path, module, known);
+          if (target && target !== file.path) targets.add(target);
+          if (!target && /^\.+$/.test(module)) {
+            for (const item of from[2]!.split(",")) {
+              const member = item.trim().split(/\s+as\s+/)[0]!;
+              const sibling = pythonModuleTarget(file.path, module + member, known);
+              if (sibling && sibling !== file.path) targets.add(sibling);
+            }
+          }
+        }
+      }
+      for (const target of targets) edges.push({ fromName: file.path, toName: target, edgeType: "DEPENDS_ON" });
+      for (const name of functions) {
+        const entityName = `${file.path}#${name}`;
+        entities.push({ kind: "Function", name: entityName, filePath: file.path, summary: `Function ${name} in ${file.path}`.slice(0, 300) });
+        edges.push({ fromName: file.path, toName: entityName, edgeType: "DECLARES" });
+      }
+      continue;
+    }
     if (file.path.endsWith(".rs")) {
       const source = rustTopLevel(file.source);
       const functions = [...source.matchAll(/\bfn\s+([A-Za-z_][A-Za-z_0-9]*)\s*(?=[(<])/g)].map((match) => match[1]!);
