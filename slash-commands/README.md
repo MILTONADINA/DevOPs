@@ -17,6 +17,7 @@ User-invoked commands available in supported tools.
 | `/launch-readiness` | launch-readiness | Produce canonical LR table from markdown source-of-truth |
 | `/borrow-idea` | integrations-curator | Research URL/repo → propose blueprint+plan delta with version + effort |
 | `/emit-claim` | (claim ritual) | Wrap spec → check → log → YAML → validator → commit ritual for cleaner claim emission |
+| `/understand-codebase` | bound Stratum CLI | Query this project's graph and semantic facts |
 
 ## Coexistence with Anthropic Claude Code built-in slash commands
 

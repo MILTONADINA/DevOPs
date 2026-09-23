@@ -11,10 +11,10 @@
  *   npm run understand-codebase -- --org "My Org" --query "where do we deploy?"
  *   npm run understand-codebase -- --org-id <uuid> --entity getUser --query "auth" --k 8
  *
- * GATED on SUPABASE_URL + SUPABASE_SERVICE_KEY in .env (skips cleanly without them).
+ * GATED on SUPABASE_URL + SUPABASE_SERVICE_KEY in the process environment.
  */
 
-import "dotenv/config";
+import { realpathSync } from "node:fs";
 import { join } from "node:path";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { createKnowledgeGraph } from "../src/memory/cold/graph";
@@ -107,7 +107,7 @@ export async function main(argv: string[] = process.argv.slice(2), deps: Underst
   const url = process.env["SUPABASE_URL"];
   const key = process.env["SUPABASE_SERVICE_KEY"];
   if (!url || !key) {
-    out("GATED: needs SUPABASE_URL + SUPABASE_SERVICE_KEY in .env (the graph/vector store). Exiting 0.");
+    out("GATED: needs SUPABASE_URL + SUPABASE_SERVICE_KEY in the process environment (the graph/vector store). Exiting 0.");
     return 0;
   }
 
@@ -158,7 +158,11 @@ export async function main(argv: string[] = process.argv.slice(2), deps: Underst
       const encode =
         deps.encode ??
         (async (t: string): Promise<number[]> => {
-          const encoder = createOnnxEncoder({ cacheDir: join(process.cwd(), "models") });
+          const tf = await import("@huggingface/transformers");
+          tf.env.allowRemoteModels = false;
+          const modelDir = realpathSync(join(process.cwd(), "models"));
+          if (!modelDir.startsWith(`${realpathSync(process.cwd())}/`)) throw new Error("model cache leaves project root");
+          const encoder = createOnnxEncoder({ cacheDir: modelDir });
           const [vec] = await encoder.encode([t]);
           if (!vec) throw new Error("failed to encode the query");
           return Array.from(vec);
