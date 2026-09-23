@@ -236,6 +236,13 @@ When a CONFLICT is detected, the developer is notified immediately via:
 2. **CLI warning:** Printed to the terminal session where Claude Code is running
 3. **Supabase log:** Written to `audit_conflicts` table with full detail
 
+The `/dashboard` Historical Drift panel reads the organization-scoped
+`/v1/memory/conflicts` API with a CQ key supplied in a Bearer header (or an
+explicit org ID in personal mode). While visible, the page refreshes every
+three seconds. The <5-second insertion-to-render release gate still requires
+a live deployed measurement. Commercial mode does not expose the older
+unscoped captured-session aggregate at `/dashboard/api`.
+
 The deterministic audit runner records one conflict per organization, fact,
 claimed state, contradictory detail, and commit. Replaying the same audit
 does not create another alert or reset its acknowledgement. New contradictory
