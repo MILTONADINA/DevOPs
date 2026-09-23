@@ -139,8 +139,22 @@ async function main(): Promise<void> {
     await until("document.getElementById('status')?.textContent.includes('2 nodes')");
     await evaluate(`document.querySelector('#viewport g[aria-label="src/dependency.ts"]').dispatchEvent(new MouseEvent('click', { bubbles: true }))`);
     await until("document.querySelector('#details section li')?.textContent.includes('TechDecision')");
-    const selected = await evaluate<{ path: string; imageCount: number }>("({ path: document.querySelector('#details').textContent, imageCount: document.querySelectorAll('#details img').length })");
+    const selected = await evaluate<{ path: string; imageCount: number }>(
+      "({ path: document.querySelector('#details').textContent, imageCount: document.querySelectorAll('#details img,#viewport img').length })",
+    );
     if (!selected.path.includes("src/dependency.ts") || !selected.path.includes(hostile) || selected.imageCount !== 0) throw new Error("File selection or literal fact rendering failed");
+    await until("document.querySelector('#viewport g[aria-label^=\"TechDecision:\"]')");
+    const factCanvas = await evaluate<{ nodes: number; lines: number }>(
+      "({ nodes: document.querySelectorAll('#viewport g[aria-label^=\"TechDecision:\"]').length, lines: document.querySelectorAll('#viewport line').length })",
+    );
+    if (factCanvas.nodes !== 1 || factCanvas.lines !== 2) throw new Error("File-to-fact canvas node or edge was missing");
+    const factShot = await cdp.send("Page.captureScreenshot", { format: "png", captureBeyondViewport: false });
+    if (!factShot.data) throw new Error("Chrome returned no fact-node screenshot data");
+    writeFileSync(join(proofDir, "graph-browser-fact-node.png"), Buffer.from(factShot.data, "base64"));
+    await evaluate("document.querySelector('#viewport g[aria-label^=\"TechDecision:\"]').dispatchEvent(new MouseEvent('click', { bubbles: true }))");
+    if ((await evaluate<string>("document.querySelector('#details h2').textContent")) !== "TechDecision: " + hostile) throw new Error("fact node selection failed");
+    await evaluate("document.querySelector('#relations button').click()");
+    if ((await evaluate<string>("document.querySelector('#details h2').textContent")) !== "src/dependency.ts") throw new Error("fact-to-File relationship navigation failed");
     await evaluate("document.getElementById('zoom-in').click(); document.getElementById('search-query').value = 'dependency'; document.getElementById('search').click()");
     await until("document.getElementById('status').textContent.includes('1 matching node')");
     await evaluate("document.getElementById('tour-start').click()");
@@ -152,7 +166,9 @@ async function main(): Promise<void> {
     const shot = await cdp.send("Page.captureScreenshot", { format: "png", captureBeyondViewport: false });
     if (!shot.data) throw new Error("Chrome returned no screenshot data");
     writeFileSync(join(proofDir, "graph-browser.png"), Buffer.from(shot.data, "base64"));
-    process.stdout.write("Chrome graph load, literal fact, search, and dependency-first tour passed; screenshot: .workflow/proofs/graph-browser.png\n");
+    process.stdout.write(
+      "Chrome graph load, in-canvas fact navigation, literal text, search, and dependency-first tour passed; screenshots: .workflow/proofs/graph-browser-fact-node.png and graph-browser.png\n",
+    );
   } finally {
     cdp?.close();
     if (child && child.exitCode === null && child.signalCode === null) {

@@ -47,9 +47,10 @@ local database check (claim 052). A local real-Chrome check exercises graph
 load, File selection, literal fact rendering, search, and dependency-first tour
 navigation (claim 053). The local database has durable, organization-bound
 File-to-fact edges with triggered lifecycle cleanup and migration backfill
-(claim 054). In-canvas fact nodes, generated narration, and semantic node
-search remain open. The historical effort percentage below has not been
-recalculated.
+(claim 054). The graph canvas shows those active facts as selectable nodes and
+removes stale nodes after refresh; a real Chrome check verified navigation and
+literal text (claim 055). Generated narration and semantic node search remain
+open. The historical effort percentage below has not been recalculated.
 
 The Claude semantic review job reported a visible skip on these PRs because
 `CLAUDE_API_KEY` is unset; it did not analyze them. The release workflow diff

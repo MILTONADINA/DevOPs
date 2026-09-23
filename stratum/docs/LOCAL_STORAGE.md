@@ -140,9 +140,13 @@ two-organization lifecycle check and `npm run db:verify-source-fact-backfill`
 for a disposable pre-migration backfill and privilege check.
 Run `npm run verify:graph-browser` on a machine with local Chrome to exercise
 the served dashboard and scoped API through a real browser. It uses an isolated
-in-memory fixture and saves `.workflow/proofs/graph-browser.png`. Semantic node
-search, generated narration, and displaying these durable links as nodes in
-the main graph canvas remain separate gates.
+in-memory fixture and saves `.workflow/proofs/graph-browser.png` and
+`.workflow/proofs/graph-browser-fact-node.png`. Selecting an indexed File adds
+up to 50 active linked facts as selectable canvas nodes. Reselect the File to
+refresh them after suppression; a changed response removes stale nodes and
+links. Selecting a source Function keeps the sidebar relation without implying
+a Function-to-fact canvas edge. Semantic node search and generated narration
+remain separate gates.
 
 Run `npm run db:verify-recovery` for a disposable organization backup and
 restore check. It exports a session, suppressed fact, audit status, and conflict
