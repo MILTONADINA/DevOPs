@@ -62,6 +62,7 @@
     "db:verify-proxy-memory": "tsx scripts/local-compose.ts with-env tsx test/integration/local-proxy-memory.ts",
     "db:verify-message-memory": "tsx scripts/local-compose.ts with-env tsx test/integration/local-message-memory.ts",
     "db:verify-message-audit": "tsx scripts/local-compose.ts with-env tsx test/integration/local-message-audit.ts",
+    "db:verify-request-survival": "tsx scripts/local-compose.ts with-env tsx test/integration/local-request-survival.ts",
     "deploy": "wrangler deploy"
   },
   "dependencies": {
