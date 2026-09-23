@@ -149,6 +149,8 @@ export async function main(argv: string[] = process.argv.slice(2), deps: Underst
       for (const [id, fact] of facts) map.set(id, factToText(fact));
       return map;
     };
+    const visibleMatches = (matches: VectorMatch[], content: ContentByRef): VectorMatch[] =>
+      matches.filter((match) => match.sourceType !== "fact" || (match.sourceRef !== null && content.has(match.sourceRef)));
 
     // Encode the semantic query locally (free; no Anthropic) when provided.
     let queryEmbedding: number[] | undefined;
@@ -173,10 +175,12 @@ export async function main(argv: string[] = process.argv.slice(2), deps: Underst
       }
       const u = await understandEntity(graph, orgId, args.entity, opts);
       const content = u.related ? await contentFor(u.related) : undefined;
+      if (u.related && content) u.related = visibleMatches(u.related, content);
       out(renderUnderstanding(u, content));
     } else if (queryEmbedding) {
       const matches = await vectors.search(orgId, queryEmbedding, args.k);
-      out(renderMatches(args.query as string, matches, await contentFor(matches)));
+      const content = await contentFor(matches);
+      out(renderMatches(args.query as string, visibleMatches(matches, content), content));
     }
     return 0;
   } catch (e) {

@@ -23,6 +23,12 @@ const td = (overrides: Record<string, unknown>): Record<string, unknown> => ({
 });
 
 describe("Tier-2 promotion lifecycle", () => {
+  test("queryUnpromoted does not promote suppressed facts", async () => {
+    const { client } = makeFakeSupabase({ tech_decisions: [
+      td({ id: "active" }), td({ id: "suppressed", is_suppressed: true }),
+    ] });
+    expect((await createWarmMemory(client).queryUnpromoted("o1")).map((f) => f.id)).toEqual(["active"]);
+  });
   test("queryUnpromoted excludes promoted facts + returns oldest-first ACROSS tables", async () => {
     // Two tables with INTERLEAVED timestamps so the cross-table merge-sort is
     // load-bearing: the correct oldest-first order interleaves tech_decisions and
@@ -76,6 +82,14 @@ describe("Tier-2 promotion lifecycle", () => {
 
 describe("getFactsByRefs (content-free vector-hit → typed-fact resolution)", () => {
   const todoRow = (o: Record<string, unknown>) => ({ created_at: "2026-05-01T00:00:00Z", org_id: "o1", session_id: "s1", confidence: 0.8, is_verified: false, is_suppressed: false, promoted_to_t3: false, status: "open", ...o });
+
+  test("does not resolve a suppressed vector hit into context", async () => {
+    const { client } = makeFakeSupabase({ tech_decisions: [
+      td({ id: "active" }), td({ id: "suppressed", is_suppressed: true }),
+    ] });
+    const map = await createWarmMemory(client).getFactsByRefs("o1", ["active", "suppressed"]);
+    expect([...map.keys()]).toEqual(["active"]);
+  });
 
   test("resolves facts by id ACROSS tables, org-scoped; unknown ids absent", async () => {
     const { client } = makeFakeSupabase({

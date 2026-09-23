@@ -188,6 +188,8 @@ export function factToRow(fact: AnyFact, ctx: PersistContext): { table: string; 
 export function rowToFact(table: string, row: Record<string, unknown>): AnyFact | null {
   const factType = TABLE_FACT_TYPES[table];
   if (!factType) return null;
+  // Defense in depth if a caller omits the SQL filter.
+  if (row["is_suppressed"] !== false) return null;
   const candidate: Record<string, unknown> = { fact_type: factType };
   for (const [k, v] of Object.entries(row)) {
     if ((NON_FACT_COLUMNS as readonly string[]).includes(k)) continue;
@@ -209,10 +211,9 @@ export function createWarmMemory(client: SupabaseClient): WarmMemory {
       // Re-validate (defense in depth) and group surviving rows by table so each
       // table is one batch upsert. All rows in a batch share the trusted FKs, so
       // a batch failure is systemic (bad FK / connection) and applies to the
-      // whole group — making per-table error attribution accurate. We UPSERT on the
-      // primary key (id, minted by the extractor) rather than insert, so a retry
-      // after a transient failure (see MemoryManager.drain) is idempotent — it
-      // cannot create duplicate fact rows.
+      // whole group — making per-table error attribution accurate. DO NOTHING
+      // on a duplicate id: a retry cannot overwrite later suppression or
+      // verification, and it cannot create a duplicate fact row.
       const byTable = new Map<string, Record<string, unknown>[]>();
       let skipped = 0;
       for (const fact of facts) {
@@ -229,7 +230,7 @@ export function createWarmMemory(client: SupabaseClient): WarmMemory {
       let persisted = 0;
       const errors: { table: string; message: string }[] = [];
       for (const [table, rows] of byTable) {
-        const { error } = await client.from(table).upsert(rows, { onConflict: "id" });
+        const { error } = await client.from(table).upsert(rows, { onConflict: "id", ignoreDuplicates: true });
         if (error) errors.push({ table, message: error.message });
         else persisted += rows.length;
       }
@@ -241,7 +242,7 @@ export function createWarmMemory(client: SupabaseClient): WarmMemory {
       const tables = Object.values(FACT_TABLES);
       const results = await Promise.all(
         tables.map(async (table) => {
-          let q = client.from(table).select("*").eq("org_id", orgId);
+          let q = client.from(table).select("*").eq("org_id", orgId).eq("is_suppressed", false);
           if (opts.sessionId !== undefined) q = q.eq("session_id", opts.sessionId);
           const { data, error } = await q.order("created_at", { ascending: false }).limit(limit);
           return { table, data, error };
@@ -271,7 +272,7 @@ export function createWarmMemory(client: SupabaseClient): WarmMemory {
       const tables = Object.values(FACT_TABLES);
       const results = await Promise.all(
         tables.map(async (table) => {
-          let q = client.from(table).select("*").eq("org_id", orgId).eq("promoted_to_t3", false);
+          let q = client.from(table).select("*").eq("org_id", orgId).eq("promoted_to_t3", false).eq("is_suppressed", false);
           if (opts.olderThanIso !== undefined) q = q.lt("created_at", opts.olderThanIso);
           const { data, error } = await q.order("created_at", { ascending: true }).limit(limit);
           return { table, data, error };
@@ -313,7 +314,7 @@ export function createWarmMemory(client: SupabaseClient): WarmMemory {
       const tables = Object.values(FACT_TABLES);
       const results = await Promise.all(
         tables.map(async (table) => {
-          const { data, error } = await client.from(table).select("*").eq("org_id", orgId).in("id", refs);
+          const { data, error } = await client.from(table).select("*").eq("org_id", orgId).eq("is_suppressed", false).in("id", refs);
           return { table, data, error };
         }),
       );

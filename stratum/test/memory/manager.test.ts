@@ -173,7 +173,7 @@ describe("MemoryManager — Tier-3 semantic recall (opt-in)", () => {
   const noExtract = createFactExtractor({ complete: () => Promise.resolve("[]") }, { now: () => "2026-05-29T00:00:00Z", mintId: () => "x" });
 
   test("a query returns vector neighbours resolved to typed facts (offline encoder)", async () => {
-    const { client } = makeFakeSupabase({
+    const { client, store } = makeFakeSupabase({
       tech_decisions: [
         { id: "f-1", created_at: "2026-05-29T00:00:00Z", org_id: "org-1", session_id: "sess-1", confidence: 0.9, is_verified: false, is_suppressed: false, promoted_to_t3: true, decision_text: "use Cloudflare Workers", domain: "infra" },
       ],
@@ -189,6 +189,11 @@ describe("MemoryManager — Tier-3 semantic recall (opt-in)", () => {
     const { relevantFacts } = await manager.recall({ query: "where do we deploy?" });
     expect(relevantFacts).toBeDefined();
     expect(relevantFacts!.map((f) => (f as { decision_text?: string }).decision_text)).toEqual(["use Cloudflare Workers"]);
+
+    store["tech_decisions"]![0]!["is_suppressed"] = true;
+    const suppressed = await manager.recall({ query: "where do we deploy?" });
+    expect(suppressed.facts).toEqual([]);
+    expect(suppressed.relevantFacts).toEqual([]);
   });
 
   test("a query WITHOUT a configured vector store + encoder → no relevantFacts (backward compatible)", async () => {

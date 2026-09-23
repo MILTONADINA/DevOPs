@@ -120,7 +120,7 @@ export function createMemoryManager(deps: MemoryManagerDeps): MemoryManager {
 
   async function drain(): Promise<void> {
     // 1) Re-persist any facts from a prior failed drain FIRST — same ids ⇒ the upsert is idempotent
-    //    (re-persisting an already-stored fact overwrites its own row; no duplicate is created).
+    //    (an existing row is left intact, including any later suppression/verification).
     if (pendingFacts.length > 0) {
       const retry = pendingFacts.splice(0, pendingFacts.length);
       const r = await deps.warm.persist(retry, persistCtx());
@@ -142,7 +142,7 @@ export function createMemoryManager(deps: MemoryManagerDeps): MemoryManager {
     if (facts.length === 0) return;
     // persist() does NOT throw — it returns per-table errors. On a partial failure, re-queue the
     // EXTRACTED FACTS (with their already-minted ids), NOT the turns — so the next drain re-presents
-    // the SAME ids and the upsert dedups instead of minting duplicates from a fresh extraction.
+    // the SAME ids and the upsert ignores existing rows instead of minting duplicates.
     const result = await deps.warm.persist(facts, persistCtx());
     if (result.errors.length > 0) {
       pendingFacts.push(...facts);

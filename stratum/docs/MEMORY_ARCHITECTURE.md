@@ -86,6 +86,12 @@ is_verified     boolean default false  -- set true after Git-attestation
 is_suppressed   boolean default false  -- set true if audit finds conflict
 ```
 
+Warm-memory reads and Tier 2 promotion exclude suppressed rows. Vector hits
+resolve through the active warm fact row before their content enters recall;
+`/understand-codebase` omits fact pointers that no longer resolve. Retrying an
+extraction insert with the same fact ID preserves later suppression and
+verification on the existing row.
+
 **`function_changes`** — tracks function renames, deprecations, signature changes:
 ```sql
 old_name        text not null

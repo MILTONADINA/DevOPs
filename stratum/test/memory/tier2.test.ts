@@ -80,6 +80,11 @@ describe("rowToFact (read projection)", () => {
     const bad = { id: base.id, created_at: base.created_at, session_id: "s", confidence: 1.5, is_verified: false, is_suppressed: false, decision_text: "d", domain: "db" };
     expect(rowToFact("tech_decisions", bad)).toBeNull(); // confidence > 1
   });
+
+  test("returns null for a suppressed row even without a SQL filter", () => {
+    const row = { ...factToRow(td, ctx).row, is_suppressed: true };
+    expect(rowToFact("tech_decisions", row)).toBeNull();
+  });
 });
 
 describe("createWarmMemory.persist (fake client)", () => {
@@ -102,6 +107,17 @@ describe("createWarmMemory.persist (fake client)", () => {
     await wm.persist([td], ctx);
     await wm.persist([td], ctx); // retry with the same fact id
     expect(store["tech_decisions"]).toHaveLength(1); // upsert on id, not a second row
+  });
+
+  test("retry never clears a fact's suppression or verification", async () => {
+    const { client, store } = makeFakeSupabase();
+    const wm = createWarmMemory(client);
+    await wm.persist([td], ctx);
+    store["tech_decisions"]![0]!["is_suppressed"] = true;
+    store["tech_decisions"]![0]!["is_verified"] = true;
+    await wm.persist([td], ctx);
+    expect(store["tech_decisions"]).toHaveLength(1);
+    expect(store["tech_decisions"]![0]).toMatchObject({ is_suppressed: true, is_verified: true });
   });
 
   test("FAIL-CLOSED: invalid facts are skipped, not written", async () => {
@@ -133,6 +149,14 @@ describe("createWarmMemory.persist (fake client)", () => {
 
 describe("createWarmMemory.queryRecent (fake client)", () => {
   const rowOf = (overrides: Record<string, unknown>) => ({ id: "11111111-1111-1111-1111-111111111111", created_at: "2026-05-29T00:00:00Z", org_id: "org-uuid", session_id: "s1", confidence: 0.8, is_verified: false, is_suppressed: false, promoted_to_t3: false, ...overrides });
+
+  test("does not recall suppressed facts", async () => {
+    const { client } = makeFakeSupabase({ tech_decisions: [
+      rowOf({ id: "active", decision_text: "active", domain: "db" }),
+      rowOf({ id: "suppressed", decision_text: "false memory", domain: "db", is_suppressed: true }),
+    ] });
+    expect((await createWarmMemory(client).queryRecent("org-uuid")).map((f) => f.id)).toEqual(["active"]);
+  });
 
   test("merges across tables, newest-first, caps at limit", async () => {
     // Sensitive to the impl's cross-table MERGE-sort (tier2.ts): tables iterate
