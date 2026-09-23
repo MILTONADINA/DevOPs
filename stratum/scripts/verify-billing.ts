@@ -9,8 +9,7 @@
  *   npm run verify-billing -- --org-id <uuid> [--since <iso>] [--until <iso>]
  */
 
-import "dotenv/config";
-import { createClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { verifyBillingRecord, type BillingInput } from "../src/billing/recorder";
 
 interface Args {
@@ -54,6 +53,33 @@ export function rowToInput(r: BillingRow): BillingInput {
   };
 }
 
+/** Read the entire ordered ledger, rejecting silent REST caps and changing counts. */
+export async function verifyOrgBilling(client: SupabaseClient, orgId: string, secret: string, bounds: Pick<Args, "since" | "until"> = {}): Promise<{ records: number; tampered: string[] }> {
+  let records = 0;
+  let expected: number | undefined;
+  const tampered: string[] = [];
+  while (records === 0 || records < (expected ?? 0)) {
+    let query = client
+      .from("billing_records")
+      .select("id, session_id, org_id, original_tokens, quarantined_tokens, api_price_per_token, pruning_log_id, signed_hash", { count: "exact" })
+      .eq("org_id", orgId);
+    if (bounds.since !== undefined) query = query.gte("created_at", bounds.since);
+    if (bounds.until !== undefined) query = query.lte("created_at", bounds.until);
+    const { data, error, count } = await query.order("id", { ascending: true }).range(records, records + 499);
+    if (error) throw new Error(`read billing_records failed: ${error.message}`);
+    if (count === null || count === undefined || !Number.isSafeInteger(count) || count < 0) throw new Error("billing verification failed: exact row count unavailable");
+    if (expected !== undefined && count !== expected) throw new Error("billing verification failed: row count changed during paging");
+    expected = count;
+    const page = (data ?? []) as BillingRow[];
+    if (page.length === 0 && records < expected) throw new Error("billing verification failed: empty page before exact row count");
+    for (const row of page) if (!verifyBillingRecord(rowToInput(row), row.signed_hash, secret)) tampered.push(row.id);
+    records += page.length;
+    if (records > expected) throw new Error("billing verification failed: page exceeded exact row count");
+    if (records === expected) return { records, tampered };
+  }
+  throw new Error("billing verification failed: pagination ended before exact row count");
+}
+
 export async function main(argv: string[] = process.argv.slice(2)): Promise<number> {
   const out = (s: string): void => {
     process.stdout.write(`${s}\n`);
@@ -68,40 +94,28 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
   const key = process.env["SUPABASE_SERVICE_KEY"];
   const secret = process.env["CQ_BILLING_SIGNING_SECRET"];
   if (!url || !key) {
-    out("verify-billing SKIPPED: set SUPABASE_URL + SUPABASE_SERVICE_KEY. Exiting 0.");
-    return 0;
+    out(`verify-billing requires ${[!url && "SUPABASE_URL", !key && "SUPABASE_SERVICE_KEY"].filter(Boolean).join(" and ")}.`);
+    return 1;
   }
   if (!secret) {
-    out("verify-billing SKIPPED: set CQ_BILLING_SIGNING_SECRET (the recorder's signing key). Exiting 0.");
-    return 0;
+    out("verify-billing requires CQ_BILLING_SIGNING_SECRET (the recorder's signing key).");
+    return 1;
   }
   const client = createClient(url, key);
 
-  let q = client
-    .from("billing_records")
-    .select("id, session_id, org_id, original_tokens, quarantined_tokens, api_price_per_token, pruning_log_id, signed_hash")
-    .eq("org_id", args.orgId);
-  if (args.since !== undefined) q = q.gte("created_at", args.since);
-  if (args.until !== undefined) q = q.lte("created_at", args.until);
-  const { data, error } = await q;
-  if (error) throw new Error(`read billing_records failed: ${error.message}`);
-  const rows = (data ?? []) as BillingRow[];
+  const { records, tampered } = await verifyOrgBilling(client, args.orgId, secret, args);
 
   out(`Billing signature verification — org ${args.orgId}`);
   out("=".repeat(50));
-  const tampered: string[] = [];
-  for (const r of rows) {
-    if (!verifyBillingRecord(rowToInput(r), r.signed_hash, secret)) tampered.push(r.id);
-  }
-  out(`  records:   ${rows.length}`);
-  out(`  verified:  ${rows.length - tampered.length}`);
+  out(`  records:   ${records}`);
+  out(`  verified:  ${records - tampered.length}`);
   out(`  TAMPERED:  ${tampered.length}`);
   if (tampered.length > 0) {
     for (const id of tampered) out(`    ✗ ${id}`);
     out("INTEGRITY FAILURE — a record's signature does not match its data.");
     return 1;
   }
-  out(rows.length === 0 ? "(no billing records yet — nothing to verify.)" : "All signatures valid ✓");
+  out(records === 0 ? "(no billing records yet — nothing to verify.)" : "All signatures valid ✓");
   return 0;
 }
 

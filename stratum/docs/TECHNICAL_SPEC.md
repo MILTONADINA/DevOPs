@@ -239,9 +239,9 @@ CREATE TABLE billing_records (
   signed_hash           TEXT NOT NULL
 );
 
--- Prevent billing record modification
-CREATE RULE no_update_billing AS ON UPDATE TO billing_records DO INSTEAD NOTHING;
-CREATE RULE no_delete_billing AS ON DELETE TO billing_records DO INSTEAD NOTHING;
+-- Current migration 20260530040000_audit_security_hardening.sql replaces the
+-- original silent rules with BEFORE UPDATE/DELETE/TRUNCATE triggers that raise
+-- an explicit append-only error. See that migration for executable DDL.
 
 -- Pruning logs
 CREATE TABLE pruning_logs (
