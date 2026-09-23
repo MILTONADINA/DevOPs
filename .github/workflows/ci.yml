@@ -23,4 +23,8 @@ jobs:
       - name: Lint stack-specific skills (REQ-D2..D7)
         run: npm run lint:stack-specific-skills
       - name: Test dashboard and test hermeticity (REQ-R12..R13)
-        run: npm test
+        # Preflight checks these directories; they do not require installed packages.
+        # Security-tool versions are supplied by the isolated test fixtures.
+        run: |
+          mkdir -p node_modules/.bin stratum/node_modules/.bin .workflow/proofs
+          npm test

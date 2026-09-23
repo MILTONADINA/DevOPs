@@ -8,6 +8,17 @@ import { createHash } from 'node:crypto';
 const ROOT = path.resolve(import.meta.dirname, '..', '..');
 const PREFLIGHT = path.join(ROOT, 'scripts', 'graph-preflight.sh');
 
+function fakeSecurityTools(directory, includeCosign = true) {
+  const bin = path.join(directory, 'fake-security-tools');
+  mkdirSync(bin);
+  for (const name of includeCosign ? ['gitleaks', 'semgrep', 'cosign'] : ['gitleaks', 'semgrep']) {
+    const file = path.join(bin, name);
+    writeFileSync(file, name === 'cosign' ? '#!/bin/sh\necho "GitVersion: fixture-version"\n' : '#!/bin/sh\necho fixture-version\n');
+    chmodSync(file, 0o755);
+  }
+  return bin;
+}
+
 test('declared Node engine supports import.meta.dirname used by graph scripts', () => {
   const manifest = JSON.parse(readFileSync(path.join(ROOT, 'package.json')));
   const lock = JSON.parse(readFileSync(path.join(ROOT, 'package-lock.json')));
@@ -40,7 +51,7 @@ test('check-only reports an Xcode git failure without trying a repair', () => {
   }
 });
 
-test('normal preflight installs and can revert the Command Line Tools git shim', () => {
+test('normal preflight installs and can revert the Command Line Tools git shim', { skip: process.platform !== 'darwin' }, () => {
   const dir = mkdtempSync(path.join(ROOT, '.workflow', 'state', 'graph-preflight-git-'));
   try {
     const fakeGit = path.join(dir, 'git');
@@ -48,7 +59,7 @@ test('normal preflight installs and can revert the Command Line Tools git shim',
     writeFileSync(fakeGit, original);
     chmodSync(fakeGit, 0o755);
     const reportPath = path.join(dir, 'preflight.json');
-    const env = { ...process.env, PATH: `${dir}:${process.env.PATH}`, GRAPH_PREFLIGHT_REPORT: reportPath };
+    const env = { ...process.env, PATH: `${dir}:${fakeSecurityTools(dir)}:${process.env.PATH}`, GRAPH_PREFLIGHT_REPORT: reportPath };
     const result = spawnSync('bash', [PREFLIGHT], { cwd: ROOT, env, encoding: 'utf8', timeout: 30_000 });
     assert.equal(result.status, 10, result.stderr || result.stdout);
     const report = JSON.parse(readFileSync(reportPath, 'utf8'));
@@ -73,7 +84,7 @@ test('normal preflight repairs non-executable .bin entries and records the fix',
     const reportPath = path.join(dir, 'preflight.json');
     const result = spawnSync('bash', [PREFLIGHT], {
       cwd: ROOT,
-      env: { ...process.env, GRAPH_PREFLIGHT_DEPS_STRATUM_DIR: path.join(dir, 'node_modules'), GRAPH_PREFLIGHT_REPORT: reportPath },
+      env: { ...process.env, PATH: `${fakeSecurityTools(dir)}:${process.env.PATH}`, GRAPH_PREFLIGHT_DEPS_STRATUM_DIR: path.join(dir, 'node_modules'), GRAPH_PREFLIGHT_REPORT: reportPath },
       encoding: 'utf8', timeout: 30_000,
     });
     assert.equal(result.status, 10, result.stderr || result.stdout);
@@ -86,7 +97,7 @@ test('normal preflight repairs non-executable .bin entries and records the fix',
     chmodSync(secondTool, 0o644);
     const second = spawnSync('bash', [PREFLIGHT], {
       cwd: ROOT,
-      env: { ...process.env, GRAPH_PREFLIGHT_DEPS_STRATUM_DIR: path.join(dir, 'node_modules'), GRAPH_PREFLIGHT_REPORT: reportPath },
+      env: { ...process.env, PATH: `${path.join(dir, 'fake-security-tools')}:${process.env.PATH}`, GRAPH_PREFLIGHT_DEPS_STRATUM_DIR: path.join(dir, 'node_modules'), GRAPH_PREFLIGHT_REPORT: reportPath },
       encoding: 'utf8', timeout: 30_000,
     });
     assert.equal(second.status, 10, second.stderr || second.stdout);
@@ -120,7 +131,7 @@ test('missing Cosign installs only a pinned checksum-matching release and revert
     writeFileSync(curl, `#!/bin/sh\ncase "$*" in\n  *--head*) printf 'HTTP/2 302\\nLocation: https://release-assets.githubusercontent.com/fixture\\n' ;;\n  *--output*) while [ "$1" != "--output" ]; do shift; done; cp '${fixture}' "$2" ;;\nesac\n`);
     chmodSync(curl, 0o755);
     const reportPath = path.join(dir, 'preflight.json');
-    const env = { ...process.env, HOME: home, PATH: `${fakeBin}:${process.env.PATH}`, GRAPH_PREFLIGHT_REGISTRY: registryPath, GRAPH_PREFLIGHT_REPORT: reportPath };
+    const env = { ...process.env, HOME: home, PATH: `${fakeBin}:${fakeSecurityTools(dir, false)}:${process.env.PATH}`, GRAPH_PREFLIGHT_REGISTRY: registryPath, GRAPH_PREFLIGHT_REPORT: reportPath };
     const result = spawnSync('bash', [PREFLIGHT], { cwd: ROOT, env, encoding: 'utf8', timeout: 30_000 });
     assert.equal(result.status, 10, result.stderr || result.stdout);
     assert.equal(JSON.parse(readFileSync(reportPath)).checks.find((check) => check.id === 'tool.cosign').status, 'fixed');
@@ -159,6 +170,11 @@ test('graph-halt alone forces needs_human and survives preflight', () => {
     const fakeGit = path.join(repo, 'fake-bin', 'git');
     writeFileSync(fakeGit, `#!/bin/sh\ncase "$*" in\n  'rev-parse --show-toplevel') printf '%s\\n' '${repo}' ;;\n  'remote get-url origin') echo 'https://github.com/example/repo.git' ;;\n  'ls-remote --exit-code origin HEAD') echo 'abc HEAD' ;;\n  'rev-parse HEAD') echo 'abcdef0' ;;\n  *) exit 2 ;;\nesac\n`);
     chmodSync(fakeGit, 0o755);
+    for (const name of ['gitleaks', 'semgrep', 'cosign']) {
+      const file = path.join(repo, 'fake-bin', name);
+      writeFileSync(file, name === 'cosign' ? '#!/bin/sh\necho "GitVersion: fixture-version"\n' : '#!/bin/sh\necho fixture-version\n');
+      chmodSync(file, 0o755);
+    }
     const halt = path.join(repo, '.workflow', 'state', 'graph-halt');
     writeFileSync(halt, 'halted\n');
     const result = spawnSync(process.execPath, [path.join(repo, 'scripts', 'graph-preflight.mjs'), '--check-only'], {
