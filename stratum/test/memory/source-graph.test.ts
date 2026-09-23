@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vitest";
+import { readFileSync } from "node:fs";
 import { indexSourceFiles } from "../../src/memory/source-graph";
 
 describe("source graph parser", () => {
@@ -23,5 +24,29 @@ describe("source graph parser", () => {
       ]),
     );
     expect(graph.edges).toHaveLength(3);
+  });
+});
+
+describe("Rust source graph parser", () => {
+  test("indexes top-level functions and module dependencies without comment, string, or body decoys", () => {
+    const graph = indexSourceFiles([
+      {
+        path: "rust/src/lib.rs",
+        source: `// fn ghost() {}\n/* nested /* fn hidden() {} */ mod absent; */\nconst TEXT: &str = r##"fn fake() {} mod absent;"##;\nmod helper;\n/// Does work\npub fn entry() { let s = "fn string_decoy() {}"; fn nested() {} }`,
+      },
+      { path: "rust/src/helper.rs", source: "fn helper() {}" },
+    ]);
+    expect(graph.entities.map((entity) => entity.name)).toEqual(["rust/src/helper.rs", "rust/src/helper.rs#helper", "rust/src/lib.rs", "rust/src/lib.rs#entry"]);
+    expect(graph.edges).toEqual([
+      { fromName: "rust/src/helper.rs", toName: "rust/src/helper.rs#helper", edgeType: "DECLARES" },
+      { fromName: "rust/src/lib.rs", toName: "rust/src/helper.rs", edgeType: "DEPENDS_ON" },
+      { fromName: "rust/src/lib.rs", toName: "rust/src/lib.rs#entry", edgeType: "DECLARES" },
+    ]);
+  });
+
+  test("recognizes the repository's real Rust function", () => {
+    const source = readFileSync(new URL("../../rust/hot-path/src/lib.rs", import.meta.url), "utf8");
+    const graph = indexSourceFiles([{ path: "stratum/rust/hot-path/src/lib.rs", source }]);
+    expect(graph.entities.some((entity) => entity.name === "stratum/rust/hot-path/src/lib.rs#sha256_hex")).toBe(true);
   });
 });
