@@ -1,9 +1,12 @@
 # Stratum — Memory & Eval Commands (v0.4.x / v0.5.x / v0.6.x)
 
 Operator guide for the three-tier memory + the pruning-eval tooling. Each command
-is marked **FREE** (local ONNX encoder + free-tier Supabase only — no Anthropic
+is marked **FREE** (local ONNX encoder + local Supabase CLI stack — no Anthropic
 spend) or **NEEDS CREDITS** (calls the Claude judge/extractor — costs Anthropic API
 credits).
+
+The paused hosted Supabase project is retired. See [LOCAL_STORAGE.md](LOCAL_STORAGE.md)
+for the local database setup and its release limits.
 
 > The Phase-1 measurement proxy is documented separately in `PERSONAL_USE.md`.
 > Pruning is **not** wired into the request path (constitution / ADR-0009) — it
