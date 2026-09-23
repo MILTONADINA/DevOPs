@@ -61,6 +61,11 @@ the fixture. For operator use, run `backup` and `restore` through `db:with-env`;
 restore expects a clean target. Both CLIs use process credentials and do not
 load `.env`.
 
+To run the proxy with this local database, start it through
+`npm run db:with-env -- npm run dev` with `CQ_COMMERCIAL=true` and a supported
+model provider configured in the process environment. The proxy entry point
+also uses process settings directly and does not load `.env`.
+
 For a command that needs `SUPABASE_URL` and `SUPABASE_SERVICE_KEY`, use
 `npm run db:with-env -- <command> [args...]` from `stratum/`. It passes a
 short-lived local service JWT through the child process environment without
