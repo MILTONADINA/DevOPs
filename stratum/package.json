@@ -67,6 +67,7 @@
     "db:verify-real-model-memory": "tsx scripts/local-compose.ts with-env tsx test/integration/local-real-model-memory.ts",
     "db:verify-graph-read": "tsx scripts/local-compose.ts with-env tsx test/integration/local-graph-read.ts",
     "db:verify-graph-integrity": "tsx scripts/local-compose.ts with-env tsx test/integration/local-graph-org-integrity.ts",
+    "db:verify-graph-search": "tsx scripts/local-compose.ts with-env tsx test/integration/local-graph-search.ts",
     "db:verify-source-graph": "tsx scripts/local-compose.ts with-env tsx test/integration/local-source-graph.ts",
     "ingest-source-graph": "tsx scripts/ingest-source-graph.ts",
     "deploy": "wrangler deploy"

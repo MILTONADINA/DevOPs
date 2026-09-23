@@ -35,6 +35,10 @@ function fakeDeps(): { deps: MemoryDeps; captured: Record<string, unknown> } {
       captured["graph"] = { orgId, limit };
       return Promise.resolve({ entities: [{ id: "n1", kind: "Function", name: "parseToken", session_id: null }], edges: [] });
     },
+    searchGraph: (orgId, query) => {
+      captured["search"] = { orgId, query };
+      return Promise.resolve({ matches: ["n1"], entities: [{ id: "n1", kind: "Function", name: "parseToken", session_id: null, file_path: "src/token.ts", summary: "Parses a token" }], edges: [] });
+    },
   };
   return { deps, captured };
 }
@@ -42,8 +46,7 @@ function fakeDeps(): { deps: MemoryDeps; captured: Record<string, unknown> } {
 describe("GET /v1/memory/graph", () => {
   test("uses authenticated org and caps the snapshot size", async () => {
     const { deps, captured } = fakeDeps();
-    const app = buildProxy({ rateLimit: false, cors: false,
-      auth: { resolve: (r) => Promise.resolve(r === "k" ? { orgId: "o9", keyId: "i" } : null) }, memory: deps });
+    const app = buildProxy({ rateLimit: false, cors: false, auth: { resolve: (r) => Promise.resolve(r === "k" ? { orgId: "o9", keyId: "i" } : null) }, memory: deps });
     await app.ready();
     const res = await app.inject({ method: "GET", url: "/v1/memory/graph?org-id=other&limit=900", headers: { authorization: "Bearer k" } });
     expect(res.statusCode).toBe(200);
@@ -57,6 +60,31 @@ describe("GET /v1/memory/graph", () => {
     const app = buildProxy({ rateLimit: false, cors: false, memory: fakeDeps().deps });
     await app.ready();
     expect((await app.inject({ method: "GET", url: "/v1/memory/graph" })).statusCode).toBe(400);
+    await app.close();
+  });
+});
+
+describe("GET /v1/memory/graph/search", () => {
+  test("uses the authenticated organization and trims the query", async () => {
+    const { deps, captured } = fakeDeps();
+    const app = buildProxy({ rateLimit: false, cors: false, auth: { resolve: (r) => Promise.resolve(r === "k" ? { orgId: "o9", keyId: "i" } : null) }, memory: deps });
+    await app.ready();
+    const res = await app.inject({ method: "GET", url: "/v1/memory/graph/search?org-id=other&q=%20parseTokn%20", headers: { authorization: "Bearer k" } });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().matches).toEqual(["n1"]);
+    expect(captured["search"]).toEqual({ orgId: "o9", query: "parseTokn" });
+    expect((await app.inject({ method: "GET", url: "/v1/memory/graph/search?org-id=other&q=token" })).statusCode).toBe(401);
+    await app.close();
+  });
+
+  test("rejects missing, short, and oversized queries and needs org in personal mode", async () => {
+    const app = buildProxy({ rateLimit: false, cors: false, memory: fakeDeps().deps });
+    await app.ready();
+    for (const q of ["", "a", "a".repeat(101)]) {
+      const res = await app.inject({ method: "GET", url: `/v1/memory/graph/search?org-id=o1&q=${q}` });
+      expect(res.statusCode).toBe(400);
+    }
+    expect((await app.inject({ method: "GET", url: "/v1/memory/graph/search?q=token" })).statusCode).toBe(400);
     await app.close();
   });
 });

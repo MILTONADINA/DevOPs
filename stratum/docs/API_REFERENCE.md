@@ -272,6 +272,15 @@ is capped at 500. The response contains `entities` (`id`, `kind`, `name`,
 `session_id`, `file_path`, `summary`) and at most 500 `edges` (`id`, `edge_type`, `from_entity`,
 `to_entity`); both endpoints of every edge are in the returned entity set.
 
+### GET /v1/memory/graph/search
+
+Search entity names across the authenticated organization's entire graph,
+including nodes outside the recent snapshot. `q` is required, trimmed, and
+must be 2–100 characters. Literal substrings rank before similar spellings.
+The response contains up to 20 `matches` (entity IDs), plus `entities` and
+`edges` for those matches and their immediate neighbors (at most 220 nodes
+and 200 edges). In personal mode, pass `?org-id=<uuid>`.
+
 ---
 
 ## Configuration

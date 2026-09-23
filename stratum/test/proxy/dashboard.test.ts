@@ -104,6 +104,8 @@ describe("dashboard route", () => {
     expect(res.statusCode).toBe(200);
     expect(res.headers["content-security-policy"]).toContain("connect-src 'self'");
     expect(res.payload).toContain("/v1/memory/graph?limit=500");
+    expect(res.payload).toContain("/v1/memory/graph/search?q=");
+    expect(res.payload).toContain('id="search"');
     expect(res.payload).toContain("Authorization: 'Bearer '");
     expect(res.payload).toContain("file_path");
     expect(res.payload).toContain("summary");
@@ -162,6 +164,7 @@ describe("dashboard route", () => {
       return {
         ok: true,
         json: async () => ({
+          ...(url.startsWith("/v1/memory/graph/search") ? { matches: ["a"] } : {}),
           entities: [
             { id: "a", kind: "File", name: hostile, file_path: "src/a.ts", summary: hostile },
             { id: "b", kind: "Function", name: "src/a.ts#f", file_path: "src/a.ts", summary: "Function f" },
@@ -186,6 +189,12 @@ describe("dashboard route", () => {
     expect(byId("details").children[0]!.textContent).toBe(hostile);
     expect(byId("relations").children).toHaveLength(1);
     expect([...ids.values()].flatMap((node) => node.children).every((node) => node.tag !== "img")).toBe(true);
+    byId("search-query").value = "needle";
+    byId("search").listeners.get("click")!({ stopPropagation: () => undefined });
+    await vi.waitFor(() => expect(byId("status").textContent).toContain("1 matching node"));
+    expect(calls[1]).toEqual({ url: "/v1/memory/graph/search?q=needle", headers: { Authorization: "Bearer cq_test_key" } });
+    byId("details").children[1]!.children[0]!.children[0]!.listeners.get("click")!({ stopPropagation: () => undefined });
+    expect(byId("details").children[0]!.textContent).toBe(hostile);
   });
 
   test("GET /dashboard/api returns aggregated JSON", async () => {
