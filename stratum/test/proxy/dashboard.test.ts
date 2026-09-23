@@ -2,6 +2,7 @@
 // (app.inject() with an injected session reader; no disk).
 
 import { describe, test, expect, afterEach, vi } from "vitest";
+import { runInNewContext } from "node:vm";
 import type { FastifyInstance } from "fastify";
 import { buildDashboardData } from "../../src/proxy/dashboard-data";
 import type { CaptureSession, CapturedTurn } from "../../src/proxy/capture";
@@ -119,11 +120,110 @@ describe("dashboard route", () => {
     expect(res.payload).toContain("Waste Dashboard");
   });
 
+  test("dashboard conflict shell uses the scoped API and safe browser boundaries", async () => {
+    app = buildProxy({ cors: false, rateLimit: false, dashboard: { readSessions: () => [] } });
+    await app.ready();
+    const res = await app.inject({ method: "GET", url: "/dashboard" });
+    expect(res.statusCode).toBe(200);
+    expect(res.payload).toContain("/v1/memory/conflicts");
+    expect(res.payload).toContain("Historical Drift");
+    expect(res.payload).toContain("Authorization: 'Bearer '");
+    expect(res.payload).toContain("sessionStorage");
+    expect(res.payload).not.toContain("innerHTML");
+    expect(res.headers["x-frame-options"]).toBe("DENY");
+    expect(res.headers["content-security-policy"]).toContain("connect-src 'self'");
+  });
+
+  test("browser renders hostile conflict text without HTML and waits for an explicit scope", async () => {
+    app = buildProxy({ cors: false, rateLimit: false, dashboard: { readSessions: () => [] } });
+    await app.ready();
+    const html = (await app.inject({ method: "GET", url: "/dashboard" })).payload;
+    const script = html.match(/<script>([\s\S]*?)<\/script>/)?.[1];
+    expect(script).toBeDefined();
+
+    class Node {
+      children: Node[] = [];
+      textContent = "";
+      className = "";
+      value = "";
+      hidden = false;
+      colSpan = 1;
+      listeners = new Map<string, () => void>();
+      constructor(readonly tag: string) {}
+      appendChild(child: Node): Node { this.children.push(child); return child; }
+      replaceChildren(...children: Node[]): void { this.children = children; }
+      addEventListener(event: string, listener: () => void): void { this.listeners.set(event, listener); }
+    }
+    const ids = new Map<string, Node>();
+    const byId = (id: string): Node => {
+      let n = ids.get(id);
+      if (!n) { n = new Node("div"); ids.set(id, n); }
+      return n;
+    };
+    const calls: Array<{ url: string; headers?: Record<string, string> }> = [];
+    const hostile = '<img src=x onerror="alert(1)">';
+    let failAuth = false;
+    const fetch = async (url: string, opts?: { headers?: Record<string, string> }) => {
+      calls.push({ url, headers: opts?.headers });
+      return { ok: !(failAuth && url.startsWith("/v1/memory/conflicts")), status: failAuth ? 401 : 200, json: async () => url === "/dashboard/api"
+        ? { note: hostile, session_count: 0, total_turns: 0, total_dropped_turns: 0, total_input_tokens: 0, total_output_tokens: 0, estimated_cost_usd: 0, top_waste_type: hostile, waste: [{ type: hostile, severity: "high", token_estimate: 1, description: hostile }], sessions: [] }
+        : { conflicts: [{ fact_table: "function_changes", fact_id: "f1", claimed_state: hostile, actual_state: hostile, conflict_commit: "c1" }] } };
+    };
+    const storage = new Map<string, string>();
+    const document = {
+      hidden: false,
+      getElementById: byId,
+      querySelector: (selector: string) => byId(selector),
+      createElement: (tag: string) => new Node(tag),
+      addEventListener: () => undefined,
+    };
+    let intervalMs = 0;
+    runInNewContext(script!, {
+      document, fetch, sessionStorage: { getItem: (k: string) => storage.get(k) ?? null, setItem: (k: string, v: string) => { storage.set(k, v); }, removeItem: (k: string) => { storage.delete(k); } },
+      location: { search: "" }, URLSearchParams, setInterval: (_fn: () => void, ms: number) => { intervalMs = ms; return 1; }, encodeURIComponent,
+    });
+    await vi.waitFor(() => expect(byId("#waste tbody").children).toHaveLength(1));
+    expect(calls.map((c) => c.url)).toEqual(["/dashboard/api"]);
+
+    byId("key").value = "cq_test_secret";
+    byId("load-conflicts").listeners.get("click")!();
+    await vi.waitFor(() => expect(byId("drift-rows").children).toHaveLength(1));
+    expect(calls[1]).toEqual({ url: "/v1/memory/conflicts?limit=10", headers: { Authorization: "Bearer cq_test_secret" } });
+    expect(byId("drift").hidden).toBe(false);
+    expect(byId("drift-rows").children[0]!.children[1]!.textContent).toBe(hostile);
+    expect([...ids.values()].flatMap((n) => n.children).every((n) => n.tag !== "img")).toBe(true);
+    expect(storage.get("cq_dashboard_key")).toBe("cq_test_secret");
+    expect(intervalMs).toBeLessThan(5000);
+
+    failAuth = true;
+    byId("load-conflicts").listeners.get("click")!();
+    await vi.waitFor(() => expect(byId("drift-status").textContent).toContain("Invalid or missing CQ API key"));
+    expect(byId("drift").hidden).toBe(true);
+    byId("key").value = "";
+    byId("load-conflicts").listeners.get("click")!();
+    expect(calls.filter((c) => c.url.startsWith("/v1/memory/conflicts"))).toHaveLength(2);
+    expect(storage.has("cq_dashboard_key")).toBe(false);
+  });
+
   test("async session reader is awaited", async () => {
     const s1 = sess("cccccccc-3", [turn(100)], 100, 5);
     app = buildProxy({ cors: false, rateLimit: false, dashboard: { readSessions: async () => [s1] } });
     await app.ready();
     const res = await app.inject({ method: "GET", url: "/dashboard/api" });
     expect(res.json().session_count).toBe(1);
+  });
+
+  test("commercial mode does not publish unscoped captured sessions", async () => {
+    const readSessions = vi.fn(() => [sess("private-session", [turn(100)], 100, 5)]);
+    app = buildProxy({
+      cors: false, rateLimit: false,
+      auth: { resolve: async () => ({ orgId: "o1", keyId: "k1" }), protectedPrefixes: ["/v1/"] },
+      dashboard: { readSessions },
+    });
+    await app.ready();
+    const res = await app.inject({ method: "GET", url: "/dashboard/api" });
+    expect(res.statusCode).toBe(403);
+    expect(res.body).not.toContain("private-session");
+    expect(readSessions).not.toHaveBeenCalled();
   });
 });

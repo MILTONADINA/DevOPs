@@ -280,9 +280,11 @@ Borrowed from [Lum1104/Understand-Anything](https://github.com/Lum1104/Understan
 
 - [ ] **Supabase migration** for `audit_conflicts` table (~2h). Already in initial schema; verify.
 - [ ] **CONFLICT alert pipeline** (~4h). Deterministic audit writes conflicts
-  to `audit_conflicts` idempotently. Dashboard "Historical Drift" alert within
-  5s and live request-path wiring remain open.
-- [ ] **Dashboard updates** (~5h). Audit-conflicts panel; per-fact CONFIRMED/CONFLICT/UNVERIFIABLE badge.
+  to `audit_conflicts` idempotently. The dashboard now reads the protected,
+  organization-scoped conflict API and refreshes every 3s while visible.
+  The <5s live insertion-to-render gate and request-path wiring remain open.
+- [ ] **Dashboard updates** (~5h). Historical Drift conflict panel exists;
+  per-fact CONFIRMED/CONFLICT/UNVERIFIABLE badges remain open.
 
 ### 5d. v0.6.0 release
 
