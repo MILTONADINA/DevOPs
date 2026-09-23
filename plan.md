@@ -4,7 +4,7 @@
 **Authored**: 2026-05-28 (paired with `blueprint.md`)
 **Quality bar**: **Best-of-the-best at every layer.** No exceptions. The "personal use" framing means no Stripe billing yet — it does NOT relax quality, coverage, security, or rigor.
 **Format**: GitHub-style `- [ ]` checklist. Group order = recommended execution order.
-**Distribution model**: private repo today → friends-install tomorrow (v0.4.x+) → commercial v1.0.0+. Every line is built for the friend-install + commercial-future case.
+**Distribution model**: public repo today (owner decision 2026-09-23) → friends-install tomorrow (v0.4.x+) → commercial v1.0.0+. Every line is built for the friend-install + commercial-future case.
 
 **Status snapshot (2026-05-28)**:
 - `main` at `3d268e2` (Session 13 Phase C merged)
