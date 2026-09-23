@@ -31,6 +31,19 @@ describe("resolveListenHost", () => {
 });
 
 describe("buildStartOptions", () => {
+  test("local memory extraction is explicitly configured and rejects a non-loopback endpoint", () => {
+    const messages = {} as NonNullable<BuildProxyOptions["messages"]>;
+    const env = { CQ_COMMERCIAL: "true", SUPABASE_URL: "u", SUPABASE_SERVICE_KEY: "k",
+      CQ_MEMORY_EXTRACT_MODEL: "local/check", CQ_LOCAL_BASE_URL: "http://127.0.0.1:11434/v1" };
+    const configured = buildStartOptions(env, { messages }, (() => fakeClient) as ClientFactory);
+    expect(configured.messages?.recordMemory).toBeTypeOf("function");
+    const unconfigured = buildStartOptions({ CQ_COMMERCIAL: "true", SUPABASE_URL: "u", SUPABASE_SERVICE_KEY: "k" },
+      { messages: {} as NonNullable<BuildProxyOptions["messages"]> }, (() => fakeClient) as ClientFactory);
+    expect(unconfigured.messages?.recordMemory).toBeUndefined();
+    expect(() => buildStartOptions({ ...env, CQ_LOCAL_BASE_URL: "https://example.com/v1" },
+      { messages: {} as NonNullable<BuildProxyOptions["messages"]> }, (() => fakeClient) as ClientFactory)).toThrow();
+  });
+
   test("personal mode: returns only the base; never constructs a client", () => {
     const makeClient = vi.fn() as unknown as ClientFactory;
     const opts = buildStartOptions({}, base, makeClient);
