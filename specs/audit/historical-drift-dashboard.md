@@ -24,6 +24,10 @@ WHEN the dashboard path is added, THE SYSTEM SHALL leave the v0.6 <5-second
 live alert gate open until insertion-to-render timing is measured on a deployed
 instance. A browser refresh period alone is not proof of that gate.
 
+WHILE the page is visible and an audit-status request is pending, THE SYSTEM
+SHALL continue polling the conflict API at its normal interval so status
+lookup latency cannot stop Historical Drift alert refresh.
+
 ## Acceptance criteria
 
 - **AC-1:** the page fetches the protected conflict API with a Bearer header;
@@ -34,3 +38,5 @@ instance. A browser refresh period alone is not proof of that gate.
   the page shows a visible error on unauthorized or failed requests.
 - **AC-4:** commercial mode does not expose cross-tenant captured-session
   summaries through `/dashboard/api`; personal mode retains its local report.
+- **AC-5:** an unresolved audit-status request does not block the next visible
+  conflict poll.

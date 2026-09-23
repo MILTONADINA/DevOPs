@@ -114,6 +114,30 @@ const HTML = `<!doctype html>
     keyInput.value = sessionStorage.getItem('cq_dashboard_key') || '';
     let loading = false;
     let generation = 0;
+    let statusLoadingGeneration = -1;
+    async function loadAuditStatuses(current, key) {
+      if (statusLoadingGeneration === current) return;
+      statusLoadingGeneration = current;
+      try {
+        const statusUrl = '/v1/memory/audit-statuses?limit=10' + (key ? '' : '&org-id=' + encodeURIComponent(org));
+        const statusResponse = await fetch(statusUrl, { headers: key ? { Authorization: 'Bearer ' + key } : {}, cache: 'no-store' });
+        if (!statusResponse.ok) throw new Error(statusResponse.status === 401 ? 'Invalid or missing CQ API key.' : 'Audit status lookup failed (' + statusResponse.status + ').');
+        const statusData = await statusResponse.json();
+        if (current !== generation) return;
+        const statuses = Array.isArray(statusData.statuses) ? statusData.statuses : [];
+        auditRows.replaceChildren();
+        statuses.forEach(s => {
+          const tr = row([s.fact_table + ':' + s.fact_id, s.status, s.evidence_commit || '—', s.audited_at]);
+          tr.children[1].className = s.status === 'CONFIRMED' ? 'audit-confirmed' : s.status === 'UNVERIFIED' ? 'audit-unverified' : s.status === 'CONFLICT' ? 'audit-conflict' : '';
+          auditRows.appendChild(tr);
+        });
+        auditStatus.textContent = statuses.length ? statuses.length + ' audited fact(s).' : 'No facts audited yet.';
+      } catch (error) {
+        if (current === generation) { auditRows.replaceChildren(); auditStatus.textContent = error.message || String(error); }
+      } finally {
+        if (statusLoadingGeneration === current) statusLoadingGeneration = -1;
+      }
+    }
     async function loadConflicts() {
       if (loading || document.hidden) return;
       const current = generation;
@@ -132,23 +156,7 @@ const HTML = `<!doctype html>
         banner.hidden = conflicts.length === 0;
         document.getElementById('drift-count').textContent = conflicts.length + ' unacknowledged Historical Drift alert(s)';
         status.textContent = conflicts.length ? 'Conflicts are suppressed from memory injection.' : 'No unacknowledged Historical Drift alerts.';
-        try {
-          const statusUrl = '/v1/memory/audit-statuses?limit=10' + (key ? '' : '&org-id=' + encodeURIComponent(org));
-          const statusResponse = await fetch(statusUrl, { headers: key ? { Authorization: 'Bearer ' + key } : {}, cache: 'no-store' });
-          if (!statusResponse.ok) throw new Error(statusResponse.status === 401 ? 'Invalid or missing CQ API key.' : 'Audit status lookup failed (' + statusResponse.status + ').');
-          const statusData = await statusResponse.json();
-          if (current !== generation) return;
-          const statuses = Array.isArray(statusData.statuses) ? statusData.statuses : [];
-          auditRows.replaceChildren();
-          statuses.forEach(s => {
-            const tr = row([s.fact_table + ':' + s.fact_id, s.status, s.evidence_commit || '—', s.audited_at]);
-            tr.children[1].className = s.status === 'CONFIRMED' ? 'audit-confirmed' : s.status === 'UNVERIFIED' ? 'audit-unverified' : s.status === 'CONFLICT' ? 'audit-conflict' : '';
-            auditRows.appendChild(tr);
-          });
-          auditStatus.textContent = statuses.length ? statuses.length + ' audited fact(s).' : 'No facts audited yet.';
-        } catch (error) {
-          if (current === generation) { auditRows.replaceChildren(); auditStatus.textContent = error.message || String(error); }
-        }
+        void loadAuditStatuses(current, key);
       } catch (error) {
         if (current === generation) { banner.hidden = true; driftRows.replaceChildren(); auditRows.replaceChildren(); status.textContent = error.message || String(error); auditStatus.textContent = status.textContent; }
       } finally {
