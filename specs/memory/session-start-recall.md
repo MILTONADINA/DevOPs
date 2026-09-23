@@ -42,3 +42,6 @@ recall failure SHALL not block startup, and the bridge SHALL not load `.env`.
   and missing prerequisites leave startup successful.
 - **AC-4:** exact allowlisted local HTTP reaches the bound organization; nearby
   or non-loopback plaintext URLs make zero client calls.
+- **AC-5:** a disposable organization and facts in the local Compose API pass
+  through the actual bridge entry point; active bound facts appear, suppressed
+  and foreign facts do not, and the fixture is removed afterward.

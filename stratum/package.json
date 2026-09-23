@@ -55,6 +55,7 @@
     "db:migrate": "tsx scripts/local-compose.ts migrate",
     "db:with-env": "tsx scripts/local-compose.ts with-env",
     "db:verify": "tsx scripts/local-compose.ts with-env node test/integration/local-compose-api.mjs",
+    "db:verify-recall": "tsx scripts/local-compose.ts with-env node test/integration/local-session-start.mjs",
     "deploy": "wrangler deploy"
   },
   "dependencies": {

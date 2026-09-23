@@ -32,6 +32,13 @@ temporary organization, session, fact, status, and alert rows, then deletes
 them. The SQL-only audit check is in `test/integration/local-compose-audit.sql`
 and runs inside a rolled-back transaction.
 
+Run `npm run db:verify-recall` for a disposable local SessionStart bridge check.
+It seeds active, suppressed, and foreign organization facts, checks that only
+the active bound fact appears, then removes the fixture. Run
+`npm run db:with-env -- npm run verify-tier2` for the Tier-2 adapter's five-fact
+round-trip and cleanup check; this command reads credentials only from its
+process environment.
+
 For a command that needs `SUPABASE_URL` and `SUPABASE_SERVICE_KEY`, use
 `npm run db:with-env -- <command> [args...]` from `stratum/`. It passes a
 short-lived local service JWT through the child process environment without
