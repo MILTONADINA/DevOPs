@@ -1,10 +1,11 @@
-/** Project-bound JS/TS source files → Tier-3 File/Function dependency graph. */
+/** Project-bound source files → Tier-3 File/Function dependency graph. */
 import { lstatSync, readFileSync, readdirSync, realpathSync, statSync } from "node:fs";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { createClient } from "@supabase/supabase-js";
 import { createKnowledgeGraph } from "../src/memory/cold/graph";
 import { indexSourceFiles, type SourceFileInput } from "../src/memory/source-graph";
 import { graphEncoder, graphEntityText } from "../src/memory/graph-embedding";
+import { createLocalSourceCompletion, summarizeSourceFiles } from "../src/memory/source-summary";
 
 const SKIP_DIRS = new Set(["node_modules", "dist", "build", "coverage", "data", "models", "backups", "target"]);
 const SOURCE_EXT = /\.(?:ts|tsx|js|jsx|rs|py)$/;
@@ -48,12 +49,16 @@ export async function main(): Promise<void> {
   if (url !== "http://127.0.0.1:54321" || !key || !orgId || !UUID.test(orgId)) {
     throw new Error("local Compose URL, service key, and UUID INGEST_ORG_ID are required");
   }
+  const summaryModel = process.env["CQ_SOURCE_SUMMARY_MODEL"];
+  const summaryUrl = process.env["CQ_LOCAL_BASE_URL"];
+  if (summaryModel && !summaryUrl) throw new Error("CQ_LOCAL_BASE_URL is required when CQ_SOURCE_SUMMARY_MODEL is set");
+  const complete = summaryModel && summaryUrl ? createLocalSourceCompletion(summaryUrl, summaryModel, process.env["CQ_LOCAL_API_KEY"]) : undefined;
   const dir = sourceDirectory(root, process.env["SOURCE_SUBDIR"] ?? "stratum/src");
   const files = collectFiles(root, dir);
-  const graph = indexSourceFiles(files);
   const client = createClient(url, key, { auth: { persistSession: false } });
   const org = await client.from("organizations").select("id").eq("id", orgId).single();
   if (org.error || !org.data) throw new Error("INGEST_ORG_ID does not exist in the local database");
+  const graph = await summarizeSourceFiles(files, indexSourceFiles(files), complete);
   const encoder = await graphEncoder();
   const embeddings: Float32Array[] = [];
   for (let offset = 0; offset < graph.entities.length; offset += 16) {
