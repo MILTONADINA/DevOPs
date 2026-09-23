@@ -354,6 +354,14 @@ the `vitest`/`supabase` major-version bumps via `--force` — needs an
 explicit human call, not an autonomous one; the version bumps could carry
 real breaking changes worth testing deliberately rather than forcing blind.
 
+**Update 2026-09-23 — resolved for the current lockfile:** The owner's
+instruction to complete the remaining work authorized deliberate major
+upgrades. PR #31 updated the direct packages without `--force` and merged at
+`07663dc`. `npm audit --audit-level=low` reported zero vulnerabilities;
+Stratum typecheck and 825 tests passed under the new dependency versions.
+Dependabot's alert state should be checked after GitHub processes the merged
+lockfile. Future advisories remain subject to routine monitoring.
+
 ### 1.6 A stale signature was introduced *this session*
 
 `goal-loop`'s `SKILL.md` was edited (removing the dead `researcher` subagent
