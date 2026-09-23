@@ -175,7 +175,18 @@ export const OPENAPI_SPEC = {
       get: { summary: "Recent Tier-2 facts", parameters: [ORG_ID_QUERY, { name: "limit", in: "query", schema: { type: "integer" } }], responses: { "200": { description: "Facts" } } },
     },
     "/v1/memory/graph": {
-      get: { summary: "Bounded organization graph snapshot", parameters: [ORG_ID_QUERY, { name: "limit", in: "query", schema: { type: "integer", maximum: 500 } }], responses: { "200": { description: "Entities and their in-snapshot edges" }, "400": ERROR_RESPONSE } },
+      get: {
+        summary: "Bounded organization graph snapshot",
+        parameters: [ORG_ID_QUERY, { name: "limit", in: "query", schema: { type: "integer", maximum: 500 } }],
+        responses: { "200": { description: "Entities and their in-snapshot edges" }, "400": ERROR_RESPONSE },
+      },
+    },
+    "/v1/memory/graph/search": {
+      get: {
+        summary: "Fuzzy graph-name matches and immediate neighbors",
+        parameters: [ORG_ID_QUERY, { name: "q", in: "query", required: true, schema: { type: "string", minLength: 2, maxLength: 100 } }],
+        responses: { "200": { description: "Up to 20 matches with bounded neighbor graph" }, "400": ERROR_RESPONSE },
+      },
     },
     "/v1/memory/facts/{id}": {
       delete: {
