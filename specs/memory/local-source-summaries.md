@@ -41,6 +41,16 @@ can answer within the bounded token budget. IF the provider explicitly reports
 a truncated completion, THEN the ingestor SHALL reject it before graph writes.
 It SHALL validate only the final answer text as a File summary.
 
+## REQ-5 — Render persisted summary under authenticated scope
+
+WHEN a generated File summary has been persisted for a disposable organization,
+THE LOCAL VERIFIER SHALL open the graph dashboard in real Chrome, authenticate
+with that organization's API key, select the File, and observe the exact stored
+summary as text. Its guided tour SHALL include the stored summaries in
+dependency order. A second organization's graph row SHALL remain absent from
+the authenticated view even if its organization ID appears in the page URL. The
+verifier SHALL remove both organizations and their graph rows afterward.
+
 ## Acceptance criteria
 
 - A focused test first fails without the summarizer, then proves summary
@@ -55,6 +65,10 @@ It SHALL validate only the final answer text as a File summary.
 - A disposable local Compose run with a real local text model persists accepted
   File summaries and embeddings through the actual ingestor, preserves
   source-derived Function summaries, and removes its fixture rows.
+- A real Chrome run over that same local Compose fixture displays the stored
+  File summary in the sidebar and guided tour, excludes a second organization's
+  File, and leaves no fixture graph/vector rows after cleanup.
 
-This gate verifies the local integration and output policy. Broad summary
-quality requires a separately recorded run against a real local text model.
+This gate verifies the local integration and output policy. The real local
+model sample covers 11 selected Files; representative accuracy across arbitrary
+source remains unverified.
