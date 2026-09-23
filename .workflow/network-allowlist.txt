@@ -4,3 +4,6 @@ release-assets.githubusercontent.com
 
 # Public container images for the owner-approved local Stratum Supabase stack.
 public.ecr.aws
+
+# Exact loopback API for the owner-approved local Stratum stack.
+127.0.0.1
