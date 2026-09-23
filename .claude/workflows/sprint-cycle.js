@@ -26,10 +26,11 @@ const BLOCKED_SCHEMA = {
     class: { type: 'string' },
     check_ids: { type: 'array', items: { type: 'string' } },
     evidence: { type: 'string' },
+    classified_by: { type: 'string' },
   },
   required: ['class', 'check_ids', 'evidence'],
 }
-const ENVIRONMENT_RULES = `ENVIRONMENT RULES: On an environment or API signature, run bash scripts/graph-preflight.sh once. If it does not report ready/remediated, call bash scripts/graph-blocked.sh with the cycle, stage, task, class, check ids and a project-local evidence file; return blocked_by_environment with class, check_ids and evidence, and stop. A scratchpad check does not make an unrun suite pass.`
+const ENVIRONMENT_RULES = `ENVIRONMENT RULES: On any tool or test failure, pass its first 20 error lines to node scripts/graph-classify-fault.mjs (with --exit-code when known). Record its class and classified_by; for an unrecognized error, supply --agent-class and explain that judgment. Code failures follow normal review and are never retried as flaky. For an environment or API fault, run bash scripts/graph-preflight.sh once. If it does not report ready/remediated, call bash scripts/graph-blocked.sh with the cycle, stage, task, class, check ids and a project-local evidence file; return blocked_by_environment with class, check_ids, evidence and classified_by, then stop. A scratchpad check does not make an unrun suite pass.`
 
 if (!backlogItem) {
   throw new Error('sprint-cycle requires args.backlogItem -- the backlog item id/description to work (see SHIP_BLOCKERS.md)')
@@ -47,6 +48,7 @@ function stopIfBlocked(result, stage, taskId) {
     class: blocked.class || 'api',
     check_ids: blocked.check_ids || [],
     evidence: blocked.evidence || (result === null ? 'agent() returned null' : ''),
+    classified_by: blocked.classified_by || (result === null ? 'signature' : 'agent'),
   }
   log(`Cycle blocked at ${stage}: ${JSON.stringify(fault)}`)
   throw new Error(`BLOCKED_BY_ENVIRONMENT:${JSON.stringify(fault)}`)
@@ -234,7 +236,9 @@ Backlog item: "${backlogItem}"
 Tasks: ${JSON.stringify(plan.tasks)}
 Build results: ${JSON.stringify(buildResults.map(r => ({ task: r.task.id, coder: r.coderResult, tester: r.testerResult })))}
 
-Check spec-anchoring (does every changed line trace to one of the tasks above, or to the backlog item itself?) and general diff quality. Report any violations plainly -- do not soften a real finding.`,
+Check spec-anchoring (does every changed line trace to one of the tasks above, or to the backlog item itself?) and general diff quality. Report any violations plainly -- do not soften a real finding.
+
+${ENVIRONMENT_RULES}`,
   {
     label: 'reviewer',
     phase: 'Verify',

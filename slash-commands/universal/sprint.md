@@ -61,10 +61,11 @@ passing preflight and successful launch. An autonomous loop may resume `api`
 and `transient` blocks; `needs_human` and unlisted `environment` remedies
 wait for a human fix verified by preflight.
 
-The Workflow pipelines the backlog item through planner → coder → tester →
-reviewer → security → validator, phase-tagged (Plan/Build/Verify/Release),
-and writes cycle state to `.workflow/state/graph-cycles/<cycleId>.md`
-following the existing baton pattern (`.workflow/state/baton.md`).
+The Workflow pipelines the backlog item through preflight → planner → coder
+→ tester → reviewer → security → validator, phase-tagged
+(Preflight/Plan/Build/Verify/Release). The orchestrator records run state in
+`.workflow/state/graph-cycles/<cycleId>/run.json` through
+`scripts/graph-run-record.mjs`; the Workflow script has no filesystem API.
 
 If the cycle reaches a deploy-shaped action or a billing-path change,
 `hooks/universal/pre-tool/deploy-gate.sh` will block it and name exactly

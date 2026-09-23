@@ -67,4 +67,8 @@ test('each role can report a blocked fault and tester sees environment rules bef
   }
   const tester = calls.find(({ options }) => options.label === 'tester:T1').prompt;
   assert.ok(tester.indexOf('ENVIRONMENT RULES') < tester.indexOf('STALL RULES'));
+  for (const { prompt, options } of calls.filter(({ options }) => options.label !== 'preflight')) {
+    assert.match(prompt, /graph-classify-fault\.mjs/, options.label);
+    assert.match(prompt, /classified_by/, options.label);
+  }
 });

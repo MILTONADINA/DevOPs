@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, chmodSync, statSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, chmodSync, statSync, rmSync, copyFileSync, existsSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
@@ -123,4 +123,32 @@ test('registry rejects a remediation that needs sudo', () => {
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test('graph-halt alone forces needs_human and survives preflight', () => {
+  const dir = mkdtempSync(path.join(ROOT, '.workflow', 'state', 'graph-halt-test-'));
+  try {
+    const repo = path.join(dir, 'repo');
+    for (const subdir of ['scripts', 'governance/graph', '.workflow/state', '.workflow/proofs', 'node_modules/.bin', 'stratum/node_modules/.bin', 'fake-bin']) {
+      mkdirSync(path.join(repo, subdir), { recursive: true });
+    }
+    copyFileSync(path.join(ROOT, 'scripts', 'graph-preflight.mjs'), path.join(repo, 'scripts', 'graph-preflight.mjs'));
+    copyFileSync(path.join(ROOT, 'governance', 'graph', 'preflight-remediations.yml'), path.join(repo, 'governance', 'graph', 'preflight-remediations.yml'));
+    writeFileSync(path.join(repo, '.workflow', 'network-allowlist.txt'), 'github.com\nrelease-assets.githubusercontent.com\n');
+    writeFileSync(path.join(repo, 'package.json'), JSON.stringify({ engines: { node: '>=20.0.0' } }));
+    const fakeGit = path.join(repo, 'fake-bin', 'git');
+    writeFileSync(fakeGit, `#!/bin/sh\ncase "$*" in\n  'rev-parse --show-toplevel') printf '%s\\n' '${repo}' ;;\n  'remote get-url origin') echo 'https://github.com/example/repo.git' ;;\n  'ls-remote --exit-code origin HEAD') echo 'abc HEAD' ;;\n  'rev-parse HEAD') echo 'abcdef0' ;;\n  *) exit 2 ;;\nesac\n`);
+    chmodSync(fakeGit, 0o755);
+    const halt = path.join(repo, '.workflow', 'state', 'graph-halt');
+    writeFileSync(halt, 'halted\n');
+    const result = spawnSync(process.execPath, [path.join(repo, 'scripts', 'graph-preflight.mjs'), '--check-only'], {
+      cwd: repo, env: { ...process.env, PATH: `${path.join(repo, 'fake-bin')}:${process.env.PATH}` }, encoding: 'utf8', timeout: 30_000,
+    });
+    assert.equal(result.status, 20, result.stderr || result.stdout);
+    const report = JSON.parse(readFileSync(path.join(repo, '.workflow', 'state', 'preflight.json')));
+    assert.equal(report.status, 'needs_human');
+    assert.deepEqual(report.checks.filter((check) => check.status === 'fail').map((check) => check.id), ['halt.absent']);
+    assert.match(result.stdout, /✗ halt\.absent/);
+    assert.equal(existsSync(halt), true);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });
