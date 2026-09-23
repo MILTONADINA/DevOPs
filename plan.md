@@ -189,7 +189,7 @@ Zod gates all writes; the DevOPs session-start hook retrieves relevant facts.
 memory API, read-only `understand-codebase` CLI, and a scoped Claude
 SessionStart recall bridge exist. The simulated 50-turn survival test passes.
 Live session-start binding/retrieval and the Tier-2 latency gate remain open.
-The paid Supabase project is retired; ADR-0020 selects the free local CLI
+The paid Supabase project is retired; ADR-0020 selects the free local Compose
 stack for development, not production release readiness.
 ADR-0013 replaces Pinecone/Neo4j as v0.5 ship dependencies while keeping
 their adapter interfaces available. The original ~100h estimate is stale and
@@ -291,7 +291,7 @@ dashboard landed; the historical ~60h estimate is stale.
 
 ### 5c. audit_conflicts table + dashboard alerts
 
-- [x] **Audit schema migrations**. `audit_conflicts` is in the initial schema; the September migrations add atomic conflict suppression and per-fact `audit_statuses`. All 16 migrations applied in a fresh local CLI start, but local API/SQL behavior remains unverified until loopback-only startup is available.
+- [x] **Audit schema migrations**. `audit_conflicts` is in the initial schema; the September migrations add atomic conflict suppression and per-fact `audit_statuses`. All 16 migrations applied in the loopback-only local Compose stack; a rolled-back SQL audit write and scoped API read passed. Deployed behavior remains unverified.
 - [ ] **CONFLICT alert pipeline** (~4h). Deterministic audit writes conflicts
   to `audit_conflicts` idempotently. The dashboard now reads the protected,
   organization-scoped conflict API and refreshes every 3s while visible.

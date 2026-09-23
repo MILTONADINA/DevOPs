@@ -1,8 +1,9 @@
 # Local Stratum storage
 
-The owner retired the paused hosted Supabase project. Development uses the
-Supabase CLI's local PostgreSQL and HTTP API; no hosted project link is needed.
-This local stack is not a production deployment.
+The owner retired the paused hosted Supabase project. Development uses a
+project-local Docker Compose stack with Supabase PostgreSQL, PostgREST, and a
+small `/rest/v1` gateway. No hosted project link is needed. This stack is for
+development, not production.
 
 ## Start and stop
 
@@ -13,23 +14,37 @@ npm run db:start
 npm run db:stop
 ```
 
-`db:start` creates a project-specific Docker network, starts Postgres and the
-API, and checks the *actual* published API and database addresses. If either
-port is available outside loopback, it stops this project's stack and exits
-nonzero. On this Mac, Docker Desktop currently publishes both ports on all
-interfaces despite the network's loopback option. Docker's
-[`Port binding behavior`](https://docs.docker.com/enterprise/security/hardened-desktop/settings-management/settings-reference/#port-binding-behavior)
-setting must permit local-only binding before this startup command can pass.
-Changing that Docker Desktop setting can affect other containers.
+`db:start` starts only this project's containers and applies pending SQL
+migrations in filename order. The gateway publishes `127.0.0.1:54321`; the
+database and PostgREST publish no host ports. PostgreSQL is on an internal data
+network; only the gateway has a host-facing network. Startup inspects the actual
+Docker bindings and shuts down on any broad binding. A restart preserves the
+Compose volume and skips migrations already recorded in
+`devops_local.migrations`. `db:stop` preserves the volume too.
 
-The local CLI applies all committed migrations on a fresh database. The
-September 2026 audit status and conflict migrations are included. `db:reset`
-deletes local data and should only be used on a disposable development stack.
+The database uses trust authentication only within this project's Docker
+network. This is acceptable for a local development stack whose database has
+no published port. Do not use this Compose file as a production deployment.
+To apply newly added migrations to a running stack, run `npm run db:migrate`.
+There is no automatic `db:reset` command because it would destroy local data.
+Run `npm run db:verify` for a service-role HTTP audit round-trip; it creates
+temporary organization, session, fact, status, and alert rows, then deletes
+them. The SQL-only audit check is in `test/integration/local-compose-audit.sql`
+and runs inside a rolled-back transaction.
 
-`supabase status` prints local credentials. Use them only in your own terminal
-for the process that needs `SUPABASE_URL` and `SUPABASE_SERVICE_KEY`; do not
-commit or paste them into chat. The local API URL is
-`http://127.0.0.1:54321` when startup passes.
+For a command that needs `SUPABASE_URL` and `SUPABASE_SERVICE_KEY`, use
+`npm run db:with-env -- <command> [args...]` from `stratum/`. It passes a
+short-lived local service JWT through the child process environment without
+printing or writing credentials. The URL is `http://127.0.0.1:54321` after
+startup passes. A restart rotates the local JWT secret, so run
+`db:with-env` again for each new command. The September 2026 audit migrations
+are included.
+
+The older Supabase CLI `config.toml` remains for migration compatibility; the
+CLI's `start` command is not the supported local startup on this Docker
+Desktop instance because its network-level loopback setting was ignored.
+This minimal Compose stack provides PostgreSQL and the REST API used by current
+Stratum adapters; it does not run Supabase Studio, Auth, Storage, or Realtime.
 
 Local migration and API checks do not satisfy the deployed v0.5/v0.6 latency
 gates or the v1 commercial storage gate. Those need a separately operated

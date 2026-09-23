@@ -1,19 +1,27 @@
 # Local Stratum storage
 
-**Scope:** `plan.md` §4–§5 and ADR-0001. The owner retired the paused hosted
-Supabase project and chose the free local CLI stack on 2026-09-23.
+**Scope:** `plan.md` §4–§5 and ADR-0020. The owner retired the paused hosted
+Supabase project, chose the free local Supabase stack, then chose project-local
+Compose with explicit loopback ports after Docker Desktop ignored the CLI
+network binding option on 2026-09-23.
 
 ## REQ-1 — No hosted dependency for development
 
 WHEN an operator starts Stratum for local development, THE SYSTEM SHALL use
-the Supabase CLI's local Postgres and HTTP API on this machine. It SHALL apply
-the committed migrations in order without linking to or contacting the paused
-hosted project. The local services SHALL be bound to loopback rather than
-exposed on a public interface.
+project-local Docker Compose for Supabase PostgreSQL, PostgREST, and its
+`/rest/v1` gateway on this machine. It SHALL apply the committed migrations in
+order without linking to or contacting the paused hosted project. The local API
+SHALL be bound to `127.0.0.1`; PostgreSQL SHALL have no published host port.
+Restarting SHALL preserve the data volume and skip migrations already applied.
 
 IF the container runtime publishes the local API or database on a
 non-loopback host address, THE SYSTEM SHALL stop this project's stack and
 report a startup failure rather than leaving it running.
+
+WHEN a local command needs the Supabase service JWT, THE SYSTEM SHALL generate
+or retrieve it from the running project stack and pass it only through the
+child process environment. It SHALL not write credentials to `.env` or print
+them in command output.
 
 ## REQ-2 — Audit schema availability
 
@@ -31,10 +39,12 @@ and its own verification.
 
 ## Acceptance criteria
 
-- **AC-1:** a fresh `supabase start`/`db reset` succeeds locally with no hosted
-  project reference or remote API call.
+- **AC-1:** a fresh Compose startup applies every committed migration once;
+  a restart preserves data and does not replay applied migrations.
 - **AC-2:** SQL checks confirm the audit table, RPC, and service-role
   privileges on the local database.
-- **AC-3:** the local API responds over loopback and is unreachable through a
-  non-loopback interface; broad Docker port bindings cause automatic stop and
+- **AC-3:** the local API responds over loopback and no project service has a
+  non-loopback published port; broad Docker bindings cause automatic stop and
   a nonzero startup exit.
+- **AC-4:** local commands receive a valid service-role JWT through the process
+  environment without a credential file or credential output.
