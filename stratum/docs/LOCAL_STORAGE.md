@@ -141,10 +141,12 @@ DEVOPS_STRATUM_PROJECT_ROOT="$(cd .. && pwd)" CQ_LOCAL_BASE_URL=http://127.0.0.1
 Adjust the loopback port and local model ID to match the running server. The
 sample reads 11 project Files across JS/TS, Rust, and Python and makes no
 database writes.
-For a disposable real-model persistence check, run the same model settings
+For a disposable real-model persistence and Chrome check, run the same model settings
 through `npm run db:with-env -- npx tsx
 test/integration/local-real-source-graph.ts` from `stratum/`; it verifies two
-File summaries, four embeddings, and fixture cleanup in local Compose.
+File summaries, four embeddings, their display in a scoped sidebar and tour,
+foreign-organization exclusion, and fixture cleanup in local Compose. Chrome
+must be installed.
 The ingestor completes and validates all summaries before graph writes; an
 invalid response fails the run. Function summaries remain source-derived.
 Without `CQ_SOURCE_SUMMARY_MODEL`, the deterministic summaries remain, even
