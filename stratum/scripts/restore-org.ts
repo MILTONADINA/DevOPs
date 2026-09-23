@@ -14,7 +14,6 @@
  * forward self-reference within one table is a documented limitation.
  */
 
-import "dotenv/config";
 import { readFileSync } from "node:fs";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { BackupFile } from "./backup-org";

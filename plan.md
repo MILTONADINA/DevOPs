@@ -371,7 +371,7 @@ Anthropic's reasoning-based security scanner (GA Feb 2026) reads code "the way a
 
 - [ ] **Multi-environment config** (~4h). `config.dev.yml` / `config.prod.yml` overrides. Document in PERSONAL_USE.md.
 - [ ] **Versioned schema + migration scripts** (~4h). `stratum/scripts/migrate-session-schema.ts` (already in Phase 0 spec). Test v0.1.0 → v0.2.0 round trip.
-- [ ] **Backup + restore** (~5h). Document Supabase export/import + Stratum data backup. Test end-to-end recovery.
+- [ ] **Backup + restore** (~5h). The local Compose check now backs up, deletes, and restores a disposable audited organization, including suppression, status, and alert evidence. Paged export prevents silent truncation under a REST row cap. Clean-machine and real-data recovery, plus the full operator runbook, remain open.
 - [ ] **Telemetry policy + opt-out** (~3h). What does Stratum emit? Where? Where's `STRATUM_TELEMETRY_OPT_OUT=true`? Documented in PERSONAL_USE.md + new `TELEMETRY.md`.
 
 ### 7d. Distribution polish

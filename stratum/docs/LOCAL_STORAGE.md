@@ -53,6 +53,14 @@ rename commit, runs `audit:repo --persist`, verifies suppression plus the
 CONFLICT status and alert through the local API, then removes its fixtures.
 This checks the operator path; it does not run audit from proxy traffic.
 
+Run `npm run db:verify-recovery` for a disposable organization backup and
+restore check. It exports a session, suppressed fact, audit status, and conflict
+to a temporary file under the ignored `backups/` directory, deletes the rows,
+restores them through the CLI, checks their IDs and audit evidence, and removes
+the fixture. For operator use, run `backup` and `restore` through `db:with-env`;
+restore expects a clean target. Both CLIs use process credentials and do not
+load `.env`.
+
 For a command that needs `SUPABASE_URL` and `SUPABASE_SERVICE_KEY`, use
 `npm run db:with-env -- <command> [args...]` from `stratum/`. It passes a
 short-lived local service JWT through the child process environment without
