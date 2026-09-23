@@ -37,6 +37,7 @@
     "smoke:memory": "tsx scripts/smoke-memory.ts",
     "bench:tiers": "tsx scripts/bench-tiers.ts",
     "promote": "tsx scripts/promote-tier2-to-tier3.ts",
+    "promote:schedule": "tsx scripts/local-promotion-schedule.ts",
     "understand-codebase": "tsx scripts/understand-codebase.ts",
     "understand-codebase:bound": "tsx scripts/understand-codebase-bound.ts",
     "audit:repo": "tsx scripts/audit-repo.ts",

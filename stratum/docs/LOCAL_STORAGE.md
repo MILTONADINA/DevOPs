@@ -47,6 +47,15 @@ manually selected organization, run
 `npm run db:with-env -- npm run promote` with `PROMOTE_ORG_ID` set in the
 process environment. No nightly scheduler is configured by this check.
 
+On macOS, run `npm run promote:schedule -- install` from `stratum/` to register
+the user-level 02:00 local launchd job. It runs the same promotion command
+through `db:with-env` for a fresh local service JWT on each invocation. The
+plist and output/error logs live in this project's `.workflow/state/` directory.
+Use `npm run promote:schedule -- status` to inspect the registered job or
+`npm run promote:schedule -- remove` to unregister it. The job runs when this
+machine is awake and the local Compose stack is running; a sleeping machine or
+stopped stack cannot complete that night's promotion.
+
 Run `npm run db:verify-audit-git` for a disposable real-Git audit check. It
 creates a small Git history inside this project, stores a fact anchored to its
 rename commit, runs `audit:repo --persist`, verifies suppression plus the
