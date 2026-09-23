@@ -20,6 +20,7 @@ const needle = randomUUID();
 const neighbor = randomUUID();
 const typo = randomUUID();
 const foreignNeedle = randomUUID();
+const foreignOther = randomUUID();
 
 function checked<T>(result: { data: T; error: { message: string } | null }, step: string): T {
   if (result.error) throw new Error(`${step}: ${result.error.message}`);
@@ -51,6 +52,7 @@ try {
         { id: needle, org_id: own, kind: "File", name: "src/needle-handler.ts", file_path: "src/needle-handler.ts", summary: "Needle handler", created_at: "2020-01-01T00:00:00Z" },
         ...filler,
         { id: foreignNeedle, org_id: foreign, kind: "File", name: "src/needle-handler.ts", created_at: "2020-01-01T00:00:00Z" },
+        { id: foreignOther, org_id: foreign, kind: "File", name: "src/foreign-other.ts", created_at: "2020-01-01T00:00:00Z" },
       ]),
     "insert graph nodes",
   );
@@ -60,7 +62,7 @@ try {
     to_entity: i < 250 ? node.id : needle,
     edge_type: "DEPENDS_ON",
   }));
-  checked(await db.from("knowledge_edges").insert(fixtureEdges), "insert edges");
+  checked(await db.from("knowledge_edges").insert([...fixtureEdges, { org_id: foreign, from_entity: foreignNeedle, to_entity: foreignOther, edge_type: "DEPENDS_ON" }]), "insert edges");
   app = buildProxy(
     buildStartOptions({ CQ_COMMERCIAL: "true", SUPABASE_URL: url, SUPABASE_SERVICE_KEY: key }, { cors: false, rateLimit: false }, (clientUrl, clientKey) =>
       createClient(clientUrl, clientKey, { auth: { persistSession: false } }),
@@ -93,7 +95,33 @@ try {
   if (misspelled.statusCode !== 200 || ranked.matches?.[0] !== typo || !ranked.matches.includes(needle)) {
     throw new Error(`fuzzy typo search failed: ${misspelled.payload}`);
   }
-  process.stdout.write("local fuzzy search found an older node and its neighbor without a foreign node\n");
+  const files: string[] = [];
+  let fileAfter: string | null = null;
+  for (let page = 0; page < 10; page++) {
+    const response = await get(`/v1/memory/graph/files?org-id=${foreign}&limit=200${fileAfter ? `&after=${encodeURIComponent(fileAfter)}` : ""}`);
+    if (response.statusCode !== 200) throw new Error(`file page failed: ${response.statusCode}`);
+    const body = response.json();
+    files.push(...body.files.map((item: { id: string }) => item.id));
+    fileAfter = body.next;
+    if (!fileAfter) break;
+  }
+  if (files.length !== 501 || new Set(files).size !== 501 || !files.includes(needle) || files.includes(foreignNeedle) || files.includes(foreignOther)) {
+    throw new Error(`file pagination missed or leaked rows: ${files.length}`);
+  }
+  const dependencies: string[] = [];
+  let edgeAfter: string | null = null;
+  for (let page = 0; page < 10; page++) {
+    const response = await get(`/v1/memory/graph/dependencies?org-id=${foreign}&limit=200${edgeAfter ? `&after=${edgeAfter}` : ""}`);
+    if (response.statusCode !== 200) throw new Error(`dependency page failed: ${response.statusCode}`);
+    const body = response.json();
+    dependencies.push(...body.edges.map((item: { id: string }) => item.id));
+    edgeAfter = body.next;
+    if (!edgeAfter) break;
+  }
+  if (dependencies.length !== 500 || new Set(dependencies).size !== 500) {
+    throw new Error(`dependency pagination missed or leaked rows: ${dependencies.length}`);
+  }
+  process.stdout.write("local fuzzy search and 501-file/500-edge traversal stayed organization-scoped\n");
 } catch (error) {
   failure = error;
 } finally {

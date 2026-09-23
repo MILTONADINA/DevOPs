@@ -281,6 +281,14 @@ The response contains up to 20 `matches` (entity IDs), plus `entities` and
 `edges` for those matches and their immediate neighbors (at most 220 nodes
 and 200 edges). In personal mode, pass `?org-id=<uuid>`.
 
+### GET /v1/memory/graph/files and /v1/memory/graph/dependencies
+
+Traverse all File nodes or DEPENDS_ON edges for the authenticated organization
+in stable keyset order. `limit` defaults to 500 and must be 1–500. Pass the
+returned `next` value as `after` until `next` is null. A file cursor is a file
+name; a dependency cursor is an edge UUID. Each response contains at most 500
+`files` or `edges`. In personal mode, pass `?org-id=<uuid>`.
+
 ---
 
 ## Configuration

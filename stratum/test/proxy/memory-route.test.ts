@@ -39,6 +39,14 @@ function fakeDeps(): { deps: MemoryDeps; captured: Record<string, unknown> } {
       captured["search"] = { orgId, query };
       return Promise.resolve({ matches: ["n1"], entities: [{ id: "n1", kind: "Function", name: "parseToken", session_id: null, file_path: "src/token.ts", summary: "Parses a token" }], edges: [] });
     },
+    listGraphFiles: (orgId, limit, after) => {
+      captured["files"] = { orgId, limit, after };
+      return Promise.resolve({ files: [{ id: "n2", kind: "File", name: "src/token.ts", session_id: null, file_path: "src/token.ts", summary: "Token source" }], next: null });
+    },
+    listGraphDependencies: (orgId, limit, after) => {
+      captured["dependencies"] = { orgId, limit, after };
+      return Promise.resolve({ edges: [{ id: "e1", edge_type: "DEPENDS_ON", from_entity: "n1", to_entity: "n2" }], next: null });
+    },
   };
   return { deps, captured };
 }
@@ -85,6 +93,38 @@ describe("GET /v1/memory/graph/search", () => {
       expect(res.statusCode).toBe(400);
     }
     expect((await app.inject({ method: "GET", url: "/v1/memory/graph/search?q=token" })).statusCode).toBe(400);
+    await app.close();
+  });
+});
+
+describe("graph traversal pages", () => {
+  test("binds files and dependencies to the key's organization and passes cursors", async () => {
+    const { deps, captured } = fakeDeps();
+    const app = buildProxy({ rateLimit: false, cors: false, auth: { resolve: (r) => Promise.resolve(r === "k" ? { orgId: "o9", keyId: "i" } : null) }, memory: deps });
+    await app.ready();
+    const files = await app.inject({ method: "GET", url: "/v1/memory/graph/files?org-id=other&limit=2&after=src%2Fa.ts", headers: { authorization: "Bearer k" } });
+    expect(files.statusCode).toBe(200);
+    expect(files.json().files[0].name).toBe("src/token.ts");
+    expect(captured["files"]).toEqual({ orgId: "o9", limit: 2, after: "src/a.ts" });
+    const cursor = "11111111-1111-4111-8111-111111111111";
+    const edges = await app.inject({ method: "GET", url: `/v1/memory/graph/dependencies?org-id=other&limit=3&after=${cursor}`, headers: { authorization: "Bearer k" } });
+    expect(edges.statusCode).toBe(200);
+    expect(captured["dependencies"]).toEqual({ orgId: "o9", limit: 3, after: cursor });
+    expect((await app.inject({ method: "GET", url: "/v1/memory/graph/files?org-id=other" })).statusCode).toBe(401);
+    await app.close();
+  });
+
+  test("rejects invalid limits and cursors and requires org in personal mode", async () => {
+    const app = buildProxy({ rateLimit: false, cors: false, memory: fakeDeps().deps });
+    await app.ready();
+    for (const endpoint of ["files", "dependencies"]) {
+      expect((await app.inject({ method: "GET", url: `/v1/memory/graph/${endpoint}` })).statusCode).toBe(400);
+      for (const limit of ["0", "501", "abc"]) {
+        expect((await app.inject({ method: "GET", url: `/v1/memory/graph/${endpoint}?org-id=o1&limit=${limit}` })).statusCode).toBe(400);
+      }
+    }
+    expect((await app.inject({ method: "GET", url: "/v1/memory/graph/files?org-id=o1&after=" })).statusCode).toBe(400);
+    expect((await app.inject({ method: "GET", url: "/v1/memory/graph/dependencies?org-id=o1&after=bogus" })).statusCode).toBe(400);
     await app.close();
   });
 });

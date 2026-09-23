@@ -188,6 +188,20 @@ export const OPENAPI_SPEC = {
         responses: { "200": { description: "Up to 20 matches with bounded neighbor graph" }, "400": ERROR_RESPONSE },
       },
     },
+    "/v1/memory/graph/files": {
+      get: {
+        summary: "Organization File-node page for graph tours",
+        parameters: [ORG_ID_QUERY, { name: "limit", in: "query", schema: { type: "integer", minimum: 1, maximum: 500 } }, { name: "after", in: "query", schema: { type: "string" } }],
+        responses: { "200": { description: "File nodes and next cursor" }, "400": ERROR_RESPONSE },
+      },
+    },
+    "/v1/memory/graph/dependencies": {
+      get: {
+        summary: "Organization dependency-edge page for graph tours",
+        parameters: [ORG_ID_QUERY, { name: "limit", in: "query", schema: { type: "integer", minimum: 1, maximum: 500 } }, { name: "after", in: "query", schema: { type: "string", format: "uuid" } }],
+        responses: { "200": { description: "Dependency edges and next cursor" }, "400": ERROR_RESPONSE },
+      },
+    },
     "/v1/memory/facts/{id}": {
       delete: {
         summary: "Suppress a fact",

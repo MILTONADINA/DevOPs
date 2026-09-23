@@ -105,6 +105,9 @@ describe("dashboard route", () => {
     expect(res.headers["content-security-policy"]).toContain("connect-src 'self'");
     expect(res.payload).toContain("/v1/memory/graph?limit=500");
     expect(res.payload).toContain("/v1/memory/graph/search?q=");
+    expect(res.payload).toContain("/v1/memory/graph/files");
+    expect(res.payload).toContain("/v1/memory/graph/dependencies");
+    expect(res.payload).toContain('id="tour-start"');
     expect(res.payload).toContain('id="search"');
     expect(res.payload).toContain("Authorization: 'Bearer '");
     expect(res.payload).toContain("file_path");
@@ -163,14 +166,44 @@ describe("dashboard route", () => {
       calls.push({ url, headers: options.headers });
       return {
         ok: true,
-        json: async () => ({
-          ...(url.startsWith("/v1/memory/graph/search") ? { matches: ["a"] } : {}),
-          entities: [
-            { id: "a", kind: "File", name: hostile, file_path: "src/a.ts", summary: hostile },
-            { id: "b", kind: "Function", name: "src/a.ts#f", file_path: "src/a.ts", summary: "Function f" },
-          ],
-          edges: [{ id: "e", from_entity: "a", to_entity: "b", edge_type: "DECLARES" }],
-        }),
+        json: async () => {
+          if (url.startsWith("/v1/memory/graph/files") && !url.includes("after="))
+            return { files: [{ id: "c", kind: "File", name: "src/c.ts", file_path: "src/c.ts", summary: "Dependency first" }], next: "src/c.ts" };
+          if (url.startsWith("/v1/memory/graph/files"))
+            return {
+              files: [
+                { id: "a", kind: "File", name: hostile, file_path: "src/a.ts", summary: hostile },
+                { id: "d", kind: "File", name: "src/d.ts", file_path: "src/d.ts", summary: "Depends on a" },
+                { id: "e", kind: "File", name: "src/e.ts", file_path: "src/e.ts", summary: "Cycle e" },
+                { id: "f", kind: "File", name: "src/f.ts", file_path: "src/f.ts", summary: "Cycle f" },
+              ],
+              next: null,
+            };
+          if (url.startsWith("/v1/memory/graph/dependencies") && !url.includes("after="))
+            return {
+              edges: [
+                { id: "e1", from_entity: "a", to_entity: "c", edge_type: "DEPENDS_ON" },
+                { id: "e2", from_entity: "d", to_entity: "a", edge_type: "DEPENDS_ON" },
+              ],
+              next: "11111111-1111-4111-8111-111111111111",
+            };
+          if (url.startsWith("/v1/memory/graph/dependencies"))
+            return {
+              edges: [
+                { id: "e3", from_entity: "e", to_entity: "f", edge_type: "DEPENDS_ON" },
+                { id: "e4", from_entity: "f", to_entity: "e", edge_type: "DEPENDS_ON" },
+              ],
+              next: null,
+            };
+          return {
+            ...(url.startsWith("/v1/memory/graph/search") ? { matches: ["a"] } : {}),
+            entities: [
+              { id: "a", kind: "File", name: hostile, file_path: "src/a.ts", summary: hostile },
+              { id: "b", kind: "Function", name: "src/a.ts#f", file_path: "src/a.ts", summary: "Function f" },
+            ],
+            edges: [{ id: "e", from_entity: "a", to_entity: "b", edge_type: "DECLARES" }],
+          };
+        },
       };
     };
     runInNewContext(script!, {
@@ -194,6 +227,19 @@ describe("dashboard route", () => {
     await vi.waitFor(() => expect(byId("status").textContent).toContain("1 matching node"));
     expect(calls[1]).toEqual({ url: "/v1/memory/graph/search?q=needle", headers: { Authorization: "Bearer cq_test_key" } });
     byId("details").children[1]!.children[0]!.children[0]!.listeners.get("click")!({ stopPropagation: () => undefined });
+    expect(byId("details").children[0]!.textContent).toBe(hostile);
+    byId("tour-start").listeners.get("click")!({ stopPropagation: () => undefined });
+    await vi.waitFor(() => expect(byId("status").textContent).toContain("Tour 1/5"));
+    expect(calls.filter((call) => call.url.startsWith("/v1/memory/graph/files"))).toHaveLength(2);
+    expect(calls.filter((call) => call.url.startsWith("/v1/memory/graph/dependencies"))).toHaveLength(2);
+    expect(byId("status").textContent).toContain("cycle detected");
+    expect(byId("details").children[0]!.textContent).toBe("src/c.ts");
+    byId("tour-next").listeners.get("click")!({ stopPropagation: () => undefined });
+    expect(byId("details").children[0]!.textContent).toBe(hostile);
+    expect(byId("details").children[3]!.textContent).toBe(hostile);
+    byId("tour-next").listeners.get("click")!({ stopPropagation: () => undefined });
+    expect(byId("details").children[0]!.textContent).toBe("src/d.ts");
+    byId("tour-prev").listeners.get("click")!({ stopPropagation: () => undefined });
     expect(byId("details").children[0]!.textContent).toBe(hostile);
   });
 
