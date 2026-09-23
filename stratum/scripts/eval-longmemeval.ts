@@ -12,6 +12,7 @@
  *   LONGMEMEVAL_TYPES             CSV of question types to include    (default: all)
  *   LONGMEMEVAL_LAMBDAS           CSV of λ; FIRST is the GATE          (default 0.97)
  *   LONGMEMEVAL_DECAY_HORIZON_FRAC  scale-invariant decay = frac×span (default 0 = per-hour)
+ *   LONGMEMEVAL_REPEATS           judge samples per context          (default 1)
  *
  * Honesty contract (as eval:locomo): never fabricates a PASS; a FAIL is a real
  * finding; gold answers are NOT used to tune λ (evidence survival is deterministic).
@@ -24,6 +25,7 @@ import { createOnnxEncoder } from "../src/pruner/encoder";
 import { prune, type HistoryEmbedding } from "../src/pruner/pruner";
 import { DEFAULT_KADANEDIAL, halfLifeHours } from "../src/pruner/kadanedial";
 import { createClaudeAnswerer, createLlmJudge } from "../evals/harness/metrics";
+import { scoreLongMemContexts } from "../evals/harness/longmemeval-scoring";
 import { gateScenario } from "../evals/harness/compare";
 import { evaluateSuite, renderReport } from "../evals/harness/report";
 import { DEFAULT_THRESHOLDS, type MetricScores, type ScenarioResult } from "../evals/harness/types";
@@ -60,6 +62,8 @@ interface QOutcome {
   evidenceSurvival: number;
   pruned: MetricScores;
   baseline: MetricScores;
+  prunedStd: MetricScores;
+  baselineStd: MetricScores;
 }
 
 export async function main(): Promise<number> {
@@ -85,11 +89,12 @@ export async function main(): Promise<number> {
   const lambdas = envFloatList("LONGMEMEVAL_LAMBDAS", [DEFAULT_KADANEDIAL.lambda]);
   const gateLambda = lambdas[0]!;
   const horizonFrac = envFloat("LONGMEMEVAL_DECAY_HORIZON_FRAC", 0);
+  const repeats = envInt("LONGMEMEVAL_REPEATS", 1);
   const typesEnv = process.env["LONGMEMEVAL_TYPES"];
   const types = typesEnv ? typesEnv.split(",").map((s) => s.trim()).filter(Boolean) : undefined;
 
   const questions = sampleLongMemQuestions(loadLongMemEval(file), types ? { maxQuestions: nQ, types } : { maxQuestions: nQ });
-  const callBudget = questions.length * 4; // baseline(answer+judge) + gate-λ pruned(answer+judge)
+  const callBudget = questions.length * 4 * repeats; // R × baseline and pruned answer+judge cycles
 
   out("CQ Eval Suite — Tier-A LongMemEval (real ONNX encoder + Claude judge)");
   out("=".repeat(68));
@@ -97,6 +102,7 @@ export async function main(): Promise<number> {
   out(`GATE λ = ${gateLambda} (half-life ${halfLifeHours(gateLambda).toFixed(1)}h)   Decay: ${horizonFrac > 0 ? `SCALE-INVARIANT ${horizonFrac}×span (ADR-0015)` : "absolute per-hour"}`);
   out(`Thresholds: Faithfulness ≥ ${DEFAULT_THRESHOLDS.faithfulnessMin}, Answer-Relevancy ≥ ${DEFAULT_THRESHOLDS.answerRelevancyMin}, max degradation ${DEFAULT_THRESHOLDS.maxDegradation}, evidence survival ≥ ${DEFAULT_THRESHOLDS.evidenceSurvivalMin}`);
   out(`Upper-bound model calls: ${callBudget} (Claude Haiku).`);
+  out(repeats > 1 ? `Judge sampling: R=${repeats} repeats/context, averaged` : "Judge sampling: single shot (set LONGMEMEVAL_REPEATS>1 to damp noise)");
   out("");
 
   const encoder = createOnnxEncoder({ cacheDir: join(process.cwd(), "models") });
@@ -124,12 +130,10 @@ export async function main(): Promise<number> {
     const reductionPct = fullText.length ? Math.round((1 - prunedText.length / fullText.length) * 100) : 0;
     const evidenceSurvival = q.evidenceIndices.filter((i) => selSet.has(i)).length / q.evidenceIndices.length;
 
-    const [pa, ba] = await Promise.all([answerer.generate(q.query, prunedText), answerer.generate(q.query, fullText)]);
-    const [pruned, baseline] = await Promise.all([
-      judge.score({ query: q.query, context: prunedText, answer: pa }),
-      judge.score({ query: q.query, context: fullText, answer: ba }),
-    ]);
-    outcomes.push({ q, reductionPct, evidenceSurvival, pruned, baseline });
+    const scores = await scoreLongMemContexts(q.query, fullText, prunedText, answerer, judge, repeats);
+    const { mean: pruned, std: prunedStd } = scores.pruned;
+    const { mean: baseline, std: baselineStd } = scores.baseline;
+    outcomes.push({ q, reductionPct, evidenceSurvival, pruned, baseline, prunedStd, baselineStd });
     out(
       `  [${q.questionType.padEnd(26)}] kept ${sel.length}/${q.turns.length} (-${reductionPct}%)  evid ${(evidenceSurvival * 100).toFixed(0)}%  ` +
         `faith ${fmt(pruned.faithfulness)}/${fmt(baseline.faithfulness)}  relev ${fmt(pruned.answerRelevancy)}/${fmt(baseline.answerRelevancy)}`,
@@ -159,6 +163,9 @@ export async function main(): Promise<number> {
   out(`  Faithfulness    pruned ${fmt(mean(outcomes.map((o) => o.pruned.faithfulness)))}  baseline ${fmt(mean(outcomes.map((o) => o.baseline.faithfulness)))}`);
   out(`  AnswerRelevancy pruned ${fmt(mean(outcomes.map((o) => o.pruned.answerRelevancy)))}  baseline ${fmt(mean(outcomes.map((o) => o.baseline.answerRelevancy)))}`);
   out(`  Evidence survival ${(mean(outcomes.map((o) => o.evidenceSurvival)) * 100).toFixed(1)}%   mean context reduction ${Math.round(mean(outcomes.map((o) => o.reductionPct)))}%`);
+  if (repeats > 1) {
+    out(`  Judge noise (R=${repeats}, mean per-scenario std): faith pruned ${fmt(mean(outcomes.map((o) => o.prunedStd.faithfulness)))} / baseline ${fmt(mean(outcomes.map((o) => o.baselineStd.faithfulness)))}, relev pruned ${fmt(mean(outcomes.map((o) => o.prunedStd.answerRelevancy)))} / baseline ${fmt(mean(outcomes.map((o) => o.baselineStd.answerRelevancy)))}`);
+  }
   out(`  Scenarios passing the COMPLETE gate: ${scenarios.filter((s) => s.passed).length}/${scenarios.length}`);
   out("");
   out(`${verdict.passed ? "PASS" : "FAIL"} — Tier-A LongMemEval gate (sampled).`);
