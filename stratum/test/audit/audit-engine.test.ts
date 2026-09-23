@@ -5,7 +5,7 @@ import { describe, test, expect } from "vitest";
 import { auditFacts, summarizeAudit, persistConflicts } from "../../src/audit/audit-engine";
 import type { CodeChange } from "../../src/audit/git-attestation";
 import type { AnyFact, FunctionChangeFact } from "../../src/types/facts";
-import { makeFakeSupabase } from "../memory/fake-supabase";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 const base = { created_at: "2026-01-01T00:00:00Z", session_id: "s", confidence: 0.9, is_verified: false, is_suppressed: false };
 const fn = (id: string, o: Partial<FunctionChangeFact>): FunctionChangeFact => ({ id, ...base, fact_type: "FunctionChange", old_name: "getUser", change_type: "renamed", ...o });
@@ -33,8 +33,45 @@ describe("auditFacts + summarizeAudit", () => {
 });
 
 describe("persistConflicts", () => {
+  function auditDb(failInsert = false) {
+    const store: Record<string, Record<string, unknown>[]> = {
+      function_changes: [
+        { id: "f2", org_id: "org-9", is_suppressed: false },
+        { id: "f2", org_id: "org-10", is_suppressed: false },
+      ],
+      audit_conflicts: [],
+    };
+    const calls: Record<string, unknown>[] = [];
+    const client = {
+      rpc: async (name: string, args: Record<string, unknown>) => {
+        calls.push({ name, ...args });
+        if (name !== "persist_audit_conflicts") return { data: null, error: { message: "wrong RPC" } };
+        const rows = args["p_rows"] as Record<string, unknown>[];
+        const org = args["p_org_id"];
+        const pendingFacts = store["function_changes"]!.map((r) => ({ ...r }));
+        const pendingConflicts = store["audit_conflicts"]!.map((r) => ({ ...r }));
+        let inserted = 0;
+        for (const row of rows) {
+          if (row["fact_table"] !== "function_changes") return { data: null, error: { message: "unsupported table" } };
+          const fact = pendingFacts.find((r) => r["id"] === row["fact_id"] && r["org_id"] === org);
+          if (!fact) return { data: null, error: { message: "missing fact in organization" } };
+          fact["is_suppressed"] = true;
+          if (failInsert) return { data: null, error: { message: "insert failed" } };
+          if (!pendingConflicts.some((r) => r["id"] === row["id"])) {
+            pendingConflicts.push({ ...row, org_id: org, session_id: args["p_session_id"], suppressed: true });
+            inserted++;
+          }
+        }
+        store["function_changes"] = pendingFacts;
+        store["audit_conflicts"] = pendingConflicts;
+        return { data: inserted, error: null };
+      },
+    } as unknown as SupabaseClient;
+    return { client, store, calls };
+  }
+
   test("repeat audit preserves one acknowledged alert; new evidence and org create separate alerts", async () => {
-    const { client, store } = makeFakeSupabase();
+    const { client, store } = auditDb();
     const audited = auditFacts(FACTS, CHANGES);
     await persistConflicts(client, audited, { orgId: "org-9", sessionId: "sess-9" });
     const first = store["audit_conflicts"]![0]!;
@@ -59,7 +96,7 @@ describe("persistConflicts", () => {
   });
 
   test("writes ONLY conflicts to audit_conflicts with the right shape + trusted FKs", async () => {
-    const { client, store } = makeFakeSupabase();
+    const { client, store, calls } = auditDb();
     const n = await persistConflicts(client, auditFacts(FACTS, CHANGES), { orgId: "org-9", sessionId: "sess-9" });
     expect(n).toBe(1);
     const rows = store["audit_conflicts"]!;
@@ -75,17 +112,29 @@ describe("persistConflicts", () => {
     expect(rows[0]!["id"]).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-8[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
     expect(String(rows[0]!["claimed_state"])).toContain("oldFn"); // factToText of the conflicting fact
     expect(String(rows[0]!["actual_state"])).toContain("newFn"); // the conflict detail
+    expect(store["function_changes"]![0]!["is_suppressed"]).toBe(true);
+    expect(calls[0]).toMatchObject({ name: "persist_audit_conflicts", p_org_id: "org-9", p_session_id: "sess-9" });
   });
 
   test("no conflicts → no write, returns 0", async () => {
-    const { client, store } = makeFakeSupabase();
+    const { client, store, calls } = auditDb();
     const confirmedOnly = auditFacts([fn("f1", { old_name: "getUser", new_name: "fetchUser" })], CHANGES);
     expect(await persistConflicts(client, confirmedOnly, { orgId: "o", sessionId: "s" })).toBe(0);
-    expect(store["audit_conflicts"]).toBeUndefined();
+    expect(store["audit_conflicts"]).toEqual([]);
+    expect(calls).toEqual([]);
   });
 
-  test("throws (no silent drop) when the insert fails", async () => {
-    const { client } = makeFakeSupabase({}, { insertError: new Set(["audit_conflicts"]) });
+  test("a failed insert rolls back fact suppression and reports the error", async () => {
+    const { client, store } = auditDb(true);
     await expect(persistConflicts(client, auditFacts(FACTS, CHANGES), { orgId: "o", sessionId: "s" })).rejects.toThrow(/persistConflicts failed/);
+    expect(store["function_changes"]![0]!["is_suppressed"]).toBe(false);
+    expect(store["audit_conflicts"]).toEqual([]);
+  });
+
+  test("a missing fact in the trusted organization cannot create an alert", async () => {
+    const { client, store } = auditDb();
+    await expect(persistConflicts(client, auditFacts(FACTS, CHANGES), { orgId: "org-other", sessionId: "s" })).rejects.toThrow(/missing fact/);
+    expect(store["function_changes"]!.every((r) => r["is_suppressed"] === false)).toBe(true);
+    expect(store["audit_conflicts"]).toEqual([]);
   });
 });

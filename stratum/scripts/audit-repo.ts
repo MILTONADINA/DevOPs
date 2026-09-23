@@ -4,7 +4,7 @@
  * Indexes a repo's recent git history into structured {@link CodeChange}s and reports
  * them; with `--facts <file>` it attests those facts against the history (Tier-1
  * CONFIRMED / UNVERIFIED / CONFLICT) and, with `--persist` + Supabase creds, records
- * CONFLICTs to audit_conflicts. The runnable surface of the audit engine — no
+ * CONFLICTs to audit_conflicts while suppressing their typed facts. The runnable surface of the audit engine — no
  * Anthropic (Tier-2/3 escalation of UNVERIFIED facts is the gated next step).
  *
  *   npm run audit:repo                                  # index THIS repo, report changes
@@ -132,7 +132,7 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
       out("--persist skipped: --org-id and --session-id are required (trusted FKs).");
     } else {
       const n = await persistConflicts(createClient(url, key), audited, { orgId: args.orgId, sessionId: args.sessionId });
-      out(`Persisted ${n} CONFLICT(s) to audit_conflicts (suppressed).`);
+      out(`Persisted ${n} new CONFLICT(s); conflicting fact rows are suppressed.`);
     }
   }
   return s.conflict > 0 ? 1 : 0; // a CONFLICT (stale/false memory) is a non-zero exit
