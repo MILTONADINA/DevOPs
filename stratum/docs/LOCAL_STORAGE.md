@@ -120,7 +120,14 @@ set `SOURCE_SUBDIR` (default `stratum/src`), and run
 `npm run db:with-env -- npm run ingest-source-graph` from `stratum/`. This creates
 File and top-level Function nodes with source-derived summaries plus DECLARES
 and relative-import DEPENDS_ON edges. Cross-language parsing, Tier-2 links,
-model-generated summaries, and the dashboard graph view remain separate work.
+and model-generated summaries remain separate work.
+
+Open `/dashboard/graph` on the local proxy to explore the bounded graph
+snapshot. Enter a CQ API key in commercial mode, or pass `?org-id=<uuid>` in
+personal mode. The view shows up to 500 current nodes, their in-snapshot edges,
+source paths and summaries; selecting a node reveals its neighbors. It warns
+when the snapshot may be truncated. Search, tours, and pagination are separate
+gates.
 
 Run `npm run db:verify-recovery` for a disposable organization backup and
 restore check. It exports a session, suppressed fact, audit status, and conflict
