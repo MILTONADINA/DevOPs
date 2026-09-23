@@ -1,3 +1,6 @@
 # Domains required by graph preflight for this repository's GitHub origin.
 github.com
 release-assets.githubusercontent.com
+
+# Public container images for the owner-approved local Stratum Supabase stack.
+public.ecr.aws

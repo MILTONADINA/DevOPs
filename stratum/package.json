@@ -49,7 +49,7 @@
     "create-org": "tsx scripts/create-org.ts",
     "create-api-key": "tsx scripts/create-api-key.ts",
     "api-keys": "tsx scripts/api-keys.ts",
-    "db:start": "npx supabase start",
+    "db:start": "tsx scripts/start-local-stack.ts",
     "db:stop": "npx supabase stop",
     "db:reset": "npx supabase db reset",
     "db:push": "npx supabase db push",
