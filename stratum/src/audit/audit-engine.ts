@@ -3,8 +3,8 @@
  *
  * Composes the indexer (git-indexer.ts) + attestation (git-attestation.ts) into the
  * runnable deterministic audit: attest each fact against the repo's code changes, and
- * persist CONFLICTs to `audit_conflicts` (suppressed — the spec's "log conflict +
- * alert" step). FREE (no LLM); the Tier-2 Llama / Tier-3 Opus escalation of UNVERIFIED
+ * suppress CONFLICT facts and persist evidence in one database call. FREE (no LLM);
+ * the Tier-2 Llama / Tier-3 Opus escalation of UNVERIFIED
  * facts are separate gated modules. Built ahead of the v0.6.x gate as shadow code;
  * wired NOWHERE in the request path.
  */
@@ -68,8 +68,8 @@ function conflictId(parts: readonly string[]): string {
 }
 
 /**
- * Persist CONFLICT results to `audit_conflicts` (suppressed = true) — the Historical
- * Drift log/alert sink. CONFIRMED / UNVERIFIED are not logged here. org/session are
+ * Suppress typed CONFLICT facts and persist their Historical Drift alerts in one
+ * database transaction. CONFIRMED / UNVERIFIED are not logged here. org/session are
  * trusted FKs (ADR-0012), never derived from the fact.
  *
  * @param client - a configured Supabase client (service-role).
@@ -77,7 +77,7 @@ function conflictId(parts: readonly string[]): string {
  * @param ctx - trusted org/session FKs.
  * Replaying the same evidence does not replace an existing acknowledgement.
  * @returns the number of new conflict records inserted.
- * @throws {Error} if the insert fails.
+ * @throws {Error} if suppression or alert persistence fails.
  */
 export async function persistConflicts(client: SupabaseClient, audited: AuditedFact[], ctx: AuditContext): Promise<number> {
   const rows = audited
@@ -89,19 +89,17 @@ export async function persistConflicts(client: SupabaseClient, audited: AuditedF
       const commit = a.result.conflictCommit ?? "";
       return {
         id: conflictId([ctx.orgId, table, a.fact.id, claimed, actual, commit]),
-        org_id: ctx.orgId,
-        session_id: ctx.sessionId,
         fact_table: table,
         fact_id: a.fact.id,
         claimed_state: claimed,
         actual_state: actual,
         ...(a.result.conflictCommit !== undefined ? { conflict_commit: a.result.conflictCommit } : {}),
-        suppressed: true,
       };
     });
   if (rows.length === 0) return 0;
-  const { data, error } = await client.from("audit_conflicts")
-    .upsert(rows, { onConflict: "id", ignoreDuplicates: true }).select("id");
+  const { data, error } = await client.rpc("persist_audit_conflicts", {
+    p_org_id: ctx.orgId, p_session_id: ctx.sessionId, p_rows: rows,
+  });
   if (error) throw new Error(`persistConflicts failed: ${error.message}`);
-  return data?.length ?? 0;
+  return data as number;
 }
