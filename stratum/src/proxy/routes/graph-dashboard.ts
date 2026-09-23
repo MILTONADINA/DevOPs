@@ -77,6 +77,28 @@ function select(id) {
   });
   if (!attached.length) relations.appendChild(element('li', 'No relationships in this snapshot.'));
   draw();
+  if (node.file_path) void showRelated(id, node.file_path);
+}
+async function showRelated(id, filePath) {
+  const section = element('section');
+  const heading = element('h3', 'Related Tier-2 facts');
+  section.append(heading, element('p', 'Loading…'));
+  details.appendChild(section);
+  const key = keyInput.value.trim();
+  try {
+    const url = '/v1/memory/graph/related-facts?file=' + encodeURIComponent(filePath) + (key ? '' : '&org-id=' + encodeURIComponent(org));
+    const response = await fetch(url, { headers: key ? { Authorization: 'Bearer ' + key } : {}, cache: 'no-store' });
+    if (!response.ok) throw new Error('Related facts unavailable (' + response.status + ').');
+    const data = await response.json();
+    if (selected !== id) return;
+    const facts = Array.isArray(data.facts) ? data.facts : [];
+    if (!facts.length) { section.replaceChildren(heading, element('p', 'No active facts linked to this file.')); return; }
+    const list = element('ul');
+    facts.forEach(fact => list.appendChild(element('li', fact.kind + ': ' + fact.summary)));
+    section.replaceChildren(heading, list);
+  } catch (error) {
+    if (selected === id) section.replaceChildren(heading, element('p', error.message || String(error)));
+  }
 }
 function draw() {
   viewport.replaceChildren();

@@ -107,6 +107,7 @@ describe("dashboard route", () => {
     expect(res.payload).toContain("/v1/memory/graph/search?q=");
     expect(res.payload).toContain("/v1/memory/graph/files");
     expect(res.payload).toContain("/v1/memory/graph/dependencies");
+    expect(res.payload).toContain("/v1/memory/graph/related-facts?file=");
     expect(res.payload).toContain('id="tour-start"');
     expect(res.payload).toContain('id="search"');
     expect(res.payload).toContain("Authorization: 'Bearer '");
@@ -162,11 +163,19 @@ describe("dashboard route", () => {
     };
     const hostile = '<img src=x onerror="alert(1)">';
     const calls: Array<{ url: string; headers?: Record<string, string> }> = [];
+    let holdRelated = false;
+    let releaseRelated: (() => void) | undefined;
     const fetch = async (url: string, options: { headers?: Record<string, string> }) => {
       calls.push({ url, headers: options.headers });
+      if (url.startsWith("/v1/memory/graph/related-facts") && holdRelated && url.includes("src%2Fa.ts")) {
+        await new Promise<void>((resolve) => {
+          releaseRelated = resolve;
+        });
+      }
       return {
         ok: true,
         json: async () => {
+          if (url.startsWith("/v1/memory/graph/related-facts")) return { facts: [{ id: "fact-1", kind: "TechDecision", summary: hostile }] };
           if (url.startsWith("/v1/memory/graph/files") && !url.includes("after="))
             return { files: [{ id: "c", kind: "File", name: "src/c.ts", file_path: "src/c.ts", summary: "Dependency first" }], next: "src/c.ts" };
           if (url.startsWith("/v1/memory/graph/files"))
@@ -221,11 +230,21 @@ describe("dashboard route", () => {
     first!.listeners.get("click")!({ stopPropagation: () => undefined });
     expect(byId("details").children[0]!.textContent).toBe(hostile);
     expect(byId("relations").children).toHaveLength(1);
+    await vi.waitFor(() => expect(byId("details").children.find((node) => node.tag === "section")?.children[1]?.tag).toBe("ul"));
+    expect(byId("details").children.find((node) => node.tag === "section")!.children[1]!.children[0]!.textContent).toBe("TechDecision: " + hostile);
+    expect(calls.find((call) => call.url.startsWith("/v1/memory/graph/related-facts"))).toEqual({
+      url: "/v1/memory/graph/related-facts?file=src%2Fa.ts",
+      headers: { Authorization: "Bearer cq_test_key" },
+    });
     expect([...ids.values()].flatMap((node) => node.children).every((node) => node.tag !== "img")).toBe(true);
     byId("search-query").value = "needle";
     byId("search").listeners.get("click")!({ stopPropagation: () => undefined });
     await vi.waitFor(() => expect(byId("status").textContent).toContain("1 matching node"));
-    expect(calls[1]).toEqual({ url: "/v1/memory/graph/search?q=needle", headers: { Authorization: "Bearer cq_test_key" } });
+    expect(calls.find((call) => call.url.startsWith("/v1/memory/graph/search"))).toEqual({
+      url: "/v1/memory/graph/search?q=needle",
+      headers: { Authorization: "Bearer cq_test_key" },
+    });
+    holdRelated = true;
     byId("details").children[1]!.children[0]!.children[0]!.listeners.get("click")!({ stopPropagation: () => undefined });
     expect(byId("details").children[0]!.textContent).toBe(hostile);
     byId("tour-start").listeners.get("click")!({ stopPropagation: () => undefined });
@@ -234,6 +253,10 @@ describe("dashboard route", () => {
     expect(calls.filter((call) => call.url.startsWith("/v1/memory/graph/dependencies"))).toHaveLength(2);
     expect(byId("status").textContent).toContain("cycle detected");
     expect(byId("details").children[0]!.textContent).toBe("src/c.ts");
+    releaseRelated?.();
+    await Promise.resolve();
+    expect(byId("details").children[0]!.textContent).toBe("src/c.ts");
+    holdRelated = false;
     byId("tour-next").listeners.get("click")!({ stopPropagation: () => undefined });
     expect(byId("details").children[0]!.textContent).toBe(hostile);
     expect(byId("details").children[3]!.textContent).toBe(hostile);

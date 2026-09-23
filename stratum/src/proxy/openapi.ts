@@ -202,6 +202,13 @@ export const OPENAPI_SPEC = {
         responses: { "200": { description: "Dependency edges and next cursor" }, "400": ERROR_RESPONSE },
       },
     },
+    "/v1/memory/graph/related-facts": {
+      get: {
+        summary: "Active Tier-2 facts for an indexed source File",
+        parameters: [ORG_ID_QUERY, { name: "file", in: "query", required: true, schema: { type: "string", minLength: 1, maxLength: 1024 } }],
+        responses: { "200": { description: "Up to 50 exact-path fact summaries" }, "400": ERROR_RESPONSE, "404": ERROR_RESPONSE },
+      },
+    },
     "/v1/memory/facts/{id}": {
       delete: {
         summary: "Suppress a fact",
