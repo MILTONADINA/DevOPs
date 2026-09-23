@@ -236,6 +236,12 @@ When a CONFLICT is detected, the developer is notified immediately via:
 2. **CLI warning:** Printed to the terminal session where Claude Code is running
 3. **Supabase log:** Written to `audit_conflicts` table with full detail
 
+The deterministic audit runner records one conflict per organization, fact,
+claimed state, contradictory detail, and commit. Replaying the same audit
+does not create another alert or reset its acknowledgement. New contradictory
+evidence creates a separate record. Existing records written before this
+identity rule retain their original IDs and may have historical duplicates.
+
 ```typescript
 interface AuditConflict {
   id: string;

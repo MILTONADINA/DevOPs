@@ -4,7 +4,7 @@
 //   query:   from(t).select(c).eq(k,v)[.eq][.lt(k,v)][.order(k,{ascending})].limit(n) -> {data,error}
 //   insert:  await from(t).insert(rowOrRows)            -> {data: inserted[], error}
 //   insert:  from(t).insert(row).select(c).single()     -> {data:{id}, error}
-//   upsert:  await from(t).upsert(rows, {onConflict})    -> {data, error}  (dedup/replace by id)
+//   upsert:  await from(t).upsert(rows, {onConflict,ignoreDuplicates}) -> {data,error}
 //   update:  await from(t).update(patch).eq(k,v)[.eq]    -> {data:null, error}
 //   delete:  await from(t).delete().eq(k,v)              -> {data:null, error}
 //   rpc:     await client.rpc(fn, args)                  -> {data, error}
@@ -52,7 +52,7 @@ export function makeFakeSupabase(
       return rv !== undefined && rv !== null && (rv as string | number) < (v as string | number);
     });
 
-  function writeRows(table: string, rowOrRows: Row | Row[], upsert: boolean): Row[] {
+  function writeRows(table: string, rowOrRows: Row | Row[], upsert: boolean, ignoreDuplicates = false): Row[] {
     const arr = Array.isArray(rowOrRows) ? rowOrRows : [rowOrRows];
     const rows = rowsOf(table);
     const written: Row[] = [];
@@ -60,7 +60,8 @@ export function makeFakeSupabase(
       const withId: Row = row["id"] !== undefined ? { ...row } : { id: nextId(), ...row };
       if (upsert) {
         const idx = rows.findIndex((r) => r["id"] === withId["id"]);
-        if (idx >= 0) rows[idx] = withId; // on-conflict: replace (idempotent)
+        if (idx >= 0 && ignoreDuplicates) continue;
+        if (idx >= 0) rows[idx] = withId; // on-conflict: replace
         else rows.push(withId);
       } else {
         rows.push(withId);
@@ -71,19 +72,19 @@ export function makeFakeSupabase(
   }
 
   // insert/upsert: a real Promise (awaitable + chainable) with .select().single().
-  function makeWrite(table: string, rowOrRows: Row | Row[], upsert: boolean): unknown {
+  function makeWrite(table: string, rowOrRows: Row | Row[], upsert: boolean, ignoreDuplicates = false): unknown {
     const error = faults.insertError?.has(table) ? { message: `${upsert ? "upsert" : "insert"} failed: ${table}` } : null;
-    const written = error ? [] : writeRows(table, rowOrRows, upsert);
+    const written = error ? [] : writeRows(table, rowOrRows, upsert, ignoreDuplicates);
     const result = { data: error ? null : written, error };
     return Object.assign(Promise.resolve(result), {
       select(_cols: string) {
-        return {
+        return Object.assign(Promise.resolve(result), {
           single() {
             if (error) return Promise.resolve({ data: null, error });
             const first = written[0];
             return Promise.resolve({ data: first ? { id: first["id"] } : null, error: null });
           },
-        };
+        });
       },
     });
   }
@@ -191,8 +192,8 @@ export function makeFakeSupabase(
         insert(rowOrRows: Row | Row[]) {
           return makeWrite(table, rowOrRows, false);
         },
-        upsert(rowOrRows: Row | Row[], _opts?: { onConflict?: string }) {
-          return makeWrite(table, rowOrRows, true);
+        upsert(rowOrRows: Row | Row[], opts?: { onConflict?: string; ignoreDuplicates?: boolean }) {
+          return makeWrite(table, rowOrRows, true, opts?.ignoreDuplicates);
         },
         update(patch: Row) {
           return makeUpdate(table, patch);
