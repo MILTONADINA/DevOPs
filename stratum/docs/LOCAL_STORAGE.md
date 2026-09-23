@@ -107,6 +107,12 @@ Set `REAL_MODEL_CASE=variable` for an explicit `JWT_TTL_MINUTES` 60-to-15
 change; the check requires string values in the stored `VariableChange` and
 recalls the same fact through SessionStart.
 
+Run `npm run db:verify-graph-read` to verify the protected, bounded
+`/v1/memory/graph` snapshot against two disposable local organizations. It
+checks key-based scope and excludes an edge pointing outside the returned
+organization's nodes. This read API supplies graph nodes and edges; source
+ingestion, node summaries, and the dashboard graph view remain separate work.
+
 Run `npm run db:verify-recovery` for a disposable organization backup and
 restore check. It exports a session, suppressed fact, audit status, and conflict
 to a temporary file under the ignored `backups/` directory, deletes the rows,

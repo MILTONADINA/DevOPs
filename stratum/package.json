@@ -65,6 +65,7 @@
     "db:verify-message-audit": "tsx scripts/local-compose.ts with-env tsx test/integration/local-message-audit.ts",
     "db:verify-request-survival": "tsx scripts/local-compose.ts with-env tsx test/integration/local-request-survival.ts",
     "db:verify-real-model-memory": "tsx scripts/local-compose.ts with-env tsx test/integration/local-real-model-memory.ts",
+    "db:verify-graph-read": "tsx scripts/local-compose.ts with-env tsx test/integration/local-graph-read.ts",
     "deploy": "wrangler deploy"
   },
   "dependencies": {

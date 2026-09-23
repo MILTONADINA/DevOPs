@@ -174,6 +174,9 @@ export const OPENAPI_SPEC = {
     "/v1/memory/facts": {
       get: { summary: "Recent Tier-2 facts", parameters: [ORG_ID_QUERY, { name: "limit", in: "query", schema: { type: "integer" } }], responses: { "200": { description: "Facts" } } },
     },
+    "/v1/memory/graph": {
+      get: { summary: "Bounded organization graph snapshot", parameters: [ORG_ID_QUERY, { name: "limit", in: "query", schema: { type: "integer", maximum: 500 } }], responses: { "200": { description: "Entities and their in-snapshot edges" }, "400": ERROR_RESPONSE } },
+    },
     "/v1/memory/facts/{id}": {
       delete: {
         summary: "Suppress a fact",
