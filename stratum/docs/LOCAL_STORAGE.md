@@ -103,6 +103,9 @@ one authenticated request through the real local provider, uses that model to
 extract a TechDecision, checks the local database and SessionStart recall, and
 removes its fixture. It tests one explicit decision on that model; it does not
 establish broad extraction quality or live Claude hook activation.
+Set `REAL_MODEL_CASE=variable` for an explicit `JWT_TTL_MINUTES` 60-to-15
+change; the check requires string values in the stored `VariableChange` and
+recalls the same fact through SessionStart.
 
 Run `npm run db:verify-recovery` for a disposable organization backup and
 restore check. It exports a session, suppressed fact, audit status, and conflict

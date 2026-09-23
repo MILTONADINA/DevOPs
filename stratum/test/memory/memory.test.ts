@@ -112,6 +112,16 @@ describe("fact extractor (injected fake completion — no real model)", () => {
     expect(parseExtractedFacts("[]", ctx)).toEqual([]);
   });
 
+  test("numeric scalar value changes survive extraction without widening other fields", () => {
+    const values = parseExtractedFacts('[{"fact_type":"VariableChange","var_name":"JWT_TTL_MINUTES","old_value":60,"new_value":15,"confidence":1},' +
+      '{"fact_type":"PolicyUpdate","policy_name":"rotation","old_value":90,"new_value":30,"policy_type":"security","confidence":0.8},' +
+      '{"fact_type":"VariableChange","var_name":"bad","new_value":true,"confidence":0.9},' +
+      '{"fact_type":"VariableChange","var_name":"also_bad","new_value":{"nested":1},"confidence":0.9}]', ctx);
+    expect(values).toHaveLength(2);
+    expect(values[0]).toMatchObject({ fact_type: "VariableChange", old_value: "60", new_value: "15", confidence: 1 });
+    expect(values[1]).toMatchObject({ fact_type: "PolicyUpdate", old_value: "90", new_value: "30", confidence: 0.8 });
+  });
+
   test("STRIPS model-forged system/FK fields (developer_id, commit_hash, supersedes_id, is_verified)", () => {
     // an untrusted model tries to forge authorship, the attestation anchor, a
     // supersession edge, and the verified flag — all must be stripped/overridden.
