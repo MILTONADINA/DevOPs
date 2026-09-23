@@ -289,6 +289,14 @@ returned `next` value as `after` until `next` is null. A file cursor is a file
 name; a dependency cursor is an edge UUID. Each response contains at most 500
 `files` or `edges`. In personal mode, pass `?org-id=<uuid>`.
 
+### GET /v1/memory/graph/related-facts
+
+Return up to 50 active Tier-2 fact summaries for an indexed File node in the
+authenticated organization. `file` must be its exact project-relative path.
+FunctionChange facts match `file_path`; TechDecision facts match only when
+`domain` is that full path. Suppressed facts and generic domains are excluded.
+An unindexed path returns 404. In personal mode, pass `?org-id=<uuid>`.
+
 ---
 
 ## Configuration
