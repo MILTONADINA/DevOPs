@@ -10,7 +10,7 @@ real path. It SHALL require Supabase credentials from the process environment
 and a Supabase hostname present in the project's network allowlist before any
 network call. WHEN any prerequisite is missing or mismatched, THE SYSTEM SHALL
 skip recall without making a network request or blocking session startup.
-WHEN the operator uses the approved local Supabase CLI stack, THE SYSTEM SHALL
+WHEN the operator uses the approved local Supabase-compatible Compose stack, THE SYSTEM SHALL
 also accept the exact `http://127.0.0.1:54321/` origin if `127.0.0.1` is in
 that allowlist. It SHALL reject other plaintext hosts, ports, paths, and URL
 credentials; remote origins SHALL continue to require HTTPS.

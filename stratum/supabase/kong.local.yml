@@ -1,0 +1,8 @@
+_format_version: "2.1"
+services:
+  - name: rest-v1
+    url: http://rest:3000
+    routes:
+      - name: rest-v1
+        paths: ["/rest/v1"]
+        strip_path: true

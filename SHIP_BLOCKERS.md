@@ -565,9 +565,10 @@ ADR-0013. `stratum/scripts/understand-codebase.ts` supplies a CLI foundation.
 PR #42 added a scoped Claude SessionStart bridge; live project/org binding and
 recall remain open. A scheduled promotion invocation, Tier-2 <50ms p95
 release evidence, and the graph dashboard/search/tours also remain open.
-ADR-0020 selects a local Supabase CLI stack for development after the owner
-retired the paid project; production latency and storage gates still need a
-deployed topology. See the updated v0.5 section of `plan.md` for itemized state.
+ADR-0020 selects a local Supabase-compatible Compose stack for development
+after the owner retired the paid project; production latency and storage gates
+still need a deployed topology. See the updated v0.5 section of `plan.md` for
+itemized state.
 
 ---
 

@@ -50,10 +50,11 @@
     "create-org": "tsx scripts/create-org.ts",
     "create-api-key": "tsx scripts/create-api-key.ts",
     "api-keys": "tsx scripts/api-keys.ts",
-    "db:start": "tsx scripts/start-local-stack.ts",
-    "db:stop": "npx supabase stop",
-    "db:reset": "npx supabase db reset",
-    "db:push": "npx supabase db push",
+    "db:start": "tsx scripts/local-compose.ts start",
+    "db:stop": "tsx scripts/local-compose.ts stop",
+    "db:migrate": "tsx scripts/local-compose.ts migrate",
+    "db:with-env": "tsx scripts/local-compose.ts with-env",
+    "db:verify": "tsx scripts/local-compose.ts with-env node test/integration/local-compose-api.mjs",
     "deploy": "wrangler deploy"
   },
   "dependencies": {

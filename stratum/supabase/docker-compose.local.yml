@@ -1,0 +1,56 @@
+name: devops-stratum-compose
+
+services:
+  db:
+    image: public.ecr.aws/supabase/postgres:17.6.1.167
+    container_name: devops-stratum-local-db
+    command: ["postgres", "-D", "/etc/postgresql", "-c", "hba_file=/etc/postgresql/pg_hba.local.conf"]
+    environment:
+      POSTGRES_HOST_AUTH_METHOD: trust
+    volumes:
+      - db-data:/var/lib/postgresql/data
+      - ./pg_hba.local.conf:/etc/postgresql/pg_hba.local.conf:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U supabase_admin -d postgres"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+    networks: [data]
+
+  rest:
+    image: public.ecr.aws/supabase/postgrest:v16.2
+    container_name: devops-stratum-local-rest
+    environment:
+      PGRST_DB_URI: postgresql://authenticator@db:5432/postgres
+      PGRST_DB_SCHEMAS: public
+      PGRST_DB_ANON_ROLE: anon
+      PGRST_JWT_SECRET: ${DEVOPS_LOCAL_JWT_SECRET:?start through npm run db:start}
+    depends_on:
+      db:
+        condition: service_healthy
+    networks: [data, edge]
+
+  gateway:
+    image: public.ecr.aws/supabase/kong:2.8.1
+    container_name: devops-stratum-local-gateway
+    ports:
+      - "127.0.0.1:54321:8000"
+    environment:
+      KONG_DATABASE: "off"
+      KONG_DECLARATIVE_CONFIG: /etc/kong/kong.yml
+      KONG_PROXY_LISTEN: "0.0.0.0:8000"
+      KONG_ADMIN_LISTEN: "off"
+    volumes:
+      - ./kong.local.yml:/etc/kong/kong.yml:ro
+    depends_on:
+      rest:
+        condition: service_started
+    networks: [edge]
+
+volumes:
+  db-data:
+
+networks:
+  data:
+    internal: true
+  edge:

@@ -1,7 +1,7 @@
 # Stratum — Memory & Eval Commands (v0.4.x / v0.5.x / v0.6.x)
 
 Operator guide for the three-tier memory + the pruning-eval tooling. Each command
-is marked **FREE** (local ONNX encoder + local Supabase CLI stack — no Anthropic
+is marked **FREE** (local ONNX encoder + local Supabase Compose stack — no Anthropic
 spend) or **NEEDS CREDITS** (calls the Claude judge/extractor — costs Anthropic API
 credits).
 
