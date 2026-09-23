@@ -138,6 +138,12 @@ export function parseExtractedFacts(raw: string, ctx: { session_id: string; comm
     if (typeof candidate !== "object" || candidate === null) continue;
     const content: Record<string, unknown> = { ...(candidate as Record<string, unknown>) };
     for (const k of SYSTEM_FIELDS) delete content[k];
+    if (content.fact_type === "VariableChange" || content.fact_type === "PolicyUpdate") {
+      for (const key of ["old_value", "new_value"]) {
+        const value = content[key];
+        if (typeof value === "number" && Number.isFinite(value)) content[key] = String(value);
+      }
+    }
     const merged = {
       ...content,
       id: ctx.mintId(),

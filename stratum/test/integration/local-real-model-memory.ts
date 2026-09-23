@@ -21,6 +21,8 @@ if (url !== "http://127.0.0.1:54321" || !key || process.env["DEVOPS_STRATUM_PROJ
 const db = createClient(url, key, { auth: { persistSession: false } });
 const org = randomUUID();
 const rawKey = `cq_test_${randomUUID()}`;
+const variableCase = process.env["REAL_MODEL_CASE"] === "variable";
+if (process.env["REAL_MODEL_CASE"] && !variableCase) throw new Error("REAL_MODEL_CASE must be variable or unset");
 
 function checked<T>(result: { data: T; error: { message: string } | null }, step: string): T {
   if (result.error) throw new Error(`${step}: ${result.error.message}`);
@@ -43,16 +45,21 @@ try {
     { cors: false, rateLimit: false, messages },
     (clientUrl, clientKey) => createClient(clientUrl, clientKey, { auth: { persistSession: false } })));
   const response = await app.inject({ method: "POST", url: "/v1/messages", headers: { authorization: `Bearer ${rawKey}` },
-    payload: { model, messages: [{ role: "user", content: "Architecture decision: use RS256 for JWT signing in the audit service." }], max_tokens: 32 } });
+    payload: { model, messages: [{ role: "user", content: variableCase
+      ? "We changed JWT_TTL_MINUTES from 60 to 15 in the auth service."
+      : "Architecture decision: use RS256 for JWT signing in the audit service." }], max_tokens: 32 } });
   if (response.statusCode !== 200) throw new Error(`message request returned HTTP ${response.statusCode}`);
   await app.close(); app = undefined; // wait for the real model and database recorder
 
   const sessions = checked(await db.from("sessions").select("id,kind").eq("org_id", org), "read sessions");
-  const facts = checked(await db.from("tech_decisions").select("id,session_id,decision_text,is_suppressed").eq("org_id", org), "read decisions");
+  const table = variableCase ? "variable_changes" : "tech_decisions";
+  const facts = checked(await db.from(table).select("*").eq("org_id", org), `read ${table}`);
+  const contentValid = variableCase
+    ? facts[0]?.var_name === "JWT_TTL_MINUTES" && facts[0]?.old_value === "60" && facts[0]?.new_value === "15"
+    : facts[0]?.decision_text?.includes("RS256") && facts[0]?.decision_text?.toLowerCase().includes("jwt");
   if (sessions.length !== 1 || sessions[0].kind !== "memory" || facts.length !== 1 ||
-      facts[0].session_id !== sessions[0].id || facts[0].is_suppressed ||
-      !facts[0].decision_text.includes("RS256") || !facts[0].decision_text.toLowerCase().includes("jwt")) {
-    throw new Error(`real model extraction yielded ${sessions.length} sessions and ${facts.length} valid decisions`);
+      facts[0].session_id !== sessions[0].id || facts[0].is_suppressed || !contentValid) {
+    throw new Error(`real model extraction yielded ${sessions.length} sessions and ${facts.length} valid ${table} facts`);
   }
 
   const bridge = spawnSync(resolve("node_modules/.bin/tsx"), [resolve("scripts/session-start-context.ts")], {
@@ -65,12 +72,13 @@ try {
   if (recalled.recentFacts?.length !== 1 || recalled.recentFacts[0].id !== facts[0].id || bridge.stdout.includes(rawKey)) {
     throw new Error("SessionStart bridge did not recall the real model fact safely");
   }
-  process.stdout.write(`real ${model} decision persisted and recalled through SessionStart\n`);
+  process.stdout.write(`real ${model} ${table} fact persisted and recalled through SessionStart\n`);
 } catch (error) {
   failure = error;
 } finally {
   try { await app?.close(); } catch (error) { if (!failure) failure = error; }
-  for (const [table, column] of [["tech_decisions", "org_id"], ["api_keys", "org_id"],
+  for (const [table, column] of [["function_changes", "org_id"], ["tech_decisions", "org_id"],
+    ["policy_updates", "org_id"], ["todos", "org_id"], ["variable_changes", "org_id"], ["api_keys", "org_id"],
     ["sessions", "org_id"], ["organizations", "id"]]) {
     try { checked(await db.from(table!).delete().eq(column!, org), `delete ${table}`); }
     catch (error) { if (!failure) failure = error; }
