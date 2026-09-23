@@ -281,8 +281,8 @@ dashboard landed; the historical ~60h estimate is stale.
   100-commit samples against the <5s p95 local target; deployed representative
   performance remains a v0.6 release check.
 - [x] **Deterministic Git attestation core**. `stratum/src/audit/git-attestation.ts` compares typed code facts against indexed changes and returns CONFIRMED / CONFLICT / UNVERIFIED; `audit-engine.ts` persists the outcomes. It is currently called by `npm run audit:repo`, not the proxy request path. Explicit binding to a fact's claimed `commit_hash` remains open.
-- [x] **Core attestation tests**. `stratum/test/audit/git-attestation.test.ts` covers confirming, contradicting, and unverified changes. A separate claimed-commit-hash acceptance case remains open; absence of a confirming indexed change currently returns UNVERIFIED.
-- [ ] **Claimed commit anchor**. Bind a fact's trusted `commit_hash` to its confirming indexed change and prove missing or mismatched anchors produce the specified unverified outcome.
+- [x] **Core attestation tests**. `stratum/test/audit/git-attestation.test.ts` covers confirming, contradicting, unverified changes, and exact claimed-commit confirmation. Absence of a confirming indexed change returns UNVERIFIED.
+- [x] **Claimed commit anchor**. A fact's `commit_hash` must match its confirming indexed change; missing or mismatched anchors return UNVERIFIED. A rename's delete/add evidence must share one commit. See `specs/audit/commit-anchor.md`.
 
 ### 5b. Llama spot-check + Opus escalation
 
