@@ -5,11 +5,13 @@
 **Status**: BINDING from Session 14 forward.
 **Quality bar**: **Best-of-the-best, no compromises, no shortcuts.** Same standard as Session 13's "production-grade" framing. The "personal use" framing means "no Stripe billing yet" — it does NOT mean lower quality, looser tests, or less rigor.
 **Distribution model** (drives every design decision):
-- **Today (v0.2.x → v0.3.x)**: private repo. Solo dev. Building the foundation.
+- **Today (v0.2.x → v0.3.x)**: public repo. Solo dev. Building the foundation.
 - **Tomorrow (v0.4.x → v0.9.x)**: shareable with friends. They clone, install, and run their own instance. They contribute via PR. Their data stays theirs.
 - **Eventually (v1.0.x+)**: commercial-ready foundation. SaaS-mode or self-hosted-pro options. Stripe layer wires in via existing HMAC-signed billing schema.
 
-The repo is private today because of **market timing**, not because of **quality compromise**. Every line of code, every test, every signed skill, every threat model entry is built as if a paying customer will run it.
+The owner approved a public repo on 2026-09-23. Every line of code, every test,
+every signed skill, every threat model entry is built as if a paying customer
+will run it; credentials and client data remain outside the public repository.
 
 ---
 

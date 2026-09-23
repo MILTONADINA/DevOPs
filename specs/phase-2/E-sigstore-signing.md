@@ -37,8 +37,13 @@ THE SYSTEM SHALL ensure every `skills/universal/**/SKILL.md` file has a correspo
 ### REQ-E2 (Ubiquitous) — Skill manifest with hash pinning
 THE SYSTEM SHALL maintain a manifest at `governance/skill-manifest.yml` listing every skill with: `name`, `path`, `sha256` (of `SKILL.md`), `sig_path`, `signed_by` (Sigstore identity), `signed_at` (ISO 8601), and `rekor_log_index`.
 
-### REQ-E3 (Event-driven) — CI signs on release tag
-WHEN a release tag matching `v\d+\.\d+\.\d+` is pushed to `main`, THE SYSTEM SHALL run a signing workflow that produces `.sig` files for every skill changed in the release and updates `governance/skill-manifest.yml`.
+### REQ-E3 (Event-driven) — CI signs before tagging and verifies release tags
+WHEN the signing workflow is dispatched on a release branch, THE SYSTEM SHALL
+produce `.sig` and `.bundle` files for every universal skill and commit an
+updated `governance/skill-manifest.yml` to that branch for PR review. WHEN a
+release tag matching `v\d+\.\d+\.\d+` is pushed, THE SYSTEM SHALL verify
+the tagged skill bytes, bundles, and manifest without writing to protected
+`main`. A failed verification SHALL block release publication.
 
 ### REQ-E4 (Ubiquitous) — Trust model documented
 THE SYSTEM SHALL document the trust model at `docs/SKILL_SIGNING.md` covering: (i) why Sigstore over GPG, (ii) the OIDC identity used for signing, (iii) how to verify a signature manually, (iv) what to do when verification fails, and (v) the rotation policy for the signing identity.
@@ -67,9 +72,12 @@ THE SYSTEM SHALL produce identical signatures for identical inputs (modulo Sigst
 **Then** every key listed in REQ-E2 is present and non-empty for every skill entry.
 
 ### AC-E3.1 (maps to REQ-E3)
-**Given** a release tag `v0.2.0` pushed to `main`
-**When** the GitHub Actions workflow `release-sign.yml` runs
-**Then** the workflow produces `.sig` updates for any changed skills and commits an updated `governance/skill-manifest.yml`.
+**Given** a release branch with changed skills
+**When** `release-sign.yml` is dispatched on that branch
+**Then** it commits signatures, bundles, and the updated manifest to the
+release branch; **Given** the merged commit is tagged `v0.3.0` **When** the
+tag-triggered workflow runs **Then** it verifies every shipped skill and
+does not push a commit to `main`.
 
 ### AC-E4.1 (maps to REQ-E4)
 **Given** the post-implementation `docs/SKILL_SIGNING.md`
