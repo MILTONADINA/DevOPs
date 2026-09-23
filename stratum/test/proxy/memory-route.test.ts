@@ -35,8 +35,8 @@ function fakeDeps(): { deps: MemoryDeps; captured: Record<string, unknown> } {
       captured["graph"] = { orgId, limit };
       return Promise.resolve({ entities: [{ id: "n1", kind: "Function", name: "parseToken", session_id: null }], edges: [] });
     },
-    searchGraph: (orgId, query) => {
-      captured["search"] = { orgId, query };
+    searchGraph: (orgId, query, mode) => {
+      captured["search"] = { orgId, query, mode };
       return Promise.resolve({ matches: ["n1"], entities: [{ id: "n1", kind: "Function", name: "parseToken", session_id: null, file_path: "src/token.ts", summary: "Parses a token" }], edges: [] });
     },
     listGraphFiles: (orgId, limit, after) => {
@@ -84,7 +84,7 @@ describe("GET /v1/memory/graph/search", () => {
     const res = await app.inject({ method: "GET", url: "/v1/memory/graph/search?org-id=other&q=%20parseTokn%20", headers: { authorization: "Bearer k" } });
     expect(res.statusCode).toBe(200);
     expect(res.json().matches).toEqual(["n1"]);
-    expect(captured["search"]).toEqual({ orgId: "o9", query: "parseTokn" });
+    expect(captured["search"]).toEqual({ orgId: "o9", query: "parseTokn", mode: "name" });
     expect((await app.inject({ method: "GET", url: "/v1/memory/graph/search?org-id=other&q=token" })).statusCode).toBe(401);
     await app.close();
   });
@@ -97,6 +97,18 @@ describe("GET /v1/memory/graph/search", () => {
       expect(res.statusCode).toBe(400);
     }
     expect((await app.inject({ method: "GET", url: "/v1/memory/graph/search?q=token" })).statusCode).toBe(400);
+    await app.close();
+  });
+
+  test("selects semantic mode within the authenticated organization and rejects unknown modes", async () => {
+    const { deps, captured } = fakeDeps();
+    const app = buildProxy({ rateLimit: false, cors: false, auth: { resolve: (r) => Promise.resolve(r === "k" ? { orgId: "o9", keyId: "i" } : null) }, memory: deps });
+    await app.ready();
+    const headers = { authorization: "Bearer k" };
+    const result = await app.inject({ method: "GET", url: "/v1/memory/graph/search?org-id=foreign&q=token%20parser&mode=semantic", headers });
+    expect(result.statusCode).toBe(200);
+    expect(captured["search"]).toEqual({ orgId: "o9", query: "token parser", mode: "semantic" });
+    expect((await app.inject({ method: "GET", url: "/v1/memory/graph/search?q=token&mode=other", headers })).statusCode).toBe(400);
     await app.close();
   });
 });

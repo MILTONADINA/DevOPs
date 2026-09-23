@@ -274,9 +274,12 @@ is capped at 500. The response contains `entities` (`id`, `kind`, `name`,
 
 ### GET /v1/memory/graph/search
 
-Search entity names across the authenticated organization's entire graph,
-including nodes outside the recent snapshot. `q` is required, trimmed, and
-must be 2–100 characters. Literal substrings rank before similar spellings.
+Search across the authenticated organization's entire graph, including nodes
+outside the recent snapshot. `q` is required, trimmed, and must be 2–100
+characters. `mode=name` (default) ranks literal substrings before similar
+spellings. `mode=semantic` ranks indexed File and Function nodes by offline
+ONNX embedding similarity; run source-graph ingestion to populate those
+vectors. The local model cache must be present for semantic queries.
 The response contains up to 20 `matches` (entity IDs), plus `entities` and
 `edges` for those matches and their immediate neighbors (at most 220 nodes
 and 200 edges). In personal mode, pass `?org-id=<uuid>`.

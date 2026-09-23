@@ -30,6 +30,7 @@ function run(subdir: string): { status: number | null; stderr: string; stdout: s
 }
 
 let failure: unknown;
+let originalEmbedding: string | undefined;
 try {
   checked(await db.from("organizations").insert({ id: org, name: "DevOPs source graph check" }), "insert org");
   const outside = run("../");
@@ -41,9 +42,12 @@ try {
     }
     const entities = checked(await db.from("knowledge_entities").select("id,kind,name,file_path,summary").eq("org_id", org), "read entities");
     const edges = checked(await db.from("knowledge_edges").select("id,edge_type,from_entity,to_entity").eq("org_id", org), "read edges");
+    const vectors = checked(await db.from("memory_vectors").select("source_ref,embedding").eq("org_id", org).eq("source_type", "entity"), "read entity vectors");
     const entry = entities.find((row) => row.name === `${source}/entry.ts#convert`);
     if (
       entities.length !== 4 ||
+      vectors.length !== 4 ||
+      vectors.some((row) => !entities.some((entity) => entity.id === row.source_ref)) ||
       edges.length !== 3 ||
       entry?.file_path !== `${source}/entry.ts` ||
       entry?.summary !== "Convert a sample value using the helper." ||
@@ -51,6 +55,22 @@ try {
       edges.filter((edge) => edge.edge_type === "DEPENDS_ON").length !== 1
     ) {
       throw new Error("source graph rows or idempotency did not match fixture");
+    }
+    const entryVector = vectors.find((row) => row.source_ref === entry.id)?.embedding;
+    if (typeof entryVector !== "string") throw new Error("source graph entity embedding is missing");
+    if (attempt === 0) {
+      originalEmbedding = entryVector;
+      checked(
+        await db
+          .from("memory_vectors")
+          .update({ embedding: Array(384).fill(0) })
+          .eq("org_id", org)
+          .eq("source_type", "entity")
+          .eq("source_ref", entry.id),
+        "corrupt vector for replacement check",
+      );
+    } else if (entryVector !== originalEmbedding) {
+      throw new Error("reingestion did not replace the entity embedding");
     }
   }
   process.stdout.write("local source graph fixture persisted and remained idempotent\n");
