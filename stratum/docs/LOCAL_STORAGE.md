@@ -119,19 +119,21 @@ subtree for an existing organization, set `INGEST_ORG_ID` to its UUID, optionall
 set `SOURCE_SUBDIR` (default `stratum/src`), and run
 `npm run db:with-env -- npm run ingest-source-graph` from `stratum/`. This creates
 File and top-level Function nodes with source-derived summaries plus DECLARES
-and relative-import DEPENDS_ON edges. Cross-language parsing, in-canvas fact
-nodes, and model-generated summaries remain separate work.
+and relative-import DEPENDS_ON edges. It also replaces their entity embeddings
+using the project-local ONNX cache; a missing cache fails without downloading.
+Cross-language parsing and model-generated summaries remain separate work.
 
 Open `/dashboard/graph` on the local proxy to explore the bounded graph
 snapshot. Enter a CQ API key in commercial mode, or pass `?org-id=<uuid>` in
 personal mode. The view shows up to 500 current nodes, their in-snapshot edges,
 source paths and summaries; selecting a node reveals its neighbors. It warns
-when the snapshot may be truncated. Its search box uses the scoped fuzzy
-name API to find nodes beyond that snapshot and reveal their immediate
+when the snapshot may be truncated. Its search box offers scoped fuzzy name and
+semantic modes to find nodes beyond that snapshot and reveal their immediate
 neighbors. Start tour loads every organization File and DEPENDS_ON page, then
 shows dependencies before files that import them with Previous/Next controls.
 Run `npm run db:verify-graph-search` for a disposable 501-file/500-edge search
-and traversal check. Selecting a File or source Function also loads active
+and traversal check, and `npm run db:verify-graph-semantic` for scoped vector
+ranking and stale-pointer filtering. Selecting a File or source Function also loads active
 Tier-2 changes and decisions whose path exactly matches that indexed File.
 `source_fact_links` persists those typed File-to-fact edges. Database triggers
 sync both insert orders, suppression, path changes, and deletion; the API still

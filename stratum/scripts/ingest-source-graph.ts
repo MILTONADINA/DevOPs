@@ -4,6 +4,7 @@ import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { createClient } from "@supabase/supabase-js";
 import { createKnowledgeGraph } from "../src/memory/cold/graph";
 import { indexSourceFiles, type SourceFileInput } from "../src/memory/source-graph";
+import { graphEncoder, graphEntityText } from "../src/memory/graph-embedding";
 
 const SKIP_DIRS = new Set(["node_modules", "dist", "build", "coverage", "data", "models", "backups"]);
 const SOURCE_EXT = /\.(?:ts|tsx|js|jsx)$/;
@@ -53,10 +54,26 @@ export async function main(): Promise<void> {
   const client = createClient(url, key, { auth: { persistSession: false } });
   const org = await client.from("organizations").select("id").eq("id", orgId).single();
   if (org.error || !org.data) throw new Error("INGEST_ORG_ID does not exist in the local database");
+  const encoder = await graphEncoder();
+  const embeddings: Float32Array[] = [];
+  for (let offset = 0; offset < graph.entities.length; offset += 16) {
+    embeddings.push(...(await encoder.encode(graph.entities.slice(offset, offset + 16).map(graphEntityText))));
+  }
   const store = createKnowledgeGraph(client);
   const ids = new Map<string, string>();
   for (const entity of graph.entities) {
     ids.set(entity.name, await store.ensureEntity({ orgId, kind: entity.kind, name: entity.name, filePath: entity.filePath, summary: entity.summary }));
+  }
+  for (let offset = 0; offset < graph.entities.length; offset += 16) {
+    const batch = graph.entities.slice(offset, offset + 16);
+    const rows = batch.map((entity, index) => ({
+      org_id: orgId,
+      source_type: "entity",
+      source_ref: ids.get(entity.name)!,
+      embedding: Array.from(embeddings[offset + index]!),
+    }));
+    const result = await client.from("memory_vectors").upsert(rows, { onConflict: "org_id,source_type,source_ref" });
+    if (result.error) throw new Error(`graph vector upsert failed: ${result.error.message}`);
   }
   for (const edge of graph.edges) {
     const fromEntity = ids.get(edge.fromName);

@@ -284,9 +284,12 @@ describe("dashboard route", () => {
     await vi.waitFor(() => expect(byId("status").textContent).toContain("1 matching node"));
     expect(byId("viewport").children.some((node) => node.attrs.get("aria-label")?.startsWith("TechDecision:"))).toBe(false);
     expect(calls.find((call) => call.url.startsWith("/v1/memory/graph/search"))).toEqual({
-      url: "/v1/memory/graph/search?q=needle",
+      url: "/v1/memory/graph/search?q=needle&mode=name",
       headers: { Authorization: "Bearer cq_test_key" },
     });
+    byId("search-mode").value = "semantic";
+    await byId("search").listeners.get("click")!({ stopPropagation: () => undefined });
+    expect(calls.some((call) => call.url === "/v1/memory/graph/search?q=needle&mode=semantic")).toBe(true);
     relatedFacts = [{ id: "fact-1", kind: "TechDecision", summary: hostile }];
     holdRelated = true;
     byId("details").children[1]!.children[0]!.children[0]!.listeners.get("click")!({ stopPropagation: () => undefined });

@@ -20,6 +20,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { posix } from "node:path";
 import type { AnyFact } from "../../types/facts";
 import { createWarmMemory, FACT_TABLES } from "../../memory/warm/tier2";
+import { graphEncoder } from "../../memory/graph-embedding";
 
 export interface ConflictSummary {
   id: string;
@@ -74,7 +75,7 @@ export interface MemoryDeps {
   listConflicts: (orgId: string, limit: number) => Promise<ConflictSummary[]>;
   listAuditStatuses: (orgId: string, limit: number) => Promise<AuditStatusSummary[]>;
   listGraph: (orgId: string, limit: number) => Promise<GraphSnapshot>;
-  searchGraph: (orgId: string, query: string) => Promise<GraphSearchResult>;
+  searchGraph: (orgId: string, query: string, mode: "name" | "semantic") => Promise<GraphSearchResult>;
   listGraphFiles: (orgId: string, limit: number, after?: string) => Promise<GraphFilePage>;
   listGraphDependencies: (orgId: string, limit: number, after?: string) => Promise<GraphDependencyPage>;
   listRelatedFacts: (orgId: string, file: string) => Promise<GraphRelatedFact[] | null>;
@@ -178,7 +179,9 @@ export function makeMemoryRoute(deps: MemoryDeps): FastifyPluginCallback {
       const raw = (req.query as Record<string, unknown>)["q"];
       const query = typeof raw === "string" ? raw.trim() : "";
       if (query.length < 2 || query.length > 100) return err(reply, 400, "q must be 2 to 100 characters");
-      return deps.searchGraph(orgId, query);
+      const mode = (req.query as Record<string, unknown>)["mode"] ?? "name";
+      if (mode !== "name" && mode !== "semantic") return err(reply, 400, "mode must be name or semantic");
+      return deps.searchGraph(orgId, query, mode);
     });
 
     app.get("/v1/memory/graph/files", async (req, reply) => {
@@ -212,8 +215,31 @@ export function makeMemoryRoute(deps: MemoryDeps): FastifyPluginCallback {
 }
 
 /** Live memory store over Supabase (Tier-2 warm adapter + audit_conflicts). */
-export function createSupabaseMemoryDeps(client: SupabaseClient): MemoryDeps {
+export function createSupabaseMemoryDeps(client: SupabaseClient, encodeQuery?: (query: string) => Promise<number[]>): MemoryDeps {
   const warm = createWarmMemory(client);
+  const encode =
+    encodeQuery ??
+    (async (query: string): Promise<number[]> => {
+      const [embedding] = await (await graphEncoder()).encode([query]);
+      if (!embedding) throw new Error("graph query encoding returned no vector");
+      return Array.from(embedding);
+    });
+  const expandMatches = async (orgId: string, matches: GraphSnapshot["entities"]): Promise<GraphSearchResult> => {
+    if (!matches.length) return { matches: [], entities: [], edges: [] };
+    const ids = matches.map((entity) => entity.id);
+    const [outgoing, incoming] = await Promise.all([
+      client.from("knowledge_edges").select("id,edge_type,from_entity,to_entity").eq("org_id", orgId).in("from_entity", ids).limit(100),
+      client.from("knowledge_edges").select("id,edge_type,from_entity,to_entity").eq("org_id", orgId).in("to_entity", ids).limit(100),
+    ]);
+    if (outgoing.error || incoming.error) throw new Error(`searchGraph edges failed: ${outgoing.error?.message ?? incoming.error?.message}`);
+    const edges = [...new Map([...(outgoing.data ?? []), ...(incoming.data ?? [])].map((edge) => [edge.id, edge] as const)).values()] as GraphSnapshot["edges"];
+    const neighbors = [...new Set(edges.flatMap((edge) => [edge.from_entity, edge.to_entity]))].filter((id) => !ids.includes(id));
+    const related = neighbors.length ? await client.rpc("list_graph_neighbor_entities", { match_org: orgId, entity_ids: neighbors }) : null;
+    if (related?.error) throw new Error(`searchGraph neighbors failed: ${related.error.message}`);
+    const entities = [...matches, ...((related?.data ?? []) as GraphSnapshot["entities"])];
+    const known = new Set(entities.map((entity) => entity.id));
+    return { matches: ids, entities, edges: edges.filter((edge) => known.has(edge.from_entity) && known.has(edge.to_entity)) };
+  };
   return {
     listFacts: (orgId, limit) => warm.queryRecent(orgId, { limit }),
     async suppressFact(orgId, id, table) {
@@ -253,24 +279,15 @@ export function createSupabaseMemoryDeps(client: SupabaseClient): MemoryDeps {
       if (edgesResult.error) throw new Error(`listGraph edges failed: ${edgesResult.error.message}`);
       return { entities, edges: (edgesResult.data ?? []) as GraphSnapshot["edges"] };
     },
-    async searchGraph(orgId, query) {
-      const found = await client.rpc("search_graph_entities", { match_org: orgId, search_text: query, result_limit: 20 });
+    async searchGraph(orgId, query, mode) {
+      const embedding = mode === "semantic" ? await encode(query) : undefined;
+      const found =
+        mode === "semantic"
+          ? await client.rpc("search_graph_semantic_entities", { match_org: orgId, query_embedding: embedding, result_limit: 20 })
+          : await client.rpc("search_graph_entities", { match_org: orgId, search_text: query, result_limit: 20 });
       if (found.error) throw new Error(`searchGraph matches failed: ${found.error.message}`);
       const matches = (found.data ?? []) as GraphSnapshot["entities"];
-      if (!matches.length) return { matches: [], entities: [], edges: [] };
-      const ids = matches.map((entity) => entity.id);
-      const [outgoing, incoming] = await Promise.all([
-        client.from("knowledge_edges").select("id,edge_type,from_entity,to_entity").eq("org_id", orgId).in("from_entity", ids).limit(100),
-        client.from("knowledge_edges").select("id,edge_type,from_entity,to_entity").eq("org_id", orgId).in("to_entity", ids).limit(100),
-      ]);
-      if (outgoing.error || incoming.error) throw new Error(`searchGraph edges failed: ${outgoing.error?.message ?? incoming.error?.message}`);
-      const edges = [...new Map([...(outgoing.data ?? []), ...(incoming.data ?? [])].map((edge) => [edge.id, edge] as const)).values()] as GraphSnapshot["edges"];
-      const neighbors = [...new Set(edges.flatMap((edge) => [edge.from_entity, edge.to_entity]))].filter((id) => !ids.includes(id));
-      const related = neighbors.length ? await client.rpc("list_graph_neighbor_entities", { match_org: orgId, entity_ids: neighbors }) : null;
-      if (related?.error) throw new Error(`searchGraph neighbors failed: ${related.error.message}`);
-      const entities = [...matches, ...((related?.data ?? []) as GraphSnapshot["entities"])];
-      const known = new Set(entities.map((entity) => entity.id));
-      return { matches: ids, entities, edges: edges.filter((edge) => known.has(edge.from_entity) && known.has(edge.to_entity)) };
+      return expandMatches(orgId, matches);
     },
     async listGraphFiles(orgId, limit, after) {
       let request = client
