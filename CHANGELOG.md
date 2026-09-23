@@ -61,7 +61,7 @@ resulting honest positioning.
 
 ---
 
-## [0.3.0] — Pending release
+## [0.3.0] — 2026-09-23 (release candidate; publication pending)
 
 The Phase 0 observation and Phase 1 measurement work, plus the graph sprint
 dashboard and cycle-resume controls, are merged to `main`. The signed tag,

@@ -20,10 +20,8 @@
 #
 # Security caveat (from upstream README): this action is NOT hardened against
 # prompt-injection attacks and should only be used to review TRUSTED PRs. Repo
-# is private (solo-dev + Dependabot) for v0.2.x — risk surface bounded. When
-# the repo opens up to external contributors (v0.8.x friends-install +
-# v1.0.0 commercial), this workflow MUST be paired with branch-protection
-# "Require approval for all external contributors" workflow-run gating.
+# is public as of the owner's 2026-09-23 decision. External contributor
+# workflow runs require approval before this action sees untrusted PR content.
 
 name: Claude Code Security Review
 
