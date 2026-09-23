@@ -11,8 +11,8 @@
  * STATUS / SCOPE: this is the PURE deterministic decision core — it operates on an
  * in-memory list of {@link CodeChange}s (the git indexer's output), NOT on a live
  * graph/DB, so it is unit-testable with no I/O. Built ahead of the v0.6.x phase gate
- * as preparatory shadow code (the same pattern as the v0.4.x pruner), wired NOWHERE
- * in the request path. DEVIATIONS from docs/AUDIT_ENGINE.md (Neo4j-era): (a) the spec
+ * as preparatory shadow code (the same pattern as the v0.4.x pruner), now optionally
+ * called by local message memory. DEVIATIONS from docs/AUDIT_ENGINE.md (Neo4j-era): (a) the spec
  * queries Neo4j; per ADR-0013 the graph is on Supabase, and this core is decoupled
  * from storage entirely (takes CodeChange[]); the indexer→store wiring is a later
  * slice. (b) Tier-2 (Llama) + Tier-3 (Opus) escalation are LLM-gated (separate files).

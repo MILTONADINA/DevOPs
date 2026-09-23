@@ -16,6 +16,7 @@
  */
 
 import path from "node:path";
+import { lstatSync, realpathSync } from "node:fs";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { logger } from "../lib/logger";
 import { buildProxy, type BuildProxyOptions } from "./app";
@@ -47,6 +48,24 @@ export interface StartEnv {
   CQ_MEMORY_EXTRACT_MODEL?: string | undefined;
   CQ_LOCAL_BASE_URL?: string | undefined;
   CQ_LOCAL_API_KEY?: string | undefined;
+  CQ_AUDIT_REPO_ROOT?: string | undefined;
+  DEVOPS_STRATUM_PROJECT_ROOT?: string | undefined;
+}
+
+/** Resolve a local Git checkout without following a path outside the project. */
+export function resolveAuditRepoRoot(requested: string, projectRoot: string): string {
+  if (!projectRoot) throw new Error("DEVOPS_STRATUM_PROJECT_ROOT is required for request-path audit");
+  const root = realpathSync(projectRoot);
+  const candidate = path.resolve(root, requested);
+  const rel = path.relative(root, candidate);
+  if (rel === ".." || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel)) throw new Error("audit repository is outside project root");
+  let current = root;
+  for (const part of rel.split(path.sep).filter(Boolean)) {
+    current = path.join(current, part);
+    if (lstatSync(current).isSymbolicLink()) throw new Error("symbolic link in audit repository path is forbidden");
+  }
+  if (!lstatSync(candidate).isDirectory()) throw new Error("audit repository must be a directory");
+  return candidate;
 }
 
 function localExtractionUrl(raw: string | undefined): string {
@@ -92,6 +111,9 @@ export type ClientFactory = (url: string, key: string) => SupabaseClient;
 export function buildStartOptions(env: StartEnv, base: BuildProxyOptions, makeClient: ClientFactory): BuildProxyOptions {
   const opts: BuildProxyOptions = { ...base };
   if (commercialEnabled(env)) {
+    if (env.CQ_AUDIT_REPO_ROOT && (!env.CQ_MEMORY_EXTRACT_MODEL || !base.messages)) {
+      throw new Error("request-path audit requires local message memory extraction");
+    }
     const client = makeClient(env.SUPABASE_URL as string, env.SUPABASE_SERVICE_KEY as string);
     opts.auth = { resolve: resolveApiKeyVia(client), protectedPrefixes: ["/v1/"] };
     opts.config = createSupabaseConfigDeps(client);
@@ -147,7 +169,10 @@ export function buildStartOptions(env: StartEnv, base: BuildProxyOptions, makeCl
             return answer;
           },
         });
-        base.messages.recordMemory = createSupabaseMessageMemoryRecorder(client, extractor);
+        const auditRepoRoot = env.CQ_AUDIT_REPO_ROOT
+          ? resolveAuditRepoRoot(env.CQ_AUDIT_REPO_ROOT, env.DEVOPS_STRATUM_PROJECT_ROOT ?? "")
+          : undefined;
+        base.messages.recordMemory = createSupabaseMessageMemoryRecorder(client, extractor, auditRepoRoot);
       }
     }
   }
@@ -171,6 +196,8 @@ export async function start(): Promise<void> {
     CQ_MEMORY_EXTRACT_MODEL: process.env["CQ_MEMORY_EXTRACT_MODEL"],
     CQ_LOCAL_BASE_URL: process.env["CQ_LOCAL_BASE_URL"],
     CQ_LOCAL_API_KEY: process.env["CQ_LOCAL_API_KEY"],
+    CQ_AUDIT_REPO_ROOT: process.env["CQ_AUDIT_REPO_ROOT"],
+    DEVOPS_STRATUM_PROJECT_ROOT: process.env["DEVOPS_STRATUM_PROJECT_ROOT"],
   };
   const base: BuildProxyOptions = {
     messages: createDefaultMessagesDeps(),

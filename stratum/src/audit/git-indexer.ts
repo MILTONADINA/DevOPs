@@ -17,7 +17,7 @@
  * delete-old + add-new, which attestFact treats as rename evidence). It is the
  * deterministic $0 FIRST pass; the gated Tier-2 (Llama) / Tier-3 (Opus) handle what
  * it can't. Built ahead of the v0.6.x gate as shadow code (the pruner precedent),
- * wired NOWHERE in the request path.
+ * optionally called after local message fact extraction for Tier-1 audit.
  */
 
 import { execFile } from "node:child_process";
