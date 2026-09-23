@@ -6,12 +6,14 @@
 **Format**: GitHub-style `- [ ]` checklist. Group order = recommended execution order.
 **Distribution model**: public repo today (owner decision 2026-09-23) → friends-install tomorrow (v0.4.x+) → commercial v1.0.0+. Every line is built for the friend-install + commercial-future case.
 
-**Status snapshot (2026-05-28)**:
-- `main` at `3d268e2` (Session 13 Phase C merged)
-- `stratum-phase-0-capture` at `2496c4a` (P0-A complete; OPEN, no PR — PR opens at full Phase 0 acceptance)
-- `v0.2.0` tag at `aca4982` (sealed)
-- Validator: 93/94 valid (claim 076 coupled to PB-13)
-- Polish backlog: 16/18 closed; 2 user-side open (PB-13 billing, PB-16 signing-key)
+**Status snapshot (2026-09-23)**:
+- `main` at `18d7135` after the Phase 0 and graph resilience PR #25 merge.
+- `work/finish-devops-roadmap` prepares v0.3.0; only `v0.2.0` is tagged.
+- Area R proof corpus reached 152/152 valid before the merge. The public
+  repository decision's revised claim passed its focused rerun; the full
+  release PR claim gate remains to run.
+- PB-16 signing key is registered and locally proved with a temporary signed
+  tag. PB-13 release-sign workflow validation remains pending.
 
 ---
 
@@ -43,9 +45,8 @@ These unblock the trust-chain story. Do these BEFORE starting Phase 0 corpus cap
 
 ### 1b. PB-16 closure (git tag signing — user-side)
 
-- [ ] **User-side**: generate a GPG (or SSH) signing key. Upload public key to GitHub's signing-keys settings. Note the fingerprint.
-- [ ] **User-side**: confirm in chat the fingerprint + key type.
-- [ ] **Agent (dedicated session or part of v0.3.0 release)**: configure `git config user.signingkey <fingerprint>` + `git config tag.gpgsign true`. Cut a test tag `v0.2.1-test` with `-s`; verify `git tag -v v0.2.1-test` shows good signature. Delete test tag. Update PERSONAL_USE.md with the signing flow.
+- [x] **User-side**: create a passphrase-protected Ed25519 SSH signing key and register its public half on GitHub. Fingerprint `SHA256:sYw5s4aqGAQ9TqFdgI6oCX8K8F978kICyJhTMHArGJQ` was verified locally and the GitHub signing-key entry was confirmed.
+- [x] **Agent**: configure this repo for SSH tag signing, create and verify the temporary `v0.2.1-test` tag, delete it, and document the flow in `PERSONAL_USE.md`. `git tag -v` reported a good signature.
 
 ### 1c. Session-handoff entry (gitignored, agent-side)
 
@@ -104,7 +105,7 @@ These unblock the trust-chain story. Do these BEFORE starting Phase 0 corpus cap
 
 ### 2h. v0.3.0 release
 
-- [ ] **PR `stratum-phase-0-capture` → `main`** (~1h). Squash-merge. Linear history maintained.
+- [x] **PR `stratum-phase-0-capture` → `main`** (~1h). Squash-merged as PR #25 at `18d7135`; linear history maintained.
 - [ ] **Cut v0.3.0 tag** with `git tag -s v0.3.0 -m "v0.3.0 ..."` (depends on PB-16 closure).
 - [ ] **release-sign.yml dispatches** signed cosign artifacts (depends on PB-13 closure).
 - [ ] **Update LAUNCH_READINESS.md** with v0.3.0 ship math + the new "to v1.0.0" math.

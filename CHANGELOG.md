@@ -6,11 +6,11 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
-## [Unreleased] — Phase 3 in progress
+## [Unreleased] — Later phases in progress
 
 Phase 3 (Memory & observability — Stratum closeout, Option B: Stratum
 Phase 0 + 1 + 3 locked per session 7.5 audit) is underway on
-`stratum-phase-0-capture`. Stratum has grown from the Phase 0 capture-proxy
+`main`. Stratum has grown from the Phase 0 capture-proxy
 scaffold described below into a live, deployed subsystem of this same
 project (Fastify proxy, multi-provider gateway, Supabase-backed 3-tier
 memory, CFO dashboard) — one project, not a separate product. See
@@ -58,6 +58,38 @@ function or load-bearing coupling, not just apparent overlap:
 
 See `README.md`'s new "What's actually differentiated" section for the
 resulting honest positioning.
+
+---
+
+## [0.3.0] — Pending release
+
+The Phase 0 observation and Phase 1 measurement work, plus the graph sprint
+dashboard and cycle-resume controls, are merged to `main`. The signed tag,
+Sigstore refresh, and GitHub Release are pending.
+
+### Added
+
+- Session capture and a measured waste taxonomy from real Claude Code traffic.
+- Fastify measurement proxy with Anthropic forwarding, streaming, exact token
+  counts, PII redaction, and a live cost and waste dashboard.
+- Graph sprint dashboard, environment preflight, classified fault records,
+  and mechanical `/sprint --resume` recovery.
+- Claude Code security review integration and per-PR review guidance.
+
+### Security and reliability
+
+- Published repository visibility is now the owner-approved setting; the
+  Phase 1 ship requirement and proof check were updated accordingly.
+- CI validates claims, dashboard tests, Gitleaks, Semgrep, and the DeepTeam
+  gate. DeepTeam visibly skips when no model-provider key is configured.
+- Graph preflight tests now supply their own security-tool fixtures on CI.
+
+### Remaining gates
+
+- KadaneDial pruning remains out of the request path until the published
+  Tier-A evaluation and real-use quality gates pass.
+- Memory and audit features already in the tree retain their later-version
+  acceptance gates; the v0.3.0 tag does not declare them production ready.
 
 ---
 
