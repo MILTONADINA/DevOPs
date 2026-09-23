@@ -34,6 +34,26 @@ describe("attestFact — FunctionChange", () => {
     expect(r.evidence?.commitHash).toBe("a3f9b2");
   });
 
+  test("claimed commit must supply its own matching evidence", () => {
+    const fact = fnFact({ new_name: "fetchUser", commit_hash: "claimed" });
+    expect(attestFact(fact, [change({ toEntity: "fetchUser", commitHash: "other" })]).status).toBe("UNVERIFIED");
+    const confirmed = attestFact(fact, [
+      change({ toEntity: "fetchUser", commitHash: "other", timestampSeconds: 2000 }),
+      change({ toEntity: "fetchUser", commitHash: "claimed", timestampSeconds: 1000 }),
+    ]);
+    expect(confirmed.status).toBe("CONFIRMED");
+    expect(confirmed.evidence?.commitHash).toBe("claimed");
+  });
+
+  test("drift after the claimed commit is still a conflict", () => {
+    const result = attestFact(fnFact({ new_name: "fetchUser", commit_hash: "claimed" }), [
+      change({ entity: "fetchUser", changeType: "deleted", commitHash: "later", timestampSeconds: 2000 }),
+      change({ toEntity: "fetchUser", commitHash: "claimed", timestampSeconds: 1000 }),
+    ]);
+    expect(result.status).toBe("CONFLICT");
+    expect(result.conflictCommit).toBe("later");
+  });
+
   test("CONFLICT: the renamed-to symbol was DELETED later (historical drift)", () => {
     const r = attestFact(fnFact({ new_name: "fetchUser", change_type: "renamed" }), [
       change({ entity: "getUser", changeType: "renamed", toEntity: "fetchUser", timestampSeconds: 1000 }),
@@ -107,16 +127,29 @@ describe("attestFact — FunctionChange", () => {
   test("renamed CONFIRMED via the diff-level signature (delete-old + add-new) the indexer emits", () => {
     // The indexer doesn't infer symbol renames; a rename is deleted getUser + added fetchUser.
     const r = attestFact(fnFact({ new_name: "fetchUser", change_type: "renamed" }), [
-      change({ entity: "getUser", changeType: "deleted", timestampSeconds: 1000 }),
+      change({ entity: "getUser", changeType: "deleted", commitHash: "addc", timestampSeconds: 1000 }),
       change({ entity: "fetchUser", changeType: "added", commitHash: "addc", timestampSeconds: 1000 }),
     ]);
     expect(r.status).toBe("CONFIRMED");
+  });
+
+  test("rename pair cannot combine evidence from two commits", () => {
+    const r = attestFact(fnFact({ new_name: "fetchUser", change_type: "renamed", commit_hash: "delete1" }), [
+      change({ entity: "getUser", changeType: "deleted", commitHash: "delete1", timestampSeconds: 1000 }),
+      change({ entity: "fetchUser", changeType: "added", commitHash: "add2", timestampSeconds: 2000 }),
+    ]);
+    expect(r.status).toBe("UNVERIFIED");
   });
 });
 
 describe("attestFact — VariableChange + non-code", () => {
   test("VariableChange CONFIRMED by a modify on the var", () => {
     expect(attestFact(varFact({}), [change({ entity: "API_URL", changeType: "modified", timestampSeconds: 1000 })]).status).toBe("CONFIRMED");
+  });
+  test("VariableChange confirmation must match its claimed commit", () => {
+    const fact = varFact({ commit_hash: "claimed" });
+    expect(attestFact(fact, [change({ entity: "API_URL", changeType: "modified", commitHash: "other" })]).status).toBe("UNVERIFIED");
+    expect(attestFact(fact, [change({ entity: "API_URL", changeType: "modified", commitHash: "claimed" })]).status).toBe("CONFIRMED");
   });
   test("VariableChange UNVERIFIED with no change", () => {
     expect(attestFact(varFact({}), []).status).toBe("UNVERIFIED");

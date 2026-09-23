@@ -108,10 +108,11 @@ function leavesAbsent(c: CodeChange, symbol: string): boolean {
  */
 export function attestFact(fact: AnyFact, changes: CodeChange[]): AttestationResult {
   if (!isCodeRelated(fact)) return { status: "UNVERIFIED" };
+  const confirmingChanges = fact.commit_hash === undefined ? changes : changes.filter((c) => c.commitHash === fact.commit_hash);
 
   if (fact.fact_type === "FunctionChange") {
     // 1) Find a commit that CONFIRMS the asserted change.
-    let confirm = changes.find((c) => {
+    let confirm = confirmingChanges.find((c) => {
       if (c.entity !== fact.old_name) return false;
       switch (fact.change_type) {
         case "renamed":
@@ -127,9 +128,10 @@ export function attestFact(fact: AnyFact, changes: CodeChange[]): AttestationRes
     // The indexer does not infer symbol renames; a rename surfaces in diffs as
     // delete-old + add-new. Treat that pair as rename confirmation (the add is the evidence).
     if (!confirm && fact.change_type === "renamed" && fact.new_name !== undefined) {
-      const delOld = changes.find((c) => c.entity === fact.old_name && c.changeType === "deleted");
-      const addNew = changes.find((c) => c.entity === fact.new_name && c.changeType === "added");
-      if (delOld && addNew) confirm = addNew;
+      for (const delOld of confirmingChanges.filter((c) => c.entity === fact.old_name && c.changeType === "deleted")) {
+        const addNew = confirmingChanges.find((c) => c.entity === fact.new_name && c.changeType === "added" && c.commitHash === delOld.commitHash);
+        if (addNew) { confirm = addNew; break; }
+      }
     }
 
     // 2) Historical Drift is checked ONLY against a CONFIRMED change: with no
@@ -169,7 +171,7 @@ export function attestFact(fact: AnyFact, changes: CodeChange[]): AttestationRes
   }
 
   if (fact.fact_type === "VariableChange") {
-    const confirm = changes.find((c) => c.entity === fact.var_name && (c.changeType === "modified" || c.changeType === "added"));
+    const confirm = confirmingChanges.find((c) => c.entity === fact.var_name && (c.changeType === "modified" || c.changeType === "added"));
     if (!confirm) return { status: "UNVERIFIED" };
     // A confirmed VariableChange asserts the variable EXISTS with its new value. Mirror the
     // FunctionChange Historical-Drift scan: if a LATER change leaves it absent (deleted/renamed away),
