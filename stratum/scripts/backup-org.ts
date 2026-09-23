@@ -14,7 +14,6 @@
  * org data — never commit).
  */
 
-import "dotenv/config";
 import { writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
@@ -89,10 +88,24 @@ export function backupFilename(orgId: string, isoTimestamp: string): string {
   return `stratum-backup-${orgId.slice(0, 8)}-${stamp}.backup.json`;
 }
 
-async function selectAllByOrg(client: SupabaseClient, table: string, orgId: string): Promise<unknown[]> {
-  const { data, error } = await client.from(table).select("*").eq("org_id", orgId);
-  if (error) throw new Error(`export ${table} failed: ${error.message}`);
-  return data ?? [];
+async function selectAll(client: SupabaseClient, table: string, column: string, value: string | string[], orderColumns: string[]): Promise<unknown[]> {
+  const rows: unknown[] = [];
+  let expected: number | undefined;
+  while (true) {
+    const base = client.from(table).select("*", { count: "exact" });
+    let query = Array.isArray(value) ? base.in(column, value) : base.eq(column, value);
+    for (const order of orderColumns) query = query.order(order, { ascending: true });
+    const { data, error, count } = await query.range(rows.length, rows.length + 499);
+    if (error) throw new Error(`export ${table} failed: ${error.message}`);
+    if (count === null || count === undefined || !Number.isSafeInteger(count) || count < 0) throw new Error(`export ${table} failed: exact row count unavailable`);
+    if (expected !== undefined && count !== expected) throw new Error(`export ${table} failed: row count changed during paging`);
+    expected = count;
+    const page = data ?? [];
+    if (page.length === 0 && rows.length < expected) throw new Error(`export ${table} failed: empty page before exact row count`);
+    rows.push(...page);
+    if (rows.length > expected) throw new Error(`export ${table} failed: page exceeded exact row count`);
+    if (rows.length === expected) return rows;
+  }
 }
 
 /**
@@ -107,18 +120,21 @@ async function selectAllByOrg(client: SupabaseClient, table: string, orgId: stri
 export async function exportOrg(client: SupabaseClient, orgId: string, exportedAt: string): Promise<BackupFile> {
   const tables: Record<string, unknown[]> = {};
 
-  const { data: orgRows, error: orgErr } = await client.from("organizations").select("*").eq("id", orgId);
-  if (orgErr) throw new Error(`export organizations failed: ${orgErr.message}`);
-  tables["organizations"] = orgRows ?? [];
+  tables["organizations"] = await selectAll(client, "organizations", "id", orgId, ["id"]);
 
-  for (const t of ORG_SCOPED_TABLES) tables[t] = await selectAllByOrg(client, t, orgId);
+  for (const t of ORG_SCOPED_TABLES) {
+    const order = t === "org_config" ? ["org_id"] : t === "audit_statuses" ? ["fact_table", "fact_id"] : ["id"];
+    tables[t] = await selectAll(client, t, "org_id", orgId, order);
+  }
 
   // pruning_logs has no org_id — scope it through the org's sessions.
   const sessionIds = (tables["sessions"] as { id: string }[]).map((r) => r.id);
   if (sessionIds.length > 0) {
-    const { data, error } = await client.from("pruning_logs").select("*").in("session_id", sessionIds);
-    if (error) throw new Error(`export pruning_logs failed: ${error.message}`);
-    tables["pruning_logs"] = data ?? [];
+    const logs: unknown[] = [];
+    for (let i = 0; i < sessionIds.length; i += 100) {
+      logs.push(...await selectAll(client, "pruning_logs", "session_id", sessionIds.slice(i, i + 100), ["id"]));
+    }
+    tables["pruning_logs"] = logs;
   } else {
     tables["pruning_logs"] = [];
   }
