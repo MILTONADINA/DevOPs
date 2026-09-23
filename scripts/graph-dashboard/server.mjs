@@ -683,7 +683,7 @@ async function readAutonomyPhase(configPath = path.join(GIT_TOP_LEVEL, 'governan
 // governance/graph/stability-dashboard.md's phase0-005-test-suites row
 // (Notes column): the text "`cmd | tail; $?` captured tail's status"
 // contains exactly such a pipe, which is why that one real row already has
-// one more delimiter-shaped "|" than the header's 8 columns imply.
+// one more delimiter-shaped "|" than the table's columns imply.
 // splitMarkdownTableRow below handles this the only reasonable way a
 // non-Markdown-aware scanner can for a KNOWN, fixed column count: once more
 // "|"-shaped delimiters are found than there are columns, the earliest ones
@@ -692,8 +692,10 @@ async function readAutonomyPhase(configPath = path.join(GIT_TOP_LEVEL, 'governan
 // carry inline code than free-text Notes) and every surplus is folded back
 // into the final column with its "|" restored, rather than misaligning
 // every later column or dropping the row outright.
-const CYCLE_TABLE_COLUMNS = ['Cycle', 'Date', 'Backlog item', 'Outcome', 'Deploy/billing gate hit?', 'Claim-validator result', 'Change-failure?', 'Notes'];
-const CYCLE_TABLE_KEYS = ['cycle', 'date', 'backlogItem', 'outcome', 'deployBillingGateHit', 'claimValidatorResult', 'changeFailure', 'notes'];
+const CYCLE_TABLE_COLUMNS = ['Cycle', 'Date', 'Backlog item', 'Outcome', 'Deploy/billing gate hit?', 'Claim-validator result', 'Change-failure?', 'Environment faults', 'Notes'];
+const CYCLE_TABLE_KEYS = ['cycle', 'date', 'backlogItem', 'outcome', 'deployBillingGateHit', 'claimValidatorResult', 'changeFailure', 'environmentFaults', 'notes'];
+const LEGACY_CYCLE_TABLE_COLUMNS = CYCLE_TABLE_COLUMNS.filter((column) => column !== 'Environment faults');
+const LEGACY_CYCLE_TABLE_KEYS = CYCLE_TABLE_KEYS.filter((key) => key !== 'environmentFaults');
 
 function splitMarkdownTableRow(line, expectedCells) {
   const trimmed = line.trim();
@@ -726,15 +728,20 @@ async function readCycleHistory(dashboardPath = path.join(GIT_TOP_LEVEL, 'govern
   }
 
   const lines = raw.split('\n');
-  const expectedCells = CYCLE_TABLE_COLUMNS.length;
-
+  let expectedCells = CYCLE_TABLE_COLUMNS.length;
+  let keys = CYCLE_TABLE_KEYS;
   let headerIdx = -1;
   for (let i = 0; i < lines.length; i++) {
-    const cells = splitMarkdownTableRow(lines[i], expectedCells);
-    if (cells && cells.length === expectedCells && cells.every((cell, idx) => cell === CYCLE_TABLE_COLUMNS[idx])) {
-      headerIdx = i;
-      break;
+    for (const [columns, columnKeys] of [[CYCLE_TABLE_COLUMNS, CYCLE_TABLE_KEYS], [LEGACY_CYCLE_TABLE_COLUMNS, LEGACY_CYCLE_TABLE_KEYS]]) {
+      const cells = splitMarkdownTableRow(lines[i], columns.length);
+      if (cells && cells.length === columns.length && cells.every((cell, idx) => cell === columns[idx])) {
+        headerIdx = i;
+        expectedCells = columns.length;
+        keys = columnKeys;
+        break;
+      }
     }
+    if (headerIdx !== -1) break;
   }
   if (headerIdx === -1) return []; // doc reshaped or the table is gone -- degrade to empty, never guessed
 
@@ -747,7 +754,7 @@ async function readCycleHistory(dashboardPath = path.join(GIT_TOP_LEVEL, 'govern
     if (!cells) break; // first non-row line ends the table
     if (cells.length !== expectedCells) continue; // short/malformed row -- skip it, never fabricate missing columns
     const row = {};
-    CYCLE_TABLE_KEYS.forEach((key, idx) => { row[key] = cells[idx]; });
+    keys.forEach((key, idx) => { row[key] = cells[idx]; });
     rows.push(row);
   }
   return rows;

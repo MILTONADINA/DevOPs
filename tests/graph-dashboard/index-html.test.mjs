@@ -915,13 +915,14 @@ function cycleRowFixture(overrides = {}) {
     deployBillingGateHit: 'No',
     claimValidatorResult: 'pass',
     changeFailure: 'No',
+    environmentFaults: '0; n/a',
     notes: 'Some fixture notes.',
     ...overrides,
   };
 }
 
 function readCycleCard(card) {
-  const [head, backlogField, outcomeField, gateField, claimField, failureField, notesField] = card.children;
+  const [head, backlogField, outcomeField, gateField, claimField, failureField, environmentField, notesField] = card.children;
   const val = (field) => field.children[1];
   return {
     idText: head.children[0].textContent,
@@ -936,6 +937,8 @@ function readCycleCard(card) {
     claimText: val(claimField).textContent,
     failureLabel: failureField.children[0].textContent,
     failureText: val(failureField).textContent,
+    environmentLabel: environmentField.children[0].textContent,
+    environmentText: val(environmentField).textContent,
     notesLabel: notesField.children[0].textContent,
     notesText: val(notesField).textContent,
     notesValueClass: val(notesField).className,
@@ -1177,7 +1180,7 @@ test('client: cycle-history renders every column under its own human label, with
   const row = cycleRowFixture({
     cycle: 'phase0-006-t8-dashboard', date: '2026-09-15', backlogItem: 'T8: extend the dashboard',
     outcome: 'Ready for PR', deployBillingGateHit: 'Not triggered', claimValidatorResult: '104/130',
-    changeFailure: 'No', notes: 'A long-form paragraph of notes, exactly as the real stability-dashboard.md carries.',
+    changeFailure: 'No', environmentFaults: '3: api 2, environment 1; resume time unrecorded', notes: 'A long-form paragraph of notes, exactly as the real stability-dashboard.md carries.',
   });
   const fixture = baseSnapshot({ cycleHistory: [row] });
   const sbx = await buildSandbox({ fetchImpl: () => Promise.resolve({ ok: true, json: async () => fixture }) });
@@ -1195,13 +1198,15 @@ test('client: cycle-history renders every column under its own human label, with
   assert.equal(card.claimText, '104/130');
   assert.equal(card.failureLabel, 'Change-failure?');
   assert.equal(card.failureText, 'No');
+  assert.equal(card.environmentLabel, 'Environment faults');
+  assert.equal(card.environmentText, row.environmentFaults);
   assert.equal(card.notesLabel, 'Notes');
   assert.equal(card.notesText, row.notes);
   assert.ok(card.notesValueClass.includes('cycle-field-notes'));
 });
 
 test('client: cycle-history states "not recoverable" (with cycle/date\'s own distinct wording) for every blank cell -- never an empty line, and never confused with recent-runs\' own placeholder text', async () => {
-  const blankRow = cycleRowFixture({ cycle: '', date: '', backlogItem: '', outcome: '', deployBillingGateHit: '', claimValidatorResult: '', changeFailure: '', notes: '' });
+  const blankRow = cycleRowFixture({ cycle: '', date: '', backlogItem: '', outcome: '', deployBillingGateHit: '', claimValidatorResult: '', changeFailure: '', environmentFaults: '', notes: '' });
   const fixture = baseSnapshot({ cycleHistory: [blankRow] });
   const sbx = await buildSandbox({ fetchImpl: () => Promise.resolve({ ok: true, json: async () => fixture }) });
   await flushMicrotasks();
@@ -1213,6 +1218,7 @@ test('client: cycle-history states "not recoverable" (with cycle/date\'s own dis
   assert.equal(card.gateText, 'not recoverable');
   assert.equal(card.claimText, 'not recoverable');
   assert.equal(card.failureText, 'not recoverable');
+  assert.equal(card.environmentText, 'not recoverable');
   assert.equal(card.notesText, 'not recoverable', "even the Notes field, its own long-form styling notwithstanding, never renders blank");
 });
 

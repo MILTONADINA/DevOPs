@@ -253,7 +253,7 @@ test('real data: readCycleHistory() against the real stability-dashboard.md retu
   const rows = await reader.readCycleHistory(REAL_DASHBOARD_PATH);
   assert.ok(Array.isArray(rows));
   assert.ok(rows.length >= 1, 'expected at least one parsed cycle row from the real dashboard');
-  const expectedKeys = ['cycle', 'date', 'backlogItem', 'outcome', 'deployBillingGateHit', 'claimValidatorResult', 'changeFailure', 'notes'];
+  const expectedKeys = ['cycle', 'date', 'backlogItem', 'outcome', 'deployBillingGateHit', 'claimValidatorResult', 'changeFailure', 'environmentFaults', 'notes'];
   for (const row of rows) {
     assert.deepStrictEqual(Object.keys(row), expectedKeys);
     for (const key of expectedKeys) assert.strictEqual(typeof row[key], 'string', `row.${key} must be a raw string, never undefined/parsed`);
@@ -655,6 +655,20 @@ test('synthetic: cycle history -- a well-formed two-row table parses into object
   ]);
 });
 
+test('synthetic: cycle history -- the environment-fault column is preserved separately', async () => {
+  const p = path.join(fixtureRoot, 'case-history-environment-faults.md');
+  await writeFile(p, [
+    '| Cycle | Date | Backlog item | Outcome | Deploy/billing gate hit? | Claim-validator result | Change-failure? | Environment faults | Notes |',
+    '|---|---|---|---|---|---|---|---|---|',
+    '| `c7` | 2026-09-15 | resilience | Blocked | No | 1/1 | No | 3: api 2, environment 1; resume time unrecorded | recovery notes |',
+  ].join('\n'));
+  const rows = await reader.readCycleHistory(p);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].environmentFaults, '3: api 2, environment 1; resume time unrecorded');
+  assert.equal(rows[0].changeFailure, 'No');
+  assert.equal(rows[0].notes, 'recovery notes');
+});
+
 test('synthetic: cycle history -- a reworded header (doc reshaped) does not match -- degrades to [], never a misaligned parse', async () => {
   const dir = path.join(fixtureRoot, 'case-history-reworded-header');
   await mkdir(dir, { recursive: true });
@@ -819,10 +833,10 @@ test('synthetic: isTableSeparatorRow -- accepts plain dashes and alignment-marke
 });
 
 test('synthetic: CYCLE_TABLE_COLUMNS and CYCLE_TABLE_KEYS stay the same length (structural sanity -- one key per documented column)', () => {
-  assert.strictEqual(reader.CYCLE_TABLE_COLUMNS.length, 8);
-  assert.strictEqual(reader.CYCLE_TABLE_KEYS.length, 8);
-  assert.deepStrictEqual(reader.CYCLE_TABLE_COLUMNS, ['Cycle', 'Date', 'Backlog item', 'Outcome', 'Deploy/billing gate hit?', 'Claim-validator result', 'Change-failure?', 'Notes']);
-  assert.deepStrictEqual(reader.CYCLE_TABLE_KEYS, ['cycle', 'date', 'backlogItem', 'outcome', 'deployBillingGateHit', 'claimValidatorResult', 'changeFailure', 'notes']);
+  assert.strictEqual(reader.CYCLE_TABLE_COLUMNS.length, 9);
+  assert.strictEqual(reader.CYCLE_TABLE_KEYS.length, 9);
+  assert.deepStrictEqual(reader.CYCLE_TABLE_COLUMNS, ['Cycle', 'Date', 'Backlog item', 'Outcome', 'Deploy/billing gate hit?', 'Claim-validator result', 'Change-failure?', 'Environment faults', 'Notes']);
+  assert.deepStrictEqual(reader.CYCLE_TABLE_KEYS, ['cycle', 'date', 'backlogItem', 'outcome', 'deployBillingGateHit', 'claimValidatorResult', 'changeFailure', 'environmentFaults', 'notes']);
 });
 
 // =============================================================================

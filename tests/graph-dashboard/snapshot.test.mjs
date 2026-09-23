@@ -506,7 +506,7 @@ test('integration: GET /api/snapshot -- phase and cycleHistory (real, uncontroll
   assert.ok(body.phase === null || (typeof body.phase === 'number' && Number.isInteger(body.phase)), 'phase must be an integer or null');
   assert.ok(Array.isArray(body.cycleHistory), 'cycleHistory must be an array');
   for (const row of body.cycleHistory) {
-    assert.deepStrictEqual(Object.keys(row).sort(), ['backlogItem', 'changeFailure', 'claimValidatorResult', 'cycle', 'date', 'deployBillingGateHit', 'notes', 'outcome']);
+    assert.deepStrictEqual(Object.keys(row).sort(), ['backlogItem', 'changeFailure', 'claimValidatorResult', 'cycle', 'date', 'deployBillingGateHit', 'environmentFaults', 'notes', 'outcome']);
   }
 });
 
