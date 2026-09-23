@@ -128,12 +128,31 @@ set `CQ_SOURCE_SUMMARY_MODEL=local/<model>` and `CQ_LOCAL_BASE_URL` to a literal
 loopback HTTP `/v1` endpoint before running that ingestion command. The model
 receives at most 3,000 characters of each File as marked untrusted data, and
 its one-sentence response must pass the summary safety and length checks.
+The request asks reasoning-capable local models for non-thinking output so the
+96-token reply budget can carry the sentence; explicitly truncated replies
+are rejected. With an already-running local model, run the bounded quality
+sample from `stratum/`:
+
+```sh
+DEVOPS_STRATUM_PROJECT_ROOT="$(cd .. && pwd)" CQ_LOCAL_BASE_URL=http://127.0.0.1:1234/v1 \
+  CQ_SOURCE_SUMMARY_MODEL=local/qwen-local npx tsx test/integration/real-source-summary-sample.ts
+```
+
+Adjust the loopback port and local model ID to match the running server. The
+sample reads 11 project Files across JS/TS, Rust, and Python and makes no
+database writes.
+For a disposable real-model persistence check, run the same model settings
+through `npm run db:with-env -- npx tsx
+test/integration/local-real-source-graph.ts` from `stratum/`; it verifies two
+File summaries, four embeddings, and fixture cleanup in local Compose.
 The ingestor completes and validates all summaries before graph writes; an
 invalid response fails the run. Function summaries remain source-derived.
 Without `CQ_SOURCE_SUMMARY_MODEL`, the deterministic summaries remain, even
 when `CQ_LOCAL_BASE_URL` is used for another local feature. Reingestion without
 the summary model will restore those deterministic File summaries. A local
-fixture verifies wiring; broad quality needs a real local text-model run.
+fixture verifies wiring. The 11-File real-model sample and disposable
+persistence check are bounded evidence, not a representative accuracy score
+for arbitrary project source.
 
 Open `/dashboard/graph` on the local proxy to explore the bounded graph
 snapshot. Enter a CQ API key in commercial mode, or pass `?org-id=<uuid>` in
