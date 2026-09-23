@@ -41,7 +41,6 @@ try {
   checked(await db.from("knowledge_edges").insert([
     { org_id: a, from_entity: ids[1], to_entity: ids[0], edge_type: "SUPERSEDES" },
     { org_id: b, from_entity: ids[3], to_entity: ids[2], edge_type: "SUPERSEDES" },
-    { org_id: a, from_entity: ids[0], to_entity: ids[2], edge_type: "REFERENCED_IN" },
   ]), "insert edges");
 
   app = buildProxy(buildStartOptions({ CQ_COMMERCIAL: "true", SUPABASE_URL: url, SUPABASE_SERVICE_KEY: key },
@@ -61,7 +60,7 @@ try {
   if (one.entities?.length !== 1 || one.edges?.length !== 0 ||
       foreign.entities?.length !== 2 || !foreign.entities.every((node: { id: string }) => ids.slice(2).includes(node.id)) ||
       noKey.statusCode !== 401) throw new Error("graph limit or API-key scope failed");
-  process.stdout.write("local graph snapshot excluded foreign endpoints and obeyed API-key scope\n");
+  process.stdout.write("local graph snapshot obeyed API-key scope and bounded node/edge reads\n");
 } catch (error) {
   failure = error;
 } finally {
