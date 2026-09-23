@@ -61,6 +61,7 @@
     "db:verify-recovery": "tsx scripts/local-compose.ts with-env node test/integration/local-backup-recovery.mjs",
     "db:verify-proxy-memory": "tsx scripts/local-compose.ts with-env tsx test/integration/local-proxy-memory.ts",
     "db:verify-message-memory": "tsx scripts/local-compose.ts with-env tsx test/integration/local-message-memory.ts",
+    "db:verify-message-audit": "tsx scripts/local-compose.ts with-env tsx test/integration/local-message-audit.ts",
     "deploy": "wrangler deploy"
   },
   "dependencies": {

@@ -53,6 +53,18 @@ rename commit, runs `audit:repo --persist`, verifies suppression plus the
 CONFLICT status and alert through the local API, then removes its fixtures.
 This checks the operator path; it does not run audit from proxy traffic.
 
+Run `npm run db:verify-message-audit` for the opt-in proxy request path. The
+check creates disposable local Git commits and a loopback extraction model,
+then verifies a stale extracted fact is suppressed with a persisted CONFLICT
+status and alert. An unrelated Todo becomes visible only after its UNVERIFIED
+status is stored. The check also forces an audit RPC failure and confirms that
+the unreviewed fact stays suppressed. For local use, set `CQ_AUDIT_REPO_ROOT`
+to a real Git directory within this project and start the proxy through
+`db:with-env`; the runner supplies `DEVOPS_STRATUM_PROJECT_ROOT` for the path
+boundary. This audit indexes the latest 100 commits. Its status is
+deterministic Tier 1 evidence; live dashboard timing and later escalation are
+separate gates.
+
 Run `npm run db:verify-proxy-memory` to check the commercial proxy's actual
 startup wiring against the local API. It creates two organizations and hashed
 API keys, then verifies authenticated fact, conflict, and status reads stay in
