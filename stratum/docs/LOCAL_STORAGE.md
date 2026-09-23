@@ -59,6 +59,15 @@ API keys, then verifies authenticated fact, conflict, and status reads stay in
 the key's organization even with a foreign `org-id` query. It also checks
 missing/inactive keys and cross-organization suppression before cleanup.
 
+Run `npm run db:verify-message-memory` to check a successful authenticated
+`/v1/messages` request through a loopback fake extraction model. It verifies
+one automatically created memory session and one validated fact under the
+authenticated organization, then removes both. To enable this path for local
+use, set `CQ_MEMORY_EXTRACT_MODEL=local/<model>` and `CQ_LOCAL_BASE_URL` to a
+loopback HTTP OpenAI-compatible endpoint before starting the commercial proxy.
+Without those settings, no memory extraction runs. The database session is
+created per successful request; raw turns are not stored in PostgreSQL.
+
 Run `npm run db:verify-recovery` for a disposable organization backup and
 restore check. It exports a session, suppressed fact, audit status, and conflict
 to a temporary file under the ignored `backups/` directory, deletes the rows,

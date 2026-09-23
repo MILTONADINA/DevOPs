@@ -31,6 +31,9 @@ import { createSupabaseStripeWebhookDeps } from "./routes/stripe-webhook";
 import { createSupabaseUsageRecorder } from "../billing/usage-recorder";
 import { createTokenBudget } from "./token-budget";
 import { createSupabaseHealthCheck } from "./routes/health";
+import { createFactExtractor } from "../memory/warm/extractor";
+import { createRoutedForward } from "./providers/router";
+import { createSupabaseMessageMemoryRecorder } from "./message-memory";
 
 export interface StartEnv {
   CQ_COMMERCIAL?: string | undefined;
@@ -40,6 +43,19 @@ export interface StartEnv {
   STRIPE_WEBHOOK_SECRET?: string | undefined;
   /** Dedicated billing-record signing secret. When set in commercial mode, the request path persists usage. */
   CQ_BILLING_SIGNING_SECRET?: string | undefined;
+  /** Local model used only for structured fact extraction. */
+  CQ_MEMORY_EXTRACT_MODEL?: string | undefined;
+  CQ_LOCAL_BASE_URL?: string | undefined;
+  CQ_LOCAL_API_KEY?: string | undefined;
+}
+
+function localExtractionUrl(raw: string | undefined): string {
+  if (!raw) throw new Error("CQ_LOCAL_BASE_URL is required for local memory extraction");
+  const url = new URL(raw);
+  if (url.protocol !== "http:" || !["127.0.0.1", "localhost", "[::1]"].includes(url.hostname) || url.username || url.password) {
+    throw new Error("memory extraction requires a loopback HTTP model endpoint");
+  }
+  return url.toString().replace(/\/$/, "");
 }
 
 /**
@@ -114,6 +130,25 @@ export function buildStartOptions(env: StartEnv, base: BuildProxyOptions, makeCl
       if (typeof env.CQ_BILLING_SIGNING_SECRET === "string" && env.CQ_BILLING_SIGNING_SECRET !== "") {
         base.messages.recordUsage = createSupabaseUsageRecorder({ client, signingSecret: env.CQ_BILLING_SIGNING_SECRET }).recordUsage;
       }
+      if (env.CQ_MEMORY_EXTRACT_MODEL) {
+        if (!env.CQ_MEMORY_EXTRACT_MODEL.startsWith("local/") || env.CQ_MEMORY_EXTRACT_MODEL.length <= 6) {
+          throw new Error("CQ_MEMORY_EXTRACT_MODEL must use a local/<model> identifier");
+        }
+        const endpoint = localExtractionUrl(env.CQ_LOCAL_BASE_URL);
+        const model = env.CQ_MEMORY_EXTRACT_MODEL;
+        const forward = createRoutedForward({ CQ_LOCAL_BASE_URL: endpoint, CQ_LOCAL_API_KEY: env.CQ_LOCAL_API_KEY });
+        const extractor = createFactExtractor({
+          async complete(prompt) {
+            const response = await forward({ model, messages: [{ role: "user", content: prompt }], max_tokens: 1024 }, "");
+            if (response.status >= 400) throw new Error(`local extraction model returned HTTP ${response.status}`);
+            const blocks = (response.data as { content?: { type?: string; text?: string }[] } | null)?.content;
+            const answer = blocks?.filter((block) => block.type === "text" && typeof block.text === "string").map((block) => block.text).join("\n");
+            if (!answer) throw new Error("local extraction model returned no text");
+            return answer;
+          },
+        });
+        base.messages.recordMemory = createSupabaseMessageMemoryRecorder(client, extractor);
+      }
     }
   }
   return opts;
@@ -133,6 +168,9 @@ export async function start(): Promise<void> {
     SUPABASE_SERVICE_KEY: process.env["SUPABASE_SERVICE_KEY"],
     STRIPE_WEBHOOK_SECRET: process.env["STRIPE_WEBHOOK_SECRET"],
     CQ_BILLING_SIGNING_SECRET: process.env["CQ_BILLING_SIGNING_SECRET"],
+    CQ_MEMORY_EXTRACT_MODEL: process.env["CQ_MEMORY_EXTRACT_MODEL"],
+    CQ_LOCAL_BASE_URL: process.env["CQ_LOCAL_BASE_URL"],
+    CQ_LOCAL_API_KEY: process.env["CQ_LOCAL_API_KEY"],
   };
   const base: BuildProxyOptions = {
     messages: createDefaultMessagesDeps(),

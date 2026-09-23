@@ -57,6 +57,13 @@ export interface TokenCountResult {
   message_breakdown: { role: string; token_count: number }[];
 }
 
+/** The trusted organization and final text turn handed to local memory extraction. */
+export interface MessageMemoryEvent {
+  orgId: string;
+  model: string;
+  turns: { role: "user" | "assistant"; content: string }[];
+}
+
 /** Deps the /v1/messages route needs — injectable so tests avoid real network. */
 export interface MessagesDeps {
   forward: (body: MessagesBody, apiKey: string, passthrough?: ForwardHeaders) => Promise<ForwardResult>;
@@ -75,6 +82,8 @@ export interface MessagesDeps {
    * or fails a proxied response. Only meaningful with an authenticated org (req.orgId).
    */
   recordUsage?: (event: UsageEvent) => Promise<void>;
+  /** Optional commercial local fact extraction after a successful upstream response. */
+  recordMemory?: (event: MessageMemoryEvent) => Promise<void>;
 }
 
 /**

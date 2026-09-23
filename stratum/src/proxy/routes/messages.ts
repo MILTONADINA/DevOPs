@@ -16,6 +16,33 @@ import type { ForwardHeaders, MessagesBody, MessagesDeps, TokenCountResult } fro
 import { isStreamingRequest } from "../stream-forward";
 import { createSseParser, createStreamAccumulator } from "../sse";
 import { emitTurnTelemetry } from "../telemetry";
+import { logger } from "../../lib/logger";
+
+function textContent(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (!Array.isArray(value)) return "";
+  return value.filter((block): block is { type: "text"; text: string } =>
+    block !== null && typeof block === "object" && block.type === "text" && typeof block.text === "string")
+    .map((block) => block.text).join("\n");
+}
+
+function recordMemorySafe(deps: MessagesDeps, request: FastifyRequest, body: MessagesBody, response: unknown, pending: Set<Promise<void>>): void {
+  const orgId = request.orgId;
+  if (!deps.recordMemory || !orgId) return;
+  const lastUser = [...body.messages].reverse().find((message) => message.role === "user");
+  const userText = textContent(lastUser?.content);
+  const assistantText = textContent((response as { content?: unknown } | null)?.content);
+  if (!userText || !assistantText) return;
+  try {
+    const task = deps.recordMemory({ orgId, model: body.model,
+      turns: [{ role: "user", content: userText }, { role: "assistant", content: assistantText }] });
+    pending.add(task);
+    void task.catch((error: unknown) => logger.error({ err: (error as Error).message }, "memory write failed (non-blocking)"))
+      .finally(() => pending.delete(task));
+  } catch (error) {
+    logger.error({ err: (error as Error).message }, "memory write failed (non-blocking)");
+  }
+}
 
 declare module "fastify" {
   interface FastifyRequest {
@@ -117,7 +144,7 @@ function recordUsageSafe(deps: MessagesDeps, request: FastifyRequest, model: str
  * Streaming branch: forward with SSE, tee each chunk to the client while
  * accumulating the event stream, then capture the (redacted) accumulated turn.
  */
-async function handleStreaming(body: MessagesBody, request: FastifyRequest, reply: FastifyReply, deps: MessagesDeps, start: number): Promise<FastifyReply> {
+async function handleStreaming(body: MessagesBody, request: FastifyRequest, reply: FastifyReply, deps: MessagesDeps, start: number, pending: Set<Promise<void>>): Promise<FastifyReply> {
   // Count + budget-check BEFORE forwarding (so an over-budget request never reaches upstream).
   const tokens = await deps.countTokens(body).catch(() => ESTIMATED_FALLBACK);
   if (await checkTokenBudget(deps, request, tokens.input_tokens, reply)) return reply;
@@ -145,6 +172,7 @@ async function handleStreaming(body: MessagesBody, request: FastifyRequest, repl
   // Pump runs concurrently with Fastify piping `out` to the client.
   void (async () => {
     const parser = createSseParser();
+    let streamFailed = false;
     // Incremental fold (not a growing events[] array): each parsed batch is folded into the running
     // message and then discarded, so per-request heap stays O(accumulated text) even for a very long
     // streaming generation — and even though we keep draining upstream after a client abort (below).
@@ -160,6 +188,7 @@ async function handleStreaming(body: MessagesBody, request: FastifyRequest, repl
         acc.push(parser.push(chunk));
       }
     } catch (e) {
+      streamFailed = true;
       // Mid-stream upstream failure: emit an SSE error event so the client sees it.
       if (!out.destroyed) {
         out.write(
@@ -176,7 +205,7 @@ async function handleStreaming(body: MessagesBody, request: FastifyRequest, repl
       // Capture the accumulated turn (redaction + FAIL-CLOSED inside the store).
       // Done BEFORE out.end() so the artifact is written before the response
       // completes. A client abort still captures what was forwarded.
-      const { message } = acc.result();
+      const { message, error: streamError } = acc.result();
       // Bill on the UPSTREAM-confirmed input count (from message_start, which arrives early — present even
       // on an abort), falling back to the pre-flight count only if upstream omitted it (exact-counts rule).
       const billedInput = inputTokensOf(message) > 0 ? inputTokensOf(message) : tokens.input_tokens;
@@ -203,6 +232,7 @@ async function handleStreaming(body: MessagesBody, request: FastifyRequest, repl
         deps.telemetry,
       );
       recordUsageSafe(deps, request, body.model, billedInput, outputTokensOf(message));
+      if (!streamFailed && streamError === undefined) recordMemorySafe(deps, request, body, message, pending);
       out.end();
     }
   })();
@@ -218,6 +248,8 @@ async function handleStreaming(body: MessagesBody, request: FastifyRequest, repl
  */
 export function makeMessagesRoute(deps: MessagesDeps): FastifyPluginCallback {
   return function messagesPlugin(app: FastifyInstance, _opts, done): void {
+    const pendingMemory = new Set<Promise<void>>();
+    app.addHook("onClose", async () => { await Promise.allSettled([...pendingMemory]); });
     app.post("/v1/messages", async (request, reply) => {
       const start = Date.now();
       const body = request.body as MessagesBody;
@@ -233,7 +265,7 @@ export function makeMessagesRoute(deps: MessagesDeps): FastifyPluginCallback {
       // header), forward as a stream + tee/accumulate/capture.
       const accept = request.headers["accept"];
       if (isStreamingRequest(body, typeof accept === "string" ? accept : undefined)) {
-        return handleStreaming(body, request, reply, deps, start);
+        return handleStreaming(body, request, reply, deps, start, pendingMemory);
       }
 
       // Exact token count (best-effort; method is flagged honestly downstream).
@@ -293,6 +325,7 @@ export function makeMessagesRoute(deps: MessagesDeps): FastifyPluginCallback {
         deps.telemetry,
       );
       recordUsageSafe(deps, request, body.model, billedInput, outputTokensOf(forwarded.data));
+      recordMemorySafe(deps, request, body, forwarded.data, pendingMemory);
 
       // nosemgrep: javascript.express.security.audit.xss.direct-response-write.direct-response-write -- FALSE POSITIVE: transparent JSON proxy. Forwards the upstream Anthropic response (Fastify sends it as application/json) to the Claude Code CLI client; never HTML rendered in a browser, so no XSS surface. The "user input" is the upstream provider's own JSON, not attacker markup.
       return reply.send(forwarded.data);
