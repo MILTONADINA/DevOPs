@@ -49,8 +49,11 @@ navigation (claim 053). The local database has durable, organization-bound
 File-to-fact edges with triggered lifecycle cleanup and migration backfill
 (claim 054). The graph canvas shows those active facts as selectable nodes and
 removes stale nodes after refresh; a real Chrome check verified navigation and
-literal text (claim 055). Generated narration and semantic node search remain
-open. The historical effort percentage below has not been recalculated.
+literal text (claim 055). Offline semantic node search is verified against
+local PostgreSQL and ONNX (claim 056). Deterministic tour narration uses
+source summaries and direct graph edges. Cross-language extraction and
+model-generated source summaries remain open. The historical effort
+percentage below has not been recalculated.
 
 The Claude semantic review job reported a visible skip on these PRs because
 `CLAUDE_API_KEY` is unset; it did not analyze them. The release workflow diff
