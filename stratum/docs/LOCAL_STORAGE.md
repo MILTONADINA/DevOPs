@@ -53,6 +53,12 @@ rename commit, runs `audit:repo --persist`, verifies suppression plus the
 CONFLICT status and alert through the local API, then removes its fixtures.
 This checks the operator path; it does not run audit from proxy traffic.
 
+Run `npm run db:verify-proxy-memory` to check the commercial proxy's actual
+startup wiring against the local API. It creates two organizations and hashed
+API keys, then verifies authenticated fact, conflict, and status reads stay in
+the key's organization even with a foreign `org-id` query. It also checks
+missing/inactive keys and cross-organization suppression before cleanup.
+
 Run `npm run db:verify-recovery` for a disposable organization backup and
 restore check. It exports a session, suppressed fact, audit status, and conflict
 to a temporary file under the ignored `backups/` directory, deletes the rows,
