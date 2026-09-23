@@ -66,4 +66,10 @@ ALTER FUNCTION public.match_memory_vectors(vector, uuid, integer) SET search_pat
 
 -- (5) rls_auto_enable is a DDL event-trigger helper, never meant to be a callable RPC. Event triggers fire
 -- regardless of EXECUTE grants, so revoking is safe and clears the anon/authenticated SECURITY DEFINER lint.
-REVOKE EXECUTE ON FUNCTION public.rls_auto_enable() FROM PUBLIC, anon, authenticated;
+DO $$
+BEGIN
+  IF to_regprocedure('public.rls_auto_enable()') IS NOT NULL THEN
+    REVOKE EXECUTE ON FUNCTION public.rls_auto_enable() FROM PUBLIC, anon, authenticated;
+  END IF;
+END;
+$$;
