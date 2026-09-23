@@ -266,7 +266,10 @@ Borrowed from [Lum1104/Understand-Anything](https://github.com/Lum1104/Understan
 
 ### 5a. Git indexer + attestation checker
 
-- [ ] **`stratum/src/audit/git-indexer.ts`** (~12h). Incremental git log indexer. <5s for last 100 commits. Output: structured commit + diff records for downstream attestation.
+- [x] **`stratum/src/audit/git-indexer.ts`**. Indexes recent Git history into
+  structured code changes. `npm run bench:audit-indexer` measures five real
+  100-commit samples against the <5s p95 local target; deployed representative
+  performance remains a v0.6 release check.
 - [ ] **`stratum/src/audit/git-attestation.ts`** (~15h). For each Tier 2 fact, fetch commit_hash from indexer, compare claimed fact against actual git state. Output: CONFIRMED / CONFLICT / UNVERIFIABLE.
 - [ ] **Tests**: inject contradicting `FunctionChange` fact → CONFLICT; inject correct fact → CONFIRMED; missing commit_hash → UNVERIFIABLE.
 

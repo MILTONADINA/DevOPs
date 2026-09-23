@@ -39,6 +39,7 @@
     "promote": "tsx scripts/promote-tier2-to-tier3.ts",
     "understand-codebase": "tsx scripts/understand-codebase.ts",
     "audit:repo": "tsx scripts/audit-repo.ts",
+    "bench:audit-indexer": "tsx scripts/bench-audit-indexer.ts",
     "audit:conflicts": "tsx scripts/audit-conflicts.ts",
     "backup": "tsx scripts/backup-org.ts",
     "restore": "tsx scripts/restore-org.ts",
