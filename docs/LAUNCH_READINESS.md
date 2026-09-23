@@ -56,6 +56,9 @@ local dependencies are indexed in the local graph. An opt-in loopback model
 summary path is locally wired and guarded. A real loopback Qwen model produced
 accepted summaries for 11 sampled JS/TS, Rust, and Python Files and persisted
 two File summaries plus four embeddings in a disposable local Compose run.
+Real Chrome then displayed those stored summaries in the authenticated graph
+sidebar and dependency-order tour while excluding a foreign organization's
+File row. The disposable organization, graph, and vector rows were removed.
 Representative quality on arbitrary source remains open.
 The historical effort
 percentage below has not been recalculated.
