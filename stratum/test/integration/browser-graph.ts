@@ -4,7 +4,7 @@ import { once } from "node:events";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { buildProxy } from "../../src/proxy/app";
-import type { GraphSnapshot, MemoryDeps } from "../../src/proxy/routes/memory";
+import type { ConflictSummary, GraphSnapshot, MemoryDeps } from "../../src/proxy/routes/memory";
 
 const root = resolve(process.cwd(), "..");
 if (resolve(process.cwd()) !== join(root, "stratum")) throw new Error("run from stratum/");
@@ -14,6 +14,7 @@ if (!existsSync(chrome)) throw new Error(`Chrome not found: ${chrome}`);
 mkdirSync(proofDir, { recursive: true });
 const profile = mkdtempSync(join(proofDir, "graph-chrome-"));
 const hostile = '<img src=x onerror="alert(1)">';
+let conflicts: ConflictSummary[] = [];
 
 const files: GraphSnapshot["entities"] = [
   { id: "00000000-0000-4000-8000-000000000001", kind: "File", name: "src/importer.ts", file_path: "src/importer.ts", summary: "Imports the dependency", session_id: null },
@@ -26,7 +27,10 @@ function scoped(orgId: string): void {
 const memory: MemoryDeps = {
   listFacts: async () => [],
   suppressFact: async () => false,
-  listConflicts: async () => [],
+  listConflicts: async (orgId) => {
+    scoped(orgId);
+    return conflicts;
+  },
   listAuditStatuses: async () => [],
   listGraph: async (orgId) => {
     scoped(orgId);
@@ -178,8 +182,34 @@ async function main(): Promise<void> {
     const shot = await cdp.send("Page.captureScreenshot", { format: "png", captureBeyondViewport: false });
     if (!shot.data) throw new Error("Chrome returned no screenshot data");
     writeFileSync(join(proofDir, "graph-browser.png"), Buffer.from(shot.data, "base64"));
+    const dashboard = (await fetch(`http://127.0.0.1:${port}/json/new?${encodeURIComponent(`${address}/dashboard?org-id=browser-check`)}`, { method: "PUT" }).then((response) => response.json())) as {
+      webSocketDebuggerUrl: string;
+    };
+    cdp.close();
+    cdp = await openSocket(dashboard.webSocketDebuggerUrl);
+    await cdp.send("Page.enable");
+    await until("document.getElementById('drift-status')?.textContent.includes('No unacknowledged')");
+    if (await evaluate<boolean>("document.hidden")) throw new Error("dashboard was hidden during timing check");
+    if (await evaluate<boolean>("!document.getElementById('drift').hidden")) throw new Error("drift banner appeared before insertion");
+    const insertedAt = Date.now();
+    conflicts = [
+      {
+        id: "local-alert",
+        detected_at: new Date().toISOString(),
+        fact_table: "function_changes",
+        fact_id: "local-fact",
+        claimed_state: "exists",
+        actual_state: hostile,
+        conflict_commit: "local-commit",
+        acknowledged: false,
+      },
+    ];
+    await until("!document.getElementById('drift').hidden && document.getElementById('drift-rows')?.textContent.includes('local-commit')");
+    const alertMs = Date.now() - insertedAt;
+    if (alertMs >= 5000) throw new Error(`local alert took ${alertMs}ms to render`);
+    if ((await evaluate<number>("document.querySelectorAll('#drift img').length")) !== 0) throw new Error("conflict text created HTML");
     process.stdout.write(
-      "Chrome graph load, in-canvas fact navigation, literal text, search, dependency-first tour, and narration passed; screenshots: .workflow/proofs/graph-browser-fact-node.png and graph-browser.png\n",
+      `Chrome graph navigation and local Historical Drift insertion-to-render passed (${alertMs}ms); screenshots: .workflow/proofs/graph-browser-fact-node.png and graph-browser.png\n`,
     );
   } finally {
     cdp?.close();

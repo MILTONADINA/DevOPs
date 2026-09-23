@@ -297,7 +297,9 @@ dashboard landed; the historical ~60h estimate is stale.
 - [ ] **CONFLICT alert pipeline** (~4h). Deterministic audit writes conflicts
   to `audit_conflicts` idempotently. The dashboard now reads the protected,
   organization-scoped conflict API and refreshes every 3s while visible.
-  The <5s live insertion-to-render gate and request-path wiring remain open.
+  A real local Chrome run rendered an injected scoped conflict in 2,991 ms
+  through that API. This measured the browser path with an in-memory store;
+  the <5s deployed insertion-to-render gate remains open.
 - [x] **Dashboard read surfaces**. Historical Drift conflict panel and per-fact
   CONFIRMED/CONFLICT/UNVERIFIED badges use the scoped status API. Live
   insertion-to-render verification remains open.
