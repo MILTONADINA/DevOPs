@@ -232,7 +232,9 @@ must be recalculated after the open gates are reconciled.
 
 - [ ] **Nightly Tier 2 → Tier 3 promotion job**. The idempotent
   `npm run promote` script exists; a scheduled operator invocation is still
-  required before calling nightly promotion complete.
+  required before calling nightly promotion complete. The local Compose
+  round-trip verifies active-fact graph/vector promotion, suppressed-fact
+  exclusion, and a bound graph query; it does not establish nightly operation.
 - [x] **Claude SessionStart recall bridge**. The scoped, bounded bridge reads
   current-project Tier 2 facts and local semantic matches; see
   `stratum/scripts/session-start-context.ts` and PR #42.
