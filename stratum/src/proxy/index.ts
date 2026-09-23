@@ -15,7 +15,6 @@
  *   CQ_COMMERCIAL=true npm run dev                                  # commercial (needs SUPABASE_*)
  */
 
-import dotenv from "dotenv";
 import path from "node:path";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { logger } from "../lib/logger";
@@ -32,8 +31,6 @@ import { createSupabaseStripeWebhookDeps } from "./routes/stripe-webhook";
 import { createSupabaseUsageRecorder } from "../billing/usage-recorder";
 import { createTokenBudget } from "./token-budget";
 import { createSupabaseHealthCheck } from "./routes/health";
-
-dotenv.config();
 
 export interface StartEnv {
   CQ_COMMERCIAL?: string | undefined;
