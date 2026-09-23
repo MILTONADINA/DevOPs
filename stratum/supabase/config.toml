@@ -1,4 +1,4 @@
-# Local-only Stratum development stack. See docs/LOCAL_STORAGE.md.
+# CLI migration compatibility. Compose is the active local stack; see docs/LOCAL_STORAGE.md.
 project_id = "devops-stratum"
 
 [api]
