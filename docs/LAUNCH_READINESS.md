@@ -41,6 +41,14 @@ percentage has not been calculated from the later merged work. Open v1 gates
 include the Tier-A pruner quality run, memory request-path validation,
 commercial billing, and operator-readiness checks.
 
+**Current graph evidence (2026-09-23):** PR #71 added organization-scoped,
+exact-path active Tier-2 fact reads for indexed Files, with a two-organization
+local database check (claim 052). A local real-Chrome check exercises graph
+load, File selection, literal fact rendering, search, and dependency-first tour
+navigation (claim 053). Persistent fact graph edges, generated narration, and
+semantic node search remain open. The historical effort percentage below has
+not been recalculated.
+
 The Claude semantic review job reported a visible skip on these PRs because
 `CLAUDE_API_KEY` is unset; it did not analyze them. The release workflow diff
 received a direct review recorded in the project-local proof directory.
