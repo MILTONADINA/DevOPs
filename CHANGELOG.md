@@ -61,11 +61,10 @@ resulting honest positioning.
 
 ---
 
-## [0.3.0] — 2026-09-23 (release candidate; publication pending)
+## [0.3.0] — 2026-09-23
 
-The Phase 0 observation and Phase 1 measurement work, plus the graph sprint
-dashboard and cycle-resume controls, are merged to `main`. The signed tag,
-Sigstore refresh, and GitHub Release are pending.
+This release includes Phase 0 observation and Phase 1 measurement work, plus
+the graph sprint dashboard and cycle-resume controls.
 
 ### Added
 
@@ -83,6 +82,10 @@ Sigstore refresh, and GitHub Release are pending.
 - CI validates claims, dashboard tests, Gitleaks, Semgrep, and the DeepTeam
   gate. DeepTeam visibly skips when no model-provider key is configured.
 - Graph preflight tests now supply their own security-tool fixtures on CI.
+- Stratum dependency updates clear the npm audit findings present in the
+  prior lockfile; 825 unit tests and typecheck passed with the new versions.
+- Claude semantic review reports a visible skip while the repository has no
+  `CLAUDE_API_KEY`; no Claude review is claimed for this release.
 
 ### Remaining gates
 
