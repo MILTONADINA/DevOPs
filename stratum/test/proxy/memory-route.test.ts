@@ -31,9 +31,35 @@ function fakeDeps(): { deps: MemoryDeps; captured: Record<string, unknown> } {
       captured["statuses"] = { orgId, limit };
       return Promise.resolve([STATUS]);
     },
+    listGraph: (orgId, limit) => {
+      captured["graph"] = { orgId, limit };
+      return Promise.resolve({ entities: [{ id: "n1", kind: "Function", name: "parseToken", session_id: null }], edges: [] });
+    },
   };
   return { deps, captured };
 }
+
+describe("GET /v1/memory/graph", () => {
+  test("uses authenticated org and caps the snapshot size", async () => {
+    const { deps, captured } = fakeDeps();
+    const app = buildProxy({ rateLimit: false, cors: false,
+      auth: { resolve: (r) => Promise.resolve(r === "k" ? { orgId: "o9", keyId: "i" } : null) }, memory: deps });
+    await app.ready();
+    const res = await app.inject({ method: "GET", url: "/v1/memory/graph?org-id=other&limit=900", headers: { authorization: "Bearer k" } });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().entities[0].name).toBe("parseToken");
+    expect(captured["graph"]).toEqual({ orgId: "o9", limit: 500 });
+    expect((await app.inject({ method: "GET", url: "/v1/memory/graph?org-id=other" })).statusCode).toBe(401);
+    await app.close();
+  });
+
+  test("requires an org in personal mode", async () => {
+    const app = buildProxy({ rateLimit: false, cors: false, memory: fakeDeps().deps });
+    await app.ready();
+    expect((await app.inject({ method: "GET", url: "/v1/memory/graph" })).statusCode).toBe(400);
+    await app.close();
+  });
+});
 
 describe("GET /v1/memory/facts", () => {
   test("returns the org's facts and honors ?limit", async () => {

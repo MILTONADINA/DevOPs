@@ -5,6 +5,7 @@
  *   DELETE /v1/memory/facts/:id?table=<fact_table>  → suppress a fact (is_suppressed = true).
  *   GET    /v1/memory/conflicts[?org-id&limit]      → the org's unacknowledged Historical-Drift conflicts.
  *   GET    /v1/memory/audit-statuses[?org-id&limit] → the org's latest persisted audit outcomes.
+ *   GET    /v1/memory/graph[?org-id&limit]          → bounded org-scoped entities and edges.
  *
  * Org scope comes from req.orgId (the auth gate) with a ?org-id fallback. The store is INJECTED
  * (MemoryDeps) so the route is testable via app.inject() with no DB; createSupabaseMemoryDeps wires
@@ -37,12 +38,18 @@ export interface AuditStatusSummary {
   detail: string | null;
 }
 
+export interface GraphSnapshot {
+  entities: { id: string; kind: string; name: string; session_id: string | null }[];
+  edges: { id: string; edge_type: string; from_entity: string; to_entity: string }[];
+}
+
 export interface MemoryDeps {
   listFacts: (orgId: string, limit: number) => Promise<AnyFact[]>;
   /** Suppress fact `id` in `table` for `orgId`; returns whether a row was affected. */
   suppressFact: (orgId: string, id: string, table: string) => Promise<boolean>;
   listConflicts: (orgId: string, limit: number) => Promise<ConflictSummary[]>;
   listAuditStatuses: (orgId: string, limit: number) => Promise<AuditStatusSummary[]>;
+  listGraph: (orgId: string, limit: number) => Promise<GraphSnapshot>;
 }
 
 const VALID_FACT_TABLES = new Set(Object.values(FACT_TABLES));
@@ -105,6 +112,12 @@ export function makeMemoryRoute(deps: MemoryDeps): FastifyPluginCallback {
       return { statuses: await deps.listAuditStatuses(orgId, intParam(req, "limit", 50)) };
     });
 
+    app.get("/v1/memory/graph", async (req, reply) => {
+      const orgId = resolveOrg(req);
+      if (orgId === undefined) return err(reply, 400, "org id required (authenticate, or pass ?org-id)");
+      return deps.listGraph(orgId, intParam(req, "limit", 100));
+    });
+
     done();
   };
 }
@@ -140,6 +153,21 @@ export function createSupabaseMemoryDeps(client: SupabaseClient): MemoryDeps {
         .limit(limit);
       if (error) throw new Error(`listAuditStatuses failed: ${error.message}`);
       return (data ?? []) as AuditStatusSummary[];
+    },
+    async listGraph(orgId, limit) {
+      const entitiesResult = await client.from("knowledge_entities")
+        .select("id,kind,name,session_id").eq("org_id", orgId)
+        .order("created_at", { ascending: false }).limit(limit);
+      if (entitiesResult.error) throw new Error(`listGraph entities failed: ${entitiesResult.error.message}`);
+      const entities = (entitiesResult.data ?? []) as GraphSnapshot["entities"];
+      if (entities.length === 0) return { entities, edges: [] };
+      const ids = entities.map((entity) => entity.id);
+      const edgesResult = await client.from("knowledge_edges")
+        .select("id,edge_type,from_entity,to_entity").eq("org_id", orgId)
+        .in("from_entity", ids).in("to_entity", ids)
+        .order("created_at", { ascending: false }).limit(500);
+      if (edgesResult.error) throw new Error(`listGraph edges failed: ${edgesResult.error.message}`);
+      return { entities, edges: (edgesResult.data ?? []) as GraphSnapshot["edges"] };
     },
   };
 }
