@@ -73,7 +73,19 @@ try {
       throw new Error("reingestion did not replace the entity embedding");
     }
   }
-  process.stdout.write("local source graph fixture persisted and remained idempotent\n");
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const result = run("stratum/test/fixtures/source-graph-rust");
+    if (result.status !== 0 || !result.stdout.includes("Indexed 2 source files, 4 entities, 3 edges")) {
+      throw new Error(`Rust source ingest failed: ${result.stderr || result.stdout}`);
+    }
+    const entities = checked(await db.from("knowledge_entities").select("id,name").eq("org_id", org), "read Rust entities");
+    const edges = checked(await db.from("knowledge_edges").select("id").eq("org_id", org), "read Rust edges");
+    const vectors = checked(await db.from("memory_vectors").select("id").eq("org_id", org).eq("source_type", "entity"), "read Rust vectors");
+    if (entities.length !== 8 || edges.length !== 6 || vectors.length !== 8 || !entities.some((row) => row.name === "stratum/test/fixtures/source-graph-rust/src/lib.rs#entry")) {
+      throw new Error(`Rust graph rows duplicated or missing after ingest ${attempt + 1}`);
+    }
+  }
+  process.stdout.write("local JS/TS and Rust source graph fixtures persisted and remained idempotent\n");
 } catch (error) {
   failure = error;
 } finally {
