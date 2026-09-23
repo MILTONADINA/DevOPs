@@ -58,7 +58,7 @@
     "@anthropic-ai/sdk": "^0.99.0",
     "@fastify/cors": "^10.1.0",
     "@fastify/rate-limit": "^10.3.0",
-    "@huggingface/transformers": "^3.8.1",
+    "@huggingface/transformers": "^4.3.0",
     "@pinecone-database/pinecone": "^3.0.0",
     "@supabase/supabase-js": "^2.39.0",
     "axios": "^1.7.0",
@@ -73,18 +73,18 @@
     "zod": "^3.22.4"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20260528.1",
-    "@types/node": "^20.11.0",
+    "@cloudflare/workers-types": "^5.20260923.1",
+    "@types/node": "^22.20.4",
     "@types/uuid": "^11.0.0",
     "@typescript-eslint/eslint-plugin": "^7.0.0",
     "@typescript-eslint/parser": "^7.0.0",
-    "@vitest/coverage-v8": "^2.1.0",
+    "@vitest/coverage-v8": "^5.0.1",
     "eslint": "^8.57.0",
     "prettier": "^3.2.5",
-    "supabase": "^1.145.0",
+    "supabase": "^2.117.0",
     "tsx": "^4.22.3",
     "typescript": "^5.4.0",
-    "vitest": "^2.1.0",
-    "wrangler": "^3.50.0"
+    "vitest": "^5.0.1",
+    "wrangler": "^4.137.0"
   }
 }
