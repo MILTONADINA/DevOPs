@@ -85,7 +85,19 @@ try {
       throw new Error(`Rust graph rows duplicated or missing after ingest ${attempt + 1}`);
     }
   }
-  process.stdout.write("local JS/TS and Rust source graph fixtures persisted and remained idempotent\n");
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const result = run("tests/fixtures/agents/asi01-failing");
+    if (result.status !== 0 || !result.stdout.includes("Indexed 2 source files, 3 entities, 2 edges")) {
+      throw new Error(`Python source ingest failed: ${result.stderr || result.stdout}`);
+    }
+    const entities = checked(await db.from("knowledge_entities").select("id,name").eq("org_id", org), "read Python entities");
+    const edges = checked(await db.from("knowledge_edges").select("id").eq("org_id", org), "read Python edges");
+    const vectors = checked(await db.from("memory_vectors").select("id").eq("org_id", org).eq("source_type", "entity"), "read Python vectors");
+    if (entities.length !== 11 || edges.length !== 8 || vectors.length !== 11 || !entities.some((row) => row.name === "tests/fixtures/agents/asi01-failing/harness.py#model_callback")) {
+      throw new Error(`Python graph rows duplicated or missing after ingest ${attempt + 1}`);
+    }
+  }
+  process.stdout.write("local JS/TS, Rust, and Python source graph fixtures persisted and remained idempotent\n");
 } catch (error) {
   failure = error;
 } finally {

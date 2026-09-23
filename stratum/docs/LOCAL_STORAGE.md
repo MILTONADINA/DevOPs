@@ -114,15 +114,16 @@ rejects cross-organization edge references. Run
 `npm run db:verify-graph-integrity` to check insert and update rejection for
 foreign entity and session references. The read API supplies graph nodes and
 edges. Run `npm run db:verify-source-graph` for a disposable source fixture
-round-trip and idempotence check. To ingest a selected project-local JS/TS/Rust
+round-trip and idempotence check. To ingest a selected project-local JS/TS/Rust/Python
 subtree for an existing organization, set `INGEST_ORG_ID` to its UUID, optionally
 set `SOURCE_SUBDIR` (default `stratum/src`), and run
 `npm run db:with-env -- npm run ingest-source-graph` from `stratum/`. This creates
 File and top-level Function nodes with source-derived summaries plus DECLARES
 and local import/module DEPENDS_ON edges. Rust ingestion recognizes top-level
-named functions and `mod name;` declarations. It also replaces their entity embeddings
+named functions and `mod name;` declarations; Python ingestion recognizes
+top-level sync/async functions and known local imports. It also replaces their entity embeddings
 using the project-local ONNX cache; a missing cache fails without downloading.
-Python parsing and model-generated summaries remain separate work.
+Model-generated source summaries remain separate work.
 
 Open `/dashboard/graph` on the local proxy to explore the bounded graph
 snapshot. Enter a CQ API key in commercial mode, or pass `?org-id=<uuid>` in

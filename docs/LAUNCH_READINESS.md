@@ -51,8 +51,8 @@ File-to-fact edges with triggered lifecycle cleanup and migration backfill
 removes stale nodes after refresh; a real Chrome check verified navigation and
 literal text (claim 055). Offline semantic node search is verified against
 local PostgreSQL and ONNX (claim 056). Deterministic tour narration uses
-source summaries and direct graph edges. Rust source declarations and modules
-are indexed in the local graph; Python extraction and model-generated source
+source summaries and direct graph edges. Rust and Python declarations and
+local dependencies are indexed in the local graph; model-generated source
 summaries remain open. The historical effort
 percentage below has not been recalculated.
 

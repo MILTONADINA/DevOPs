@@ -7,7 +7,7 @@ import { indexSourceFiles, type SourceFileInput } from "../src/memory/source-gra
 import { graphEncoder, graphEntityText } from "../src/memory/graph-embedding";
 
 const SKIP_DIRS = new Set(["node_modules", "dist", "build", "coverage", "data", "models", "backups", "target"]);
-const SOURCE_EXT = /\.(?:ts|tsx|js|jsx|rs)$/;
+const SOURCE_EXT = /\.(?:ts|tsx|js|jsx|rs|py)$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function collectFiles(root: string, dir: string): SourceFileInput[] {
