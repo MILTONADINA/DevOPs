@@ -26,6 +26,17 @@ describe("Tier-3 knowledge graph (Supabase adapter)", () => {
     expect(store["knowledge_entities"]).toHaveLength(1);
   });
 
+  test("source file metadata is stored and refreshed without a duplicate node", async () => {
+    const { client, store } = makeFakeSupabase();
+    const g = createKnowledgeGraph(client);
+    const input = { orgId: "o1", kind: "File" as const, name: "src/auth.ts", filePath: "src/auth.ts", summary: "Auth source" };
+    const first = await g.ensureEntity(input);
+    const second = await g.ensureEntity({ ...input, summary: "Updated auth source" });
+    expect(first).toBe(second);
+    expect(store["knowledge_entities"]).toHaveLength(1);
+    expect(store["knowledge_entities"]![0]).toMatchObject({ file_path: "src/auth.ts", summary: "Updated auth source" });
+  });
+
   test("addEdge creates a typed edge and returns its id", async () => {
     const { client, store } = makeFakeSupabase();
     const g = createKnowledgeGraph(client);
@@ -44,12 +55,16 @@ describe("Tier-3 knowledge graph (Supabase adapter)", () => {
   });
 
   test("findSuperseded maps the rpc result (superseded_by → supersededBy) — the ADR-0011 query", async () => {
-    const { client } = makeFakeSupabase({}, {}, {
-      find_superseded: (args) => {
-        const names = (args["names"] as string[]) ?? [];
-        return names.includes("AWS Lambda") ? [{ superseded: "AWS Lambda", superseded_by: "Cloudflare Workers" }] : [];
+    const { client } = makeFakeSupabase(
+      {},
+      {},
+      {
+        find_superseded: (args) => {
+          const names = (args["names"] as string[]) ?? [];
+          return names.includes("AWS Lambda") ? [{ superseded: "AWS Lambda", superseded_by: "Cloudflare Workers" }] : [];
+        },
       },
-    });
+    );
     const g = createKnowledgeGraph(client);
     const res = await g.findSuperseded("o1", ["AWS Lambda", "Cloudflare Workers"]);
     expect(res).toEqual([{ superseded: "AWS Lambda", supersededBy: "Cloudflare Workers" }]);
@@ -68,15 +83,19 @@ describe("Tier-3 knowledge graph (Supabase adapter)", () => {
   });
 
   test("entityStatus maps the rpc result (other_name → otherName; direction/edgeType)", async () => {
-    const { client } = makeFakeSupabase({}, {}, {
-      entity_status: (args) =>
-        args["entity_name"] === "fetchUser"
-          ? [
-              { direction: "incoming", edge_type: "SUPERSEDES", other_name: "archiveUser" },
-              { direction: "outgoing", edge_type: "SUPERSEDES", other_name: "getUser" },
-            ]
-          : [],
-    });
+    const { client } = makeFakeSupabase(
+      {},
+      {},
+      {
+        entity_status: (args) =>
+          args["entity_name"] === "fetchUser"
+            ? [
+                { direction: "incoming", edge_type: "SUPERSEDES", other_name: "archiveUser" },
+                { direction: "outgoing", edge_type: "SUPERSEDES", other_name: "getUser" },
+              ]
+            : [],
+      },
+    );
     const g = createKnowledgeGraph(client);
     expect(await g.entityStatus("o1", "fetchUser")).toEqual([
       { direction: "incoming", edgeType: "SUPERSEDES", otherName: "archiveUser" },

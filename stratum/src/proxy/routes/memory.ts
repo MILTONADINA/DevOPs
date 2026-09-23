@@ -39,7 +39,7 @@ export interface AuditStatusSummary {
 }
 
 export interface GraphSnapshot {
-  entities: { id: string; kind: string; name: string; session_id: string | null }[];
+  entities: { id: string; kind: string; name: string; session_id: string | null; file_path: string | null; summary: string | null }[];
   edges: { id: string; edge_type: string; from_entity: string; to_entity: string }[];
 }
 
@@ -155,17 +155,19 @@ export function createSupabaseMemoryDeps(client: SupabaseClient): MemoryDeps {
       return (data ?? []) as AuditStatusSummary[];
     },
     async listGraph(orgId, limit) {
-      const entitiesResult = await client.from("knowledge_entities")
-        .select("id,kind,name,session_id").eq("org_id", orgId)
-        .order("created_at", { ascending: false }).limit(limit);
+      const entitiesResult = await client.from("knowledge_entities").select("id,kind,name,session_id,file_path,summary").eq("org_id", orgId).order("created_at", { ascending: false }).limit(limit);
       if (entitiesResult.error) throw new Error(`listGraph entities failed: ${entitiesResult.error.message}`);
       const entities = (entitiesResult.data ?? []) as GraphSnapshot["entities"];
       if (entities.length === 0) return { entities, edges: [] };
       const ids = entities.map((entity) => entity.id);
-      const edgesResult = await client.from("knowledge_edges")
-        .select("id,edge_type,from_entity,to_entity").eq("org_id", orgId)
-        .in("from_entity", ids).in("to_entity", ids)
-        .order("created_at", { ascending: false }).limit(500);
+      const edgesResult = await client
+        .from("knowledge_edges")
+        .select("id,edge_type,from_entity,to_entity")
+        .eq("org_id", orgId)
+        .in("from_entity", ids)
+        .in("to_entity", ids)
+        .order("created_at", { ascending: false })
+        .limit(500);
       if (edgesResult.error) throw new Error(`listGraph edges failed: ${edgesResult.error.message}`);
       return { entities, edges: (edgesResult.data ?? []) as GraphSnapshot["edges"] };
     },
