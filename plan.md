@@ -269,7 +269,8 @@ Borrowed from [Lum1104/Understand-Anything](https://github.com/Lum1104/Understan
 
 **Theme**: "Stratum's memory is trustworthy because it's cross-checked against Git history."
 **Ship gate**: contradicting fact → CONFLICT in <5s; Opus escalation <1% of facts in 1000-fact test; Llama spot-check confidence-flagging works.
-**Effort remaining**: ~60h.
+**Effort remaining**: not recalculated after the build-ahead audit modules and
+dashboard landed; the historical ~60h estimate is stale.
 
 ### 5a. Git indexer + attestation checker
 
@@ -277,25 +278,27 @@ Borrowed from [Lum1104/Understand-Anything](https://github.com/Lum1104/Understan
   structured code changes. `npm run bench:audit-indexer` measures five real
   100-commit samples against the <5s p95 local target; deployed representative
   performance remains a v0.6 release check.
-- [ ] **`stratum/src/audit/git-attestation.ts`** (~15h). For each Tier 2 fact, fetch commit_hash from indexer, compare claimed fact against actual git state. Output: CONFIRMED / CONFLICT / UNVERIFIABLE.
-- [ ] **Tests**: inject contradicting `FunctionChange` fact → CONFLICT; inject correct fact → CONFIRMED; missing commit_hash → UNVERIFIABLE.
+- [x] **Deterministic Git attestation core**. `stratum/src/audit/git-attestation.ts` compares typed code facts against indexed changes and returns CONFIRMED / CONFLICT / UNVERIFIED; `audit-engine.ts` persists the outcomes. It is currently called by `npm run audit:repo`, not the proxy request path. Explicit binding to a fact's claimed `commit_hash` remains open.
+- [x] **Core attestation tests**. `stratum/test/audit/git-attestation.test.ts` covers confirming, contradicting, and unverified changes. A separate claimed-commit-hash acceptance case remains open; absence of a confirming indexed change currently returns UNVERIFIED.
+- [ ] **Claimed commit anchor**. Bind a fact's trusted `commit_hash` to its confirming indexed change and prove missing or mismatched anchors produce the specified unverified outcome.
 
 ### 5b. Llama spot-check + Opus escalation
 
-- [ ] **`stratum/src/audit/llama-check.ts`** (~8h). 10% random sample of facts; Llama coherence check; output confidence score.
-- [ ] **`stratum/src/audit/opus-escalation.ts`** (~8h). When Llama confidence <0.85, escalate to Opus for deeper analysis. Log decision + reasoning.
+- [x] **Llama spot-check core**. `stratum/src/audit/llama-check.ts` supplies deterministic ~10% sampling, a bounded untrusted-data prompt, verdict parsing, and a confidence score through an injected completion seam. A real Llama provider and request-path invocation remain open.
+- [x] **Opus escalation core**. `stratum/src/audit/opus-escalation.ts` parses a deeper verdict through an injected completion seam; the spot-check result flags confidence <0.85 for escalation. The two stages are not yet orchestrated in the request path or verified against a real provider.
+- [ ] **Live staged audit**. Invoke the sampled Llama check and conditional Opus escalation for the trusted organization with real providers; verify the 1000-fact rate and cost limits before activation.
 - [ ] **Cost monitor**: log Opus audit costs; alert if >2% of usage. (~3h)
 
 ### 5c. audit_conflicts table + dashboard alerts
 
-- [ ] **Supabase migration** for `audit_conflicts` table (~2h). Already in initial schema; verify.
+- [x] **Audit schema migrations**. `audit_conflicts` is in the initial schema; the September migrations add atomic conflict suppression and per-fact `audit_statuses`. All 16 migrations applied in a fresh local CLI start, but local API/SQL behavior remains unverified until loopback-only startup is available.
 - [ ] **CONFLICT alert pipeline** (~4h). Deterministic audit writes conflicts
   to `audit_conflicts` idempotently. The dashboard now reads the protected,
   organization-scoped conflict API and refreshes every 3s while visible.
   The <5s live insertion-to-render gate and request-path wiring remain open.
-- [ ] **Dashboard updates** (~5h). Historical Drift conflict panel exists;
-  per-fact CONFIRMED/CONFLICT/UNVERIFIED badges and scoped status API are built.
-  Live insertion-to-render verification remains open.
+- [x] **Dashboard read surfaces**. Historical Drift conflict panel and per-fact
+  CONFIRMED/CONFLICT/UNVERIFIED badges use the scoped status API. Live
+  insertion-to-render verification remains open.
 
 ### 5d. v0.6.0 release
 
@@ -459,7 +462,7 @@ Update after every version ships. Snapshot at last update:
 | v0.3.x (Phase 0 + Phase 1 + first-party Anthropic integrations + red/green TDD explicit) | NOT STARTED | 0 | ~115h | Friend can clone + setup + see live dashboard; `/security-review` GitHub Action gates PRs |
 | v0.4.x (Phase 2 pruner + subagent-driven-development autonomous loops) | NOT STARTED | 0 | ~135h | Eval GREEN; zero Tier C regressions; 1 week no degradation; pilot autonomous loop succeeds on one Phase 2 sub-task |
 | v0.5.x (Phase 3 memory + knowledge-graph view) | IN PROGRESS | not recalculated | not recalculated | 50-turn survival test; live session-start recall; tier latencies met; `/understand-codebase` works on this repo |
-| v0.6.x (Phase 5 audit) | NOT STARTED | 0 | ~60h | CONFLICT in <5s; Opus <1% escalation |
+| v0.6.x (Phase 5 audit) | IN PROGRESS | not recalculated | not recalculated | CONFLICT in <5s; Opus <1% escalation; live request-path audit |
 | v0.7.x (Phase 4 TEE + Claude Code Security reasoning-based release gate) | NOT STARTED | 0 | ~84h | Modified-PCR rejected; <15ms latency; security reviewer signoff; Claude Code Security clean release |
 | v0.8.x (polish + operator-ready) | NOT STARTED | 0 | ~50h | <5min cold-clone-to-running; backup tested |
 | v0.9.x (billing schema) | NOT STARTED | 0 | ~30h | Postgres trigger blocks UPDATE; GDPR <30s |
