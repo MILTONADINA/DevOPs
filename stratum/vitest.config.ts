@@ -62,14 +62,14 @@ export default defineConfig({
       // functions metric is unreliable under this tool stack, not the test
       // suite.
       //
-      // Alternative providers (istanbul) require vitest 4.x; current vitest
-      // is 2.x. Migrating vitest 2 → 4 is out of P0-A scope.
+      // Vitest 5 is now in use. The historical v8 source-map asymmetry
+      // below remains documented until coverage is re-measured.
       //
       // RESOLUTION (production-grade honest): drop the functions threshold
       // here. statements + branches + lines + the substance of 50 passing
       // tests against the handler are the load-bearing coverage signal.
-      // Surface this asymmetry in Session 13 Phase B summary; revisit when
-      // vitest 4 is on the table (separate scope item).
+      // Surface this asymmetry in Session 13 Phase B summary; re-measure
+      // before restoring the functions threshold.
       thresholds: {
         statements: 85,
         branches: 80,
