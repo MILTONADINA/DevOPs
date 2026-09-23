@@ -45,6 +45,27 @@ test('null reviewer stops before security and validator', async () => {
   assert.deepEqual(labels, ['preflight', 'reviewer']);
 });
 
+test('blocked coder stops before its tester and preserves fault details', async () => {
+  const labels = [];
+  const plan = { tasks: [{ id: 'T1', description: 'one task' }] };
+  await assert.rejects(run(async (_, options) => {
+    labels.push(options.label);
+    if (options.label === 'preflight') return { status: 'ready', check_ids: [] };
+    if (options.label === 'coder:T1') return { task_id: 'T1', summary: 'blocked', passed: false,
+      blocked_by_environment: { class: 'environment', check_ids: ['git.runs'], evidence: 'Xcode license', classified_by: 'signature' } };
+    throw new Error(`unexpected agent: ${options.label}`);
+  }, { plan }), (error) => {
+    const fault = JSON.parse(error.message.slice('BLOCKED_BY_ENVIRONMENT:'.length));
+    assert.equal(fault.stage, 'coder');
+    assert.equal(fault.taskId, 'T1');
+    assert.equal(fault.class, 'environment');
+    assert.deepEqual(fault.check_ids, ['git.runs']);
+    assert.equal(fault.classified_by, 'signature');
+    return true;
+  });
+  assert.deepEqual(labels, ['preflight', 'coder:T1']);
+});
+
 test('each role can report a blocked fault and tester sees environment rules before stall rules', async () => {
   const calls = [];
   const plan = { tasks: [{ id: 'T1', description: 'one task' }] };
@@ -71,4 +92,7 @@ test('each role can report a blocked fault and tester sees environment rules bef
     assert.match(prompt, /graph-classify-fault\.mjs/, options.label);
     assert.match(prompt, /classified_by/, options.label);
   }
+  const coder = calls.find(({ options }) => options.label === 'coder:T1');
+  assert.deepEqual(coder.options.schema.properties.passed, { type: 'boolean' });
+  assert.match(coder.prompt, /passed: false/);
 });

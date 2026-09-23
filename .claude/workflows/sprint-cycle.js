@@ -30,7 +30,7 @@ const BLOCKED_SCHEMA = {
   },
   required: ['class', 'check_ids', 'evidence'],
 }
-const ENVIRONMENT_RULES = `ENVIRONMENT RULES: On any tool or test failure, pass its first 20 error lines to node scripts/graph-classify-fault.mjs (with --exit-code when known). Record its class and classified_by; for an unrecognized error, supply --agent-class and explain that judgment. Code failures follow normal review and are never retried as flaky. For an environment or API fault, run bash scripts/graph-preflight.sh once. If it does not report ready/remediated, call bash scripts/graph-blocked.sh with the cycle, stage, task, class, check ids and a project-local evidence file; for needs_human also pass --fix with the exact human action. Return blocked_by_environment with class, check_ids, evidence and classified_by, then stop. A scratchpad check does not make an unrun suite pass.`
+const ENVIRONMENT_RULES = `ENVIRONMENT RULES: On any tool or test failure, pass its first 20 error lines to node scripts/graph-classify-fault.mjs (with --exit-code when known). Record its class and classified_by; for an unrecognized error, supply --agent-class and explain that judgment. Code failures follow normal review and are never retried as flaky. For an environment or API fault, run bash scripts/graph-preflight.sh once. If it does not report ready/remediated, call bash scripts/graph-blocked.sh with the cycle, stage, task, class, check ids and a project-local evidence file; for needs_human also pass --fix with the exact human action. Return blocked_by_environment with class, check_ids, evidence and classified_by, set passed: false (coder/tester/security) or the role's negative verdict, then stop. A scratchpad check does not make an unrun suite pass.`
 
 if (!backlogItem) {
   throw new Error('sprint-cycle requires args.backlogItem -- the backlog item id/description to work (see SHIP_BLOCKERS.md)')
@@ -183,6 +183,7 @@ HARD CONSTRAINT: do not run \`git add\`, \`git commit\`, \`git push\`, or any de
           task_id: { type: 'string' },
           files_changed: { type: 'array', items: { type: 'string' } },
           summary: { type: 'string' },
+          passed: { type: 'boolean' },
           blocked_by_environment: BLOCKED_SCHEMA,
         },
         required: ['task_id', 'summary'],
