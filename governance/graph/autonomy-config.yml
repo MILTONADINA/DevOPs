@@ -59,6 +59,13 @@ kill_switch:
   commands: ["/graph-halt", "/graph-resume"]
   checked_by: "hooks/universal/pre-tool/deploy-gate.sh"
 
+resilience:
+  preflight: "scripts/graph-preflight.sh"
+  remediation_registry: "governance/graph/preflight-remediations.yml"
+  blocked_record: ".workflow/state/blocked.md"
+  run_record: ".workflow/state/graph-cycles/{cycleId}/run.json"
+  unattended_resume_classes: [api, transient]
+
 # RESOLVED 2026-09-14: the "separate explicit decision" gates.production_deploy
 # and gates.billing_path_change required has been made. User deferred to
 # recommendation ("for all questions I will go by your best recommendation");

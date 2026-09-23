@@ -11,9 +11,13 @@ the current phase and gate configuration.
 
 ## Before running
 
-1. Check `.workflow/state/graph-halt` does not exist (kill switch). If it
-   does, this will simply refuse to start — run `/graph-resume` first if
-   that's intentional.
+1. Run `bash scripts/graph-preflight.sh` before calling Workflow. Exit 0 or
+   10 permits launch; exit 20 or 2 refuses launch. For a refusal, if
+   `.workflow/state/blocked.md` does not yet exist, use
+   `scripts/graph-blocked.sh` with stage `preflight`, the failing check ids,
+   and the preflight output in a project-local evidence file. Print the block
+   path and check ids. If the block file exists, leave it unchanged. Never
+   remove `.workflow/state/graph-halt`.
 2. Check `governance/graph/autonomy-config.yml`'s `phase:` value. Phase 0
    means every step gets a human checkpoint, no exceptions — do not skip
    checkpoints even if the phase config nominally allows more, since Phase
@@ -23,10 +27,39 @@ the current phase and gate configuration.
 
 ## Running it
 
+For a new cycle, record its exact input before launching:
+
+```
+node scripts/graph-run-record.mjs launch --cycle <cycleId> --backlog '<exact backlog item>'
+```
+
 ```
 Workflow({ scriptPath: ".claude/workflows/sprint-cycle.js", args: { backlogItem: "<id or description>", cycleId: "<a short identifier for this run>" } })
 ```
 Watch the cycle live at http://127.0.0.1:4081 (override the port with `GRAPH_DASHBOARD_PORT`).
+
+As soon as Workflow supplies its run id and journal path, update the record:
+`node scripts/graph-run-record.mjs update --cycle <cycleId> --status running --runId <runId> --journal <journalPath>`.
+On completion, set `--status completed`. On an ordinary failure, set
+`--status failed`.
+
+If Workflow throws `BLOCKED_BY_ENVIRONMENT:` parse its JSON payload, set the
+run status to `blocked`, and run `bash scripts/graph-blocked.sh` with its
+cycle, stage, task, class, check ids and a project-local evidence file. Do
+this even when `agent()` returned null, so the block record exists before
+the session reports the fault. The script appends `graph.blocked` and
+`graph.environment_fault` events to `.workflow/state/events.jsonl`.
+
+For `/sprint --resume <cycleId>`, run the same preflight first. Exit 20 or
+2 leaves the block file and run record unchanged. On exit 0 or 10, run
+`node scripts/graph-resume-args.mjs <cycleId>` and pass its JSON output as
+the *complete* Workflow `args` object. Use `resumeFromRunId` only when the
+script and prompts are unchanged; otherwise launch with derived args. Update
+the run id, journal path, args, `resumedFrom` and status via
+`graph-run-record.mjs update`. Pass `--clearBlocked true` only after the
+passing preflight and successful launch. An autonomous loop may resume `api`
+and `transient` blocks; `needs_human` and unlisted `environment` remedies
+wait for a human fix verified by preflight.
 
 The Workflow pipelines the backlog item through planner → coder → tester →
 reviewer → security → validator, phase-tagged (Plan/Build/Verify/Release),

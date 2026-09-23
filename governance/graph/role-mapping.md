@@ -13,13 +13,28 @@ other.
 
 ## Model assignment (updated 2026-09-14, user directive)
 
-All six sprint-cycle subagent roles (planner/coder/tester/reviewer/
+The six build and review roles (planner/coder/tester/reviewer/
 security/validator) run on **Sonnet at max reasoning effort**, set
 explicitly per `agent()` call in `.claude/workflows/sprint-cycle.js`
 (`model: 'sonnet', effort: 'max'`) — not inherited from whatever the
 orchestrating session happens to be running, since that would silently
 drift with the user's own model choice. See
 `cost-controls/model-routing.yml` for the full routing table.
+The first role, `preflight`, uses Sonnet at low effort to run
+`scripts/graph-preflight.sh --json` before the planner.
+
+## Blocked and resume lifecycle
+
+`/sprint` runs `scripts/graph-preflight.sh` before Workflow. It records the
+exact backlog input and each Workflow run id in
+`.workflow/state/graph-cycles/<cycleId>/run.json`. A stopped agent or an
+environment fault ends the cycle with `BLOCKED_BY_ENVIRONMENT:`. The
+orchestrator writes `.workflow/state/blocked.md` using
+`scripts/graph-blocked.sh`; that script also records the fault in
+`events.jsonl`. `/sprint --resume <cycleId>` repeats preflight and derives
+the full continuation args with `scripts/graph-resume-args.mjs`. Only API and
+transient faults may resume unattended. The `graph-halt` kill switch remains
+human controlled.
 
 **Fable is the orchestrator** ("boss/CTO") — the top-level entity running
 `sprint-cycle.js` and interpreting its results, i.e. the main Claude Code

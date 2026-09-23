@@ -1,0 +1,47 @@
+{
+  "remediations": [
+    {
+      "check_id": "git.runs",
+      "detect": "You have not agreed to the Xcode license agreements",
+      "apply": "write a Command Line Tools git shim in the first user-owned PATH directory",
+      "revert": "bash scripts/graph-preflight.sh --revert git.runs",
+      "reversible": true,
+      "needs_sudo": false,
+      "why": "The Command Line Tools git remains usable when the Xcode license shim blocks /usr/bin/git."
+    },
+    {
+      "check_id": "deps.root",
+      "detect": "non-executable .bin entries",
+      "apply": "chmod +x on the non-executable root node_modules/.bin entries",
+      "revert": "bash scripts/graph-preflight.sh --revert deps.root",
+      "reversible": true,
+      "needs_sudo": false,
+      "why": "A checkout copied from Windows can lose Unix executable bits on package launchers."
+    },
+    {
+      "check_id": "deps.stratum",
+      "detect": "non-executable .bin entries",
+      "apply": "chmod +x on the non-executable stratum/node_modules/.bin entries",
+      "revert": "bash scripts/graph-preflight.sh --revert deps.stratum",
+      "reversible": true,
+      "needs_sudo": false,
+      "why": "The Stratum test runner needs executable launchers."
+    },
+    {
+      "check_id": "tool.cosign",
+      "detect": "cosign unavailable or version check failed",
+      "apply": "download the release-sign.yml pinned Cosign release into ~/bin and verify its published SHA-256",
+      "revert": "bash scripts/graph-preflight.sh --revert tool.cosign",
+      "reversible": true,
+      "needs_sudo": false,
+      "why": "Signing and verification checks require the same pinned Cosign version as release CI.",
+      "version": "v2.4.3",
+      "sha256": {
+        "darwin-arm64": "edfc761b27ced77f0f9ca288ff4fac7caa898e1e9db38f4dfdf72160cdf8e638",
+        "darwin-amd64": "98a3bfd691f42c6a5b721880116f89210d8fdff61cc0224cd3ef2f8e55a466fb",
+        "linux-arm64": "bd0f9763bca54de88699c3656ade2f39c9a1c7a2916ff35601caf23a79be0629",
+        "linux-amd64": "caaad125acef1cb81d58dcdc454a1e429d09a750d1e9e2b3ed1aed8964454708"
+      }
+    }
+  ]
+}

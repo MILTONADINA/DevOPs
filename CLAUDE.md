@@ -33,9 +33,12 @@ in any project:
 ### Hooks
 
 Claude Code hooks are configured via `.claude/settings.json`, which is
-tracked in this repo and wires three hooks (since commit `3c81635`,
+tracked in this repo and wires four hooks (since commit `3c81635`,
 2026-09-14; hardened in `027c159`, 2026-09-15):
 
+- SessionStart → `hooks/universal/session-start/graph-preflight.sh` —
+  runs `scripts/graph-preflight.sh --check-only`, prints the check table,
+  never applies a repair, and never blocks the session.
 - PreToolUse on `Bash` → `hooks/universal/pre-tool/block-sealed-refs.sh` —
   blocks destructive git operations against sealed refs (the v0.2.0 tag,
   archival branches). Exit 2 with an explanation. References blueprint §3.
