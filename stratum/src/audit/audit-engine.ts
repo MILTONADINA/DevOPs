@@ -10,6 +10,7 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { createHash } from "node:crypto";
 import type { AnyFact } from "../types/facts";
 import { attestFact, type AttestationResult, type CodeChange } from "./git-attestation";
 import { tableForFactType } from "../memory/warm/tier2";
@@ -57,6 +58,15 @@ export interface AuditContext {
   sessionId: string;
 }
 
+/** Stable UUIDv8 for one contradictory observation, scoped to its owning org. */
+function conflictId(parts: readonly string[]): string {
+  const bytes = createHash("sha256").update(JSON.stringify(parts)).digest();
+  bytes[6] = (bytes[6]! & 0x0f) | 0x80;
+  bytes[8] = (bytes[8]! & 0x3f) | 0x80;
+  const hex = Buffer.from(bytes.subarray(0, 16)).toString("hex");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
 /**
  * Persist CONFLICT results to `audit_conflicts` (suppressed = true) — the Historical
  * Drift log/alert sink. CONFIRMED / UNVERIFIED are not logged here. org/session are
@@ -65,24 +75,33 @@ export interface AuditContext {
  * @param client - a configured Supabase client (service-role).
  * @param audited - the audit results (only CONFLICTs are written).
  * @param ctx - trusted org/session FKs.
- * @returns the number of conflicts recorded.
+ * Replaying the same evidence does not replace an existing acknowledgement.
+ * @returns the number of new conflict records inserted.
  * @throws {Error} if the insert fails.
  */
 export async function persistConflicts(client: SupabaseClient, audited: AuditedFact[], ctx: AuditContext): Promise<number> {
   const rows = audited
     .filter((a) => a.result.status === "CONFLICT")
-    .map((a) => ({
-      org_id: ctx.orgId,
-      session_id: ctx.sessionId,
-      fact_table: tableForFactType(a.fact.fact_type),
-      fact_id: a.fact.id,
-      claimed_state: factToText(a.fact),
-      actual_state: a.result.conflictDetail ?? "conflict",
-      ...(a.result.conflictCommit !== undefined ? { conflict_commit: a.result.conflictCommit } : {}),
-      suppressed: true,
-    }));
+    .map((a) => {
+      const table = tableForFactType(a.fact.fact_type);
+      const claimed = factToText(a.fact);
+      const actual = a.result.conflictDetail ?? "conflict";
+      const commit = a.result.conflictCommit ?? "";
+      return {
+        id: conflictId([ctx.orgId, table, a.fact.id, claimed, actual, commit]),
+        org_id: ctx.orgId,
+        session_id: ctx.sessionId,
+        fact_table: table,
+        fact_id: a.fact.id,
+        claimed_state: claimed,
+        actual_state: actual,
+        ...(a.result.conflictCommit !== undefined ? { conflict_commit: a.result.conflictCommit } : {}),
+        suppressed: true,
+      };
+    });
   if (rows.length === 0) return 0;
-  const { error } = await client.from("audit_conflicts").insert(rows);
+  const { data, error } = await client.from("audit_conflicts")
+    .upsert(rows, { onConflict: "id", ignoreDuplicates: true }).select("id");
   if (error) throw new Error(`persistConflicts failed: ${error.message}`);
-  return rows.length;
+  return data?.length ?? 0;
 }
