@@ -28,6 +28,15 @@ WHILE the page is visible and an audit-status request is pending, THE SYSTEM
 SHALL continue polling the conflict API at its normal interval so status
 lookup latency cannot stop Historical Drift alert refresh.
 
+## REQ-4 — Local browser timing evidence
+
+WHEN a conflict is added to an injected organization-scoped store while the
+local dashboard is visible, THE LOCAL VERIFIER SHALL measure elapsed wall time
+until real Chrome renders that conflict's text through the scoped API. It SHALL fail
+if rendering takes 5 seconds or longer or if the conflict appears before
+insertion. This local measurement SHALL NOT close the deployed ship gate in
+REQ-3.
+
 ## Acceptance criteria
 
 - **AC-1:** the page fetches the protected conflict API with a Bearer header;
@@ -40,3 +49,6 @@ lookup latency cannot stop Historical Drift alert refresh.
   summaries through `/dashboard/api`; personal mode retains its local report.
 - **AC-5:** an unresolved audit-status request does not block the next visible
   conflict poll.
+- **AC-6:** a real Chrome run observes an initially empty alert banner, adds
+  one scoped conflict to the injected store, and reports time from that store
+  update to rendering under 5 seconds.
