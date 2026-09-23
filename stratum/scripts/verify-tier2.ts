@@ -1,19 +1,18 @@
 /**
- * Verify the Tier-2 warm-memory adapter + session resolver against the LIVE
- * Supabase project (MANUAL / gated). Resolves a throwaway org + session via
+ * Verify the Tier-2 warm-memory adapter + session resolver against a configured
+ * Supabase-compatible API (MANUAL / gated). Resolves a throwaway org + session via
  * createSessionStore (ensureOrg + its get-branch + createSession), persists one
  * fact of each of the 5 types via createWarmMemory, reads them back with
  * queryRecent, exercises endSession, asserts the round-trip (incl. trusted-FK
  * override), then deletes everything it created.
  *
- *   npm run verify-tier2
+ *   npm run db:with-env -- npx tsx scripts/verify-tier2.ts
  *
- * GATED: needs SUPABASE_URL + SUPABASE_SERVICE_KEY in the environment (.env). With
+ * GATED: needs SUPABASE_URL + SUPABASE_SERVICE_KEY in the process environment. With
  * no credentials it SKIPs cleanly (exit 0) — the adapter's pure logic is covered
  * credential-free by test/memory/tier2.test.ts.
  */
 
-import "dotenv/config";
 import { randomUUID } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 import { createWarmMemory, FACT_TABLES } from "../src/memory/warm/tier2";
