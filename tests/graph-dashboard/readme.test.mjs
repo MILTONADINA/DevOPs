@@ -20,11 +20,8 @@ import { readFile, mkdtemp, writeFile as writeTempFile, rm } from 'node:fs/promi
 import { existsSync } from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
-import { fileURLToPath } from 'node:url';
-import { execFileSync } from 'node:child_process';
 
-const THIS_DIR = path.dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd: THIS_DIR, encoding: 'utf-8' }).trim();
+const REPO_ROOT = path.resolve(import.meta.dirname, '..', '..');
 const README_PATH = path.join(REPO_ROOT, 'scripts', 'graph-dashboard', 'README.md');
 const SERVER_MJS_PATH = path.join(REPO_ROOT, 'scripts', 'graph-dashboard', 'server.mjs');
 const INDEX_HTML_PATH = path.join(REPO_ROOT, 'scripts', 'graph-dashboard', 'index.html');

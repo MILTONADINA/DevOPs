@@ -17,12 +17,9 @@ import assert from 'node:assert/strict';
 import { readFile, readdir, mkdir, mkdtemp, rm, writeFile, stat } from 'node:fs/promises';
 import * as path from 'node:path';
 import * as os from 'node:os';
-import { fileURLToPath } from 'node:url';
-import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 
-const THIS_DIR = path.dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd: THIS_DIR, encoding: 'utf-8' }).trim();
+const REPO_ROOT = path.resolve(import.meta.dirname, '..', '..');
 const SERVER_MJS = path.join(REPO_ROOT, 'scripts', 'graph-dashboard', 'server.mjs');
 const REAL_HALT_PATH = path.join(REPO_ROOT, '.workflow', 'state', 'graph-halt');
 const REAL_APPROVALS_DIR = path.join(REPO_ROOT, '.workflow', 'state', 'graph-approvals');
@@ -860,16 +857,11 @@ test("static: server.mjs never invokes \"npm run validate:claims\" (or any varia
   for (const forbidden of ['validate:claims', 'validate-claims', 'claim-validator.ts', 'claim-validator.js', 'ClaimValidator']) {
     assert.ok(!src.includes(forbidden), `server.mjs must never reference the claim validator; found forbidden substring: ${forbidden}`);
   }
-  // Stronger check: confirm the ONLY child-process spawn in the entire file
-  // is the single, pre-existing (T1-era) "git rev-parse --show-toplevel"
-  // call documented in the file's own header comment -- proving T4 didn't
-  // add a second, hidden subprocess spawn capable of shelling out to npm.
-  // Comment-only lines are stripped first: the file's own header prose
-  // quotes the exact call shape (`child_process.execFileSync('git', ...)`)
-  // as documentation, which would otherwise double-count as a second "call".
+  // The server derives its root from its own file location, so it has no
+  // toolchain subprocess dependency even when git is unavailable.
   const codeOnly = src.split('\n').filter((line) => !line.trim().startsWith('//')).join('\n');
   const execFileSyncCalls = [...codeOnly.matchAll(/execFileSync\(\s*(['"`])(.*?)\1/g)].map((m) => m[2]);
-  assert.deepStrictEqual(execFileSyncCalls, ['git'], `expected exactly one real (non-comment) execFileSync call, invoking "git" -- found: ${JSON.stringify(execFileSyncCalls)}`);
+  assert.deepStrictEqual(execFileSyncCalls, [], `server.mjs must not spawn a toolchain command -- found: ${JSON.stringify(execFileSyncCalls)}`);
   // Excludes a "." immediately before exec/execSync/spawn(Sync) so this
   // doesn't false-positive on the two unrelated RegExp#exec() calls already
   // in this file (BACKLOG_ITEM_RE.exec(...), AUTONOMY_PHASE_RE.exec(...)) --

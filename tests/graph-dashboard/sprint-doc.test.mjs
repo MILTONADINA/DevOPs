@@ -23,11 +23,8 @@ import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import * as path from 'node:path';
-import { execFileSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
 
-const THIS_DIR = path.dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd: THIS_DIR, encoding: 'utf-8' }).trim();
+const REPO_ROOT = path.resolve(import.meta.dirname, '..', '..');
 const SPRINT_MD_PATH = path.join(REPO_ROOT, 'slash-commands', 'universal', 'sprint.md');
 const SERVER_MJS_PATH = path.join(REPO_ROOT, 'scripts', 'graph-dashboard', 'server.mjs');
 

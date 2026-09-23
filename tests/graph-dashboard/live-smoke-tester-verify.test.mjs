@@ -33,11 +33,9 @@ import * as path from 'node:path';
 import * as os from 'node:os';
 import * as net from 'node:net';
 import * as http from 'node:http';
-import { fileURLToPath } from 'node:url';
 import { execFileSync, spawn } from 'node:child_process';
 
-const THIS_DIR = path.dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd: THIS_DIR, encoding: 'utf-8' }).trim();
+const REPO_ROOT = path.resolve(import.meta.dirname, '..', '..');
 const SERVER_MJS = path.join(REPO_ROOT, 'scripts', 'graph-dashboard', 'server.mjs');
 const REQUIRED_SNAPSHOT_KEYS = ['runs', 'events', 'halt', 'approvals', 'phase'];
 

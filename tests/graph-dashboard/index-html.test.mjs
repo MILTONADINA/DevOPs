@@ -53,11 +53,9 @@ import { readFile, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import * as path from 'node:path';
 import * as os from 'node:os';
 import * as http from 'node:http';
-import { fileURLToPath } from 'node:url';
 import { execFileSync, spawn } from 'node:child_process';
 
-const THIS_DIR = path.dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd: THIS_DIR, encoding: 'utf-8' }).trim();
+const REPO_ROOT = path.resolve(import.meta.dirname, '..', '..');
 const INDEX_HTML = path.join(REPO_ROOT, 'scripts', 'graph-dashboard', 'index.html');
 const SERVER_MJS = path.join(REPO_ROOT, 'scripts', 'graph-dashboard', 'server.mjs');
 

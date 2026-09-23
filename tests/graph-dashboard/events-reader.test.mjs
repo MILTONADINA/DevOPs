@@ -15,12 +15,9 @@ import assert from 'node:assert/strict';
 import { readFile, readdir, mkdir, mkdtemp, rm, writeFile, stat } from 'node:fs/promises';
 import * as path from 'node:path';
 import * as os from 'node:os';
-import { fileURLToPath } from 'node:url';
-import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 
-const THIS_DIR = path.dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd: THIS_DIR, encoding: 'utf-8' }).trim();
+const REPO_ROOT = path.resolve(import.meta.dirname, '..', '..');
 const SERVER_MJS = path.join(REPO_ROOT, 'scripts', 'graph-dashboard', 'server.mjs');
 const REAL_EVENTS_PATH = path.join(REPO_ROOT, '.workflow', 'state', 'events.jsonl');
 

@@ -14,11 +14,8 @@ import assert from 'node:assert/strict';
 import { readFile, mkdir, mkdtemp, rm, writeFile, utimes } from 'node:fs/promises';
 import * as path from 'node:path';
 import * as os from 'node:os';
-import { fileURLToPath } from 'node:url';
-import { execFileSync } from 'node:child_process';
 
-const THIS_DIR = path.dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd: THIS_DIR, encoding: 'utf-8' }).trim();
+const REPO_ROOT = path.resolve(import.meta.dirname, '..', '..');
 const SERVER_MJS = path.join(REPO_ROOT, 'scripts', 'graph-dashboard', 'server.mjs');
 // Same derivation server.mjs itself uses for JOURNAL_ROOT (see its config
 // resolution comment): real session run directories are wholly

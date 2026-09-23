@@ -22,3 +22,5 @@ jobs:
         run: npm run lint:renovate
       - name: Lint stack-specific skills (REQ-D2..D7)
         run: npm run lint:stack-specific-skills
+      - name: Test dashboard and test hermeticity (REQ-R12..R13)
+        run: npm test

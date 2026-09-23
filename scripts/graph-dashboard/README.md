@@ -21,8 +21,7 @@ node scripts/graph-dashboard/server.mjs
 ```
 
 Run it from inside this git working tree — any subdirectory works, since
-the server resolves the repository root itself via `git rev-parse
---show-toplevel` at startup, exiting 1 immediately if that fails. It then
+the server resolves the repository root from its own file location. It then
 listens in the foreground until you stop it (Ctrl-C / SIGINT); if its port
 is already taken (`EADDRINUSE`) or startup otherwise fails, it exits 1
 immediately instead of retrying or hanging.

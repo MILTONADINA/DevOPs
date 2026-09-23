@@ -14,9 +14,9 @@
 //
 // Config (each independently env-overridable, resolved once at startup):
 //   GRAPH_DASHBOARD_PORT          default 4081
-//   GRAPH_DASHBOARD_STATE_DIR     default "<git top-level>/.workflow/state"
+//   GRAPH_DASHBOARD_STATE_DIR     default "<project root>/.workflow/state"
 //   GRAPH_DASHBOARD_JOURNAL_ROOT  default "~/.claude/projects/<slug>", where
-//                                 <slug> is the git top-level path with
+//                                 <slug> is the project-root path with
 //                                 every "/" replaced by "-". When this env
 //                                 var IS set, it is trusted as an
 //                                 already-resolved root directory that
@@ -24,19 +24,8 @@
 //                                 <session-id>/subagents/workflows/wf_*/journal.jsonl
 //                                 -- used verbatim, not re-derived.
 //
-// Ambiguity resolution (flagged at plan level): the backlog names this
-// file's built-ins as "(http, fs, path, os, url)", but cleanly deriving the
-// git top-level wants one more built-in, node:child_process. Chosen here:
-// (a) child_process.execFileSync('git', ['rev-parse', '--show-toplevel'])
-// -- NOT (b) a manual fs/path upward walk for a ".git" entry. Reasons:
-//   1. It is still a Node built-in (node:child_process); the backlog's
-//      constraint is "built-ins only", and this repo already shells out to
-//      git the same way elsewhere (scripts/devops-cli.js).
-//   2. It matches git's own definition of "top-level" exactly -- worktrees,
-//      GIT_DIR/GIT_WORK_TREE overrides, bare repos -- cases a hand-rolled
-//      upward walk would have to special-case or would get wrong. This
-//      runs once at process startup, not per-request, so the one
-//      subprocess spawn is a fixed, negligible cost.
+// The project root is two directories above this file. Resolving it from
+// import.meta.dirname keeps dashboard startup independent of the git binary.
 //
 // Security: binds to 127.0.0.1 ONLY, never 0.0.0.0. No auth exists.
 //
@@ -48,28 +37,16 @@
 // Exits 1 immediately -- no retry, no hang -- if the port is already in
 // use (EADDRINUSE) or startup otherwise fails.
 
-import { execFileSync } from 'node:child_process';
 import * as http from 'node:http';
 import { watch } from 'node:fs';
 import { readFile, readdir, stat } from 'node:fs/promises';
 import * as path from 'node:path';
 import * as os from 'node:os';
-import { fileURLToPath } from 'node:url';
-
-const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
+const SCRIPT_DIR = import.meta.dirname;
 
 // ---------------------------------------------------------------------------
 // Config resolution
 // ---------------------------------------------------------------------------
-
-function resolveGitTopLevel() {
-  try {
-    return execFileSync('git', ['rev-parse', '--show-toplevel'], { encoding: 'utf-8' }).trim();
-  } catch (err) {
-    console.error(`graph-dashboard: could not resolve the git repo root via "git rev-parse --show-toplevel": ${err.message}`);
-    process.exit(1);
-  }
-}
 
 function resolvePort() {
   const raw = process.env.GRAPH_DASHBOARD_PORT;
@@ -77,7 +54,7 @@ function resolvePort() {
   return raw && Number.isInteger(port) && port > 0 && port <= 65535 ? port : 4081;
 }
 
-const GIT_TOP_LEVEL = resolveGitTopLevel();
+const GIT_TOP_LEVEL = path.resolve(SCRIPT_DIR, '..', '..');
 const PORT = resolvePort();
 const STATE_DIR = path.resolve(GIT_TOP_LEVEL, process.env.GRAPH_DASHBOARD_STATE_DIR || '.workflow/state');
 const JOURNAL_ROOT = process.env.GRAPH_DASHBOARD_JOURNAL_ROOT
