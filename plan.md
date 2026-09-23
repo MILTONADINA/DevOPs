@@ -7,13 +7,14 @@
 **Distribution model**: public repo today (owner decision 2026-09-23) → friends-install tomorrow (v0.4.x+) → commercial v1.0.0+. Every line is built for the friend-install + commercial-future case.
 
 **Status snapshot (2026-09-23)**:
-- `main` at `18d7135` after the Phase 0 and graph resilience PR #25 merge.
-- `work/finish-devops-roadmap` prepares v0.3.0; only `v0.2.0` is tagged.
+- `main` at `07663dc` after release preparation PR #30 and Stratum dependency
+  remediation PR #31; only `v0.2.0` is tagged.
 - Area R proof corpus reached 152/152 valid before the merge. The public
   repository decision's revised claim passed its focused rerun; the full
   release PR claim gate remains to run.
 - PB-16 signing key is registered and locally proved with a temporary signed
-  tag. PB-13 release-sign workflow validation remains pending.
+  tag. Release-sign branch dispatch run `35881270832` signed all 17 universal
+  skills; tag-triggered verification remains pending v0.3.0 tag creation.
 
 ---
 
@@ -23,7 +24,8 @@
 - **Claim-validator stays at 94/94 (or 93/94 max with PB-21-coupled-to-PB-13 documented exception).** Any new claim must run cleanly.
 - **Coverage thresholds binding**: statements ≥85%, branches ≥80%, functions ≥90%, lines ≥85% on production code paths.
 - **Every shipped skill Sigstore-signed.** `release-sign.yml` must run cleanly (depends on PB-13 closure).
-- **Every release git-tag GPG-signed.** Depends on PB-16 closure.
+- **Every release git-tag cryptographically signed.** This repository uses the
+  owner's registered SSH signing key for Git tags.
 - **AP-5 surfacing**: Proof Theater, Reflexive Patch, Scheduler-Failure are honest-stop conditions. Surface immediately, don't paper over.
 - **Read-all-first-then-Write** before edit batches.
 - **JS regex no PCRE.** `[\s\S]` for multiline.
@@ -107,10 +109,11 @@ These unblock the trust-chain story. Do these BEFORE starting Phase 0 corpus cap
 
 - [x] **PR `stratum-phase-0-capture` → `main`** (~1h). Squash-merged as PR #25 at `18d7135`; linear history maintained.
 - [ ] **Cut v0.3.0 tag** with `git tag -s v0.3.0 -m "v0.3.0 ..."` (depends on PB-16 closure).
-- [ ] **release-sign.yml dispatches** signed cosign artifacts (depends on PB-13 closure).
+- [x] **release-sign.yml branch dispatch** signed 17 cosign artifacts in run
+  `35881270832`; tag-triggered verification remains part of the v0.3.0 gate.
 - [ ] **Update LAUNCH_READINESS.md** with v0.3.0 ship math + the new "to v1.0.0" math.
 - [ ] **GitHub Release** with release notes (Keep-a-Changelog format).
-- [ ] **CHANGELOG.md update** at repo root.
+- [x] **CHANGELOG.md update** at repo root for v0.3.0.
 
 ---
 
