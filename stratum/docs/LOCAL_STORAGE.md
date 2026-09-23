@@ -134,8 +134,11 @@ Run `npm run db:verify-graph-search` for a disposable 501-file/500-edge search
 and traversal check. Selecting a File or source Function also loads active
 Tier-2 changes and decisions whose path exactly matches that indexed File.
 Run `npm run db:verify-graph-related-facts` for a two-organization local check.
-Semantic node search, persistent fact graph edges, generated narration, and
-real-browser verification remain separate gates.
+Run `npm run verify:graph-browser` on a machine with local Chrome to exercise
+the served dashboard and scoped API through a real browser. It uses an isolated
+in-memory fixture and saves `.workflow/proofs/graph-browser.png`. Semantic node
+search, persistent fact graph edges, and generated narration remain separate
+gates.
 
 Run `npm run db:verify-recovery` for a disposable organization backup and
 restore check. It exports a session, suppressed fact, audit status, and conflict
