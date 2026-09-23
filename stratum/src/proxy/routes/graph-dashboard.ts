@@ -45,7 +45,7 @@ keyInput.value = sessionStorage.getItem('cq_dashboard_key') || '';
 let nodes = [], edges = [], byId = new Map(), visible = new Set(), selected = null;
 let selectionVersion = 0;
 const factNodesByFile = new Map();
-let tour = [], tourIndex = -1, tourHadCycle = false;
+let tour = [], tourIndex = -1, tourHadCycle = false, tourDependencies = [];
 let x = 0, y = 0, scale = 1, dragging = null;
 function element(tag, value) { const node = document.createElement(tag); if (value != null) node.textContent = String(value); return node; }
 function vector(tag, attrs) { const node = document.createElementNS(svgNS, tag); Object.entries(attrs).forEach(([k, v]) => node.setAttribute(k, String(v))); return node; }
@@ -295,12 +295,33 @@ async function fetchTourPages(resource, field, key) {
   } while (after);
   return records;
 }
+function tourNarration(file) {
+  const names = new Map(tour.map(item => [item.id, item.name]));
+  const short = value => { const text = String(value); return text.length > 160 ? text.slice(0, 157) + '…' : text; };
+  const describe = ids => {
+    const items = [...new Set(ids)].map(id => names.get(id)).filter(Boolean);
+    const shown = items.slice(0, 3).map(short).join(', ');
+    return shown + (items.length > 3 ? ' and ' + (items.length - 3) + ' more' : '');
+  };
+  const dependencies = tourDependencies.filter(edge => edge.from_entity === file.id && names.has(edge.to_entity)).map(edge => edge.to_entity);
+  const users = tourDependencies.filter(edge => edge.to_entity === file.id && names.has(edge.from_entity)).map(edge => edge.from_entity);
+  const parts = ['Explore ' + short(file.name) + '.'];
+  parts.push(file.summary ? short(file.summary) : 'No source summary is available.');
+  if (dependencies.length) parts.push('This file depends on ' + describe(dependencies) + '.');
+  if (users.length) parts.push('This file is used by ' + describe(users) + '.');
+  if (!dependencies.length && !users.length) parts.push('No direct File dependencies are recorded.');
+  if (tourHadCycle) parts.push('A dependency cycle affected the tour order.');
+  return parts.join(' ');
+}
 function showTourStep() {
   if (tourIndex < 0 || tourIndex >= tour.length) return;
   const file = tour[tourIndex];
   visible = new Set([file.id]);
   select(file.id);
   details.appendChild(element('p', 'Tour ' + (tourIndex + 1) + ' of ' + tour.length));
+  const narration = element('p', tourNarration(file));
+  narration.setAttribute('id', 'tour-narration');
+  details.appendChild(narration);
   document.getElementById('tour-prev').disabled = tourIndex === 0;
   document.getElementById('tour-next').disabled = tourIndex === tour.length - 1;
   status.textContent = 'Tour ' + (tourIndex + 1) + '/' + tour.length + ': ' + file.name +
@@ -315,7 +336,7 @@ async function startTour() {
     const dependencies = await fetchTourPages('/v1/memory/graph/dependencies', 'edges', key);
     const result = orderTour(files, dependencies);
     resetFactNodes();
-    tour = result.ordered; tourHadCycle = result.cycle; tourIndex = tour.length ? 0 : -1;
+    tour = result.ordered; tourHadCycle = result.cycle; tourDependencies = dependencies; tourIndex = tour.length ? 0 : -1;
     byId = new Map([...byId, ...files.map(file => [file.id, file])]);
     nodes = [...byId.values()];
     edges = [...new Map([...edges, ...dependencies].map(edge => [edge.id, edge])).values()];

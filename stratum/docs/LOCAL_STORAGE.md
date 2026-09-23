@@ -147,8 +147,9 @@ in-memory fixture and saves `.workflow/proofs/graph-browser.png` and
 up to 50 active linked facts as selectable canvas nodes. Reselect the File to
 refresh them after suppression; a changed response removes stale nodes and
 links. Selecting a source Function keeps the sidebar relation without implying
-a Function-to-fact canvas edge. Semantic node search and generated narration
-remain separate gates.
+a Function-to-fact canvas edge. The tour narrates each File's source summary
+and direct dependency direction using bounded, literal text from the scoped
+graph pages. Name and offline semantic node search are available in the view.
 
 Run `npm run db:verify-recovery` for a disposable organization backup and
 restore check. It exports a session, suppressed fact, audit status, and conflict

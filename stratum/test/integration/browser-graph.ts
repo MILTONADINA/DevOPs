@@ -13,13 +13,13 @@ const chrome = process.env["CHROME_BIN"] ?? "/Applications/Google Chrome.app/Con
 if (!existsSync(chrome)) throw new Error(`Chrome not found: ${chrome}`);
 mkdirSync(proofDir, { recursive: true });
 const profile = mkdtempSync(join(proofDir, "graph-chrome-"));
+const hostile = '<img src=x onerror="alert(1)">';
 
 const files: GraphSnapshot["entities"] = [
   { id: "00000000-0000-4000-8000-000000000001", kind: "File", name: "src/importer.ts", file_path: "src/importer.ts", summary: "Imports the dependency", session_id: null },
-  { id: "00000000-0000-4000-8000-000000000002", kind: "File", name: "src/dependency.ts", file_path: "src/dependency.ts", summary: "Dependency first", session_id: null },
+  { id: "00000000-0000-4000-8000-000000000002", kind: "File", name: "src/dependency.ts", file_path: "src/dependency.ts", summary: "Dependency first " + hostile, session_id: null },
 ];
 const dependency: GraphSnapshot["edges"][number] = { id: "00000000-0000-4000-8000-000000000003", edge_type: "DEPENDS_ON", from_entity: files[0]!.id, to_entity: files[1]!.id };
-const hostile = '<img src=x onerror="alert(1)">';
 function scoped(orgId: string): void {
   if (orgId !== "browser-check") throw new Error(`unexpected graph organization ${orgId}`);
 }
@@ -160,14 +160,26 @@ async function main(): Promise<void> {
     await evaluate("document.getElementById('tour-start').click()");
     await until("document.getElementById('status').textContent.startsWith('Tour 1/2')");
     const first = await evaluate<string>("document.querySelector('#details h2').textContent");
+    const firstNarration = await evaluate<string>("document.getElementById('tour-narration')?.textContent");
     await evaluate("document.getElementById('tour-next').click()");
     const second = await evaluate<string>("document.querySelector('#details h2').textContent");
-    if (first !== "src/dependency.ts" || second !== "src/importer.ts") throw new Error(`Tour order wrong: ${first}, ${second}`);
+    const secondNarration = await evaluate<string>("document.getElementById('tour-narration')?.textContent");
+    const narratedImages = await evaluate<number>("document.querySelectorAll('#tour-narration img').length");
+    if (
+      first !== "src/dependency.ts" ||
+      second !== "src/importer.ts" ||
+      !firstNarration?.includes("used by src/importer.ts") ||
+      !firstNarration.includes(hostile) ||
+      !secondNarration?.includes("depends on src/dependency.ts") ||
+      narratedImages !== 0
+    ) {
+      throw new Error(`Tour narration or order wrong: ${first}, ${second}`);
+    }
     const shot = await cdp.send("Page.captureScreenshot", { format: "png", captureBeyondViewport: false });
     if (!shot.data) throw new Error("Chrome returned no screenshot data");
     writeFileSync(join(proofDir, "graph-browser.png"), Buffer.from(shot.data, "base64"));
     process.stdout.write(
-      "Chrome graph load, in-canvas fact navigation, literal text, search, and dependency-first tour passed; screenshots: .workflow/proofs/graph-browser-fact-node.png and graph-browser.png\n",
+      "Chrome graph load, in-canvas fact navigation, literal text, search, dependency-first tour, and narration passed; screenshots: .workflow/proofs/graph-browser-fact-node.png and graph-browser.png\n",
     );
   } finally {
     cdp?.close();

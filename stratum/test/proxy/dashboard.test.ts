@@ -186,7 +186,7 @@ describe("dashboard route", () => {
             return {
               files: [
                 { id: "a", kind: "File", name: hostile, file_path: "src/a.ts", summary: hostile },
-                { id: "d", kind: "File", name: "src/d.ts", file_path: "src/d.ts", summary: "Depends on a" },
+                { id: "d", kind: "File", name: "src/d.ts", file_path: "src/d.ts", summary: "D".repeat(2000) },
                 { id: "e", kind: "File", name: "src/e.ts", file_path: "src/e.ts", summary: "Cycle e" },
                 { id: "f", kind: "File", name: "src/f.ts", file_path: "src/f.ts", summary: "Cycle f" },
               ],
@@ -300,6 +300,10 @@ describe("dashboard route", () => {
     expect(calls.filter((call) => call.url.startsWith("/v1/memory/graph/dependencies"))).toHaveLength(2);
     expect(byId("status").textContent).toContain("cycle detected");
     expect(byId("details").children[0]!.textContent).toBe("src/c.ts");
+    const narration = () => byId("details").children.find((child) => child.attrs.get("id") === "tour-narration")?.textContent;
+    expect(narration()).toContain("src/c.ts");
+    expect(narration()).toContain("Dependency first");
+    expect(narration()).toContain("used by");
     releaseRelated?.();
     await Promise.resolve();
     expect(byId("details").children[0]!.textContent).toBe("src/c.ts");
@@ -307,10 +311,15 @@ describe("dashboard route", () => {
     byId("tour-next").listeners.get("click")!({ stopPropagation: () => undefined });
     expect(byId("details").children[0]!.textContent).toBe(hostile);
     expect(byId("details").children[3]!.textContent).toBe(hostile);
+    expect(narration()).toContain(hostile);
+    expect(narration()).toContain("depends on src/c.ts");
+    expect([...ids.values()].flatMap((node) => node.children).every((node) => node.tag !== "img")).toBe(true);
     byId("tour-next").listeners.get("click")!({ stopPropagation: () => undefined });
     expect(byId("details").children[0]!.textContent).toBe("src/d.ts");
+    expect(narration()!.length).toBeLessThan(650);
     byId("tour-prev").listeners.get("click")!({ stopPropagation: () => undefined });
     expect(byId("details").children[0]!.textContent).toBe(hostile);
+    expect(narration()).toContain("depends on src/c.ts");
   });
 
   test("GET /dashboard/api returns aggregated JSON", async () => {
