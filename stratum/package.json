@@ -58,6 +58,7 @@
     "db:verify-recall": "tsx scripts/local-compose.ts with-env node test/integration/local-session-start.mjs",
     "db:verify-promotion": "tsx scripts/local-compose.ts with-env node test/integration/local-promotion.mjs",
     "db:verify-audit-git": "tsx scripts/local-compose.ts with-env node test/integration/local-audit-git.mjs",
+    "db:verify-recovery": "tsx scripts/local-compose.ts with-env node test/integration/local-backup-recovery.mjs",
     "deploy": "wrangler deploy"
   },
   "dependencies": {
