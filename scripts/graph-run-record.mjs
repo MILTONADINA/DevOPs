@@ -38,6 +38,11 @@ if (command === 'launch') {
     if (options.status !== 'running') throw new Error('blocked record clears only on a running resume');
     const preflight = JSON.parse(readFileSync(path.join(state, 'preflight.json'), 'utf8'));
     if (!['ready', 'remediated'].includes(preflight.status)) throw new Error('preflight has not passed');
+    const blocked = path.join(state, 'blocked.md');
+    if (existsSync(blocked) && !realpathSync(blocked).startsWith(`${root}${path.sep}`)) throw new Error('blocked record leaves project root');
+    if (existsSync(blocked) && /^## Class\nneeds_human$/m.test(readFileSync(blocked, 'utf8'))) {
+      throw new Error('needs_human blocked record must be cleared by the human after the fix');
+    }
   }
   writeFileSync(file, `${JSON.stringify(record, null, 2)}\n`, { mode: 0o600 });
   if (options.clearBlocked === 'true') {

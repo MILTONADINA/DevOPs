@@ -15,8 +15,9 @@ the current phase and gate configuration.
    10 permits launch; exit 20 or 2 refuses launch. For a refusal, if
    `.workflow/state/blocked.md` does not yet exist, use
    `scripts/graph-blocked.sh` with stage `preflight`, the failing check ids,
-   and the preflight output in a project-local evidence file. Print the block
-   path and check ids. If the block file exists, leave it unchanged. Never
+   and the preflight output in a project-local evidence file. For a
+   `needs_human` block, supply `--fix` with the exact human action. Print
+   the block path and check ids. If the block file exists, leave it unchanged. Never
    remove `.workflow/state/graph-halt`.
 2. Check `governance/graph/autonomy-config.yml`'s `phase:` value. Phase 0
    means every step gets a human checkpoint, no exceptions — do not skip
@@ -59,7 +60,10 @@ the run id, journal path, args, `resumedFrom` and status via
 `graph-run-record.mjs update`. Pass `--clearBlocked true` only after the
 passing preflight and successful launch. An autonomous loop may resume `api`
 and `transient` blocks; `needs_human` and unlisted `environment` remedies
-wait for a human fix verified by preflight.
+wait for a human fix verified by preflight. A `needs_human` record tells the
+human to clear `blocked.md` after performing its Fix command; the full
+preflight then verifies the underlying cause on resume. `/sprint` clears
+API and transient markers only after its preflight passes.
 
 The Workflow pipelines the backlog item through preflight → planner → coder
 → tester → reviewer → security → validator, phase-tagged

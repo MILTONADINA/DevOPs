@@ -150,5 +150,19 @@ test('graph-halt alone forces needs_human and survives preflight', () => {
     assert.deepEqual(report.checks.filter((check) => check.status === 'fail').map((check) => check.id), ['halt.absent']);
     assert.match(result.stdout, /✗ halt\.absent/);
     assert.equal(existsSync(halt), true);
+    rmSync(halt);
+    const blocked = path.join(repo, '.workflow', 'state', 'blocked.md');
+    writeFileSync(blocked, '## Class\nneeds_human\n');
+    const marked = spawnSync(process.execPath, [path.join(repo, 'scripts', 'graph-preflight.mjs'), '--check-only'], {
+      cwd: repo, env: { ...process.env, PATH: `${path.join(repo, 'fake-bin')}:${process.env.PATH}` }, encoding: 'utf8', timeout: 30_000,
+    });
+    assert.equal(marked.status, 20, marked.stderr || marked.stdout);
+    assert.deepEqual(JSON.parse(readFileSync(path.join(repo, '.workflow', 'state', 'preflight.json'))).checks
+      .filter((check) => check.status === 'fail').map((check) => check.id), ['blocked.human']);
+    rmSync(blocked);
+    const cleared = spawnSync(process.execPath, [path.join(repo, 'scripts', 'graph-preflight.mjs'), '--check-only'], {
+      cwd: repo, env: { ...process.env, PATH: `${path.join(repo, 'fake-bin')}:${process.env.PATH}` }, encoding: 'utf8', timeout: 30_000,
+    });
+    assert.equal(cleared.status, 0, cleared.stderr || cleared.stdout);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });

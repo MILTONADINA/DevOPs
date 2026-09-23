@@ -216,7 +216,9 @@ function haltAbsent() {
 
 function blockedHumanAbsent() {
   try {
-    const blocked = readFileSync(path.join(STATE, 'blocked.md'), 'utf8');
+    const file = path.join(STATE, 'blocked.md');
+    if (!insideRoot(realpathSync(file))) throw new Error('blocked record leaves the project root');
+    const blocked = readFileSync(file, 'utf8');
     add('blocked.human', /^## Class\nneeds_human$/m.test(blocked) ? 'fail' : 'pass', /^## Class\nneeds_human$/m.test(blocked) ? 'needs_human blocked record present' : 'no needs_human block');
   } catch (error) {
     add('blocked.human', error.code === 'ENOENT' ? 'pass' : 'fail', error.code === 'ENOENT' ? 'blocked record absent' : 'blocked record unreadable');

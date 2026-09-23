@@ -23,6 +23,11 @@ test('run record preserves exact input and clears a block only after passing pre
     assert.notEqual(refused.status, 0);
     assert.ok(existsSync(block));
     writeFileSync(path.join(dir, 'preflight.json'), JSON.stringify({ status: 'ready' }));
+    writeFileSync(block, '## Class\nneeds_human\n');
+    const humanOnly = run('update', '--cycle', 'c7', '--status', 'running', '--clearBlocked', 'true');
+    assert.notEqual(humanOnly.status, 0);
+    assert.ok(existsSync(block));
+    writeFileSync(block, '## Class\napi\n');
     const resumed = run('update', '--cycle', 'c7', '--status', 'running', '--runId', 'wf_new', '--resumedFrom', 'wf_old', '--clearBlocked', 'true');
     assert.equal(resumed.status, 0, resumed.stderr);
     assert.equal(existsSync(block), false);
