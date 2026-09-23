@@ -96,6 +96,14 @@ The check uses a loopback fake extraction model and cleans up its organization,
 key, sessions, and fact. It verifies the request and recall wiring, not a live
 Claude hook or real-model extraction quality.
 
+With a local OpenAI-compatible model already serving on loopback, set
+`CQ_LOCAL_BASE_URL` to its `/v1` endpoint and `CQ_MEMORY_EXTRACT_MODEL` to its
+`local/<model>` ID, then run `npm run db:verify-real-model-memory`. This sends
+one authenticated request through the real local provider, uses that model to
+extract a TechDecision, checks the local database and SessionStart recall, and
+removes its fixture. It tests one explicit decision on that model; it does not
+establish broad extraction quality or live Claude hook activation.
+
 Run `npm run db:verify-recovery` for a disposable organization backup and
 restore check. It exports a session, suppressed fact, audit status, and conflict
 to a temporary file under the ignored `backups/` directory, deletes the rows,
