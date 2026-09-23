@@ -2,7 +2,7 @@
 // (app.inject() with an injected session reader; no disk).
 
 import { describe, test, expect, afterEach, vi } from "vitest";
-import { runInNewContext } from "node:vm";
+import { runInNewContext, Script } from "node:vm";
 import type { FastifyInstance } from "fastify";
 import { buildDashboardData } from "../../src/proxy/dashboard-data";
 import type { CaptureSession, CapturedTurn } from "../../src/proxy/capture";
@@ -97,6 +97,97 @@ describe("buildDashboardData", () => {
 });
 
 describe("dashboard route", () => {
+  test("GET /dashboard/graph serves a scoped, safe graph viewer", async () => {
+    app = buildProxy({ cors: false, rateLimit: false, dashboard: { readSessions: () => [] } });
+    await app.ready();
+    const res = await app.inject({ method: "GET", url: "/dashboard/graph" });
+    expect(res.statusCode).toBe(200);
+    expect(res.headers["content-security-policy"]).toContain("connect-src 'self'");
+    expect(res.payload).toContain("/v1/memory/graph?limit=500");
+    expect(res.payload).toContain("Authorization: 'Bearer '");
+    expect(res.payload).toContain("file_path");
+    expect(res.payload).toContain("summary");
+    expect(res.payload).not.toContain("innerHTML");
+    const script = res.payload.match(/<script>([\s\S]*?)<\/script>/)?.[1];
+    expect(script).toBeDefined();
+    expect(() => new Script(script!)).not.toThrow();
+  });
+
+  test("graph browser loads by key, selects a node, and renders hostile names as text", async () => {
+    app = buildProxy({ cors: false, rateLimit: false, dashboard: { readSessions: () => [] } });
+    await app.ready();
+    const html = (await app.inject({ method: "GET", url: "/dashboard/graph" })).payload;
+    const script = html.match(/<script>([\s\S]*?)<\/script>/)?.[1];
+    expect(script).toBeDefined();
+    class Node {
+      children: Node[] = [];
+      attrs = new Map<string, string>();
+      listeners = new Map<string, (event: { stopPropagation: () => void }) => void>();
+      textContent = "";
+      value = "";
+      type = "";
+      clientWidth = 800;
+      clientHeight = 600;
+      constructor(readonly tag: string) {}
+      appendChild(child: Node): Node {
+        this.children.push(child);
+        return child;
+      }
+      append(...children: Node[]): void {
+        this.children.push(...children);
+      }
+      replaceChildren(...children: Node[]): void {
+        this.children = children;
+      }
+      setAttribute(name: string, value: string): void {
+        this.attrs.set(name, value);
+      }
+      addEventListener(name: string, listener: (event: { stopPropagation: () => void }) => void): void {
+        this.listeners.set(name, listener);
+      }
+    }
+    const ids = new Map<string, Node>();
+    const byId = (id: string): Node => {
+      let node = ids.get(id);
+      if (!node) {
+        node = new Node(id);
+        ids.set(id, node);
+      }
+      return node;
+    };
+    const hostile = '<img src=x onerror="alert(1)">';
+    const calls: Array<{ url: string; headers?: Record<string, string> }> = [];
+    const fetch = async (url: string, options: { headers?: Record<string, string> }) => {
+      calls.push({ url, headers: options.headers });
+      return {
+        ok: true,
+        json: async () => ({
+          entities: [
+            { id: "a", kind: "File", name: hostile, file_path: "src/a.ts", summary: hostile },
+            { id: "b", kind: "Function", name: "src/a.ts#f", file_path: "src/a.ts", summary: "Function f" },
+          ],
+          edges: [{ id: "e", from_entity: "a", to_entity: "b", edge_type: "DECLARES" }],
+        }),
+      };
+    };
+    runInNewContext(script!, {
+      document: { getElementById: byId, createElement: (tag: string) => new Node(tag), createElementNS: (_ns: string, tag: string) => new Node(tag) },
+      fetch,
+      sessionStorage: { getItem: () => "cq_test_key", setItem: () => undefined, removeItem: () => undefined },
+      location: { search: "" },
+      URLSearchParams,
+      encodeURIComponent,
+    });
+    await vi.waitFor(() => expect(byId("status").textContent).toContain("2 nodes"));
+    expect(calls).toEqual([{ url: "/v1/memory/graph?limit=500", headers: { Authorization: "Bearer cq_test_key" } }]);
+    const first = byId("viewport").children.find((node) => node.attrs.get("aria-label") === hostile);
+    expect(first).toBeDefined();
+    first!.listeners.get("click")!({ stopPropagation: () => undefined });
+    expect(byId("details").children[0]!.textContent).toBe(hostile);
+    expect(byId("relations").children).toHaveLength(1);
+    expect([...ids.values()].flatMap((node) => node.children).every((node) => node.tag !== "img")).toBe(true);
+  });
+
   test("GET /dashboard/api returns aggregated JSON", async () => {
     const s1 = sess("bbbbbbbb-2", [turn(100), turn(300)], 400, 20);
     app = buildProxy({ cors: false, rateLimit: false, dashboard: { readSessions: () => [s1] } });
@@ -152,14 +243,24 @@ describe("dashboard route", () => {
       colSpan = 1;
       listeners = new Map<string, () => void>();
       constructor(readonly tag: string) {}
-      appendChild(child: Node): Node { this.children.push(child); return child; }
-      replaceChildren(...children: Node[]): void { this.children = children; }
-      addEventListener(event: string, listener: () => void): void { this.listeners.set(event, listener); }
+      appendChild(child: Node): Node {
+        this.children.push(child);
+        return child;
+      }
+      replaceChildren(...children: Node[]): void {
+        this.children = children;
+      }
+      addEventListener(event: string, listener: () => void): void {
+        this.listeners.set(event, listener);
+      }
     }
     const ids = new Map<string, Node>();
     const byId = (id: string): Node => {
       let n = ids.get(id);
-      if (!n) { n = new Node("div"); ids.set(id, n); }
+      if (!n) {
+        n = new Node("div");
+        ids.set(id, n);
+      }
       return n;
     };
     const calls: Array<{ url: string; headers?: Record<string, string> }> = [];
@@ -169,11 +270,27 @@ describe("dashboard route", () => {
     const fetch = async (url: string, opts?: { headers?: Record<string, string> }) => {
       calls.push({ url, headers: opts?.headers });
       if (stallAuditStatus && url.startsWith("/v1/memory/audit-statuses")) return new Promise<never>(() => undefined);
-      return { ok: !(failAuth && url.startsWith("/v1/memory/conflicts")), status: failAuth ? 401 : 200, json: async () => url === "/dashboard/api"
-        ? { note: hostile, session_count: 0, total_turns: 0, total_dropped_turns: 0, total_input_tokens: 0, total_output_tokens: 0, estimated_cost_usd: 0, top_waste_type: hostile, waste: [{ type: hostile, severity: "high", token_estimate: 1, description: hostile }], sessions: [] }
-        : url.startsWith("/v1/memory/audit-statuses")
-          ? { statuses: [{ fact_table: "function_changes", fact_id: "f1", status: hostile, evidence_commit: hostile, audited_at: "t" }] }
-        : { conflicts: [{ fact_table: "function_changes", fact_id: "f1", claimed_state: hostile, actual_state: hostile, conflict_commit: "c1" }] } };
+      return {
+        ok: !(failAuth && url.startsWith("/v1/memory/conflicts")),
+        status: failAuth ? 401 : 200,
+        json: async () =>
+          url === "/dashboard/api"
+            ? {
+                note: hostile,
+                session_count: 0,
+                total_turns: 0,
+                total_dropped_turns: 0,
+                total_input_tokens: 0,
+                total_output_tokens: 0,
+                estimated_cost_usd: 0,
+                top_waste_type: hostile,
+                waste: [{ type: hostile, severity: "high", token_estimate: 1, description: hostile }],
+                sessions: [],
+              }
+            : url.startsWith("/v1/memory/audit-statuses")
+              ? { statuses: [{ fact_table: "function_changes", fact_id: "f1", status: hostile, evidence_commit: hostile, audited_at: "t" }] }
+              : { conflicts: [{ fact_table: "function_changes", fact_id: "f1", claimed_state: hostile, actual_state: hostile, conflict_commit: "c1" }] },
+      };
     };
     const storage = new Map<string, string>();
     const document = {
@@ -186,8 +303,25 @@ describe("dashboard route", () => {
     let intervalMs = 0;
     let onInterval = () => undefined;
     runInNewContext(script!, {
-      document, fetch, sessionStorage: { getItem: (k: string) => storage.get(k) ?? null, setItem: (k: string, v: string) => { storage.set(k, v); }, removeItem: (k: string) => { storage.delete(k); } },
-      location: { search: "" }, URLSearchParams, setInterval: (fn: () => void, ms: number) => { onInterval = fn; intervalMs = ms; return 1; }, encodeURIComponent,
+      document,
+      fetch,
+      sessionStorage: {
+        getItem: (k: string) => storage.get(k) ?? null,
+        setItem: (k: string, v: string) => {
+          storage.set(k, v);
+        },
+        removeItem: (k: string) => {
+          storage.delete(k);
+        },
+      },
+      location: { search: "" },
+      URLSearchParams,
+      setInterval: (fn: () => void, ms: number) => {
+        onInterval = fn;
+        intervalMs = ms;
+        return 1;
+      },
+      encodeURIComponent,
     });
     await vi.waitFor(() => expect(byId("#waste tbody").children).toHaveLength(1));
     expect(calls.map((c) => c.url)).toEqual(["/dashboard/api"]);
@@ -234,7 +368,8 @@ describe("dashboard route", () => {
   test("commercial mode does not publish unscoped captured sessions", async () => {
     const readSessions = vi.fn(() => [sess("private-session", [turn(100)], 100, 5)]);
     app = buildProxy({
-      cors: false, rateLimit: false,
+      cors: false,
+      rateLimit: false,
       auth: { resolve: async () => ({ orgId: "o1", keyId: "k1" }), protectedPrefixes: ["/v1/"] },
       dashboard: { readSessions },
     });

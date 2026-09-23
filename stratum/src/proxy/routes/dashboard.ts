@@ -15,6 +15,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import type { CaptureSession } from "../capture";
 import { buildDashboardData } from "../dashboard-data";
+import { GRAPH_DASHBOARD_HTML } from "./graph-dashboard";
 
 export interface DashboardDeps {
   /** Returns the captured sessions to aggregate (sync or async). */
@@ -66,6 +67,7 @@ const HTML = `<!doctype html>
 </style></head>
 <body>
   <h1>Stratum — Phase 1 Waste Dashboard</h1>
+  <p><a href="/dashboard/graph">Explore knowledge graph</a></p>
   <div class="note" id="note"></div>
   <div class="cards" id="cards"></div>
   <h2>Historical Drift</h2>
@@ -186,9 +188,23 @@ const HTML = `<!doctype html>
  */
 export function makeDashboardRoute(deps: DashboardDeps): FastifyPluginCallback {
   return function dashboardPlugin(app: FastifyInstance, _opts, done): void {
+    app.get("/dashboard/graph", async (_req, reply) => {
+      void reply.header("content-type", "text/html; charset=utf-8");
+      void reply.header(
+        "content-security-policy",
+        "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+      );
+      void reply.header("x-frame-options", "DENY");
+      void reply.header("x-content-type-options", "nosniff");
+      void reply.header("referrer-policy", "no-referrer");
+      return reply.send(GRAPH_DASHBOARD_HTML);
+    });
     app.get("/dashboard", async (_req, reply) => {
       void reply.header("content-type", "text/html; charset=utf-8");
-      void reply.header("content-security-policy", "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'");
+      void reply.header(
+        "content-security-policy",
+        "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+      );
       void reply.header("x-frame-options", "DENY");
       void reply.header("x-content-type-options", "nosniff");
       void reply.header("referrer-policy", "no-referrer");
