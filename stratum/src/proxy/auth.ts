@@ -9,6 +9,7 @@
  */
 
 import { createHash, randomBytes } from "node:crypto";
+import { Buffer } from "node:buffer";
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -34,7 +35,7 @@ export function hashApiKey(raw: string): string {
 
 /** Generate a new API key: a prefixed 256-bit random raw key + its hash (store the hash only). */
 export function generateApiKey(env: "live" | "test" = "live"): { raw: string; hash: string } {
-  const raw = `cq_${env}_${randomBytes(32).toString("base64url")}`;
+  const raw = `cq_${env}_${Buffer.from(randomBytes(32)).toString("base64url")}`;
   return { raw, hash: hashApiKey(raw) };
 }
 
