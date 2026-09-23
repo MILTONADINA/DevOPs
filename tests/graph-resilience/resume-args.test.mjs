@@ -37,3 +37,45 @@ test('resume args carry completed task pairs and a coder awaiting its tester', (
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('resume args merge earlier results with a journal that starts at tester T7', () => {
+  const dir = mkdtempSync(path.join(ROOT, '.workflow', 'state', 'graph-resume-test-'));
+  try {
+    const cycleId = 'cycle6';
+    const cycleDir = path.join(dir, 'graph-cycles', cycleId);
+    mkdirSync(cycleDir, { recursive: true });
+    const journalPath = path.join(dir, 'journal.jsonl');
+    const plan = { tasks: Array.from({ length: 13 }, (_, i) => ({ id: `T${i + 1}`, description: `task ${i + 1}` })) };
+    const priorBuildResults = plan.tasks.slice(0, 6).map((task) => ({
+      task, coderResult: { task_id: task.id }, testerResult: { task_id: task.id, passed: true },
+    }));
+    const priorCoderResults = [{ task: plan.tasks[6], coderResult: { task_id: 'T7' } }];
+    const events = [
+      { type: 'started', key: 't7', label: 'tester:T7' },
+      { type: 'result', key: 't7', result: { task_id: 'T7', passed: true } },
+    ];
+    for (let n = 8; n <= 13; n++) {
+      events.push(
+        { type: 'started', key: `c${n}`, label: `coder:T${n}` },
+        { type: 'result', key: `c${n}`, result: { task_id: `T${n}` } },
+        { type: 'started', key: `t${n}`, label: `tester:T${n}` },
+        { type: 'result', key: `t${n}`, result: { task_id: `T${n}`, passed: true } },
+      );
+    }
+    writeFileSync(journalPath, `${events.map(JSON.stringify).join('\n')}\n`);
+    const args = { backlogItem: 'cycle 6 fixture', cycleId, plan, priorBuildResults, priorCoderResults };
+    writeFileSync(path.join(cycleDir, 'run.json'), JSON.stringify({ schema_version: 1, cycleId,
+      backlogItem: args.backlogItem, runId: 'wf_9f295fe7-e33', journalPath, args }));
+    const result = spawnSync(process.execPath, [path.join(ROOT, 'scripts', 'graph-resume-args.mjs'), cycleId], {
+      cwd: ROOT, env: { ...process.env, GRAPH_STATE_DIR: dir, GRAPH_RESUME_JOURNAL_ROOT: dir }, encoding: 'utf8',
+    });
+    assert.equal(result.status, 0, result.stderr);
+    const resumed = JSON.parse(result.stdout);
+    assert.deepEqual(resumed.plan, plan);
+    assert.deepEqual(resumed.priorBuildResults.map((item) => item.task.id), plan.tasks.map((task) => task.id));
+    assert.deepEqual(resumed.priorCoderResults, []);
+    assert.equal(resumed.resumedFrom, 'wf_9f295fe7-e33');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
