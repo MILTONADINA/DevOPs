@@ -6,7 +6,7 @@
  * suppress CONFLICT facts and persist evidence in one database call. FREE (no LLM);
  * the Tier-2 Llama / Tier-3 Opus escalation of UNVERIFIED
  * facts are separate gated modules. Built ahead of the v0.6.x gate as shadow code;
- * wired NOWHERE in the request path.
+ * optionally wired into local message memory after extraction.
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
