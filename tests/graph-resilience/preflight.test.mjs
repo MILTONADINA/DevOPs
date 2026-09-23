@@ -71,11 +71,21 @@ test('normal preflight repairs non-executable .bin entries and records the fix',
     const report = JSON.parse(readFileSync(reportPath, 'utf8'));
     assert.equal(report.status, 'remediated');
     assert.equal(report.checks.find((check) => check.id === 'deps.stratum').status, 'fixed');
+    const secondTool = path.join(bin, 'second-tool');
+    writeFileSync(secondTool, '#!/bin/sh\nexit 0\n');
+    chmodSync(secondTool, 0o644);
+    const second = spawnSync('bash', [PREFLIGHT], {
+      cwd: ROOT,
+      env: { ...process.env, GRAPH_PREFLIGHT_DEPS_STRATUM_DIR: path.join(dir, 'node_modules'), GRAPH_PREFLIGHT_REPORT: reportPath },
+      encoding: 'utf8', timeout: 30_000,
+    });
+    assert.equal(second.status, 10, second.stderr || second.stdout);
     const reverted = spawnSync('bash', [PREFLIGHT, '--revert', 'deps.stratum'], {
       cwd: ROOT, env: { ...process.env, GRAPH_PREFLIGHT_REPORT: reportPath }, encoding: 'utf8', timeout: 30_000,
     });
     assert.equal(reverted.status, 0, reverted.stderr);
     assert.equal(statSync(tool).mode & 0o777, 0o644);
+    assert.equal(statSync(secondTool).mode & 0o777, 0o644);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

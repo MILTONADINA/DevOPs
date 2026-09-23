@@ -129,14 +129,25 @@ function dependencyDirectory(id, directory, checkOnly, registry) {
           if (!realpathSync(file).startsWith(`${ROOT}${path.sep}`)) throw new Error('launcher leaves the project root');
           return { file, mode: statSync(file).mode & 0o777 };
         });
+        const record = recordPath(id);
+        if (existsSync(record) && !insideRoot(realpathSync(record))) throw new Error('revert record leaves the project root');
+        const previous = existsSync(record) ? JSON.parse(readFileSync(record, 'utf8')) : [];
+        if (!Array.isArray(previous) || previous.some((item) => !insideRoot(item.file) || !Number.isInteger(item.mode))) {
+          throw new Error('invalid dependency revert record');
+        }
+        const merged = new Map(previous.map((item) => [item.file, item]));
+        for (const item of modes) if (!merged.has(item.file)) merged.set(item.file, item);
+        const temporary = `${record}.${process.pid}.tmp`;
         try {
           for (const item of modes) chmodSync(item.file, item.mode | 0o111);
           if (bad.some((name) => { try { accessSync(path.join(bin, name), constants.X_OK); return false; } catch { return true; } })) throw new Error('chmod did not repair every launcher');
-          writeFileSync(path.join(path.dirname(REPORT), `preflight-revert-${id}.json`), `${JSON.stringify(modes)}\n`, { mode: 0o600 });
+          writeFileSync(temporary, `${JSON.stringify([...merged.values()])}\n`, { mode: 0o600, flag: 'wx' });
+          renameSync(temporary, record);
           add(id, 'fixed', `${bad.length} .bin entries made executable`, entry.apply);
           return;
         } catch (error) {
           for (const item of modes) chmodSync(item.file, item.mode);
+          if (existsSync(temporary)) unlinkSync(temporary);
           throw error;
         }
       }
