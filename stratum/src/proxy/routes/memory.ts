@@ -301,31 +301,12 @@ export function createSupabaseMemoryDeps(client: SupabaseClient): MemoryDeps {
       return { edges, next: (result.data ?? []).length > limit ? edges.at(-1)!.id : null };
     },
     async listRelatedFacts(orgId, file) {
-      const indexed = await client.from("knowledge_entities").select("id").eq("org_id", orgId).eq("kind", "File").eq("name", file).limit(1);
+      const indexed = await client.from("knowledge_entities").select("id").eq("org_id", orgId).eq("kind", "File").eq("name", file).eq("file_path", file).limit(1);
       if (indexed.error) throw new Error(`listRelatedFacts File check failed: ${indexed.error.message}`);
       if (!indexed.data?.length) return null;
-      const [changes, decisions] = await Promise.all([
-        client
-          .from("function_changes")
-          .select("id,created_at,old_name,new_name,change_type")
-          .eq("org_id", orgId)
-          .eq("is_suppressed", false)
-          .eq("file_path", file)
-          .order("created_at", { ascending: false })
-          .limit(50),
-        client.from("tech_decisions").select("id,created_at,decision_text").eq("org_id", orgId).eq("is_suppressed", false).eq("domain", file).order("created_at", { ascending: false }).limit(50),
-      ]);
-      if (changes.error || decisions.error) throw new Error(`listRelatedFacts query failed: ${changes.error?.message ?? decisions.error?.message}`);
-      const facts: GraphRelatedFact[] = [
-        ...(changes.data ?? []).map((row) => ({
-          id: row.id as string,
-          kind: "FunctionChange" as const,
-          summary: `${row.old_name}${row.new_name ? ` → ${row.new_name}` : ""} (${row.change_type})`,
-          created_at: row.created_at as string,
-        })),
-        ...(decisions.data ?? []).map((row) => ({ id: row.id as string, kind: "TechDecision" as const, summary: row.decision_text as string, created_at: row.created_at as string })),
-      ];
-      return facts.sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at) || a.id.localeCompare(b.id)).slice(0, 50);
+      const result = await client.rpc("list_source_related_facts", { match_org: orgId, match_file: indexed.data[0]!.id, result_limit: 50 });
+      if (result.error) throw new Error(`listRelatedFacts query failed: ${result.error.message}`);
+      return (result.data ?? []) as GraphRelatedFact[];
     },
   };
 }
