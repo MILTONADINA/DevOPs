@@ -287,7 +287,8 @@ Borrowed from [Lum1104/Understand-Anything](https://github.com/Lum1104/Understan
   organization-scoped conflict API and refreshes every 3s while visible.
   The <5s live insertion-to-render gate and request-path wiring remain open.
 - [ ] **Dashboard updates** (~5h). Historical Drift conflict panel exists;
-  per-fact CONFIRMED/CONFLICT/UNVERIFIABLE badges remain open.
+  per-fact CONFIRMED/CONFLICT/UNVERIFIED badges and scoped status API are built.
+  Live insertion-to-render verification remains open.
 
 ### 5d. v0.6.0 release
 

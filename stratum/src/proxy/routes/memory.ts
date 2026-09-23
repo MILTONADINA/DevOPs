@@ -4,6 +4,7 @@
  *   GET    /v1/memory/facts[?org-id&limit]          → the org's recent Tier-2 facts.
  *   DELETE /v1/memory/facts/:id?table=<fact_table>  → suppress a fact (is_suppressed = true).
  *   GET    /v1/memory/conflicts[?org-id&limit]      → the org's unacknowledged Historical-Drift conflicts.
+ *   GET    /v1/memory/audit-statuses[?org-id&limit] → the org's latest persisted audit outcomes.
  *
  * Org scope comes from req.orgId (the auth gate) with a ?org-id fallback. The store is INJECTED
  * (MemoryDeps) so the route is testable via app.inject() with no DB; createSupabaseMemoryDeps wires
@@ -27,11 +28,21 @@ export interface ConflictSummary {
   acknowledged: boolean;
 }
 
+export interface AuditStatusSummary {
+  fact_table: string;
+  fact_id: string;
+  status: "CONFIRMED" | "UNVERIFIED" | "CONFLICT";
+  audited_at: string;
+  evidence_commit: string | null;
+  detail: string | null;
+}
+
 export interface MemoryDeps {
   listFacts: (orgId: string, limit: number) => Promise<AnyFact[]>;
   /** Suppress fact `id` in `table` for `orgId`; returns whether a row was affected. */
   suppressFact: (orgId: string, id: string, table: string) => Promise<boolean>;
   listConflicts: (orgId: string, limit: number) => Promise<ConflictSummary[]>;
+  listAuditStatuses: (orgId: string, limit: number) => Promise<AuditStatusSummary[]>;
 }
 
 const VALID_FACT_TABLES = new Set(Object.values(FACT_TABLES));
@@ -88,6 +99,12 @@ export function makeMemoryRoute(deps: MemoryDeps): FastifyPluginCallback {
       return { conflicts: await deps.listConflicts(orgId, intParam(req, "limit", 50)) };
     });
 
+    app.get("/v1/memory/audit-statuses", async (req, reply) => {
+      const orgId = resolveOrg(req);
+      if (orgId === undefined) return err(reply, 400, "org id required (authenticate, or pass ?org-id)");
+      return { statuses: await deps.listAuditStatuses(orgId, intParam(req, "limit", 50)) };
+    });
+
     done();
   };
 }
@@ -113,6 +130,16 @@ export function createSupabaseMemoryDeps(client: SupabaseClient): MemoryDeps {
         .limit(limit);
       if (error) throw new Error(`listConflicts failed: ${error.message}`);
       return (data ?? []) as ConflictSummary[];
+    },
+    async listAuditStatuses(orgId, limit) {
+      const { data, error } = await client
+        .from("audit_statuses")
+        .select("fact_table, fact_id, status, audited_at, evidence_commit, detail")
+        .eq("org_id", orgId)
+        .order("audited_at", { ascending: false })
+        .limit(limit);
+      if (error) throw new Error(`listAuditStatuses failed: ${error.message}`);
+      return (data ?? []) as AuditStatusSummary[];
     },
   };
 }
