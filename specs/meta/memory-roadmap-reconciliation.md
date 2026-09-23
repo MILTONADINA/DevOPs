@@ -15,7 +15,7 @@ ship dependencies.
 ## REQ-2 — Remaining gates
 
 WHEN the roadmap names v0.5 completion, THE SYSTEM SHALL retain the actual
-open requirements: DevOPs session-start retrieval/injection, a measured Tier-2
+open requirements: live DevOPs session-start binding/retrieval/injection, a measured Tier-2
 latency gate against the blueprint's <50ms p95 target, a scheduled promotion
 job if nightly operation is required, and the planned graph view/tour work.
 It SHALL NOT treat the existence of isolated modules as proof of live
