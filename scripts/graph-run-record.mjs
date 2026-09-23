@@ -28,6 +28,20 @@ if (command === 'launch') {
   if (!existsSync(file) || realpathSync(file) !== file) throw new Error('run record missing or redirected');
   const record = JSON.parse(readFileSync(file, 'utf8'));
   if (record.cycleId !== cycleId || !['running', 'blocked', 'completed', 'failed'].includes(options.status)) throw new Error('invalid run update');
+  if (options.runId && record.runId && options.runId !== record.runId) {
+    if (options.resumedFrom !== record.runId || !options.args || !options.journal) {
+      throw new Error('resume update requires prior run id, complete args, and new journal path');
+    }
+    const args = JSON.parse(options.args);
+    if (args.cycleId !== cycleId || args.backlogItem !== record.backlogItem || args.resumedFrom !== record.runId
+      || !Array.isArray(args.plan?.tasks) || !Array.isArray(args.priorBuildResults) || !Array.isArray(args.priorCoderResults)) {
+      throw new Error('resume args are incomplete or do not match the prior run');
+    }
+    if (!path.isAbsolute(options.journal) || path.basename(options.journal) !== 'journal.jsonl'
+      || path.basename(path.dirname(options.journal)) !== options.runId) {
+      throw new Error('new journal path must identify the new Workflow run');
+    }
+  }
   if (options.runId) record.runId = options.runId;
   if (options.journal) record.journalPath = options.journal;
   if (options.args) record.args = JSON.parse(options.args);

@@ -57,8 +57,13 @@ For `/sprint --resume <cycleId>`, run the same preflight first. Exit 20 or
 the *complete* Workflow `args` object. Use `resumeFromRunId` only when the
 script and prompts are unchanged; otherwise launch with derived args. Update
 the run id, journal path, args, `resumedFrom` and status via
-`graph-run-record.mjs update`. Pass `--clearBlocked true` only after the
-passing preflight and successful launch. An autonomous loop may resume `api`
+`graph-run-record.mjs update`: pass the exact JSON sent to Workflow as `--args`,
+the prior run id as `--resumedFrom`, and the new run's absolute
+`<Transcript dir>/journal.jsonl` path as `--journal`. The Workflow launch
+response supplies its Run ID and Transcript dir; do not reuse the prior
+journal path. The helper rejects a changed run id without these fields.
+Pass `--clearBlocked true` only after the passing preflight and successful
+launch. An autonomous loop may resume `api`
 and `transient` blocks; `needs_human` and unlisted `environment` remedies
 wait for a human fix verified by preflight. A `needs_human` record tells the
 human to clear `blocked.md` after performing its Fix command; the full

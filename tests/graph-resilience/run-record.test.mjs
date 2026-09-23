@@ -16,6 +16,9 @@ test('run record preserves exact input and clears a block only after passing pre
     assert.equal(launched.status, 0, launched.stderr);
     const file = path.join(dir, 'graph-cycles', 'c7', 'run.json');
     assert.equal(JSON.parse(readFileSync(file)).args.backlogItem, 'exact backlog text');
+    const originalJournal = path.join(dir, 'wf_old', 'journal.jsonl');
+    const started = run('update', '--cycle', 'c7', '--status', 'running', '--runId', 'wf_old', '--journal', originalJournal);
+    assert.equal(started.status, 0, started.stderr);
     const block = path.join(dir, 'blocked.md');
     writeFileSync(block, 'blocked');
     writeFileSync(path.join(dir, 'preflight.json'), JSON.stringify({ status: 'needs_human' }));
@@ -28,9 +31,19 @@ test('run record preserves exact input and clears a block only after passing pre
     assert.notEqual(humanOnly.status, 0);
     assert.ok(existsSync(block));
     writeFileSync(block, '## Class\napi\n');
-    const resumed = run('update', '--cycle', 'c7', '--status', 'running', '--runId', 'wf_new', '--resumedFrom', 'wf_old', '--clearBlocked', 'true');
+    const incomplete = run('update', '--cycle', 'c7', '--status', 'running', '--runId', 'wf_new', '--resumedFrom', 'wf_old', '--clearBlocked', 'true');
+    assert.notEqual(incomplete.status, 0);
+    assert.ok(existsSync(block));
+    const resumeArgs = { backlogItem: 'exact backlog text', cycleId: 'c7', plan: { tasks: [{ id: 'T1' }] },
+      priorBuildResults: [], priorCoderResults: [], resumedFrom: 'wf_old' };
+    const newJournal = path.join(dir, 'wf_new', 'journal.jsonl');
+    const resumed = run('update', '--cycle', 'c7', '--status', 'running', '--runId', 'wf_new', '--journal', newJournal,
+      '--args', JSON.stringify(resumeArgs), '--resumedFrom', 'wf_old', '--clearBlocked', 'true');
     assert.equal(resumed.status, 0, resumed.stderr);
     assert.equal(existsSync(block), false);
-    assert.equal(JSON.parse(readFileSync(file)).runId, 'wf_new');
+    const record = JSON.parse(readFileSync(file));
+    assert.equal(record.runId, 'wf_new');
+    assert.equal(record.journalPath, newJournal);
+    assert.deepEqual(record.args, resumeArgs);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
