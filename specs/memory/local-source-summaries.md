@@ -33,6 +33,14 @@ existing organization UUID, and project-local Compose API. Only File summaries
 may be replaced by this model path; Function summaries and graph edges SHALL
 retain their source-derived behavior.
 
+## REQ-4 — Concise model completion
+
+WHEN requesting a File summary from a local OpenAI-compatible model, THE
+INGESTOR SHALL request non-thinking chat-template mode so a reasoning model
+can answer within the bounded token budget. IF the provider explicitly reports
+a truncated completion, THEN the ingestor SHALL reject it before graph writes.
+It SHALL validate only the final answer text as a File summary.
+
 ## Acceptance criteria
 
 - A focused test first fails without the summarizer, then proves summary
@@ -42,6 +50,11 @@ retain their source-derived behavior.
   addresses and redirects and never sends unsanitized instruction text.
 - A disposable local Compose fixture proves an accepted model File summary
   and its updated embedding are stored under the bound organization.
+- A real local text-model run demonstrates factual one-sentence summaries
+  from JS/TS, Rust, and Python source samples without changing graph rows.
+- A disposable local Compose run with a real local text model persists accepted
+  File summaries and embeddings through the actual ingestor, preserves
+  source-derived Function summaries, and removes its fixture rows.
 
 This gate verifies the local integration and output policy. Broad summary
 quality requires a separately recorded run against a real local text model.

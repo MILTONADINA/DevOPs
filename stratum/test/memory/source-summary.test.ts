@@ -62,7 +62,7 @@ describe("local source File summaries", () => {
       expect(() => createLocalSourceCompletion(base, "local/check")).toThrow();
     }
     expect(() => createLocalSourceCompletion("http://127.0.0.1:1234/v1", "openai/check")).toThrow();
-    let mode: "ok" | "redirect" | "large" = "ok";
+    let mode: "ok" | "redirect" | "large" | "truncated" = "ok";
     let requestBody = "";
     const server = createServer(async (request, response) => {
       for await (const chunk of request) requestBody += chunk;
@@ -71,7 +71,7 @@ describe("local source File summaries", () => {
         return;
       }
       const content = mode === "large" ? "x".repeat(9000) : "Converts a value.";
-      response.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ choices: [{ message: { content } }] }));
+      response.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ choices: [{ message: { content }, finish_reason: mode === "truncated" ? "length" : "stop" }] }));
     });
     try {
       await new Promise<void>((resolve, reject) => {
@@ -84,12 +84,15 @@ describe("local source File summaries", () => {
       expect(await complete("prompt")).toBe("Converts a value.");
       const sent = JSON.parse(requestBody);
       expect(sent.model).toBe("check");
+      expect(sent.chat_template_kwargs).toEqual({ enable_thinking: false, preserve_thinking: false });
       expect(sent.messages[0].role).toBe("system");
       expect(sent.messages[1].content).toBe("prompt");
       mode = "redirect";
       await expect(complete("prompt")).rejects.toThrow();
       mode = "large";
       await expect(complete("prompt")).rejects.toThrow("exceeded 8192 bytes");
+      mode = "truncated";
+      await expect(complete("prompt")).rejects.toThrow("truncated");
     } finally {
       server.close();
     }
