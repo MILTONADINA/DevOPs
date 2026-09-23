@@ -125,7 +125,7 @@ export async function main(): Promise<number> {
   out("Reading: absolute λ=0.97 collapses early-evidence survival (fixed 22.8h half-life vs week-long spans);");
   out("scale-invariant 'span h=…' decay should recover early-evidence survival at a comparable reduction.");
   out("This is a FREE leading indicator (PB-38). The ship decision still needs the API'd Faithfulness/Relevancy");
-  out("gate (eval:locomo) re-run on the chosen config + MT-Bench+/SCM4LLMs (PB-41) — NOT a λ retune from this alone.");
+  out("gate (eval:locomo) re-run on the chosen config + LongMemEval (PB-41) — NOT a λ retune from this alone.");
   return 0;
 }
 
