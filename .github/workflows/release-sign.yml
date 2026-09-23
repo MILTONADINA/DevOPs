@@ -181,7 +181,7 @@ jobs:
             exit 0
           fi
 
-          git commit -m "ci(sigstore): sign $(find skills/universal -name 'SKILL.md.sig' -type f | wc -l) universal skills via cosign ${COSIGN_VERSION} [skip ci]"
+          git commit -m "ci(sigstore): sign $(find skills/universal -name 'SKILL.md.sig' -type f | wc -l) universal skills via cosign ${COSIGN_VERSION}"
 
           git push origin "HEAD:${GITHUB_REF_NAME}"
 
