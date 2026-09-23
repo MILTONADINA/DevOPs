@@ -20,14 +20,16 @@
  * fact is marked `promoted_to_t3 = true` (never deleted) so re-runs are idempotent.
  */
 
-import "dotenv/config";
 import { join } from "node:path";
 import { createClient } from "@supabase/supabase-js";
+import { env as transformerEnv } from "@huggingface/transformers";
 import { createWarmMemory } from "../src/memory/warm/tier2";
 import { createKnowledgeGraph } from "../src/memory/cold/graph";
 import { createVectorStore } from "../src/memory/cold/vectors";
 import { createOnnxEncoder } from "../src/pruner/encoder";
 import { promoteFacts } from "../src/memory/promote";
+
+transformerEnv.allowRemoteModels = false;
 
 function envInt(name: string, def: number): number {
   const raw = process.env[name];

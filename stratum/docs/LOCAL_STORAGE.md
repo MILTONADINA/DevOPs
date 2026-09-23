@@ -39,6 +39,14 @@ the active bound fact appears, then removes the fixture. Run
 round-trip and cleanup check; this command reads credentials only from its
 process environment.
 
+Run `npm run db:verify-promotion` to check local Tier-2 to Tier-3 promotion.
+It uses the cached encoder without model downloads, verifies that an active
+FunctionChange reaches the graph and vector store while a suppressed one does
+not, runs the bound entity-status command, and removes its fixture. For a
+manually selected organization, run
+`npm run db:with-env -- npm run promote` with `PROMOTE_ORG_ID` set in the
+process environment. No nightly scheduler is configured by this check.
+
 For a command that needs `SUPABASE_URL` and `SUPABASE_SERVICE_KEY`, use
 `npm run db:with-env -- <command> [args...]` from `stratum/`. It passes a
 short-lived local service JWT through the child process environment without
