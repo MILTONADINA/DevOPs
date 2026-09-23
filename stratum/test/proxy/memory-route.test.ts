@@ -47,6 +47,10 @@ function fakeDeps(): { deps: MemoryDeps; captured: Record<string, unknown> } {
       captured["dependencies"] = { orgId, limit, after };
       return Promise.resolve({ edges: [{ id: "e1", edge_type: "DEPENDS_ON", from_entity: "n1", to_entity: "n2" }], next: null });
     },
+    listRelatedFacts: (orgId, file) => {
+      captured["related"] = { orgId, file };
+      return Promise.resolve(file === "missing.ts" ? null : [{ id: "f1", kind: "FunctionChange", summary: "parseToken deprecated", created_at: "2026-09-23T00:00:00Z" }]);
+    },
   };
   return { deps, captured };
 }
@@ -125,6 +129,32 @@ describe("graph traversal pages", () => {
     }
     expect((await app.inject({ method: "GET", url: "/v1/memory/graph/files?org-id=o1&after=" })).statusCode).toBe(400);
     expect((await app.inject({ method: "GET", url: "/v1/memory/graph/dependencies?org-id=o1&after=bogus" })).statusCode).toBe(400);
+    await app.close();
+  });
+});
+
+describe("GET /v1/memory/graph/related-facts", () => {
+  test("uses the API key's organization and an exact source path", async () => {
+    const { deps, captured } = fakeDeps();
+    const app = buildProxy({ rateLimit: false, cors: false, auth: { resolve: (r) => Promise.resolve(r === "k" ? { orgId: "o9", keyId: "i" } : null) }, memory: deps });
+    await app.ready();
+    const res = await app.inject({ method: "GET", url: "/v1/memory/graph/related-facts?file=src%2Ftoken.ts&org-id=other", headers: { authorization: "Bearer k" } });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().facts[0].kind).toBe("FunctionChange");
+    expect(captured["related"]).toEqual({ orgId: "o9", file: "src/token.ts" });
+    expect((await app.inject({ method: "GET", url: "/v1/memory/graph/related-facts?file=src%2Ftoken.ts" })).statusCode).toBe(401);
+    await app.close();
+  });
+
+  test("rejects invalid source paths and reports a missing indexed File", async () => {
+    const app = buildProxy({ rateLimit: false, cors: false, memory: fakeDeps().deps });
+    await app.ready();
+    expect((await app.inject({ method: "GET", url: "/v1/memory/graph/related-facts?file=src%2Ftoken.ts" })).statusCode).toBe(400);
+    for (const file of ["", "../secret.ts", "/tmp/a.ts", "src\\a.ts", "a".repeat(1025)]) {
+      const res = await app.inject({ method: "GET", url: `/v1/memory/graph/related-facts?org-id=o1&file=${encodeURIComponent(file)}` });
+      expect(res.statusCode).toBe(400);
+    }
+    expect((await app.inject({ method: "GET", url: "/v1/memory/graph/related-facts?org-id=o1&file=missing.ts" })).statusCode).toBe(404);
     await app.close();
   });
 });

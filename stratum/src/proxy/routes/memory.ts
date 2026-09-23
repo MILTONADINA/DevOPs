@@ -17,6 +17,7 @@
 
 import type { FastifyInstance, FastifyPluginCallback, FastifyReply, FastifyRequest } from "fastify";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { posix } from "node:path";
 import type { AnyFact } from "../../types/facts";
 import { createWarmMemory, FACT_TABLES } from "../../memory/warm/tier2";
 
@@ -59,6 +60,13 @@ export interface GraphDependencyPage {
   next: string | null;
 }
 
+export interface GraphRelatedFact {
+  id: string;
+  kind: "FunctionChange" | "TechDecision";
+  summary: string;
+  created_at: string;
+}
+
 export interface MemoryDeps {
   listFacts: (orgId: string, limit: number) => Promise<AnyFact[]>;
   /** Suppress fact `id` in `table` for `orgId`; returns whether a row was affected. */
@@ -69,6 +77,7 @@ export interface MemoryDeps {
   searchGraph: (orgId: string, query: string) => Promise<GraphSearchResult>;
   listGraphFiles: (orgId: string, limit: number, after?: string) => Promise<GraphFilePage>;
   listGraphDependencies: (orgId: string, limit: number, after?: string) => Promise<GraphDependencyPage>;
+  listRelatedFacts: (orgId: string, file: string) => Promise<GraphRelatedFact[] | null>;
 }
 
 const VALID_FACT_TABLES = new Set(Object.values(FACT_TABLES));
@@ -99,6 +108,19 @@ function pageParams(req: FastifyRequest, cursorKind: "name" | "uuid"): { limit: 
   if (after === undefined) return { limit };
   if (typeof after !== "string" || !after || (cursorKind === "uuid" ? !UUID.test(after) : after.length > 1024)) return null;
   return { limit, after };
+}
+
+function validSourcePath(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    value.length > 0 &&
+    value.length <= 1024 &&
+    !value.includes("\\") &&
+    !value.includes("\0") &&
+    !posix.isAbsolute(value) &&
+    value === posix.normalize(value) &&
+    !value.split("/").some((part) => part === "." || part === "..")
+  );
 }
 
 function err(reply: FastifyReply, code: number, message: string): FastifyReply {
@@ -173,6 +195,16 @@ export function makeMemoryRoute(deps: MemoryDeps): FastifyPluginCallback {
       const page = pageParams(req, "uuid");
       if (!page) return err(reply, 400, "invalid graph page limit or after cursor");
       return deps.listGraphDependencies(orgId, page.limit, page.after);
+    });
+
+    app.get("/v1/memory/graph/related-facts", async (req, reply) => {
+      const orgId = resolveOrg(req);
+      if (orgId === undefined) return err(reply, 400, "org id required (authenticate, or pass ?org-id)");
+      const file = (req.query as Record<string, unknown>)["file"];
+      if (!validSourcePath(file)) return err(reply, 400, "file must be a project-relative source path");
+      const facts = await deps.listRelatedFacts(orgId, file);
+      if (facts === null) return err(reply, 404, "indexed File not found in this organization");
+      return { facts };
     });
 
     done();
@@ -267,6 +299,33 @@ export function createSupabaseMemoryDeps(client: SupabaseClient): MemoryDeps {
       if (result.error) throw new Error(`listGraphDependencies failed: ${result.error.message}`);
       const edges = ((result.data ?? []) as GraphSnapshot["edges"]).slice(0, limit);
       return { edges, next: (result.data ?? []).length > limit ? edges.at(-1)!.id : null };
+    },
+    async listRelatedFacts(orgId, file) {
+      const indexed = await client.from("knowledge_entities").select("id").eq("org_id", orgId).eq("kind", "File").eq("name", file).limit(1);
+      if (indexed.error) throw new Error(`listRelatedFacts File check failed: ${indexed.error.message}`);
+      if (!indexed.data?.length) return null;
+      const [changes, decisions] = await Promise.all([
+        client
+          .from("function_changes")
+          .select("id,created_at,old_name,new_name,change_type")
+          .eq("org_id", orgId)
+          .eq("is_suppressed", false)
+          .eq("file_path", file)
+          .order("created_at", { ascending: false })
+          .limit(50),
+        client.from("tech_decisions").select("id,created_at,decision_text").eq("org_id", orgId).eq("is_suppressed", false).eq("domain", file).order("created_at", { ascending: false }).limit(50),
+      ]);
+      if (changes.error || decisions.error) throw new Error(`listRelatedFacts query failed: ${changes.error?.message ?? decisions.error?.message}`);
+      const facts: GraphRelatedFact[] = [
+        ...(changes.data ?? []).map((row) => ({
+          id: row.id as string,
+          kind: "FunctionChange" as const,
+          summary: `${row.old_name}${row.new_name ? ` → ${row.new_name}` : ""} (${row.change_type})`,
+          created_at: row.created_at as string,
+        })),
+        ...(decisions.data ?? []).map((row) => ({ id: row.id as string, kind: "TechDecision" as const, summary: row.decision_text as string, created_at: row.created_at as string })),
+      ];
+      return facts.sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at) || a.id.localeCompare(b.id)).slice(0, 50);
     },
   };
 }

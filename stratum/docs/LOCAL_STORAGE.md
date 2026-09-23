@@ -131,8 +131,11 @@ name API to find nodes beyond that snapshot and reveal their immediate
 neighbors. Start tour loads every organization File and DEPENDS_ON page, then
 shows dependencies before files that import them with Previous/Next controls.
 Run `npm run db:verify-graph-search` for a disposable 501-file/500-edge search
-and traversal check. Semantic node search, generated narration, and real-browser
-verification remain separate gates.
+and traversal check. Selecting a File or source Function also loads active
+Tier-2 changes and decisions whose path exactly matches that indexed File.
+Run `npm run db:verify-graph-related-facts` for a two-organization local check.
+Semantic node search, persistent fact graph edges, generated narration, and
+real-browser verification remain separate gates.
 
 Run `npm run db:verify-recovery` for a disposable organization backup and
 restore check. It exports a session, suppressed fact, audit status, and conflict
