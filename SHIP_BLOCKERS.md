@@ -557,6 +557,17 @@ being obscured by the blanket "unbuilt" framing:
 **Action**: update `plan.md` to reflect what's actually built vs. actually
 missing, so future planning isn't working from a false baseline.
 
+**Update 2026-09-23 — corrected under ADR-0013.** The finding above describes
+the original provider-specific stubs, but it no longer describes Tier 3 as a
+whole. `stratum/src/memory/cold/{graph,vectors}.ts` implements the approved
+Supabase graph/pgvector path; its migrations and live checks are recorded in
+ADR-0013. `stratum/scripts/understand-codebase.ts` supplies a CLI foundation.
+The DevOPs session-start bridge, a scheduled promotion invocation, Tier-2
+<50ms p95 release evidence, and the graph dashboard/search/tours remain open.
+The provider-specific latency targets need a binding Supabase replacement
+after the deployment topology is chosen. See the updated v0.5 section of
+`plan.md` for the itemized state.
+
 ---
 
 ## 3. Unproven in the real world
@@ -602,14 +613,15 @@ Sections 1–3.
   path to more."
 - **`librarian` subagent** — confirmed still a pure placeholder per its own
   file (`Status: CONTRACT placeholder... NOT active until Phase 3 ships`).
-  Its dependency `facts.ts` is partially real; `pinecone.ts`/`neo4j.ts` are
-  stubs (see 2.2).
+  Its dependency `facts.ts` is built. The Pinecone/Neo4j adapters are optional
+  stubs under ADR-0013; the Supabase graph/vector implementations exist.
 - **`integrations-curator` subagent** — fully built but has zero test/eval
   coverage and no evidence it has ever actually been invoked (`.workflow/state/`
   shows no artifacts it would produce). Built-but-never-exercised is its own
   category of risk before calling it shippable.
-- **Stratum Tier-3 cold memory** (Neo4j graph store, Pinecone semantic
-  store) — stub-only, see 2.2.
+- **Stratum Tier-3 cold memory integration** — Supabase graph/vector code
+  exists, but session-start retrieval and the final release latency gate
+  remain open; see the 2026-09-23 update in 2.2.
 - **Stratum Phase 4 TEE encryption path** (`src/proxy/tee/*`,
   `src/pruner/crypto.ts`) — deliberately unbuilt; the code throws rather
   than faking encryption, which is the *correct* honest behavior per its own

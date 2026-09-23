@@ -182,33 +182,60 @@ Borrowed from [obra/superpowers](https://github.com/obra/superpowers). Extends o
 ## 4. v0.5.x — Phase 3 Three-Tier Memory (Hot / Warm / Cold)
 
 **Theme**: "Stratum remembers what we decided. I never re-explain decisions."
-**Ship gate**: fact-survives-50-turn-gap test passes; Tier 2 <50ms p95; Tier 3 Pinecone <150ms p95; Neo4j <80ms; Zod gates all writes.
-**Effort remaining**: ~100h.
+**Ship gate**: fact-survives-50-turn-gap test passes; Tier 2 <50ms p95;
+Tier 3 graph/vector latency is measured on the approved Supabase implementation;
+Zod gates all writes; the DevOPs session-start hook retrieves relevant facts.
+**Status (2026-09-23)**: hot, warm, Supabase graph/vector, promotion code,
+memory API, and the read-only `understand-codebase` CLI exist. The simulated
+50-turn survival test passes.
+The session-start bridge is absent; the Tier-2 latency gate remains open.
+ADR-0013 replaces Pinecone/Neo4j as v0.5 ship dependencies while keeping
+their adapter interfaces available. The original ~100h estimate is stale and
+must be recalculated after the open gates are reconciled.
 
 ### 4a. Tier 1 — Hot Memory (rolling window)
 
-- [ ] **`stratum/src/memory/hot/tier1.ts`** (~10h). In-memory rolling window per active session. Configurable window size (default: last 50 turns). Cloudflare Durable Object compatible (when CF deployment lands in v1.0.x).
-- [ ] **Tier 1 query API** + tests.
+- [x] **`stratum/src/memory/hot/tier1.ts`**. In-memory rolling window per
+  active session, default two-hour window, with eviction into Tier 2.
+- [x] **Tier 1 query API** + tests (`recent()` and `test/memory/memory.test.ts`).
 
 ### 4b. Tier 2 — Warm Memory (Supabase facts + Llama extractor)
 
-- [ ] **Five fact-type Zod schemas** (~8h) at `stratum/src/types/facts.ts`: FunctionChange, TechDecision, PolicyUpdate, Todo, VariableChange. Per spec §3 + TECHNICAL_SPEC.md. All have: `id uuid`, `created_at timestamptz`, `session_id uuid`, `commit_hash text nullable`, `confidence_score float`, `is_verified bool`, `is_suppressed bool`, plus fact-type-specific fields.
-- [ ] **Supabase migration** (~3h) for `facts` table. New file `stratum/supabase/migrations/20260601000000_facts_table.sql`.
-- [ ] **`stratum/src/memory/warm/extractor.ts`** (~25h). Llama-based fact extractor. Use local Ollama (recommended) or Anthropic Haiku at low cost. Per Stratum CLAUDE.md: Llama 4-8B confidence-based extraction; never write to DB if Zod fails.
-- [ ] **`stratum/src/memory/warm/tier2.ts`** + query API (~8h). Read-side: get facts by project, by session, by fact-type, top-N by confidence.
-- [ ] **Tier 2 latency test** (~2h). Confirm <50ms p95 query latency on 10,000-fact dataset.
+- [x] **Five fact-type Zod schemas** in `stratum/src/types/facts.ts` and
+  `stratum/src/memory/warm/schemas.ts`; invalid facts are rejected before write.
+- [x] **Supabase migration** for five typed fact tables in
+  `stratum/supabase/migrations/20260406000000_initial_schema.sql`. ADR-0012
+  chose typed tables in place of the older single `facts` table plan.
+- [x] **`stratum/src/memory/warm/extractor.ts`**. Structured extraction over
+  an injected model completion; validated facts only. The live smoke used Haiku.
+- [x] **`stratum/src/memory/warm/tier2.ts`** + query API. Trusted org/session
+  keys and read validation are covered by unit and live smoke evidence.
+- [ ] **Tier 2 latency gate**. `npm run bench:tiers` exists, but the recorded
+  remote-client result exceeded its 80ms monitoring target; the blueprint's
+  <50ms p95 ship target needs a representative deployment measurement.
 
-### 4c. Tier 3 — Cold Memory (Pinecone + Neo4j)
+### 4c. Tier 3 — Cold Memory (Supabase pgvector + graph)
 
-- [ ] **`stratum/src/memory/cold/pinecone.ts`** (~15h). Embedding model selection + indexing strategy + upsert + query. Per spec: cosine similarity over fact embeddings; top-N retrieval.
-- [ ] **`stratum/src/memory/cold/neo4j.ts`** (~15h). Graph schema per Stratum CLAUDE.md: nodes `Function`, `Commit`, `Decision`, `Developer`, `Policy`; edges `DEPRECATED_BY`, `REFERENCED_IN`, `SUPERCEDES`, `AUTHORED_BY`, `APPLIES_TO`. Graph write API + query API.
-- [ ] **Tier 3 latency tests** (~3h). Pinecone <150ms p95; Neo4j <80ms (function status query).
+- [x] **Tier 3 vector store**. `stratum/src/memory/cold/vectors.ts` uses
+  Supabase pgvector with content-free embeddings and typed source pointers;
+  ADR-0013 retains a `VectorStore` seam for a future Pinecone adapter.
+- [x] **Tier 3 knowledge graph**. `stratum/src/memory/cold/graph.ts` uses
+  Supabase entity/edge tables and a supersession query; ADR-0013 retains a
+  `KnowledgeGraph` seam for a future Neo4j adapter.
+- [x] **Tier 3 latency measurement**. `npm run bench:tiers` measured the
+  Supabase graph/vector paths within its recorded 200ms p95 monitoring target.
+  Recheck against a binding release target after deployment topology is chosen.
 
 ### 4d. Promotion + integration
 
-- [ ] **Nightly Tier 2 → Tier 3 promotion job** (~8h). Cron-style script (or scheduled GitHub Action) that promotes high-confidence Tier 2 facts to Tier 3. Idempotent.
+- [ ] **Nightly Tier 2 → Tier 3 promotion job**. The idempotent
+  `npm run promote` script exists; a scheduled operator invocation is still
+  required before calling nightly promotion complete.
 - [ ] **DevOPs session-start hook integration** (~8h). Extend `hooks/universal/session-start/load-baton.sh` to query Stratum facts: current project's recent Tier 2 facts + Tier 3 semantic search for current task context. Inject top-N facts into agent context via constitution layer.
-- [ ] **Tier B eval scenario**: fact-survives-50-turn-gap (~3h). Inject FunctionChange in session A; 50 turns of unrelated work in session B same project; query → fact returned correctly.
+- [x] **50-turn survival test**: `stratum/test/memory/manager.test.ts` proves a
+  decision evicted from hot memory is extracted, persisted, and recalled after
+  50 unrelated turns using a fake model and database. A separate live memory
+  pipeline smoke was recorded; it does not establish a live 50-turn result.
 
 ### 4e. v0.5.0 release
 
@@ -220,12 +247,12 @@ Borrowed from [obra/superpowers](https://github.com/obra/superpowers). Extends o
 
 ### 4f. Borrowed pattern integration — knowledge-graph view (NEW, ~30h)
 
-Borrowed from [Lum1104/Understand-Anything](https://github.com/Lum1104/Understand-Anything). Layers a visualization + exploration UI on top of Phase 3's existing Neo4j graph store (which is already in scope). The graph DB was always going to be there; this adds the UI + tour generation + semantic search on top.
+Borrowed from [Lum1104/Understand-Anything](https://github.com/Lum1104/Understand-Anything). Layers visualization and exploration on the approved Supabase Tier-3 graph/vector stores. `stratum/scripts/understand-codebase.ts` provides a read-only entity/semantic-query CLI; graph ingestion, the universal slash command, dashboard view, fuzzy search, and tours remain open.
 
-- [ ] **Knowledge-graph extraction pipeline** (~10h). Multi-agent code-analysis pipeline: walk the project's files; extract functions, classes, dependencies; cross-reference with Tier-2 facts (decisions, deprecations); write graph nodes + edges to Neo4j (already wired in Phase 3). One agent per node-type for parallelizable processing.
-- [ ] **`/understand-codebase` slash command** (~3h). New command at `slash-commands/universal/understand-codebase.md`. Triggers the extraction pipeline on the current repo. Output: graph file + dashboard URL.
+- [ ] **Knowledge-graph extraction pipeline**. Walk project files, extract code entities and dependencies, connect Tier-2 decisions and deprecations, and write graph nodes/edges. The existing CLI reads memory facts; it does not ingest source files.
+- [ ] **`/understand-codebase` slash command**. Add `slash-commands/universal/understand-codebase.md` to invoke the existing read-only CLI and link the graph dashboard when available.
 - [ ] **Dashboard `/dashboard/graph` view** (~10h). Interactive graph viewer (vanilla JS + d3.js or sigma.js; no React bloat). Pan, zoom, click-to-expand. Sidebar shows node details: file path, plain-English summary (generated by subagent), relationships, related Tier-2 facts.
-- [ ] **Fuzzy + semantic search across the graph** (~4h). Fuzzy (string-distance over node names) + semantic (Pinecone-backed embedding search over node summaries — Pinecone is already in Phase 3 scope).
+- [ ] **Fuzzy + semantic search across the graph** (~4h). The CLI already supports semantic fact search via Supabase pgvector. Fuzzy node-name search and dashboard integration remain open.
 - [ ] **Auto-generated guided tours** (~3h). For a new contributor: tour the project in dependency order. Generate tour ordering from the graph topology (topological sort); narrate each stop with the node's plain-English summary.
 - [ ] **(Future, defer)** Karpathy-pattern wiki support (`/understand-knowledge`). Useful when memory matures. Tracked but not in v0.5.x scope.
 

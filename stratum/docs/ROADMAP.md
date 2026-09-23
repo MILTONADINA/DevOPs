@@ -105,29 +105,34 @@
 
 **Goal:** Persistent memory with structured fact extraction.
 
+**Status (2026-09-23):** Hot/warm memory, five typed fact schemas, Supabase
+graph/pgvector cold stores, promotion code, and a 50-turn survival test exist.
+ADR-0013 approves Supabase for Tier 3; Pinecone/Neo4j adapters are optional.
+The DevOPs session-start bridge, nightly schedule, and <50ms p95 Tier-2
+release measurement remain open. See root `plan.md` §4 for the current gate.
+
 ### Tasks
 
-- [ ] Implement full Supabase schema for all fact tables (see `TECHNICAL_SPEC.md`)
-- [ ] Implement Tier 1 memory (`src/memory/hot/`) — rolling window in Durable Object state
-- [ ] Implement Tier 2 fact extraction (`src/memory/warm/extractor.ts`) using Llama 4-8B
+- [x] Implement five typed Supabase fact tables (`supabase/migrations/20260406000000_initial_schema.sql`)
+- [x] Implement Tier 1 memory (`src/memory/hot/tier1.ts`) — two-hour in-process rolling window
+- [x] Implement Tier 2 fact extraction (`src/memory/warm/extractor.ts`) behind an injected completion model
   - Extractor must output Zod-validated structured facts only
   - Never store if schema validation fails
-- [ ] Implement all five fact type schemas with Zod
-- [ ] Implement Tier 3 Pinecone upsert (`src/memory/cold/pinecone.ts`)
-- [ ] Implement Tier 3 Neo4j graph write (`src/memory/cold/neo4j.ts`)
-- [ ] Implement the nightly promotion job (Tier 2 → Tier 3)
+- [x] Implement all five fact type schemas with Zod
+- [x] Implement Tier 3 Supabase pgvector store (`src/memory/cold/vectors.ts`)
+- [x] Implement Tier 3 Supabase graph store (`src/memory/cold/graph.ts`)
+- [ ] Schedule the existing Tier 2 → Tier 3 promotion script nightly
 - [ ] Implement memory retrieval — when KadaneDial is insufficient, query Tier 2/3
-- [ ] Write Tier B eval scenario: fact survives 50-turn gap and is correctly retrieved
+- [x] Test a simulated 50-turn gap with a fake model and database (`test/memory/manager.test.ts`)
 
 ### Acceptance Criteria
 
 - [ ] A `FunctionChange` fact extracted in session A is retrievable in session B (same org)
 - [ ] Tier 2 query latency < 50ms p95
-- [ ] Tier 3 Pinecone query latency < 150ms p95
-- [ ] Tier 3 Neo4j query returns correct function status in < 80ms
+- [ ] Supabase Tier-3 graph/vector release latency meets a binding target for the chosen deployment (target to be set)
 - [ ] Nightly promotion job completes without errors
-- [ ] Fact extraction never writes to DB if Zod validation fails (test this explicitly)
-- [ ] Schema: all fact tables have `is_verified`, `is_suppressed`, `commit_hash` columns
+- [x] Invalid extracted facts are dropped before persistence (`test/memory/warm-pipeline.test.ts`)
+- [x] All five typed fact tables have `is_verified`, `is_suppressed`, and `commit_hash` columns (`20260406000000_initial_schema.sql`)
 
 ---
 
