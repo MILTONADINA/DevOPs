@@ -19,7 +19,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 /** Knowledge-graph node kinds (CLAUDE.md node types + Project). */
-export type EntityKind = "Function" | "Commit" | "Decision" | "Developer" | "Policy" | "Project";
+export type EntityKind = "Function" | "Commit" | "Decision" | "Developer" | "Policy" | "Project" | "File";
 
 /**
  * Edge types. NOTE: CLAUDE.md spells the supersession edge "SUPERCEDES"; this uses
@@ -41,13 +41,15 @@ export type EntityKind = "Function" | "Commit" | "Decision" | "Developer" | "Pol
  *   • AUTHORED_BY   — "from is authored by to": from = artifact, to = developer.
  *   • APPLIES_TO    — "from applies to to": from = policy, to = target.
  */
-export type EdgeType = "SUPERSEDES" | "DEPRECATED_BY" | "REFERENCED_IN" | "AUTHORED_BY" | "APPLIES_TO";
+export type EdgeType = "SUPERSEDES" | "DEPRECATED_BY" | "REFERENCED_IN" | "AUTHORED_BY" | "APPLIES_TO" | "DECLARES" | "DEPENDS_ON";
 
 export interface EnsureEntityInput {
   orgId: string;
   kind: EntityKind;
   name: string;
   sessionId?: string;
+  filePath?: string;
+  summary?: string;
 }
 
 export interface AddEdgeInput {
@@ -117,12 +119,21 @@ export interface KnowledgeGraph {
 export function createKnowledgeGraph(client: SupabaseClient): KnowledgeGraph {
   return {
     async ensureEntity(input: EnsureEntityInput): Promise<string> {
-      const existing = await client.from("knowledge_entities").select("id").eq("org_id", input.orgId).eq("kind", input.kind).eq("name", input.name).limit(1);
+      const existing = await client.from("knowledge_entities").select("id,file_path,summary").eq("org_id", input.orgId).eq("kind", input.kind).eq("name", input.name).limit(1);
       if (existing.error) throw new Error(`ensureEntity select failed: ${existing.error.message}`);
-      const first = ((existing.data ?? []) as { id: string }[])[0];
-      if (first) return first.id;
+      const first = ((existing.data ?? []) as { id: string; file_path?: string; summary?: string }[])[0];
+      const metadata: Record<string, string> = {};
+      if (input.filePath !== undefined) metadata["file_path"] = input.filePath;
+      if (input.summary !== undefined) metadata["summary"] = input.summary;
+      if (first) {
+        if ((input.filePath !== undefined && first.file_path !== input.filePath) || (input.summary !== undefined && first.summary !== input.summary)) {
+          const updated = await client.from("knowledge_entities").update(metadata).eq("id", first.id).eq("org_id", input.orgId);
+          if (updated.error) throw new Error(`ensureEntity metadata update failed: ${updated.error.message}`);
+        }
+        return first.id;
+      }
 
-      const row: Record<string, unknown> = { org_id: input.orgId, kind: input.kind, name: input.name };
+      const row: Record<string, unknown> = { org_id: input.orgId, kind: input.kind, name: input.name, ...metadata };
       if (input.sessionId !== undefined) row["session_id"] = input.sessionId;
       const created = await client.from("knowledge_entities").insert(row).select("id").single();
       if (created.error || !created.data) throw new Error(`ensureEntity insert failed: ${created.error?.message ?? "no row returned"}`);
