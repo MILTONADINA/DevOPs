@@ -24,3 +24,19 @@ test('SessionStart warns on failed preflight and never blocks the session', () =
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('SessionStart loads the baton then recalls memory through the project-local runtime', () => {
+  const settings = JSON.parse(readFileSync(path.join(ROOT, '.claude', 'settings.json'), 'utf8'));
+  const commands = settings.hooks.SessionStart[0].hooks.map(hook => hook.command);
+  const batonIndex = commands.findIndex(command => command.includes('load-baton.sh'));
+  const memoryIndex = commands.findIndex(command => command.includes('session-start-context.ts'));
+  assert.ok(batonIndex >= 0 && memoryIndex > batonIndex);
+  assert.match(commands[memoryIndex], /stratum\/node_modules\/\.bin\/tsx/);
+  const result = spawnSync('bash', ['-c', commands[memoryIndex]], {
+    cwd: ROOT,
+    env: { ...process.env, CLAUDE_PROJECT_DIR: ROOT, DEVOPS_STRATUM_PROJECT_ROOT: ROOT, DEVOPS_STRATUM_ORG_ID: '' },
+    encoding: 'utf8', timeout: 30_000,
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout, '');
+});
