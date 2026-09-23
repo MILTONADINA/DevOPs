@@ -295,7 +295,9 @@ Return up to 50 active Tier-2 fact summaries for an indexed File node in the
 authenticated organization. `file` must be its exact project-relative path.
 FunctionChange facts match `file_path`; TechDecision facts match only when
 `domain` is that full path. Suppressed facts and generic domains are excluded.
-An unindexed path returns 404. In personal mode, pass `?org-id=<uuid>`.
+The response reads durable File-to-fact links maintained by database triggers;
+the backing facts are checked again for active status. An unindexed path
+returns 404. In personal mode, pass `?org-id=<uuid>`.
 
 ---
 

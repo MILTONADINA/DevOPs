@@ -119,8 +119,8 @@ subtree for an existing organization, set `INGEST_ORG_ID` to its UUID, optionall
 set `SOURCE_SUBDIR` (default `stratum/src`), and run
 `npm run db:with-env -- npm run ingest-source-graph` from `stratum/`. This creates
 File and top-level Function nodes with source-derived summaries plus DECLARES
-and relative-import DEPENDS_ON edges. Cross-language parsing, Tier-2 links,
-and model-generated summaries remain separate work.
+and relative-import DEPENDS_ON edges. Cross-language parsing, in-canvas fact
+nodes, and model-generated summaries remain separate work.
 
 Open `/dashboard/graph` on the local proxy to explore the bounded graph
 snapshot. Enter a CQ API key in commercial mode, or pass `?org-id=<uuid>` in
@@ -133,12 +133,16 @@ shows dependencies before files that import them with Previous/Next controls.
 Run `npm run db:verify-graph-search` for a disposable 501-file/500-edge search
 and traversal check. Selecting a File or source Function also loads active
 Tier-2 changes and decisions whose path exactly matches that indexed File.
-Run `npm run db:verify-graph-related-facts` for a two-organization local check.
+`source_fact_links` persists those typed File-to-fact edges. Database triggers
+sync both insert orders, suppression, path changes, and deletion; the API still
+checks active status. Run `npm run db:verify-graph-related-facts` for the local
+two-organization lifecycle check and `npm run db:verify-source-fact-backfill`
+for a disposable pre-migration backfill and privilege check.
 Run `npm run verify:graph-browser` on a machine with local Chrome to exercise
 the served dashboard and scoped API through a real browser. It uses an isolated
 in-memory fixture and saves `.workflow/proofs/graph-browser.png`. Semantic node
-search, persistent fact graph edges, and generated narration remain separate
-gates.
+search, generated narration, and displaying these durable links as nodes in
+the main graph canvas remain separate gates.
 
 Run `npm run db:verify-recovery` for a disposable organization backup and
 restore check. It exports a session, suppressed fact, audit status, and conflict

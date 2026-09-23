@@ -69,6 +69,7 @@
     "db:verify-graph-integrity": "tsx scripts/local-compose.ts with-env tsx test/integration/local-graph-org-integrity.ts",
     "db:verify-graph-search": "tsx scripts/local-compose.ts with-env tsx test/integration/local-graph-search.ts",
     "db:verify-graph-related-facts": "tsx scripts/local-compose.ts with-env tsx test/integration/local-graph-related-facts.ts",
+    "db:verify-source-fact-backfill": "tsx test/integration/local-source-fact-backfill.ts",
     "verify:graph-browser": "tsx test/integration/browser-graph.ts",
     "db:verify-source-graph": "tsx scripts/local-compose.ts with-env tsx test/integration/local-source-graph.ts",
     "ingest-source-graph": "tsx scripts/ingest-source-graph.ts",
