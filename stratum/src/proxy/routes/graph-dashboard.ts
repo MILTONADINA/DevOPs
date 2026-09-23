@@ -24,6 +24,8 @@ main { display: grid; grid-template-columns: minmax(0, 1fr) 19rem; height: calc(
 <header><h1><a href="/dashboard">Stratum</a> / Knowledge Graph</h1>
 <input id="key" type="password" autocomplete="off" placeholder="CQ API key" aria-label="CQ API key">
 <button id="load" type="button">Load graph</button>
+<input id="search-query" type="search" maxlength="100" placeholder="Find a node" aria-label="Find a graph node">
+<button id="search" type="button">Search</button>
 <button id="zoom-in" type="button" aria-label="Zoom in">+</button><button id="zoom-out" type="button" aria-label="Zoom out">−</button><button id="reset" type="button">Reset view</button></header>
 <p id="status" role="status">Enter a CQ API key, or use ?org-id= in personal mode.</p>
 <main><svg id="canvas" xmlns="http://www.w3.org/2000/svg" aria-label="Knowledge graph" role="img"><g id="viewport"></g></svg>
@@ -130,7 +132,40 @@ async function load() {
     status.textContent = error.message || String(error);
   }
 }
+async function search() {
+  const key = keyInput.value.trim();
+  const query = document.getElementById('search-query').value.trim();
+  if (!key && !org) { status.textContent = 'Enter a CQ API key, or use ?org-id= in personal mode.'; return; }
+  if (query.length < 2 || query.length > 100) { status.textContent = 'Search needs 2 to 100 characters.'; return; }
+  if (key) sessionStorage.setItem('cq_dashboard_key', key); else sessionStorage.removeItem('cq_dashboard_key');
+  status.textContent = 'Searching graph…';
+  try {
+    const url = '/v1/memory/graph/search?q=' + encodeURIComponent(query) + (key ? '' : '&org-id=' + encodeURIComponent(org));
+    const response = await fetch(url, { headers: key ? { Authorization: 'Bearer ' + key } : {}, cache: 'no-store' });
+    if (!response.ok) throw new Error(response.status === 401 ? 'Invalid or missing CQ API key.' : 'Graph search failed (' + response.status + ').');
+    const graph = await response.json();
+    nodes = Array.isArray(graph.entities) ? graph.entities : [];
+    edges = Array.isArray(graph.edges) ? graph.edges : [];
+    byId = new Map(nodes.map(n => [n.id, n]));
+    const matches = Array.isArray(graph.matches) ? graph.matches.filter(id => byId.has(id)) : [];
+    visible = new Set(matches);
+    selected = null;
+    relations.replaceChildren();
+    const list = element('ul');
+    matches.forEach(id => {
+      const item = element('li'), button = element('button', byId.get(id).name);
+      button.type = 'button'; button.addEventListener('click', () => select(id));
+      item.appendChild(button); list.appendChild(item);
+    });
+    details.replaceChildren(element('h2', 'Search results'), list, relations);
+    x = svg.clientWidth / 2; y = svg.clientHeight / 2; scale = 1;
+    draw();
+    status.textContent = matches.length + ' matching node(s). Select one to reveal its neighbors.';
+  } catch (error) { status.textContent = error.message || String(error); }
+}
 document.getElementById('load').addEventListener('click', load);
+document.getElementById('search').addEventListener('click', search);
 keyInput.addEventListener('keydown', event => { if (event.key === 'Enter') load(); });
+document.getElementById('search-query').addEventListener('keydown', event => { if (event.key === 'Enter') search(); });
 if (keyInput.value || org) load();
 </script></body></html>`;

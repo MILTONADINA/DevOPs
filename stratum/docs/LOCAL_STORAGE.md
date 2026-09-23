@@ -126,8 +126,10 @@ Open `/dashboard/graph` on the local proxy to explore the bounded graph
 snapshot. Enter a CQ API key in commercial mode, or pass `?org-id=<uuid>` in
 personal mode. The view shows up to 500 current nodes, their in-snapshot edges,
 source paths and summaries; selecting a node reveals its neighbors. It warns
-when the snapshot may be truncated. Search, tours, and pagination are separate
-gates.
+when the snapshot may be truncated. Its search box uses the scoped fuzzy
+name API to find nodes beyond that snapshot and reveal their immediate
+neighbors. Run `npm run db:verify-graph-search` for a disposable 501-node
+search check. Semantic search, tours, and pagination are separate gates.
 
 Run `npm run db:verify-recovery` for a disposable organization backup and
 restore check. It exports a session, suppressed fact, audit status, and conflict
