@@ -1,0 +1,43 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-.}/hooks/universal/session-start/graph-preflight.sh\" || true",
+            "statusMessage": "Checking graph environment..."
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.command // empty' | { cmd=$(cat); [ -z \"$cmd\" ] && exit 0; ROOT=\"${CLAUDE_PROJECT_DIR:-}\"; if [ -z \"$ROOT\" ]; then ROOT=$(git rev-parse --show-toplevel 2>/dev/null); [ -n \"$ROOT\" ] && echo \"HOOK WARNING: CLAUDE_PROJECT_DIR unset; project root resolved from cwd: $ROOT\" >&2; fi; [ -n \"$ROOT\" ] || { echo \"HOOK: cannot resolve the project root (CLAUDE_PROJECT_DIR unset and cwd $(pwd) is not inside a git repo) -- failing closed\" >&2; exit 2; }; cd \"$ROOT\" || { echo \"HOOK: cannot cd to project root $ROOT -- failing closed\" >&2; exit 2; }; H=hooks/universal/pre-tool/block-sealed-refs.sh; [ -f \"$H\" ] || { echo \"HOOK MISSING: $ROOT/$H -- failing closed\" >&2; exit 2; }; bash \"$H\" \"$cmd\"; }",
+            "statusMessage": "Checking sealed-ref safety..."
+          },
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.command // empty' | { cmd=$(cat); [ -z \"$cmd\" ] && exit 0; ROOT=\"${CLAUDE_PROJECT_DIR:-}\"; if [ -z \"$ROOT\" ]; then ROOT=$(git rev-parse --show-toplevel 2>/dev/null); [ -n \"$ROOT\" ] && echo \"HOOK WARNING: CLAUDE_PROJECT_DIR unset; project root resolved from cwd: $ROOT\" >&2; fi; [ -n \"$ROOT\" ] || { echo \"HOOK: cannot resolve the project root (CLAUDE_PROJECT_DIR unset and cwd $(pwd) is not inside a git repo) -- failing closed\" >&2; exit 2; }; cd \"$ROOT\" || { echo \"HOOK: cannot cd to project root $ROOT -- failing closed\" >&2; exit 2; }; H=hooks/universal/pre-tool/deploy-gate.sh; [ -f \"$H\" ] || { echo \"HOOK MISSING: $ROOT/$H -- failing closed\" >&2; exit 2; }; bash \"$H\" \"$cmd\"; }",
+            "statusMessage": "Checking graph deploy-gate..."
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.file_path // .tool_response.filePath // empty' | { read -r f; [ -z \"$f\" ] && exit 0; ROOT=\"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null)}\"; if [ -z \"$ROOT\" ] || ! cd \"$ROOT\" 2>/dev/null; then echo \"sync-lr-refined-date: could not resolve the project root (CLAUDE_PROJECT_DIR='${CLAUDE_PROJECT_DIR:-}'), skipping\" >&2; exit 0; fi; H=hooks/universal/post-tool/sync-lr-refined-date.sh; [ -f \"$H\" ] || { echo \"sync-lr-refined-date: hook missing at $ROOT/$H, skipping\" >&2; exit 0; }; bash \"$H\" \"$f\" || true; }"
+          }
+        ]
+      }
+    ]
+  }
+}

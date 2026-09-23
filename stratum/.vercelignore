@@ -1,0 +1,29 @@
+# Deploy ONLY the pre-bundled function (api/index.js) + vercel.json + package.json.
+# api/index.js is self-contained (esbuild inlined the @devops/observability cross-subtree import),
+# so none of the source tree is needed at runtime — and SECRETS must never be uploaded.
+
+# secrets — NEVER upload (set them as Vercel encrypted env vars in the dashboard instead)
+.env
+.env.*
+
+# source + tooling not needed by the pre-bundled function
+src
+test
+rust
+evals
+scripts
+docs
+supabase
+models
+data
+vercel-src
+node_modules
+coverage
+.git
+.github
+.claude
+.vscode
+*.test.ts
+tsconfig*.json
+vitest.config.ts
+Dockerfile

@@ -85,10 +85,13 @@ Do not use lawyers for this. A signed Google Doc is sufficient for Phase 1.
 ## Running the Partnership
 
 ### Week 1 — Onboarding
-- Install the Phase 1 proxy on their machine
-- Verify it's routing correctly (`ANTHROPIC_BASE_URL=http://localhost:4080`)
-- Confirm the dashboard is showing real numbers
+- Follow the technical runbook: **`docs/COMMERCIAL_ONBOARDING.md`** (deploy the proxy → mint a CQ key →
+  the partner points their Anthropic SDK / Claude Code at the deployed URL with that key). The old
+  "install Phase-1 locally at localhost:4080" flow is superseded by the deployed commercial proxy.
+- Confirm their usage shows in the CFO dashboard (`/billing?org-id=<id>`) + `GET /v1/billing/summary`
 - Set a baseline: their actual API spend before CQ
+- Settle the free-vs-paid pilot decision (see the runbook's "Decision to settle" note — v1.0.0 needs a
+  paid invoice, billable at the plan minimum from day one even before pruning)
 
 ### Weeks 2–4 — Measurement Phase
 - Check in twice a week (Slack DM, not calls)

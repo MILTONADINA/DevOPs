@@ -1,15 +1,6 @@
 manifest_version: 1
 generated_at: '2026-05-24T03:01:26Z'
 skills:
-- name: karpathy-guidelines
-  path: skills/universal/process/karpathy-guidelines/SKILL.md
-  sha256: 474fa7e3ebf5aa6a0cf32450e5c071ac65f1711cfc24e08f8f388570e50936fa
-  sig_path: skills/universal/process/karpathy-guidelines/SKILL.md.sig
-  signed_by: https://github.com/MILTONADINA/DevOPs/.github/workflows/release-sign.yml@refs/heads/phase-2-security-depth
-  signed_at: '2026-05-24T03:01:26Z'
-  rekor_log_index: see .workflow/sigstore/signing-logs/
-  signed_with_version: v2.4.3
-  bundle_path: skills/universal/process/karpathy-guidelines/SKILL.md.bundle
 - name: proof-of-work
   path: skills/universal/process/proof-of-work/SKILL.md
   sha256: 277be738a169c6d70e61facb67c7ec58f3a65d27c2ab374b5ae28bd075d7cbfd
@@ -28,15 +19,6 @@ skills:
   rekor_log_index: see .workflow/sigstore/signing-logs/
   signed_with_version: v2.4.3
   bundle_path: skills/universal/process/baton-handoff/SKILL.md.bundle
-- name: ask-dont-assume
-  path: skills/universal/process/ask-dont-assume/SKILL.md
-  sha256: dd1d54ec8f623a0d46ac657538a1715b22fe9d492f6132d72bf59e1120625e2f
-  sig_path: skills/universal/process/ask-dont-assume/SKILL.md.sig
-  signed_by: https://github.com/MILTONADINA/DevOPs/.github/workflows/release-sign.yml@refs/heads/phase-2-security-depth
-  signed_at: '2026-05-24T03:01:26Z'
-  rekor_log_index: see .workflow/sigstore/signing-logs/
-  signed_with_version: v2.4.3
-  bundle_path: skills/universal/process/ask-dont-assume/SKILL.md.bundle
 - name: spec-extraction
   path: skills/universal/process/spec-extraction/SKILL.md
   sha256: f83a3c535b209b0f3f127cb569dbd7eda0a8c4f51b03b9b647811288da504d6c
@@ -82,15 +64,6 @@ skills:
   rekor_log_index: see .workflow/sigstore/signing-logs/
   signed_with_version: v2.4.3
   bundle_path: skills/universal/process/session-summary/SKILL.md.bundle
-- name: surgical-edits
-  path: skills/universal/process/surgical-edits/SKILL.md
-  sha256: fdf28f55f008335a9984e25d947bbb70a25f0cac8f2001867475f9c1bd2812fa
-  sig_path: skills/universal/process/surgical-edits/SKILL.md.sig
-  signed_by: https://github.com/MILTONADINA/DevOPs/.github/workflows/release-sign.yml@refs/heads/phase-2-security-depth
-  signed_at: '2026-05-24T03:01:26Z'
-  rekor_log_index: see .workflow/sigstore/signing-logs/
-  signed_with_version: v2.4.3
-  bundle_path: skills/universal/process/surgical-edits/SKILL.md.bundle
 - name: ears-spec-writing
   path: skills/universal/development/ears-spec-writing/SKILL.md
   sha256: 2b95da89192cfb7ef897de47b61840bf37113518c8f553c0547cf8255dc564aa

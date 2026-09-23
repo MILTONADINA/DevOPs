@@ -44,7 +44,6 @@
   },
   "optionalDependencies": {
     "stratum": "Phase 0+ session capture proxy; pruning requires Stratum Phase 2",
-    "zep": "Self-hosted Zep for semantic temporal memory",
     "langfuse": "Observability backend",
     "laminar": "Agent-first observability alternative to Langfuse"
   }

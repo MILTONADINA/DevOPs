@@ -13,7 +13,7 @@
 The Phase 1 commit `d36a58f` was authored in a Linux sandbox by an earlier
 claude.ai session and delivered to this machine as a tarball. This spec
 defines the structural and mechanical criteria the locally-extracted build
-must satisfy on Windows before Phase 1 is treated as validated and the
+must satisfy before Phase 1 is treated as validated and the
 GitHub push (Prompt 2) is authorized. Validation is read-mostly: it checks
 that the directory tree, file counts, declared YAML/JSON/TypeScript
 artifacts, hook shebangs, skill frontmatter, the claim-validator, and the
@@ -31,7 +31,7 @@ validation report instead of being silently edited.
 - Editing `package.json` script paths (polish backlog)
 - Creating the missing `hooks/test-all.sh` referenced by `package.json` (polish backlog)
 - Compiling `.ts` → `.js` (polish backlog)
-- Adding PowerShell equivalents of `.sh` hooks (Phase 2)
+- Porting `.sh` hooks to additional shells (Phase 2)
 - Any Phase 2+ deliverable (security stack, signing, stack-specific skills, threat models)
 
 ## Actors and data
@@ -50,8 +50,8 @@ THE SYSTEM SHALL contain all nineteen documented top-level directories: `analyze
 ### REQ-2 (Ubiquitous) — Committed file count
 THE SYSTEM SHALL contain at least 150 git-tracked files at HEAD.
 
-### REQ-3 (Ubiquitous) — Hook portability on Windows
-THE SYSTEM SHALL document the execution path for bash hooks on Windows and ensure every hook script declares a portable bash shebang.
+### REQ-3 (Ubiquitous) — Hook portability
+THE SYSTEM SHALL document the execution path for bash hooks and ensure every hook script declares a portable bash shebang.
 
 ### REQ-4 (Ubiquitous) — TypeScript validity
 THE SYSTEM SHALL ensure every `.ts` source under `verification/`, `analyzer/`, and `observability/` parses under `tsc --noEmit` with no diagnostics.
@@ -91,7 +91,7 @@ THE SYSTEM SHALL produce a report at `.workflow/state/phase-1-validation.md` enu
 ### AC-3.1 (maps to REQ-3)
 **Given** the current `docs/HOOKS.md` after the documentation repair
 **When** the file is read
-**Then** it contains an explicit statement that `.sh` hooks require Git Bash, WSL, or MSYS2 on Windows and that PowerShell equivalents are deferred to Phase 2.
+**Then** it contains an explicit statement that `.sh` hooks require a POSIX shell (bash/zsh).
 
 ### AC-3.2 (maps to REQ-3)
 **Given** every `.sh` file under `hooks/` and `scripts/`
@@ -175,7 +175,7 @@ Validation is a low-attack-surface activity (read-only inspection plus two scope
 
 - **Author this spec rather than skip claims or use a non-`specs/` ref.** `claim-schema.yml` requires `spec_ref` to match `^specs/.+\.md` and `claim-validator.ts` enforces it; P8 (Spec-Anchored Implementation) mandates authoring one when none exists. Approved by the user on 2026-05-22 before any claim was emitted.
 - **Run `claim-validator.ts` via `npx tsx`.** No compiled `.js` exists, and there is no `tsconfig.json` or build script. The `.js`/build gap is a Phase 1 polish-backlog item; it does not block Phase 1 validation, but it does break `node verification/claim-validator.js --all` (Prompt 3 step 8) and must be resolved before that step runs.
-- **Repair the fifteen-file modified delta via `git config --local core.filemode false`.** Preserves `100755` in the repository's index so Linux contributors retain executable bits on clone; only neutralises Windows NTFS's inability to represent the executable mode bit.
+- **Repair the fifteen-file modified delta via `git config --local core.filemode false`.** Preserves `100755` in the repository's index so contributors retain executable bits on clone; only stops git from surfacing a spurious mode-bit delta locally.
 - **Add `.prompts/` to `.gitignore`.** The directory is a local operator scratch area for saved prompt artifacts and is not part of the DevOPs project's committed surface.
 
 ---

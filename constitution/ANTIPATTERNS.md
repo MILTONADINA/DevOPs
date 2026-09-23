@@ -34,9 +34,12 @@ specified.
 > If you want my recommendation: 100 req/min per-API-key on `/api/public/*`
 > returning 429, backed by Redis. Should I proceed with that?"
 
-**Enforcement:** `ask-dont-assume` skill produces blockers in
-`.workflow/state/blockers.md`. Session-end hook blocks summary completion if
-unresolved blockers exist.
+**Enforcement:** native Claude Code behavior + the `AskUserQuestion` tool
+surface ambiguity (the dedicated `ask-dont-assume` skill was removed
+2026-09-14 as redundant with this native behavior). If ambiguity is written
+to `.workflow/state/blockers.md`, the session-end hook (`write-baton.sh`)
+still blocks summary completion on unresolved entries — that mechanism is
+independent of the removed skill.
 
 ---
 
@@ -100,9 +103,11 @@ while it's there.
 > *fixes only the typo on line 42; mentions in summary that there's an
 > unused import on line 200 that the user may want to address separately.*
 
-**Enforcement:** The `surgical-edits` skill and `verification/claim-validator.ts`
-reject diffs containing lines not traceable to the user's request or to a
-spec line.
+**Enforcement:** `verification/claim-validator.ts` rejects diffs containing
+lines not traceable to the user's request or to a spec line (the dedicated
+`surgical-edits` skill was removed 2026-09-14 as redundant with Claude
+Code's native "no drive-by refactoring" instruction — the validator is the
+real enforcement mechanism, not the skill).
 
 ---
 
@@ -243,7 +248,7 @@ violations. Trust destruction.
 
 **Enforcement:** Pre-tool hooks block file reads and writes outside the
 current project root. Memory layers are isolated per project (Stratum
-session_id scoping, Zep tenant_id, file-based memory in project-local
+session_id scoping, file-based memory in project-local
 `.workflow/memory/`). Meta-memory patterns are scrubbed of PII/IP before
 cross-project storage.
 

@@ -12,9 +12,10 @@
     "analyze": "./scripts/analyze.sh",
     "install:project": "./scripts/init-project.sh",
     "validate:claims": "npx --yes tsx ./verification/claim-validator.ts",
+    "test": "node --test tests/hermeticity.test.mjs tests/graph-dashboard/*.test.mjs tests/graph-resilience/*.test.mjs",
     "lint:renovate": "node ./scripts/lint-renovate.js",
     "lint:stack-specific-skills": "node ./scripts/lint-stack-specific-skills.js",
-    "test:skills": "node ./governance/skill-evals/run-evals.js"
+    "graph:dashboard": "node scripts/graph-dashboard/server.mjs"
   },
   "keywords": [
     "ai-agents",
@@ -35,8 +36,7 @@
     "subagents",
     "verification",
     "proof-of-work",
-    "stratum",
-    "karpathy"
+    "stratum"
   ],
   "author": "Milton Adina",
   "license": "MIT",
@@ -45,7 +45,7 @@
     "url": "https://github.com/MILTONADINA/DevOPs.git"
   },
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=20.11.0"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

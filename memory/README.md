@@ -1,9 +1,13 @@
 # Memory
 
-DevOPs supports three memory backends. All three can be active simultaneously
-and serve different purposes.
+DevOPs supports two memory backends. Both can be active simultaneously and
+serve different purposes. (A third, Zep, was removed 2026-09-14 as redundant
+dead weight — zero call sites ever wired it in, and Stratum's own ADR-0004
+argues its NL-summarization/graph approach is inferior to the structured-facts
+approach below. Semantic-temporal queries — "what did anyone ever say about
+X?" — are currently unsupported; reopen if that need is confirmed.)
 
-## The three tiers
+## The two tiers
 
 ### 1. File-based memory (always on)
 
@@ -43,37 +47,21 @@ Cons: requires running the Stratum proxy.
 
 Status: Phase 0 (capture) works today. Phase 2 (pruning) is in progress.
 
-### 3. Zep (semantic temporal memory)
-
-Location: `memory/zep/` (Docker Compose + MCP config)
-
-What it stores:
-- Conversation turns embedded for semantic search
-- Time-aware retrieval ("what did we decide last week about auth?")
-- Graph relationships between facts
-
-Wire via MCP: `mcp-configs/universal/memory-zep.json`
-
-Pros: best temporal-reasoning benchmark scores in 2026; semantic search.
-Cons: external dependency; embeddings cost.
-
 ## When to use which
 
 | Need | Backend |
 |------|---------|
 | "What was the auth decision?" | file-based (decisions.md) |
 | "What did we change in auth.ts in this session?" | Stratum (function_changes) |
-| "Has anyone in any session ever discussed Argon2id?" | Zep |
 | "Show me the audit trail for client X's spend" | Stratum (billing_records) |
-| "Recall what the user said about retry policy 3 weeks ago" | Zep |
 | "What's the project glossary entry for 'session'?" | file-based (glossary.md) |
+| "Has anyone in any session ever discussed X?" / "what did the user say N weeks ago?" | **unsupported** — was Zep's job, removed; no current backend covers open-ended semantic-temporal recall |
 
 ## Configuration
 
 Each backend's directory has its own README:
 - `memory/file-based/README.md`
 - `memory/stratum/README.md`
-- `memory/zep/README.md`
 
 ## Cross-project meta-memory
 

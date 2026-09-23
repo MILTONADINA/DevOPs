@@ -32,13 +32,50 @@ jobs:
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
 
-      - name: Download latest Sigstore trust root
+      - name: Install cosign (same pin as release-sign.yml's E.06)
+        uses: sigstore/cosign-installer@f713795cb21599bc4e5c4b58cbad1da852d7eeb9  # v3
+        with:
+          cosign-release: 'v2.4.3'
+
+      - name: Download latest Sigstore trust root (TUF-verified)
+        # SECURITY: tuf-repo-cdn.sigstore.dev now serves TUF
+        # consistent-snapshot targets, so `targets/trusted_root.json` no
+        # longer exists as a static path -- targets are only published
+        # content-addressed as `targets/<sha256-of-file>.trusted_root.json`.
+        #
+        # A prior version of this step worked around that by curling
+        # `trusted_root.json` from `sigstore/root-signing`'s `main` branch
+        # directly, with NO verification. That defeats the entire point of
+        # a trust root: `main` is a mutable ref, so a compromised branch
+        # (or a compromised/MITM'd raw.githubusercontent.com response)
+        # would inject a forged root, and every downstream signature check
+        # in this repo (skill signing included) would then trust forged
+        # signatures. Flagged by automated security review before merge --
+        # do not reintroduce an unverified fetch here.
+        #
+        # Correct fix: `cosign initialize` performs full TUF client
+        # verification (root -> timestamp -> snapshot -> targets, each
+        # signature-checked against cosign's embedded Sigstore root of
+        # trust) and caches the verified, current targets locally --
+        # including trusted_root.json -- so we never hand-roll TUF
+        # ourselves or trust an unverified fetch.
         run: |
           set -euo pipefail
+          cosign initialize
+
+          FOUND="$(find "$HOME/.sigstore" -type f -name 'trusted_root.json' -print -quit)"
+          if [[ -z "$FOUND" ]]; then
+            echo "FAIL: cosign initialize did not produce a trusted_root.json under \$HOME/.sigstore -- refusing to write an unverified/missing trust bundle." >&2
+            exit 1
+          fi
+          if [[ ! -s "$FOUND" ]]; then
+            echo "FAIL: $FOUND exists but is empty." >&2
+            exit 1
+          fi
+
           mkdir -p .workflow/sigstore
-          curl -sSfL \
-            https://tuf-repo-cdn.sigstore.dev/targets/trusted_root.json \
-            -o .workflow/sigstore/trust-bundle.json
+          cp "$FOUND" .workflow/sigstore/trust-bundle.json
+          echo "Trust bundle refreshed from TUF-verified $FOUND"
 
       - name: Check for drift
         id: drift
@@ -60,8 +97,10 @@ jobs:
           branch: chore/refresh-trust-bundle
           title: 'chore(sigstore): refresh trust-bundle.json (weekly cadence)'
           body: |
-            Automated refresh of `.workflow/sigstore/trust-bundle.json`
-            from <https://tuf-repo-cdn.sigstore.dev/targets/trusted_root.json>.
+            Automated refresh of `.workflow/sigstore/trust-bundle.json`,
+            fetched via `cosign initialize` (full TUF client verification
+            against cosign's embedded Sigstore root of trust -- not a raw,
+            unverified fetch).
 
             Per `docs/SKILL_SIGNING.md` E.05 weekly refresh cadence.
             Spot-check the diff against the upstream Sigstore TUF

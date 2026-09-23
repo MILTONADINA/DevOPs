@@ -30,8 +30,10 @@ conditions are met (REQ-A5 / AC-A5.1):
 | **pentest-ai** | MCP server exposing nmap / nuclei / sqlmap / ZAP CLI | [`mcp-configs/universal/pentest-ai.json`](../mcp-configs/universal/pentest-ai.json) | [`pentest-ai-README.md`](../mcp-configs/universal/pentest-ai-README.md) |
 
 All four are scoped to the `security` subagent per `subagents/universal/security.md`
-— planner/coder/researcher subagents are denied at the hook layer (ASI02 +
-ASI03 defense). All four reference credentials by env-var name only — no
+— planner/coder subagents are denied at the hook layer (ASI02 +
+ASI03 defense; the dedicated `researcher` subagent was removed 2026-09-14
+as redundant with Claude Code's native Explore agent — the denial no longer
+needs to name it). All four reference credentials by env-var name only — no
 inline credentials (REQ-A8, gated by tier-1 gitleaks). Lyrie's output
 specifically MUST pass through area C's `external-content-boundary.ts` before
 re-entering agent context (ASI04 defense).

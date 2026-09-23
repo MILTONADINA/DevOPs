@@ -23,6 +23,18 @@ import { randomUUID } from "crypto";
 import Anthropic from "@anthropic-ai/sdk";
 import dotenv from "dotenv";
 
+// Session 15 §2a-2: P0-F PII redaction consumption.
+// Single source of truth for PII patterns per spec §3 P0-F (Stratum CONSUMES,
+// does NOT duplicate). The 8 patterns (email, phone-us, ssn, cc, jwt, bearer,
+// sk-key, aws-key) live in observability/pii-redaction.ts.
+//
+// Cross-subtree import via @devops/* alias: observability/ is at DevOPs root;
+// capture-session.ts is at stratum/scripts/. The alias is configured in
+// stratum/tsconfig.json `paths` (tsx honors at runtime for `npm run capture`)
+// and stratum/vitest.config.ts `resolve.alias` (vitest honors at test time,
+// allowing reliable vi.mock matching).
+import { redactValue as devopsRedactValue } from "@devops/observability/pii-redaction";
+
 dotenv.config();
 
 const ANTHROPIC_API_KEY = process.env["ANTHROPIC_API_KEY"];
@@ -30,6 +42,35 @@ if (!ANTHROPIC_API_KEY) {
   console.error("ERROR: ANTHROPIC_API_KEY is required in .env");
   process.exit(1);
 }
+
+// Q4 binding (Session 15 §2a-1): env-var-primary base-URL override with
+// safe default + fail-fast validation at module load (NOT at first request).
+// See specs/meta/session-15-v0.3x-2a-code-gaps.md REQ-S15-2a-1.
+const ANTHROPIC_BASE_URL = (() => {
+  const raw = process.env["ANTHROPIC_BASE_URL"] ?? "https://api.anthropic.com";
+  try {
+    const parsed = new URL(raw);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      console.error(
+        `ERROR: ANTHROPIC_BASE_URL must use http:// or https:// protocol; got: ${parsed.protocol}`,
+      );
+      console.error(`  Value: ${raw}`);
+      console.error(
+        "  Fail-fast at module load per AC-S15-2a-1.3; this is a config error, not a runtime error.",
+      );
+      process.exit(1);
+    }
+    // Strip trailing slash for consistent path concatenation.
+    return raw.replace(/\/+$/, "");
+  } catch (e) {
+    console.error(`ERROR: ANTHROPIC_BASE_URL is not a parseable URL: ${raw}`);
+    console.error(`  Parser error: ${(e as Error).message}`);
+    console.error(
+      "  Fail-fast at module load per AC-S15-2a-1.3; this is a config error, not a runtime error.",
+    );
+    process.exit(1);
+  }
+})();
 
 const CAPTURE_PORT = 4090;
 const SESSION_ID = randomUUID();
@@ -141,7 +182,7 @@ fastify.post("/v1/messages", async (request, reply) => {
   let anthropicResponse: unknown;
   try {
     const response = await axios.post(
-      "https://api.anthropic.com/v1/messages",
+      `${ANTHROPIC_BASE_URL}/v1/messages`,
       body,
       {
         headers: {
@@ -172,15 +213,53 @@ fastify.post("/v1/messages", async (request, reply) => {
   console.log(`  Output tokens: ${resp.usage.output_tokens}`);
   console.log(`  Elapsed: ${elapsed}ms`);
 
-  // Record the turn
+  // Session 15 §2a-2 — P0-F PII redaction (AC-S15-2a-2.1, AC-S15-2a-2.2):
+  // Redact PII from request payload + response payload BEFORE building the
+  // capture artifact. Non-PII metadata (model, stop_reason, usage, id, type,
+  // role) is preserved per AC-S15-2a-2.3 — those fields aren't strings that
+  // contain PII patterns, so devopsRedactValue() is structure-preserving for
+  // them.
+  //
+  // FAIL-CLOSED on redactor exception (AC-S15-2a-2.2): drop this turn from
+  // the session JSON, emit structured stderr, continue accepting subsequent
+  // turns. Do NOT write unredacted content to disk.
+  let redactedRequestMessages: unknown;
+  let redactedSystem: string | undefined;
+  let redactedTools: unknown;
+  let redactedResponse: unknown;
+  try {
+    redactedRequestMessages = devopsRedactValue(body.messages);
+    redactedSystem = body.system
+      ? (devopsRedactValue(body.system) as string)
+      : undefined;
+    redactedTools = body.tools ? devopsRedactValue(body.tools) : undefined;
+    redactedResponse = devopsRedactValue(anthropicResponse);
+  } catch (redactionError) {
+    const err = redactionError as Error;
+    console.error(
+      `[PII-redaction FAIL-CLOSED] Turn ${turnNumber} dropped from session JSON.`,
+    );
+    console.error(`  Reason: ${err.name}: ${err.message}`);
+    console.error(
+      `  Per AC-S15-2a-2.2: unredacted content MUST NOT reach disk. Continuing with subsequent turns.`,
+    );
+    // Send the forwarded response back to the client; the dropped turn is
+    // only the CAPTURE artifact, not the user's response. The client should
+    // still get their LLM reply.
+    // nosemgrep: javascript.express.security.audit.xss.direct-response-write.direct-response-write -- FALSE POSITIVE: transparent JSON proxy. This forwards the upstream Anthropic API response (sent by Fastify as application/json) to the Claude Code CLI client; it is never HTML rendered in a browser, so there is no XSS surface. The "user input" the rule warns about is the upstream provider's own JSON response, not attacker-controlled markup.
+    reply.send(anthropicResponse);
+    return;
+  }
+
+  // Record the turn (redacted payloads only)
   const captured: CapturedRequest = {
     turn: turnNumber,
     timestamp: Date.now(),
     request: {
       model: body.model,
-      messages: body.messages,
-      system: body.system,
-      tools: body.tools,
+      messages: redactedRequestMessages as unknown[],
+      ...(redactedSystem !== undefined ? { system: redactedSystem } : {}),
+      ...(redactedTools !== undefined ? { tools: redactedTools as unknown[] } : {}),
       max_tokens: body.max_tokens,
     },
     token_counts: {
@@ -194,15 +273,26 @@ fastify.post("/v1/messages", async (request, reply) => {
     },
     elapsed_ms: elapsed,
   };
+  // Also redact response.content[].text values if they exist. The minimal
+  // response shape recorded above (id/usage/stop_reason) is metadata-only,
+  // but the full response payload contains content[].text which may contain
+  // PII (e.g., assistant echoed a JWT). Store the redacted FULL response so
+  // downstream Phase 1+ tooling can analyze actual content safely.
+  (captured.response as unknown as { content?: unknown }).content =
+    (redactedResponse as { content?: unknown }).content;
 
   session.requests.push(captured);
   session.total_input_tokens += resp.usage.input_tokens;
   session.total_output_tokens += resp.usage.output_tokens;
 
-  // Write session to disk after every turn (safe against crashes)
+  // Write session to disk after every turn (safe against crashes).
+  // The session.requests array is now guaranteed redacted-only.
   fs.writeFileSync(OUTPUT_FILE, JSON.stringify(session, null, 2));
 
-  // nosemgrep: javascript.express.security.audit.xss.direct-response-write.direct-response-write -- FALSE POSITIVE: transparent JSON proxy. Forwards the upstream Anthropic API response (Fastify sends it as application/json) to the Claude Code CLI client; never HTML rendered in a browser, so no XSS surface. The "user input" is the upstream provider's own JSON, not attacker markup.
+  // Forward the ORIGINAL (un-redacted) Anthropic response to the client.
+  // Redaction is a capture-artifact concern; the client expects the real
+  // response. This is the proxy's purpose: pass-through with observation.
+  // nosemgrep: javascript.express.security.audit.xss.direct-response-write.direct-response-write -- FALSE POSITIVE: transparent JSON proxy. This forwards the upstream Anthropic API response (sent by Fastify as application/json) to the Claude Code CLI client; it is never HTML rendered in a browser, so there is no XSS surface. The "user input" the rule warns about is the upstream provider's own JSON response, not attacker-controlled markup.
   reply.send(anthropicResponse);
 });
 

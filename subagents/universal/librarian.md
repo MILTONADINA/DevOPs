@@ -35,7 +35,7 @@ Phase 3 memory-query subagent. Reads-only against Stratum's three-tier memory st
 
 - **Session start**: automatic invocation via `load-baton.sh`. Query for current project + recent facts.
 - **Mid-session lookup**: on demand when user asks "what did we decide about X" or agent needs prior context.
-- **Cross-session research**: when a `researcher` subagent needs prior decisions, spawn `librarian` first as a knowledge prefetch.
+- **Cross-session research**: spawn `librarian` first as a knowledge prefetch before investigating prior decisions (the dedicated `researcher` subagent was removed 2026-09-14 as redundant with Claude Code's native Explore agent — this applies to whatever agent/tool does that investigation now).
 
 Do NOT spawn for:
 - Writing facts (extractor pipeline handles this; librarian is read-only)
@@ -111,6 +111,5 @@ echo "$RELEVANT_FACTS" >> .workflow/state/session-context.md
 - `stratum/src/memory/warm/extractor.ts` — Llama-based extractor (v0.5.x §4b)
 - `stratum/src/memory/cold/pinecone.ts` — semantic store (v0.5.x §4c)
 - `stratum/src/memory/cold/neo4j.ts` — graph store (v0.5.x §4c)
-- `subagents/universal/researcher.md` — pairs with librarian; researcher uses librarian as a knowledge prefetch
 - `plan.md §4` (v0.5.x) — Phase 3 implementation checklist
 - `blueprint.md §4` — architecture diagram with librarian's place

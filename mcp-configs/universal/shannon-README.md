@@ -44,7 +44,8 @@ verifiable claim.
 
 Per spec A NFR-A2: Shannon's MCP server runs with the least privileges its
 task requires. `subagents/universal/security.md` scopes invocation to the
-security subagent — planner/coder/researcher subagents are denied.
+security subagent — planner/coder subagents are denied (the dedicated
+`researcher` subagent was removed 2026-09-14).
 
 ## Upstream
 

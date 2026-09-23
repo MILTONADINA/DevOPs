@@ -283,7 +283,7 @@ These are not negotiable for any version. Every PR is gated.
 | What's the killer "wow" feature that gets friends excited? | **Phase 3 cross-session memory.** "Stratum knows what we decided last week" beats "Stratum saved you $5 today" emotionally. But Phase 2 ships first per the spec-author's wisdom (clean data → clean facts). |
 | What about the Anthropic SDK version pin `^0.39.0`? | **Verify and bump.** Current SDK has had major changes since 0.39. Add to v0.3.x checklist: confirm capture-session.ts works against latest SDK; bump pin; tests against new fixtures. |
 | Should there be a public marketing page? | **No, until v1.0.x.** Private repo + friends-distribution doesn't need marketing. Build the product; the product is the marketing. |
-| What about local LLM rotation (Codex / Ollama)? | **Out of scope.** `subagents/universal/researcher.md` mentions multi-tool-failover but that's about agent-orchestration failover, not LLM-provider failover. Defer indefinitely; not part of the masterpiece. |
+| What about local LLM rotation (Codex / Ollama)? | **Out of scope.** `skills/universal/process/multi-tool-failover/SKILL.md` covers agent-orchestration failover, not LLM-provider failover. Defer indefinitely; not part of the masterpiece. |
 | What about the streaming-response support (P0-B)? | **Build it in v0.3.x as part of Phase 1.** Claude Code uses streaming in many flows. Treat it as Phase 1 work, not Phase 0 work (the prior re-scope was correct on this). |
 
 ---

@@ -160,7 +160,7 @@ These unblock the trust-chain story. Do these BEFORE starting Phase 0 corpus cap
 
 ### 3f. Borrowed pattern integration — subagent-driven-development (NEW, ~15h)
 
-Borrowed from [obra/superpowers](https://github.com/obra/superpowers). Extends our existing subagents (`subagents/universal/{planner,coder,reviewer,tester,security,validator,researcher}.md`) with explicit autonomous-loop semantics. Folded into v0.4.x because Phase 2 pruner work is the right vehicle to prove the loop (it's complex, multi-stage, eval-gated — exactly the workflow that benefits from autonomous subagents).
+Borrowed from [obra/superpowers](https://github.com/obra/superpowers). Extends our existing subagents (`subagents/universal/{planner,coder,reviewer,tester,security,validator}.md` — `researcher` removed 2026-09-14 as redundant with the native Explore agent) with explicit autonomous-loop semantics. Folded into v0.4.x because Phase 2 pruner work is the right vehicle to prove the loop (it's complex, multi-stage, eval-gated — exactly the workflow that benefits from autonomous subagents).
 
 - [ ] **Subagent autonomous-loop pattern doc** (~3h). New file `subagents/AUTONOMOUS_LOOP.md`: spec → plan → assign tasks → subagent works → inspect → review → continue → eval-gate. Adapt superpowers' rhythm to our claim-validator discipline (every subagent-completed unit emits a claim with a proof script).
 - [ ] **Extend `planner.md` subagent** (~2h) to produce implementation plans "clear enough for an enthusiastic junior engineer with poor taste, no judgment, no project context, and an aversion to testing to follow" (verbatim superpowers framing — apt for our quality bar).

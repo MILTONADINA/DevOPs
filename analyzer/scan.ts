@@ -188,14 +188,11 @@ function detectDomain(stack: Profile['stack']): Profile['domain'] {
 
 function recommend(profile: Omit<Profile, 'recommended'>): Profile['recommended'] {
   const skills: string[] = [
-    'process/karpathy-guidelines',
     'process/proof-of-work',
     'process/baton-handoff',
-    'process/ask-dont-assume',
     'process/spec-extraction',
     'process/plan-decomposition',
     'process/goal-loop',
-    'process/surgical-edits',
     'process/session-summary',
     'process/multi-tool-failover',
     'development/ears-spec-writing',
@@ -220,8 +217,8 @@ function recommend(profile: Omit<Profile, 'recommended'>): Profile['recommended'
     'universal/session-end/write-baton.sh',
   ];
 
-  const mcp_servers = ['playwright', 'zep-memory'];
-  const subagents = ['planner', 'researcher', 'coder', 'tester', 'reviewer', 'security', 'validator'];
+  const mcp_servers = ['playwright'];
+  const subagents = ['planner', 'coder', 'tester', 'reviewer', 'security', 'validator'];
 
   // Stack-specific additions
   // REQ-D4 (specs/phase-2/D-stack-specific-skills.md): on stack-indicator
@@ -258,7 +255,7 @@ function recommend(profile: Omit<Profile, 'recommended'>): Profile['recommended'
 
   // REQ-A5 (specs/phase-2/A-pentest-stack.md): pentest-stack MCPs surface when the
   // project handles credentials or operates in a regulated scope. The 4 tools run
-  // under the security subagent's scoped permissions; planner/coder/researcher must
+  // under the security subagent's scoped permissions; planner/coder must
   // not invoke them (enforced in subagents/universal/security.md).
   const triggersPentest =
     profile.domain.compliance.includes('PCI DSS') ||

@@ -154,7 +154,7 @@
 |---|-----|----------|-------|
 | 56 | File-based memory (always-on) | `memory/file-based/` | 1 |
 | 57 | Stratum structured fact store | `memory/stratum/README.md` + `config.yml`; backend at `stratum/` subtree (scaffold-only per audit 2026-05-24, see `.workflow/state/stratum-audit/`) | 1 (DevOPs-side wiring stub); 3 (build Stratum Phase 0+1+3 from scaffold AND integrate as memory backend — Option B locked) |
-| 58 | Zep semantic temporal memory | `memory/zep/README.md` + `docker-compose.yml` | 1 |
+| 58 | Zep semantic temporal memory | **Descoped** (redundancy pass, 2026-09-14): zero call sites ever wired in; Stratum's own ADR-0004 (`stratum/docs/decisions/0004-no-llm-summarization.md`) argues the Zep/Mem0-style approach is inferior to the structured-facts approach already chosen for gap 57. Not currently covered by an alternative — reopen if a semantic-temporal-query need is confirmed. | — |
 | 59 | Cross-project meta-memory (PII-scrubbed) | `meta-memory/README.md` + `personal-preferences.yml` | 1 (scaffold); 6 (auto-learning) |
 
 ## S. Skill supply chain (gap 60)

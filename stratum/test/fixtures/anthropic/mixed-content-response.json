@@ -1,0 +1,27 @@
+{
+  "id": "msg_03GHI789mixed",
+  "type": "message",
+  "role": "assistant",
+  "model": "claude-opus-4-7",
+  "content": [
+    {
+      "type": "text",
+      "text": "I'll check the current weather in Paris for you."
+    },
+    {
+      "type": "tool_use",
+      "id": "toolu_02ABC",
+      "name": "get_weather",
+      "input": {
+        "location": "Paris, France",
+        "unit": "celsius"
+      }
+    }
+  ],
+  "stop_reason": "tool_use",
+  "stop_sequence": null,
+  "usage": {
+    "input_tokens": 50,
+    "output_tokens": 41
+  }
+}

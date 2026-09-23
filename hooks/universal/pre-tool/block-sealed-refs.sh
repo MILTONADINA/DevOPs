@@ -20,6 +20,9 @@
 #   .workflow/state/baton.md (per-session reminder of sealed-ref discipline)
 
 set -euo pipefail
+# An inherited GIT_DIR/GIT_WORK_TREE would redirect git to another repository
+# regardless of cwd (third adversarial pass, 2026-09-15).
+unset GIT_DIR GIT_WORK_TREE
 
 COMMAND="${1:-}"
 
@@ -48,8 +51,17 @@ DESTRUCTIVE_GIT_PATTERNS=(
     "git[[:space:]]+filter-repo"
 )
 
-# Quick exit: not a git command, allow
-if ! echo "$COMMAND" | grep -qE '^[[:space:]]*git[[:space:]]'; then
+# Quick exit: not a git command, allow.
+#
+# SECURITY (found by the graph's own security stage, 2026-09-14, while
+# auditing a sibling hook with the identical pattern): this filter was
+# anchored to the START of the command, so `cd . && git tag -d v0.2.0` (or
+# any prefix before `git`) bypassed sealed-ref protection entirely. Fixed
+# to match `git` as a whole word anywhere in the command, not just as the
+# first token. See hooks/universal/pre-tool/deploy-gate.sh for the same
+# fix and fuller writeup, and .claude/settings.json for the companion fix
+# (the wrapper only read the first line of a multi-line command).
+if ! echo "$COMMAND" | grep -qE '(^|[;&|(]|[[:space:]])git([[:space:]]|$)'; then
     exit 0
 fi
 
@@ -111,6 +123,10 @@ EOF
 
 # Log the block
 mkdir -p .workflow/state
-echo "{\"ts\":$(date -u +%s),\"event\":\"sealed_ref_block\",\"ref\":\"$sealed_ref_hit\",\"pattern\":\"$destructive_match\",\"command\":$(echo "$COMMAND" | jq -R . 2>/dev/null || echo "\"$COMMAND\"")}" >> .workflow/state/events.jsonl
+# jq --arg escapes every field; the prior `jq -R .` was line-oriented and
+# split multi-line commands across several JSONL lines (found 2026-09-14).
+jq -cn --arg ts "$(date -u +%s)" --arg ref "$sealed_ref_hit" --arg pattern "$destructive_match" --arg command "$COMMAND" \
+    '{ts:($ts|tonumber),event:"sealed_ref_block",ref:$ref,pattern:$pattern,command:$command}' \
+    >> .workflow/state/events.jsonl 2>/dev/null || true
 
 exit 2

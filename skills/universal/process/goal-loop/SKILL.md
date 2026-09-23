@@ -28,7 +28,7 @@ Per task. Not per session. One task ≠ one session necessarily.
 ## Protocol (see constitution/LOOP.md for full diagram)
 
 ```
-1. Load task T-NNN. Read AC mapping. Read related code via researcher subagent.
+1. Load task T-NNN. Read AC mapping. Read related code directly (or via Claude Code's native Explore agent for wide searches).
 2. Write failing test(s). Confirm they fail.
 3. Implement minimum change to make test pass.
 4. Run verification command.

@@ -1,0 +1,6 @@
+# Known generated test inputs for token-redaction checks; each fingerprint is tied
+# to one historical finding so future secrets in these files still fail CI.
+54c6d828f21ecc0238972b3ae7c341a158510754:stratum/test/observability/pii-redaction.test.ts:jwt:143
+dbfaa747dfa9a2e6797d661f98a133f10979d79e:stratum/test/capture-session/pii-redaction-passthrough.test.ts:jwt:114
+d20e547a95347ddf87af439754ef6f2c7f2f2726:stratum/test/observability/pii-redaction.test.ts:generic-api-key:54
+d20e547a95347ddf87af439754ef6f2c7f2f2726:stratum/test/observability/pii-redaction.test.ts:jwt:42

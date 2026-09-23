@@ -6,7 +6,84 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
-## [Unreleased] — Phase 1 in progress
+## [Unreleased] — Phase 3 in progress
+
+Phase 3 (Memory & observability — Stratum closeout, Option B: Stratum
+Phase 0 + 1 + 3 locked per session 7.5 audit) is underway on
+`stratum-phase-0-capture`. Stratum has grown from the Phase 0 capture-proxy
+scaffold described below into a live, deployed subsystem of this same
+project (Fastify proxy, multi-provider gateway, Supabase-backed 3-tier
+memory, CFO dashboard) — one project, not a separate product. See
+`docs/LAUNCH_READINESS.md` for current, frequently-updated status — this
+file intentionally does not duplicate that detail while the phase is open.
+
+### Removed — redundancy audit (2026-09-14)
+
+A deliberate audit asked, per component: "does a good solution already
+exist elsewhere?" — and removed what did, rather than maintaining a
+reinvention. Full investigation trail and reasoning in-session; summary:
+
+- **Zep memory backend** (`memory/zep/`, `mcp-configs/universal/memory-zep.json`)
+  — zero real call sites anywhere in the codebase; Stratum's own
+  `docs/decisions/0004-no-llm-summarization.md` argues its NL-summarization/
+  graph approach is inferior to the structured-facts approach already
+  chosen. Semantic-temporal recall ("what did anyone ever say about X?") is
+  now unsupported — reopen if that need is confirmed.
+- **`ask-dont-assume`, `karpathy-guidelines`, `surgical-edits` process
+  skills** — all three duplicated Claude Code's own native behavior
+  (clarifying-question defaults, `AskUserQuestion`, "no drive-by
+  refactoring"). Where a skill had real enforcement behind it, that
+  enforcement lives elsewhere and is unaffected: `verification/claim-validator.ts`
+  for surgical-edits' "every line traces" rule; the `write-baton.sh`
+  session-end hook for ask-dont-assume's blocker-gating.
+- **`researcher` subagent** — duplicated Claude Code's native Explore agent
+  type. All permission-denial references (pentest MCP tools, threat-model
+  docs) updated to drop it; the `security` subagent's least-privilege
+  scoping is unaffected.
+
+**Explicitly NOT removed**, because investigation found real differentiated
+function or load-bearing coupling, not just apparent overlap:
+- Stratum's multi-provider gateway (billing-accuracy justified against
+  LiteLLM, per ADR-0019) and Tier-2 Supabase memory (typed facts +
+  trusted-FK + fail-closed, unlike mem0/Letta/Zep) — both live/deployed.
+- The `security` subagent — it's the actual least-privilege permission
+  boundary for the 4 pentest MCP tools, anchoring the sealed Phase 2 ASI02
+  security control; cutting it would regress a sealed control, not clean up
+  redundancy.
+- The `reviewer` subagent — has a real spec-anchoring function distinct from
+  its generic-review overlap with installed plugins.
+- Stratum's `/dashboard` waste-viewer — confirmed redundant with Langfuse/
+  Helicone, but left in place at the user's request since it's a route
+  registered in the live production deployment; not touched this pass.
+
+See `README.md`'s new "What's actually differentiated" section for the
+resulting honest positioning.
+
+---
+
+## [0.2.0] — 2026-05-25 — Phase 2: Security depth
+
+Sealed on `phase-2-security-depth` (2026-05-24, session 8); full detail in
+`governance/changelog/PHASE-2-CLOSURE.md`. 90/90 Phase 2 claims valid.
+
+### Added
+- Pentest stack integration (Shannon, PentAGI, Lyrie, pentest-ai)
+- DeepTeam OWASP ASI 2026 red-team CI gate
+- Prompt-injection defense hardening (rebuff + HMAC boundary,
+  `observability/external-content-boundary.ts`)
+- Stack-specific security skills
+- Sigstore signing + signed skill manifest
+- Skill provenance verification at install
+- Webhook idempotency skill + analyzer detection
+- Renovate template + `ci.yml` lint
+
+### Security
+- A.11 final-pass sec-review (ASI02 subagent least-privilege, ASI04
+  external-content boundary) — both PASS
+
+---
+
+## [0.1.0] — 2026-05-22 — Phase 1: Foundation
 
 ### Added
 - Initial repository scaffold with full directory architecture

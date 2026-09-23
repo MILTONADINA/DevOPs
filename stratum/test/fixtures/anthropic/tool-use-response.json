@@ -1,0 +1,23 @@
+{
+  "id": "msg_02DEF456tooluse",
+  "type": "message",
+  "role": "assistant",
+  "model": "claude-opus-4-7",
+  "content": [
+    {
+      "type": "tool_use",
+      "id": "toolu_01XYZ",
+      "name": "get_weather",
+      "input": {
+        "location": "Paris, France",
+        "unit": "celsius"
+      }
+    }
+  ],
+  "stop_reason": "tool_use",
+  "stop_sequence": null,
+  "usage": {
+    "input_tokens": 45,
+    "output_tokens": 32
+  }
+}

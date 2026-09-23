@@ -12,7 +12,7 @@ See `cost-controls/` for the active config.
 
 | Tier | Model | Subagents | Use for |
 |------|-------|-----------|---------|
-| 1 | Haiku 4.5 | researcher, tester | Read-heavy, mechanical |
+| 1 | Haiku 4.5 | tester | Read-heavy, mechanical |
 | 2 | Sonnet 4.6 | coder, reviewer, security | Default workhorse |
 | 3 | Opus 4.7 | planner, validator | Architecture, final verification |
 

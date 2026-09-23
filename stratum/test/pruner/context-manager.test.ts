@@ -1,0 +1,81 @@
+// End-to-end integration test for the shadow context manager: composes a fake
+// encoder + real Tier-1 hot memory + the real KadaneDial pruner. Deterministic
+// (injected encoder + clock), no model/API. Proves the pieces compose: ingest
+// stores embeddings; select prunes the window to the relevant turn(s).
+
+import { describe, test, expect } from "vitest";
+import { createContextManager } from "../../src/pruner/context-manager";
+import { createHotMemory } from "../../src/memory/hot/tier1";
+import type { BiEncoder } from "../../src/pruner/encoder";
+
+const v = (...xs: number[]): Float32Array => Float32Array.from(xs);
+// "database/Supabase" content aligns with a DB query (axis 0); everything else is orthogonal.
+const fakeEncoder: BiEncoder = {
+  dimension: 2,
+  encode: (texts) => Promise.resolve(texts.map((t) => (/database|supabase/i.test(t) ? v(1, 0) : v(0, 1)))),
+};
+
+const NOW = 1_700_000_000_000; // ms
+
+describe("ShadowContextManager (encoder + Tier-1 + pruner integration)", () => {
+  test("ingest stores turns + embeddings; select prunes to the relevant turn", async () => {
+    const cm = createContextManager(fakeEncoder, { hot: createHotMemory({ now: () => NOW }) });
+    await cm.ingest({ role: "user", content: "We chose Supabase for the database.", timestampMs: NOW - 3000 });
+    await cm.ingest({ role: "user", content: "Fix the button CSS padding.", timestampMs: NOW - 2000 });
+    await cm.ingest({ role: "user", content: "Add a dark mode toggle.", timestampMs: NOW - 1000 });
+
+    expect(cm.hot.size()).toBe(3);
+    expect(cm.hot.recent()[0]!.embedding).toBeInstanceOf(Float32Array); // embedding stored at ingest
+
+    const { decision, selectedTurns } = await cm.select("Which database do we use?", NOW);
+    expect(selectedTurns.map((t) => t.content)).toEqual(["We chose Supabase for the database."]);
+    expect(decision.prunedIndices.length).toBe(2); // the two off-topic turns dropped
+  });
+
+  test("empty hot memory → select returns no turns", async () => {
+    const cm = createContextManager(fakeEncoder, { hot: createHotMemory({ now: () => NOW }) });
+    const { selectedTurns } = await cm.select("anything relevant?", NOW);
+    expect(selectedTurns).toEqual([]);
+  });
+
+  test("turns outside the window are evicted before selection", async () => {
+    const cm = createContextManager(fakeEncoder, { hot: createHotMemory({ windowMs: 5000, now: () => NOW }) });
+    await cm.ingest({ role: "user", content: "We chose Supabase for the database.", timestampMs: NOW - 60_000 }); // 60s old → outside a 5s window
+    await cm.ingest({ role: "user", content: "Use the database for sessions too.", timestampMs: NOW - 1000 }); // fresh + relevant
+    const { selectedTurns } = await cm.select("database?", NOW);
+    // only the in-window relevant turn survives
+    expect(selectedTurns.map((t) => t.content)).toEqual(["Use the database for sessions too."]);
+  });
+
+  test("scale-invariant decay (ADR-0015): decayHorizonFraction sets a span-relative horizon", async () => {
+    // Window large enough that nothing is evicted; turns span 10h.
+    const cm = createContextManager(fakeEncoder, {
+      hot: createHotMemory({ windowMs: 1000 * 3_600_000, now: () => NOW }),
+      decayHorizonFraction: 0.5,
+    });
+    await cm.ingest({ role: "user", content: "We chose Supabase.", timestampMs: NOW - 10 * 3_600_000 }); // 10h ago
+    await cm.ingest({ role: "user", content: "Use the database.", timestampMs: NOW });
+    const { decision } = await cm.select("database?", NOW);
+    // span = 10h = 36000s; horizon = 0.5 × span = 18000s (threaded into prune params).
+    expect(decision.params.decayHorizonSeconds).toBeCloseTo(18_000, 0);
+  });
+
+  test("without decayHorizonFraction, decay stays per-hour (no horizon override)", async () => {
+    const cm = createContextManager(fakeEncoder, { hot: createHotMemory({ windowMs: 1000 * 3_600_000, now: () => NOW }) });
+    await cm.ingest({ role: "user", content: "We chose Supabase.", timestampMs: NOW - 10 * 3_600_000 });
+    await cm.ingest({ role: "user", content: "Use the database.", timestampMs: NOW });
+    const { decision } = await cm.select("database?", NOW);
+    expect(decision.params.decayHorizonSeconds).toBeUndefined();
+  });
+
+  test("eviction uses select's nowMs, not the hot clock (no clock skew)", async () => {
+    // hot clock fixed at NOW; a relevant turn ingested 30s before NOW; 60s window.
+    const cm = createContextManager(fakeEncoder, { hot: createHotMemory({ windowMs: 60_000, now: () => NOW }) });
+    await cm.ingest({ role: "user", content: "We use the database Supabase.", timestampMs: NOW - 30_000 });
+    // select 40s LATER: by nowMs the turn is 70s old (> 60s window) → must be evicted.
+    // Pre-fix, sweep() used the hot clock (turn 30s old → kept → leaked); post-fix it
+    // sweeps against nowMs → evicted, so select returns nothing.
+    const { selectedTurns } = await cm.select("database?", NOW + 40_000);
+    expect(selectedTurns).toEqual([]);
+  });
+});

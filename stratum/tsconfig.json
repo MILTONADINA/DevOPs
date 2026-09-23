@@ -21,9 +21,10 @@
     "sourceMap": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["src/*"]
+      "@/*": ["src/*"],
+      "@devops/*": ["../*"]
     }
   },
-  "include": ["src/**/*", "scripts/**/*", "evals/**/*"],
+  "include": ["src/**/*"],
   "exclude": ["node_modules", "dist", "rust"]
 }

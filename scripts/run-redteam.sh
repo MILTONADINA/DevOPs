@@ -36,11 +36,6 @@ if ! command -v python3 >/dev/null 2>&1; then
     exit 3
 fi
 
-if ! python3 -c "import deepteam" 2>/dev/null; then
-    echo "ERROR: DeepTeam not installed. pip install deepteam" >&2
-    exit 3
-fi
-
 # Bootstrap guard (REQ-B2/B3 — added §2a-redo follow-up, Session 16).
 # DeepTeam's red_team() drives a model provider and REQUIRES an API key.
 # When no model-provider key is configured — the documented pre-launch
@@ -70,6 +65,11 @@ if [ -z "${OPENAI_API_KEY:-}" ] && [ -z "${ANTHROPIC_API_KEY:-}" ] && [ -z "${DE
     echo "  Marker written: ${ARTIFACT_DIR}/SKIPPED.md" >&2
     echo "============================================================" >&2
     exit 0
+fi
+
+if ! python3 -c "import deepteam"; then
+    echo "ERROR: DeepTeam import failed after installation" >&2
+    exit 3
 fi
 
 # Read red_team.per_run_usd from budget.yml (simple grep -- the YAML schema

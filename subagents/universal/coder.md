@@ -42,7 +42,7 @@ For task T-NNN from the plan:
 
 ## Constitutional rules (you cannot violate these)
 
-- Every changed line must trace to the active task (`surgical-edits`)
+- Every changed line must trace to the active task (enforced by `verification/claim-validator.ts`)
 - Never modify acceptance tests during the loop
 - Never modify the spec
 - Never claim completion without a proof artifact

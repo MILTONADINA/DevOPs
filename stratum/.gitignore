@@ -6,6 +6,13 @@
 # Build outputs
 dist/
 .wrangler/
+# Vercel: api/index.js is the esbuild-bundled function (regenerate with `npm run build:vercel`); the
+# local Vercel link + the boot-test scratch are machine-local.
+api/index.js
+.vercel/
+vercel-src/local-test.mjs
+public/
+# ^ build output: the buildCommand copies vercel-src/landing.html → public/index.html on deploy.
 
 # Dependencies
 node_modules/
@@ -24,6 +31,17 @@ supabase/docker-compose.yml
 
 # Eval results (too large to commit)
 evals/results/
+
+# Tier-A external benchmark datasets (licensed / large; fetched on demand, NOT
+# committed — see ADR-0014). The synthetic Tier-B jsonl IS committed (it's ours).
+evals/datasets/locomo/
+evals/datasets/mtbench/
+evals/datasets/scm4llms/
+evals/datasets/longmemeval/
+
+# ONNX model cache (fetched on demand; not committed — see ADR-0010)
+models/
+.cache/
 
 # Raw captured sessions (may contain sensitive content)
 data/sessions/
@@ -48,3 +66,9 @@ coverage/
 # Temporary
 tmp/
 .tmp/
+
+# Operator data backups (may contain real org data — never commit)
+backups/
+*.backup.json
+
+.vercel

@@ -46,14 +46,6 @@ See `CONTRIBUTING.md`. Hooks must:
 ## Platform requirements
 
 The `.sh` hooks under `hooks/` and `scripts/` use a Bash shebang
-(`#!/usr/bin/env bash`) and POSIX shell semantics. To execute them on
-**Windows**, a Bash-compatible runtime is required. Any of the following
-provides one:
-
-- **Git Bash** (bundled with Git for Windows)
-- **WSL** (Windows Subsystem for Linux)
-- **MSYS2**
-
-PowerShell-native equivalents of the hooks are deferred to **Phase 2** and
-will live under `hooks/universal/*/win/`. Until then, configure Claude Code
-(or the active agent) to invoke hooks via one of the runtimes above.
+(`#!/usr/bin/env bash`) and POSIX shell semantics. They require a POSIX
+shell (bash/zsh), which macOS and Linux provide natively. Configure Claude
+Code (or the active agent) to invoke the hooks with `bash <hook>.sh`.

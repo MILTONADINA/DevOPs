@@ -5,7 +5,6 @@ JSON configs for MCP (Model Context Protocol) servers DevOPs uses.
 ## Universal MCPs
 
 - **memory-stratum** — Stratum structured fact store
-- **memory-zep** — Zep semantic temporal memory
 - **playwright** — browser automation for full-stack UI verification
 
 ## Installation

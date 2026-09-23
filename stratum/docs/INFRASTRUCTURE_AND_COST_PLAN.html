@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Stratum — Infrastructure & Cost Plan</title>
+<style>
+  :root {
+    --ink: #0f172a; --muted: #64748b; --line: #e2e8f0; --accent: #4f46e5;
+    --accent-soft: #eef2ff; --green: #059669; --green-soft: #ecfdf5; --amber: #b45309; --amber-soft: #fffbeb;
+  }
+  @page { size: A4; margin: 16mm 15mm 14mm 15mm; }
+  * { box-sizing: border-box; }
+  html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body {
+    font: 10.6px/1.55 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: var(--ink); margin: 0;
+  }
+  .doc { max-width: 760px; margin: 0 auto; }
+
+  /* Header */
+  header { border-bottom: 3px solid var(--accent); padding-bottom: 14px; margin-bottom: 18px; }
+  header .kicker { color: var(--accent); font-weight: 700; letter-spacing: .14em; text-transform: uppercase; font-size: 9px; }
+  header h1 { font-size: 25px; margin: 4px 0 6px; letter-spacing: -.02em; }
+  header .meta { color: var(--muted); font-size: 9.5px; display: flex; gap: 16px; flex-wrap: wrap; }
+  header .meta b { color: var(--ink); font-weight: 600; }
+
+  h2 { font-size: 13.5px; margin: 22px 0 8px; padding-left: 9px; border-left: 3px solid var(--accent); letter-spacing: -.01em; }
+  h3 { font-size: 11px; margin: 14px 0 5px; color: var(--ink); }
+  p { margin: 6px 0; }
+  .muted { color: var(--muted); }
+  a { color: var(--accent); text-decoration: none; }
+  ul { margin: 6px 0; padding-left: 18px; }
+  li { margin: 3px 0; }
+  code { background: #f1f5f9; padding: 1px 4px; border-radius: 4px; font: 9.4px "SFMono-Regular", Consolas, monospace; }
+
+  /* Callouts */
+  .callout { border-radius: 8px; padding: 11px 14px; margin: 12px 0; border: 1px solid var(--line); }
+  .callout.tldr { background: var(--accent-soft); border-color: #c7d2fe; }
+  .callout.bottom { background: var(--green-soft); border-color: #a7f3d0; }
+  .callout.warn { background: var(--amber-soft); border-color: #fde68a; }
+  .callout h3 { margin: 0 0 4px; }
+  .callout.tldr h3 { color: var(--accent); }
+  .callout.bottom { color: #065f46; font-weight: 600; }
+  .callout.warn h3 { color: var(--amber); }
+
+  /* Tables */
+  table { width: 100%; border-collapse: collapse; margin: 8px 0 4px; font-size: 9.9px; }
+  th, td { text-align: left; padding: 6px 9px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  thead th { background: #f8fafc; color: var(--muted); font-weight: 700; font-size: 8.6px; letter-spacing: .04em; text-transform: uppercase; border-bottom: 1.5px solid var(--line); }
+  td.num, th.num { text-align: right; white-space: nowrap; }
+  tbody tr:nth-child(even) { background: #fcfcfd; }
+  tr.total td { border-top: 1.5px solid var(--ink); font-weight: 700; background: var(--accent-soft); }
+  tr.total.green td { background: var(--green-soft); color: #065f46; }
+  .pill { display: inline-block; font-size: 8px; font-weight: 700; padding: 1px 6px; border-radius: 99px; letter-spacing: .03em; }
+  .pill.req { background: #fee2e2; color: #b91c1c; }
+  .pill.free { background: var(--green-soft); color: #047857; }
+  .pill.opt { background: #f1f5f9; color: #475569; }
+
+  /* Two-column provider cards */
+  .cards { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 8px 0; }
+  .card { border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; }
+  .card h3 { margin: 0 0 6px; display: flex; align-items: baseline; justify-content: space-between; }
+  .card .price { color: var(--green); font-weight: 700; font-size: 13px; }
+  .card dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 3px 8px; font-size: 9.4px; }
+  .card dt { color: var(--muted); font-weight: 600; }
+
+  .checklist { list-style: none; padding-left: 0; }
+  .checklist li { padding-left: 22px; position: relative; margin: 5px 0; }
+  .checklist li::before { content: ""; position: absolute; left: 0; top: 1px; width: 12px; height: 12px; border: 1.5px solid var(--accent); border-radius: 3px; }
+
+  footer { margin-top: 20px; padding-top: 10px; border-top: 1px solid var(--line); color: var(--muted); font-size: 8.6px; }
+  .avoid-break { break-inside: avoid; }
+  .accent { color: var(--accent); font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="doc">
+
+  <header>
+    <div class="kicker">Infrastructure · Remaining Work · Cost Plan</div>
+    <h1>Stratum</h1>
+    <div class="meta">
+      <span><b>Owner / operator:</b> Milton Adina</span>
+      <span><b>Stack:</b> Vercel + Supabase only</span>
+      <span><b>Prepared:</b> 2026‑05‑30</span>
+      <span><b>Prices verified:</b> vercel.com/pricing · supabase.com/pricing (2026‑05‑30)</span>
+    </div>
+  </header>
+
+  <div class="callout tldr avoid-break">
+    <h3>TL;DR</h3>
+    <p style="margin:0">The platform is <b>built, live, and hardened</b>. To finish and run it commercially you need exactly two paid plans — <b>Vercel Pro and Supabase Pro, a flat ~$45/month</b> — plus a free Stripe account and a <b>one‑time ~$20–50</b> of LLM credits to switch the savings engine on. Your ongoing per‑token cost can be <b>$0</b>: each customer brings (or is billed for) their own model usage.</p>
+  </div>
+
+  <div class="callout bottom avoid-break">Bottom line: ~$45 / month recurring &nbsp;+&nbsp; ~$50 once. That is the entire cost of running this masterpiece.</div>
+
+  <h2>1 · Where the platform stands today</h2>
+  <p>A commercial, multi‑tenant LLM <b>gateway + optimization</b> platform, already deployed to your Vercel project and backed by your Supabase database:</p>
+  <ul>
+    <li><b>Multi‑tenant API‑key auth</b>, per‑plan rate limits, token budgets, concurrent‑session caps.</li>
+    <li><b>Live on Vercel</b> (<code>/health</code> 200, reaching real Supabase).</li>
+    <li><b>Multi‑provider routing</b> — one Anthropic‑compatible endpoint that runs on Anthropic, OpenAI, OpenRouter, Gemini, or a local model, billing the exact upstream token counts.</li>
+    <li><b>Billing pipeline end‑to‑end</b>: usage → signed records → invoice engine → Stripe send → paid‑webhook → read API + CFO dashboard.</li>
+    <li><b>Security</b>: RLS on all 17 tables, append‑only financial ledger, service‑role‑only access, PII redaction, and <b>8 adversarial reviews + a full audit / bughunt / pentest</b> (≈75 confirmed defects fixed, incl. CRITICAL auth‑bypass, key‑leak, double‑charge). Live pentest: the public anon key reads <b>zero rows</b>.</li>
+    <li><b>Test suite: 825 passing</b>; typecheck + lint green.</li>
+  </ul>
+  <p class="muted">It does not yet <i>prune</i> tokens in production (the "20% of savings" value‑prop) — that is intentionally gated behind a safety eval (§2B) and needs the two paid plans to be commercial‑legal and always‑on.</p>
+
+  <h2>2 · What remains</h2>
+
+  <h3>A · Go‑commercial activation &nbsp;<span class="muted">— needs the two paid plans + a free Stripe account</span></h3>
+  <table class="avoid-break">
+    <thead><tr><th style="width:26%">Step</th><th>What it is</th><th style="width:24%">Needs</th></tr></thead>
+    <tbody>
+      <tr><td>Upgrade Vercel → <b>Pro</b></td><td>Hobby forbids commercial use and caps function duration; Pro unlocks commercial use, long streaming functions, the encrypted env store, and production.</td><td><span class="pill req">required</span> Vercel Pro · $20/mo</td></tr>
+      <tr><td>Upgrade Supabase → <b>Pro</b></td><td>The Free project <b>pauses after 7 days</b> of inactivity (DB goes offline) and has no backups. Pro never pauses; adds 7‑day daily backups, 8 GB, more connections.</td><td><span class="pill req">required</span> Supabase Pro · $25/mo</td></tr>
+      <tr><td>Stripe account</td><td>Free account → <code>sk_test_</code> → <code>npm run verify-stripe</code> ($1 round‑trip) → flip to <code>sk_live_</code> + register <code>…/stripe/webhook</code> (<code>whsec_</code>).</td><td><span class="pill free">free</span> 2.9% + 30¢ / charge</td></tr>
+      <tr><td>First paying customer</td><td>A design partner who routes traffic through the proxy and pays the first invoice.</td><td>a customer, not a cost</td></tr>
+    </tbody>
+  </table>
+
+  <h3>B · Turn on the savings engine ("20% of savings") &nbsp;<span class="muted">— needs one‑time LLM credits</span></h3>
+  <p>Pruning is the business. It is held behind a <b>safety gate</b> (pruning may not enter the request path until an eval shows <b>&lt;5% answer‑quality degradation</b>). Clearing it is a one‑time eval run with a real judge model; the encoder runs locally for free.</p>
+  <ul>
+    <li><b>Needs:</b> one‑time <b>~$20–50</b> of Anthropic (or other judge‑model) API credits.</li>
+    <li><b>Then:</b> enable pruning → every customer's bill drops → you invoice 20% of the measured drop.</li>
+    <li><b>No new infrastructure</b> — runs on the same Vercel + Supabase.</li>
+  </ul>
+
+  <h3>C · Optional enhancements &nbsp;<span class="muted">— no new infrastructure</span></h3>
+  <p>Already built on Supabase, needing only wiring: the <b>three‑tier memory</b> (Supabase <code>pgvector</code> — <b>no Pinecone / Neo4j</b>) and the <b>git‑attestation audit engine</b> (deterministic tier free; LLM escalation credit‑gated). Defer until a customer asks.</p>
+
+  <div class="callout warn avoid-break">
+    <h3>D · The one thing Vercel can't host — deferred by design</h3>
+    <p style="margin:0">The <b>TEE / ZK‑Context encryption</b> feature (encrypt customer context inside a hardware enclave) requires <b>AWS Nitro Enclaves</b> — hardware that does not exist on Vercel. It is an enterprise‑only add‑on and is <b>not needed for the MVP</b>: your data is already protected by RLS, service‑role‑only access, PII redaction, and never storing raw context. Revisit only for an enterprise contract that requires hardware‑attested encryption, on a dedicated TEE host at that time.</p>
+  </div>
+
+  <h2>3 · What you need from each provider</h2>
+  <div class="cards avoid-break">
+    <div class="card">
+      <h3>Vercel <span class="price">$20/mo</span></h3>
+      <dl>
+        <dt>Plan</dt><dd>Pro (per member — you're the only one)</dd>
+        <dt>Why</dt><dd>Commercial use is <b>not allowed on Hobby</b>; Pro also unlocks the long streaming‑function durations the proxy needs + the prod env store you already use.</dd>
+        <dt>Do</dt><dd>Team settings → upgrade to Pro. Project's already deployed; nothing else changes.</dd>
+        <dt>Usage</dt><dd>Active CPU $0.128/hr · invocations $0.60/1M · 1 TB transfer included then $0.15/GB → ~$0–10/mo at pilot.</dd>
+      </dl>
+    </div>
+    <div class="card">
+      <h3>Supabase <span class="price">$25/mo</span></h3>
+      <dl>
+        <dt>Plan</dt><dd>Pro (includes $10/mo compute credit covering the Micro instance)</dd>
+        <dt>Why</dt><dd>Free <b>pauses after a week</b> + no backups. Pro = never pauses, 8 GB DB, 7‑day daily backups, more connections.</dd>
+        <dt>Do</dt><dd>Org settings → upgrade to Pro. Schema/migrations already applied & verified.</dd>
+        <dt>Skip</dt><dd><b>PITR (+$100/mo)</b> — the 7‑day backups suffice for the MVP. Add later when revenue justifies.</dd>
+      </dl>
+    </div>
+  </div>
+
+  <h2>4 · Cost summary</h2>
+
+  <h3>Recurring (monthly)</h3>
+  <table class="avoid-break">
+    <thead><tr><th>Item</th><th>Provider</th><th class="num">Base</th><th class="num">Pilot usage</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><b>Pro plan</b></td><td>Vercel</td><td class="num">$20.00</td><td class="num">$0–10</td><td>required for commercial use + long streams</td></tr>
+      <tr><td><b>Pro plan</b></td><td>Supabase</td><td class="num">$25.00</td><td class="num">~$0</td><td>never‑pause + 7‑day backups; $10 credit incl.</td></tr>
+      <tr><td>Payments</td><td>Stripe</td><td class="num">$0.00</td><td class="num">per‑charge</td><td>2.9% + 30¢ per successful charge only</td></tr>
+      <tr><td>LLM tokens (production)</td><td>upstream API</td><td class="num">$0.00</td><td class="num">—</td><td>customer brings/pays their own key (pass‑through)</td></tr>
+      <tr class="total green"><td colspan="2">Recurring total</td><td class="num">$45.00</td><td class="num">≈ $45–65</td><td>flat at the start</td></tr>
+    </tbody>
+  </table>
+
+  <h3>One‑time &nbsp;·&nbsp; and optional (don't buy now)</h3>
+  <table class="avoid-break">
+    <thead><tr><th>Item</th><th>Provider</th><th class="num">Cost</th><th>When</th></tr></thead>
+    <tbody>
+      <tr><td>Safety eval to enable pruning</td><td>Anthropic API</td><td class="num">~$20–50 once</td><td>the only LLM spend you fund yourself</td></tr>
+      <tr><td>Point‑in‑Time Recovery <span class="pill opt">optional</span></td><td>Supabase</td><td class="num">+$100/mo</td><td>when revenue justifies tighter recovery</td></tr>
+      <tr><td>TEE encryption host <span class="pill opt">optional</span></td><td>AWS Nitro (not Vercel)</td><td class="num">varies</td><td>only for an enterprise hardware‑attestation contract</td></tr>
+    </tbody>
+  </table>
+
+  <h2>5 · How we keep the spend lowest (without cutting corners)</h2>
+  <ul>
+    <li><b>Customers fund their own model usage.</b> The proxy forwards on the customer's own LLM key (or bills it back), so your ongoing per‑token cost is <b>$0</b> — you invoice only 20% of the savings you create. The single biggest lever, already designed in.</li>
+    <li><b>One judge run, not a subscription.</b> The pruning eval is a one‑time spend; the encoder is local & free.</li>
+    <li><b>Stay inside the included allowances.</b> Pilot traffic fits Vercel's 1 TB transfer and Supabase's 250 GB egress / 8 GB DB — so the only fixed cost is the two base plans.</li>
+    <li><b>No fourth vendor.</b> Memory uses Supabase <code>pgvector</code> (not Pinecone), the graph uses Supabase tables (not Neo4j); no separate queue/cache.</li>
+    <li><b>Skip PITR and TEE until they pay for themselves.</b> Both are real but neither is needed to ship or to be secure.</li>
+  </ul>
+
+  <h2>6 · Activation checklist (in order)</h2>
+  <ul class="checklist avoid-break">
+    <li><b>Upgrade Vercel → Pro</b> (Team → Plans).</li>
+    <li><b>Upgrade Supabase → Pro</b> (Organization → Billing).</li>
+    <li>Create a <b>Stripe</b> account → copy the <code>sk_test_</code> key.</li>
+    <li>Run <code>npm run verify-stripe</code> ($1 test invoice end‑to‑end). On pass → switch to <code>sk_live_</code> and register the <code>/stripe/webhook</code> endpoint to get <code>whsec_</code>.</li>
+    <li>Add <code>STRIPE_SECRET_KEY</code>, <code>STRIPE_WEBHOOK_SECRET</code> (and, if self‑funding, an upstream LLM key) to <b>Vercel's env store</b> → redeploy.</li>
+    <li><b>Onboard the first partner</b>: <code>npm run create-org</code> → give them their CQ key → point their tool's <code>ANTHROPIC_BASE_URL</code> at your proxy.</li>
+    <li><b>When monetizing savings</b>: fund the one‑time eval, run it green, enable pruning, then <code>npm run invoice -- --org-id &lt;them&gt; --send</code>.</li>
+  </ul>
+
+  <footer>
+    Reflects the platform at commit <code>0dde17e</code> (branch <code>stratum‑phase‑0‑capture</code>): v1.0.0 commercial foundation green except the two operator‑provided items (a Stripe key and a paying partner), multi‑provider gateway shipped and adversarially reviewed, 825 tests passing, deployed and verified live. &nbsp;·&nbsp; Stratum — token‑arbitrage LLM gateway.
+  </footer>
+
+</div>
+</body>
+</html>
