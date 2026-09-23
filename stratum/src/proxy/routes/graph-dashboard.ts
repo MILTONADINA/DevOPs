@@ -26,6 +26,7 @@ main { display: grid; grid-template-columns: minmax(0, 1fr) 19rem; height: calc(
 <button id="load" type="button">Load graph</button>
 <input id="search-query" type="search" maxlength="100" placeholder="Find a node" aria-label="Find a graph node">
 <button id="search" type="button">Search</button>
+<button id="tour-start" type="button">Start tour</button><button id="tour-prev" type="button" disabled>Previous</button><button id="tour-next" type="button" disabled>Next</button>
 <button id="zoom-in" type="button" aria-label="Zoom in">+</button><button id="zoom-out" type="button" aria-label="Zoom out">−</button><button id="reset" type="button">Reset view</button></header>
 <p id="status" role="status">Enter a CQ API key, or use ?org-id= in personal mode.</p>
 <main><svg id="canvas" xmlns="http://www.w3.org/2000/svg" aria-label="Knowledge graph" role="img"><g id="viewport"></g></svg>
@@ -41,6 +42,7 @@ const keyInput = document.getElementById('key');
 const org = new URLSearchParams(location.search).get('org-id') || '';
 keyInput.value = sessionStorage.getItem('cq_dashboard_key') || '';
 let nodes = [], edges = [], byId = new Map(), visible = new Set(), selected = null;
+let tour = [], tourIndex = -1, tourHadCycle = false;
 let x = 0, y = 0, scale = 1, dragging = null;
 function element(tag, value) { const node = document.createElement(tag); if (value != null) node.textContent = String(value); return node; }
 function vector(tag, attrs) { const node = document.createElementNS(svgNS, tag); Object.entries(attrs).forEach(([k, v]) => node.setAttribute(k, String(v))); return node; }
@@ -163,8 +165,94 @@ async function search() {
     status.textContent = matches.length + ' matching node(s). Select one to reveal its neighbors.';
   } catch (error) { status.textContent = error.message || String(error); }
 }
+function orderTour(files, dependencies) {
+  const sorted = [...files].sort((a, b) => a.name.localeCompare(b.name));
+  const known = new Set(sorted.map(file => file.id));
+  const byTourId = new Map(sorted.map(file => [file.id, file]));
+  const required = new Map(sorted.map(file => [file.id, 0]));
+  const dependents = new Map(sorted.map(file => [file.id, new Set()]));
+  const seen = new Set();
+  dependencies.forEach(edge => {
+    if (!known.has(edge.from_entity) || !known.has(edge.to_entity) || edge.from_entity === edge.to_entity) return;
+    const pair = edge.from_entity + ':' + edge.to_entity;
+    if (seen.has(pair)) return;
+    seen.add(pair);
+    required.set(edge.from_entity, required.get(edge.from_entity) + 1);
+    dependents.get(edge.to_entity).add(edge.from_entity);
+  });
+  const ready = sorted.filter(file => required.get(file.id) === 0);
+  const remaining = new Set(known), ordered = [];
+  let cycle = false, cycleCursor = 0;
+  function enqueue(file) {
+    let low = 0, high = ready.length;
+    while (low < high) {
+      const middle = (low + high) >> 1;
+      if (ready[middle].name.localeCompare(file.name) < 0) low = middle + 1; else high = middle;
+    }
+    ready.splice(low, 0, file);
+  }
+  while (remaining.size) {
+    let current = ready.shift();
+    if (!current) {
+      while (!remaining.has(sorted[cycleCursor].id)) cycleCursor++;
+      current = sorted[cycleCursor]; cycle = true;
+    }
+    if (!remaining.delete(current.id)) continue;
+    ordered.push(current);
+    dependents.get(current.id).forEach(id => {
+      required.set(id, required.get(id) - 1);
+      if (required.get(id) === 0 && remaining.has(id)) enqueue(byTourId.get(id));
+    });
+  }
+  return { ordered, cycle };
+}
+async function fetchTourPages(resource, field, key) {
+  const records = [], seen = new Set();
+  let after = null;
+  do {
+    const url = resource + '?limit=500' + (after ? '&after=' + encodeURIComponent(after) : '') + (key ? '' : '&org-id=' + encodeURIComponent(org));
+    const response = await fetch(url, { headers: key ? { Authorization: 'Bearer ' + key } : {}, cache: 'no-store' });
+    if (!response.ok) throw new Error(response.status === 401 ? 'Invalid or missing CQ API key.' : 'Graph traversal failed (' + response.status + ').');
+    const page = await response.json();
+    records.push(...(Array.isArray(page[field]) ? page[field] : []));
+    after = page.next || null;
+    if (after && seen.has(after)) throw new Error('Graph traversal repeated a cursor.');
+    if (after) seen.add(after);
+    status.textContent = 'Loading tour: ' + records.length + ' ' + resource + '…';
+  } while (after);
+  return records;
+}
+function showTourStep() {
+  if (tourIndex < 0 || tourIndex >= tour.length) return;
+  const file = tour[tourIndex];
+  visible = new Set([file.id]);
+  select(file.id);
+  details.appendChild(element('p', 'Tour ' + (tourIndex + 1) + ' of ' + tour.length));
+  document.getElementById('tour-prev').disabled = tourIndex === 0;
+  document.getElementById('tour-next').disabled = tourIndex === tour.length - 1;
+  status.textContent = 'Tour ' + (tourIndex + 1) + '/' + tour.length + ': ' + file.name +
+    (tourHadCycle ? ' — dependency cycle detected; remaining files use name order.' : '');
+}
+async function startTour() {
+  const key = keyInput.value.trim();
+  if (!key && !org) { status.textContent = 'Enter a CQ API key, or use ?org-id= in personal mode.'; return; }
+  if (key) sessionStorage.setItem('cq_dashboard_key', key); else sessionStorage.removeItem('cq_dashboard_key');
+  try {
+    const files = await fetchTourPages('/v1/memory/graph/files', 'files', key);
+    const dependencies = await fetchTourPages('/v1/memory/graph/dependencies', 'edges', key);
+    const result = orderTour(files, dependencies);
+    tour = result.ordered; tourHadCycle = result.cycle; tourIndex = tour.length ? 0 : -1;
+    byId = new Map([...byId, ...files.map(file => [file.id, file])]);
+    nodes = [...byId.values()];
+    edges = [...new Map([...edges, ...dependencies].map(edge => [edge.id, edge])).values()];
+    if (tour.length) showTourStep(); else status.textContent = 'No source files in this organization graph.';
+  } catch (error) { status.textContent = error.message || String(error); }
+}
 document.getElementById('load').addEventListener('click', load);
 document.getElementById('search').addEventListener('click', search);
+document.getElementById('tour-start').addEventListener('click', startTour);
+document.getElementById('tour-prev').addEventListener('click', () => { if (tourIndex > 0) { tourIndex--; showTourStep(); } });
+document.getElementById('tour-next').addEventListener('click', () => { if (tourIndex + 1 < tour.length) { tourIndex++; showTourStep(); } });
 keyInput.addEventListener('keydown', event => { if (event.key === 'Enter') load(); });
 document.getElementById('search-query').addEventListener('keydown', event => { if (event.key === 'Enter') search(); });
 if (keyInput.value || org) load();
