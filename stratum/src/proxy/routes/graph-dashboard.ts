@@ -8,7 +8,7 @@ body { margin: 0; }
 header { display: flex; flex-wrap: wrap; align-items: center; gap: .7rem; padding: .7rem 1rem; border-bottom: 1px solid #8885; }
 h1 { font-size: 1.2rem; margin: 0 auto 0 0; }
 a { color: #4787d8; }
-input, button { font: inherit; color: inherit; background: transparent; border: 1px solid #8888; border-radius: 5px; padding: .35rem .55rem; }
+input, select, button { font: inherit; color: inherit; background: transparent; border: 1px solid #8888; border-radius: 5px; padding: .35rem .55rem; }
 button { cursor: pointer; }
 input { min-width: 13rem; }
 #status { padding: .45rem 1rem; margin: 0; min-height: 1.5rem; }
@@ -25,6 +25,7 @@ main { display: grid; grid-template-columns: minmax(0, 1fr) 19rem; height: calc(
 <input id="key" type="password" autocomplete="off" placeholder="CQ API key" aria-label="CQ API key">
 <button id="load" type="button">Load graph</button>
 <input id="search-query" type="search" maxlength="100" placeholder="Find a node" aria-label="Find a graph node">
+<select id="search-mode" aria-label="Search mode"><option value="name">Name</option><option value="semantic">Meaning</option></select>
 <button id="search" type="button">Search</button>
 <button id="tour-start" type="button">Start tour</button><button id="tour-prev" type="button" disabled>Previous</button><button id="tour-next" type="button" disabled>Next</button>
 <button id="zoom-in" type="button" aria-label="Zoom in">+</button><button id="zoom-out" type="button" aria-label="Zoom out">−</button><button id="reset" type="button">Reset view</button></header>
@@ -210,7 +211,8 @@ async function search() {
   if (key) sessionStorage.setItem('cq_dashboard_key', key); else sessionStorage.removeItem('cq_dashboard_key');
   status.textContent = 'Searching graph…';
   try {
-    const url = '/v1/memory/graph/search?q=' + encodeURIComponent(query) + (key ? '' : '&org-id=' + encodeURIComponent(org));
+    const mode = document.getElementById('search-mode').value || 'name';
+    const url = '/v1/memory/graph/search?q=' + encodeURIComponent(query) + '&mode=' + encodeURIComponent(mode) + (key ? '' : '&org-id=' + encodeURIComponent(org));
     const response = await fetch(url, { headers: key ? { Authorization: 'Bearer ' + key } : {}, cache: 'no-store' });
     if (!response.ok) throw new Error(response.status === 401 ? 'Invalid or missing CQ API key.' : 'Graph search failed (' + response.status + ').');
     const graph = await response.json();
