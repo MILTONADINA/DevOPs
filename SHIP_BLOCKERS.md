@@ -359,7 +359,7 @@ instruction to complete the remaining work authorized deliberate major
 upgrades. PR #31 updated the direct packages without `--force` and merged at
 `07663dc`. `npm audit --audit-level=low` reported zero vulnerabilities;
 Stratum typecheck and 825 tests passed under the new dependency versions.
-Dependabot's alert state should be checked after GitHub processes the merged
+GitHub Dependabot reported zero open alerts after processing the merged
 lockfile. Future advisories remain subject to routine monitoring.
 
 ### 1.6 A stale signature was introduced *this session*
