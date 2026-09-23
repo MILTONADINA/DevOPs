@@ -123,7 +123,17 @@ and local import/module DEPENDS_ON edges. Rust ingestion recognizes top-level
 named functions and `mod name;` declarations; Python ingestion recognizes
 top-level sync/async functions and known local imports. It also replaces their entity embeddings
 using the project-local ONNX cache; a missing cache fails without downloading.
-Model-generated source summaries remain separate work.
+To generate optional File summaries with a local OpenAI-compatible text model,
+set `CQ_SOURCE_SUMMARY_MODEL=local/<model>` and `CQ_LOCAL_BASE_URL` to a literal
+loopback HTTP `/v1` endpoint before running that ingestion command. The model
+receives at most 3,000 characters of each File as marked untrusted data, and
+its one-sentence response must pass the summary safety and length checks.
+The ingestor completes and validates all summaries before graph writes; an
+invalid response fails the run. Function summaries remain source-derived.
+Without `CQ_SOURCE_SUMMARY_MODEL`, the deterministic summaries remain, even
+when `CQ_LOCAL_BASE_URL` is used for another local feature. Reingestion without
+the summary model will restore those deterministic File summaries. A local
+fixture verifies wiring; broad quality needs a real local text-model run.
 
 Open `/dashboard/graph` on the local proxy to explore the bounded graph
 snapshot. Enter a CQ API key in commercial mode, or pass `?org-id=<uuid>` in
