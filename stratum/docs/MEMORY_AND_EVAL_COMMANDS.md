@@ -117,6 +117,17 @@ Ingestion (turning real sessions into facts via the extractor) is the one
 **NEEDS CREDITS** part of the memory loop — everything that stores, promotes,
 queries, or benchmarks *existing* facts is FREE.
 
+Claude SessionStart also runs the read-only Stratum memory bridge when the
+operator supplies `DEVOPS_STRATUM_PROJECT_ROOT` (this project's real path),
+`DEVOPS_STRATUM_ORG_ID` (the trusted organization UUID), `SUPABASE_URL`, and
+`SUPABASE_SERVICE_KEY` in the process environment. The Supabase hostname must
+be in `.workflow/network-allowlist.txt`; the bridge does not read `.env`.
+It emits at most three recent and three semantic typed facts as untrusted data.
+The semantic query comes from the baton's Next action and uses only the local
+cached model; if the model is absent, recent facts still appear with
+`semanticStatus: "unavailable"`. Missing binding or runtime skips recall
+without blocking startup.
+
 ---
 
 ## Eval / pruning-gate commands
