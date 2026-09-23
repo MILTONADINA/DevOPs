@@ -50,3 +50,37 @@ describe("Rust source graph parser", () => {
     expect(graph.entities.some((entity) => entity.name === "stratum/rust/hot-path/src/lib.rs#sha256_hex")).toBe(true);
   });
 });
+
+describe("Python source graph parser", () => {
+  test("indexes top-level sync and async functions and known local imports without decoys", () => {
+    const graph = indexSourceFiles([
+      {
+        path: "py/entry.py",
+        source: `# def ghost(): pass\nTEXT = '''😀 def fake(): pass\nimport missing'''\nfrom .helper import helper\nfrom . import helper\nimport helper as h\ndef run():\n    def nested(): pass\n    return h.helper()\nasync def fetch(): pass\ndef run(): pass\nclass Box:\n    def method(self): pass`,
+      },
+      { path: "py/helper.py", source: "def helper(): pass" },
+    ]);
+    expect(graph.entities.map((entity) => entity.name)).toEqual(["py/entry.py", "py/entry.py#run", "py/entry.py#fetch", "py/helper.py", "py/helper.py#helper"]);
+    expect(graph.edges).toEqual([
+      { fromName: "py/entry.py", toName: "py/helper.py", edgeType: "DEPENDS_ON" },
+      { fromName: "py/entry.py", toName: "py/entry.py#run", edgeType: "DECLARES" },
+      { fromName: "py/entry.py", toName: "py/entry.py#fetch", edgeType: "DECLARES" },
+      { fromName: "py/helper.py", toName: "py/helper.py#helper", edgeType: "DECLARES" },
+    ]);
+  });
+
+  test("recognizes the repository's real Python callback and sibling import", () => {
+    const root = new URL("../../../tests/fixtures/agents/asi01-failing/", import.meta.url);
+    const graph = indexSourceFiles([
+      { path: "tests/fixtures/agents/asi01-failing/harness.py", source: readFileSync(new URL("harness.py", root), "utf8") },
+      { path: "tests/fixtures/agents/asi01-failing/test_harness.py", source: readFileSync(new URL("test_harness.py", root), "utf8") },
+    ]);
+    expect(graph.entities.some((entity) => entity.name === "tests/fixtures/agents/asi01-failing/harness.py#model_callback")).toBe(true);
+    expect(graph.edges).toContainEqual({
+      fromName: "tests/fixtures/agents/asi01-failing/test_harness.py",
+      toName: "tests/fixtures/agents/asi01-failing/harness.py",
+      edgeType: "DEPENDS_ON",
+    });
+    expect(graph.entities.some((entity) => entity.name.endsWith("#test_canonical_injection_probe_hijacks_goal"))).toBe(false);
+  });
+});
