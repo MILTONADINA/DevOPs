@@ -36,8 +36,8 @@ the full continuation args with `scripts/graph-resume-args.mjs`. Only API and
 transient faults may resume unattended. The `graph-halt` kill switch remains
 human controlled. A `needs_human` block requires the human to run its Fix
 command and remove `blocked.md`; the next `/sprint --resume` then checks the
-underlying fault with the full preflight. API and transient blocks are
-cleared by `/sprint --resume` after preflight passes.
+underlying fault with the full preflight. Remaining non-`needs_human` blocks are
+cleared by `/sprint --resume` after preflight passes and Workflow launches.
 
 **Fable is the orchestrator** ("boss/CTO") — the top-level entity running
 `sprint-cycle.js` and interpreting its results, i.e. the main Claude Code

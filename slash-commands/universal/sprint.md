@@ -63,7 +63,8 @@ and `transient` blocks; `needs_human` and unlisted `environment` remedies
 wait for a human fix verified by preflight. A `needs_human` record tells the
 human to clear `blocked.md` after performing its Fix command; the full
 preflight then verifies the underlying cause on resume. `/sprint` clears
-API and transient markers only after its preflight passes.
+remaining non-`needs_human` markers only after its preflight passes and
+the Workflow launches successfully.
 
 The Workflow pipelines the backlog item through preflight → planner → coder
 → tester → reviewer → security → validator, phase-tagged
