@@ -13,7 +13,9 @@
  *   npm run audit:repo -- --facts claims.json --persist --org-id <uuid> --session-id <uuid>
  */
 
-import { readFileSync, existsSync } from "node:fs";
+import { lstatSync, readFileSync } from "node:fs";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
+import { fileURLToPath } from "node:url";
 import { createClient } from "@supabase/supabase-js";
 import { indexRepository } from "../src/audit/git-indexer";
 import { auditFacts, summarizeAudit, persistAuditResults } from "../src/audit/audit-engine";
@@ -26,6 +28,27 @@ interface Args {
   persist: boolean;
   orgId?: string;
   sessionId?: string;
+}
+
+// Scripts execute as ESM through tsx; the shared typecheck config targets CJS.
+// @ts-expect-error import.meta is available in the script runtime.
+const projectRoot = resolve(fileURLToPath(new URL("../../", import.meta.url)));
+
+/** Resolve only a regular, non-secret file below this project's root. */
+export function resolveFactsPath(requested: string): string {
+  const candidate = resolve(process.cwd(), requested);
+  const rel = relative(projectRoot, candidate);
+  if (rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel)) throw new Error("path is outside project root");
+  const parts = rel.split(sep);
+  if (parts.some((part) => /^\.env(?:\.|$)/.test(part) || /\.(?:pem|key)$/i.test(part))) throw new Error("secret-like facts path is forbidden");
+  let current = projectRoot;
+  for (const part of parts) {
+    current = join(current, part);
+    const info = lstatSync(current);
+    if (info.isSymbolicLink()) throw new Error("symbolic link in facts path is forbidden");
+    if (part === parts.at(-1) && current === candidate && !info.isFile()) throw new Error("facts path must be a regular file");
+  }
+  return candidate;
 }
 
 export function parseArgs(argv: string[]): Args {
@@ -92,19 +115,22 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
   const idx = summarizeIndex(changes);
   out(`Indexed last ${args.maxCount} commits → ${changes.length} code change(s) across ${idx.commits} commit(s), ${idx.files} file(s): ${idx.added} added, ${idx.deleted} deleted, ${idx.modified} modified.`);
 
-  if (!args.factsPath) {
+  if (args.factsPath === undefined) {
     out("");
     out("(No --facts given — showing the git index only. Pass --facts <json-array-of-facts> to attest claims.)");
     return 0;
   }
-  if (!existsSync(args.factsPath)) {
-    out(`--facts file not found: ${args.factsPath}`);
+  let factsPath: string;
+  try {
+    factsPath = resolveFactsPath(args.factsPath);
+  } catch (e) {
+    out(`--facts rejected: ${e instanceof Error ? e.message : String(e)}`);
     return 1;
   }
 
   let facts: AnyFact[];
   try {
-    const parsed = JSON.parse(readFileSync(args.factsPath, "utf8")) as unknown;
+    const parsed = JSON.parse(readFileSync(factsPath, "utf8")) as unknown;
     if (!Array.isArray(parsed)) throw new Error("facts file must be a JSON array");
     facts = parsed as AnyFact[];
   } catch (e) {
