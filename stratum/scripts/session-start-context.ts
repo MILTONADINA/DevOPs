@@ -40,7 +40,7 @@ export function taskFromBaton(baton: string): string {
   return section.join(" ").replace(/\s+/g, " ").trim().slice(0, 1200);
 }
 
-function isAllowed(opts: SessionContextOptions): boolean {
+export function isAllowed(opts: SessionContextOptions): boolean {
   if (!opts.projectRoot || opts.projectRoot !== opts.boundRoot || !ORG_ID.test(opts.orgId) || !opts.serviceKey) return false;
   let url: URL;
   try { url = new URL(opts.supabaseUrl); } catch { return false; }
