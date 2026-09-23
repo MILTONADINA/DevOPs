@@ -1,0 +1,96 @@
+# governance/graph/autonomy-config.yml
+#
+# Machine-readable gate configuration for the graph-engineering pipeline.
+# See governance/graph/role-mapping.md for the human-readable rationale and
+# .claude/plans/indexed-launching-cocke.md for the full approved plan.
+#
+# hooks/universal/pre-tool/deploy-gate.sh reads billing_paths from THIS file
+# conceptually -- if you change the list here, update the hook's
+# BILLING_PATH_PATTERNS array to match (kept in sync manually for now; a
+# future improvement could have the hook parse this YAML directly).
+
+phase: 0  # 0 = pilot (fix SHIP_BLOCKERS.md, full human gate on every step)
+          # 1 = inner loop autonomous, deploy + billing gated
+          # 2 = low-risk DevOps-core merge-to-main may loosen (never deploy/billing)
+
+roles:
+  planner: { subagent: planner, autonomy: full_inner_loop }
+  coder: { subagent: coder, autonomy: full_inner_loop }
+  tester: { subagent: tester, autonomy: full_inner_loop }
+  reviewer: { subagent: reviewer, autonomy: full_inner_loop }
+  security: { subagent: security, autonomy: full_inner_loop, never_bypassed: true }
+  validator: { subagent: validator, autonomy: full_inner_loop }
+
+parked_subagents:
+  - integrations-curator
+  - librarian
+
+gates:
+  production_deploy:
+    approvals_required: 1
+    distinct_approvers_required: false
+    marker_path_template: ".workflow/state/graph-approvals/{cycle_id}.deploy"
+    loosens_in_phase_2: false
+    patterns:
+      - "vercel .* --prod"
+      - "vercel deploy"
+      - "wrangler deploy"
+      - "npm publish"
+      - "git push .* --tags"
+      - "git push .* refs/tags/"
+
+  billing_path_change:
+    approvals_required: 2
+    distinct_approvers_required: true
+    marker_path_template: ".workflow/state/graph-approvals/{cycle_id}.billing-{n}"
+    loosens_in_phase_2: false
+    billing_paths:
+      - "stratum/src/billing/"
+      - "stratum/src/proxy/providers/"
+      - "stratum/scripts/invoice"
+
+  merge_to_main:
+    phase_0: human_required_every_time
+    phase_1: human_required_every_time
+    phase_2: auto_allowed_for_low_risk_devops_core_only  # docs, non-production skill/hook edits only; never stratum/
+
+kill_switch:
+  halt_file: ".workflow/state/graph-halt"
+  commands: ["/graph-halt", "/graph-resume"]
+  checked_by: "hooks/universal/pre-tool/deploy-gate.sh"
+
+resilience:
+  preflight: "scripts/graph-preflight.sh"
+  remediation_registry: "governance/graph/preflight-remediations.yml"
+  blocked_record: ".workflow/state/blocked.md"
+  run_record: ".workflow/state/graph-cycles/{cycleId}/run.json"
+  unattended_resume_classes: [api, transient]
+
+# RESOLVED 2026-09-14: the "separate explicit decision" gates.production_deploy
+# and gates.billing_path_change required has been made. User deferred to
+# recommendation ("for all questions I will go by your best recommendation");
+# recommendation is KEEP both gates permanently -- see the "RESOLVED" section
+# at the top of .claude/plans/indexed-launching-cocke.md for full reasoning.
+# This is not provisional: phase_2_entry_criteria below governs
+# merge_to_main.phase_2 ONLY. production_deploy and billing_path_change do
+# not have an entry-criteria path to loosening at all anymore -- reopening
+# them requires a new, separately-reasoned decision, not accumulated clean
+# cycles.
+production_autonomy_decision:
+  status: resolved
+  decision: gates_stay_permanent
+  decided: "2026-09-14"
+  decided_by: "user, deferred to model recommendation"
+
+phase_2_entry_criteria:
+  # ALL must hold before Phase 2 is even considered -- and even then, only
+  # merge_to_main.phase_2 loosens. production_deploy and billing_path_change
+  # stay human-required permanently (see production_autonomy_decision above).
+  min_clean_phase_1_cycles: null  # to be set with the user before Phase 1 starts
+  claim_validator_pass_rate_healthy: null  # target set once Phase 0 restores it
+  change_failure_rate: steady_or_improving
+  mean_time_to_recovery: steady_or_improving
+
+audit:
+  every_graph_action_logged_to: ".workflow/state/events.jsonl"
+  tied_to_claim_validator: true

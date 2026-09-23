@@ -151,7 +151,7 @@ B.05 fans out to B.06/B.07/B.08 (all gating-or-surfacing behaviours layer on the
 - Static-scan portion of `security-scan.yml` (semgrep, gitleaks history scan, dependency audit) — existing tier-2 plus area A.
 - Stack-specific red-team variants (Next.js-, Stripe-specific) — Phase 4 or area D extensions.
 - Severity threshold change (blocking on `high`, not just `critical`) — deferred to v0.2.x per spec B Decisions.
-- Local parity script in PowerShell — CI is Linux; Windows contributors use Git Bash / WSL per `docs/HOOKS.md`.
+- Local parity script in POSIX bash — CI is Linux.
 
 ## Change log
 

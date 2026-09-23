@@ -24,6 +24,12 @@ X-CQ-Dry-Run: true             Count tokens and prune, but don't forward to Anth
 X-CQ-Disable-Pruning: true     Measure only, no pruning (Phase 1 behavior)
 ```
 
+**Transparent header passthrough:** as a drop-in proxy, `anthropic-version` and `anthropic-beta`
+on your request are forwarded upstream unchanged — your SDK's API version is honored and beta
+opt-ins (e.g. `anthropic-beta`) are NOT dropped. When absent, the proxy defaults the version to
+`2023-06-01`. (The proxy supplies its own `x-api-key` to Anthropic; you authenticate to CQ with your
+CQ key via `Authorization: Bearer` or `x-api-key`.)
+
 **Response:** Identical to Anthropic API response, plus:
 ```json
 {
@@ -179,6 +185,35 @@ Paginated list of billing records. For CFO audit use.
 }
 ```
 
+### GET /v1/billing/invoices
+
+The invoice lifecycle — what the inbound Stripe webhook (`POST /stripe/webhook`) records, so
+"did the design partner pay?" is answerable via the API (not just SQL). Newest first.
+
+**Query params:**
+- `status`: filter by `sent` | `paid` | `failed` (invalid → 400)
+- `limit`: default 50, max 500; `offset`: default 0
+
+**Response:**
+```json
+{
+  "invoices": [
+    {
+      "id": "uuid",
+      "created_at": "2026-05-30T09:00:00Z",
+      "stripe_invoice_id": "in_1abc...",
+      "amount_cents": 9900,
+      "currency": "usd",
+      "status": "paid",
+      "paid_at": "2026-05-30T11:42:00Z"
+    }
+  ],
+  "total": 3,
+  "offset": 0,
+  "limit": 50
+}
+```
+
 ---
 
 ## Memory
@@ -283,6 +318,41 @@ Count tokens without proxying a request.
   "input_tokens": 8420
 }
 ```
+
+### GET /openapi.json
+
+No authentication required. Returns the machine-readable OpenAPI 3.1 spec for this
+API — the same contract this document describes, in a form clients can use to
+generate SDKs, validate requests, or render Swagger UI. Served publicly even when
+`/v1/*` auth is enabled, so a client can read the contract before it has a key.
+
+Source of truth: `src/proxy/openapi.ts`. A test (`test/proxy/openapi.test.ts`)
+asserts every documented path is an actually-registered route and every `$ref`
+resolves, so the spec cannot drift from the implementation.
+
+### POST /stripe/webhook
+
+No API key — Stripe authenticates via the `Stripe-Signature` header (HMAC-SHA256 of
+`<timestamp>.<rawBody>` keyed by the endpoint signing secret `STRIPE_WEBHOOK_SECRET`).
+Mounted OUTSIDE `/v1/`, so it bypasses the API-key gate; the **signature is the auth**.
+
+Records the invoice lifecycle so the system knows "invoice **paid** by design partner"
+(the v1.0.0 acceptance): `invoice.paid` / `invoice.payment_succeeded` → mark the invoice
+paid (upsert into `invoices`, idempotent on `stripe_invoice_id` since Stripe re-delivers
+at-least-once); `invoice.payment_failed` → mark failed; any other event → `200` ack, no-op.
+
+A bad/stale/missing signature returns `400` (never acked as accepted); a verified event
+returns `200 {received:true}`. Verification is over the RAW body (a re-serialized JSON body
+would not match), with a 5-minute timestamp tolerance for replay defense.
+
+### GET /docs
+
+No authentication required. A human-browsable API reference page that renders
+`/openapi.json` client-side — point a browser at it to see every endpoint, its
+parameters, and responses, always current with the served spec. Self-contained
+(no external CDN) and XSS-safe (textContent/createElement only), matching the CFO
+dashboard's rendering convention. Verified end-to-end in a real browser (renders
+all 18 operations from the live spec).
 
 ---
 

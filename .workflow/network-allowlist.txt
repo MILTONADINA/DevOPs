@@ -1,0 +1,3 @@
+# Domains required by graph preflight for this repository's GitHub origin.
+github.com
+release-assets.githubusercontent.com

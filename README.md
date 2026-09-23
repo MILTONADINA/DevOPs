@@ -1,17 +1,62 @@
 # DevOPs
 
 > A self-configuring, verification-first DevOps workflow for AI coding agents.
-> Works with Claude Code, Codex CLI, Cursor, Antigravity, Kiro, Gemini CLI, Copilot,
-> Windsurf, and local LLMs via universal SKILL.md and AGENTS.md formats.
+> Designed to work with Claude Code, Codex CLI, Cursor, Antigravity, Kiro,
+> Gemini CLI, Copilot, Windsurf, and local LLMs via universal SKILL.md and
+> AGENTS.md formats — **currently, only Claude Code has a real adapter**
+> (`CLAUDE.md`); the other eight are aspirational until their adapter files
+> actually exist. Don't take the multi-tool claim as shipped.
 
 DevOPs is not a framework. It is an *operating system for coding agents* that ships
 with a constitution, deterministic safety hooks, a per-project analyzer that
 auto-configures itself to each new repo, cryptographically verified proof-of-work,
-multi-tool session handoff, and a three-tier persistent memory backend.
+multi-tool session handoff, and a persistent memory backend.
 
 It is built to deliver the full DevOps cycle — from a vague client brief through
 spec, design, build, harden, launch, operate, evolve — autonomously where it can be
 verified, and with explicit human checkpoints where it cannot.
+
+---
+
+## What's actually differentiated
+
+A redundancy audit (2026-09-14) forced an honest split — most of this project
+leans on tools that already exist. Worth knowing which parts are which before
+trusting a "why build this" answer.
+
+**Hard to get elsewhere — the real reasons to use this over an off-the-shelf
+tool:**
+- The claim/proof-of-work verification system (`verification/claim-validator.ts`)
+  — reproducibility hashes, exit-code re-verification, refusal to accept
+  self-reported "done."
+- Stratum's context-pruning eval gate (KadaneDial) — semantic-retrieval +
+  LLM-judge + quality gate before a prune is trusted. Still shadow-mode,
+  pending a live judged eval — the design addresses a genuinely unsolved
+  problem (long-context hallucination/cost), it just isn't proven yet.
+- Stratum's multi-provider gateway — deliberately *not* built on LiteLLM;
+  needs exact per-provider token counts for billing accuracy that LiteLLM's
+  response normalization doesn't guarantee (see `stratum/docs/decisions/0019-multi-provider-gateway.md`).
+- Stratum's billing/invoice engine — a real Stripe revenue mechanism tied to
+  measured token savings, not a generic cost dashboard.
+- Stratum's typed Tier-2 memory (server-trusted FK injection, fail-closed
+  validation) — architecturally different from generic memory products
+  (mem0/Letta/Zep store blobs or embeddings, not typed multi-tenant facts).
+- The project analyzer's compliance/risk classification (PCI/GDPR/COPPA/HIPAA
+  detection driving downstream skill recommendations) — goes beyond what
+  `/init`-style auto-configuration does.
+
+**Built on Claude Code's own native primitives, curated rather than
+invented:** the hooks/skills/subagents *mechanisms* are platform features,
+not DevOPs inventions. The value here is "specific rules already written for
+you" (loop-detection thresholds, budget brakes, the constitution), not "does
+something the platform can't do." Don't oversell this part.
+
+**Removed 2026-09-14 as redundant with existing tools** (full detail in
+`CHANGELOG.md`): the Zep memory backend, three process skills that
+duplicated Claude Code's native behavior (`ask-dont-assume`,
+`karpathy-guidelines`, `surgical-edits`), the `researcher` subagent
+(duplicates the native Explore agent), and Stratum's vanilla cost dashboard
+(duplicates Langfuse/Helicone).
 
 ---
 
@@ -54,7 +99,7 @@ DevOPs is layered. Each layer constrains the layer above it.
                 │  Budget brakes, loop detection       │
                 │  Pre/post-tool, session-start/end    │
                 ├──────────────────────────────────────┤
-                │  Memory: Stratum + Zep + file-based  │ ← Persistence
+                │  Memory: Stratum + file-based        │ ← Persistence
                 │  Verification: claim-validator       │
                 │  Observability: Langfuse + OTel      │
                 └──────────────────────────────────────┘
@@ -101,10 +146,12 @@ generates per-tool adapters automatically.
 - Baton handoff (multi-tool session failover)
 - Proof-of-work claim verification
 - Session summary (human-reviewable)
-- Ask, don't assume
 - Goal-driven loop
-- Surgical edits (every changed line traces to user request)
-- Karpathy guidelines (vendored from multica-ai/andrej-karpathy-skills)
+
+(Three others — Ask-don't-assume, Surgical edits, Karpathy guidelines — were
+removed 2026-09-14 as redundant with Claude Code's own native behavior;
+their real enforcement mechanisms, where they had one, live in
+`verification/claim-validator.ts` and the hook layer, not in a skill.)
 
 ### Hooks (deterministic safety)
 - Pre-tool: secret block, prod-write block, `rm -rf` block, network whitelist, **budget brake**, **loop detection**, client boundary
@@ -118,10 +165,14 @@ the right skills + hooks + MCPs + subagents to install. Modeled on Anthropic's
 `claude-code-setup` plugin, extended with installation, learning, and per-client
 isolation.
 
-### Memory (three-tier, all wired)
+### Memory (two-tier, both wired)
 - **File-based** — `.workflow/memory/` git-committed durable facts (works today)
 - **Stratum** — your own context-pruning proxy with structured fact tables, audit_conflicts, billing_records (Phase 0+1 ready, advanced phases incoming)
-- **Zep** — semantic temporal memory via MCP (best temporal-reasoning benchmark in 2026)
+
+(A third backend, Zep, was removed 2026-09-14 as redundant dead weight — zero
+call sites ever wired it in, and Stratum's own ADR-0004 argues its approach
+is inferior to the structured facts above. Semantic-temporal recall across
+sessions is currently unsupported.)
 
 ### Verification (anti-hallucination)
 - Every claim must produce a structured proof (git SHA, test command, exit code, output tail)
@@ -182,19 +233,19 @@ the next time you open the project.
 
 See `docs/PLAYBOOK.md` for the full operational guide.
 
-### Windows contributors
+### Executable bits
 
 Some scripts (`scripts/devops-cli.js`, hooks) carry POSIX executable
-bits (`100755`) in the git index. On Windows + NTFS, this can surface
-as a phantom modification because the filesystem cannot represent the
-executable bit. To suppress: set `core.filemode=false` locally:
+bits (`100755`) in the git index. If your tooling surfaces these as
+phantom modifications, suppress them by setting `core.filemode=false`
+locally:
 
 ```bash
 git config core.filemode false
 ```
 
-Bash-based hooks run via Git Bash / WSL / mingw. PowerShell-only
-environments need the hooks invoked through `bash <hook>.sh`.
+The `.sh` hooks require a POSIX shell (bash/zsh) and can be invoked with
+`bash <hook>.sh`.
 
 ---
 
@@ -209,7 +260,7 @@ environments need the hooks invoked through `bash <hook>.sh`.
 | `docs/LIFECYCLE.md` | State transitions and acceptance gates |
 | `docs/FAILOVER.md` | Multi-tool session handoff (Claude Code → Codex → local) |
 | `docs/VERIFICATION.md` | The proof-of-work protocol |
-| `docs/MEMORY.md` | Three-tier memory: Stratum + Zep + file-based |
+| `docs/MEMORY.md` | Two-tier memory: Stratum + file-based |
 | `docs/COST_OPTIMIZATION.md` | Model routing, batching, brakes |
 | `docs/OBSERVABILITY.md` | OTel + Langfuse + Laminar setup |
 | `docs/SECURITY.md` | OWASP ASI 2026 threat model and defenses |
@@ -221,14 +272,15 @@ environments need the hooks invoked through `bash <hook>.sh`.
 
 ## Status
 
-DevOPs is in Phase 1 of a six-phase build. See `CHANGELOG.md` for current
-implementation status and `governance/changelog/ROADMAP.md` for what's coming.
+DevOPs is on Phase 3 of a six-phase build (v0.2.0 shipped). See
+`governance/VERSION.md` for the canonical phase table, `CHANGELOG.md` for
+release history, and `governance/changelog/ROADMAP.md` for what's coming.
 
 | Phase | Status | Description |
 |-------|--------|-------------|
-| 1 | **in progress** | Foundation: constitution, hooks, core skills, analyzer, claim validator |
-| 2 | planned | Security depth: full pentest stack, OWASP ASI red-team integration, prompt-injection defense |
-| 3 | planned | Memory & observability: Stratum integration, Langfuse, cross-project meta-memory |
+| 1 | shipped (v0.1.0) | Foundation: constitution, hooks, core skills, analyzer, claim validator |
+| 2 | shipped (v0.2.0) | Security depth: full pentest stack, OWASP ASI red-team integration, prompt-injection defense |
+| 3 | **in progress** | Memory & observability: Stratum closeout (Option B locked), Langfuse, cross-project meta-memory |
 | 4 | planned | Design phase skills: threat modeling, ADRs, OpenAPI-first, ERD, C4, perf/a11y budgets |
 | 5 | planned | SRE & operate: SLOs, runbooks, incidents, cost attribution dashboards |
 | 6 | planned | Self-improvement loop: telemetry-driven recommendations, skill self-evaluation |

@@ -119,7 +119,7 @@ Append one row per sweep. Operator initials + ISO date + a one-line summary.
 ## Phase 3+ deferred work
 
 The following are intentionally NOT in scope this phase. Each requires the
-broader Phase 3 memory + observability stack (Stratum + Zep) to operate
+broader Phase 3 memory + observability stack (Stratum) to operate
 correctly:
 
 1. **Cadence enforcement** — cron-driven scheduled sweep that opens an issue when

@@ -19,9 +19,9 @@ v0.1.0 tag.
 The eight commits pushed are:
 
 - `d36a58f` — feat: DevOPs Phase 1 (original build)
-- `0e75e91` — docs(hooks): Windows execution note (validation REQ-3)
+- `0e75e91` — docs(hooks): shell execution note (validation REQ-3)
 - `51c6ef9` — fix(governance): YAML syntax in skill-evals registry (validation REQ-5)
-- `9267397` — fix(verification): quote git revspec for cmd.exe (validation REQ-8)
+- `9267397` — fix(verification): quote git revspec for shell safety (validation REQ-8)
 - `8ff07c1` — chore(gitignore): ignore .prompts (validation REQ-9)
 - `b483047` — docs(specs): add Phase 1 validation spec
 - `275cf63` — fix(gitignore): track lifecycle/build/PHASE.md (polish REQ-1)

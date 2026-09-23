@@ -1,0 +1,18 @@
+{
+  "id": "msg_04JKL012multiturn",
+  "type": "message",
+  "role": "assistant",
+  "model": "claude-opus-4-7",
+  "content": [
+    {
+      "type": "text",
+      "text": "Earlier you asked about Paris — building on that: yes, the Louvre is in Paris's 1st arrondissement, adjacent to the Tuileries Garden."
+    }
+  ],
+  "stop_reason": "end_turn",
+  "stop_sequence": null,
+  "usage": {
+    "input_tokens": 128,
+    "output_tokens": 34
+  }
+}

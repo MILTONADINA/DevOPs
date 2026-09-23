@@ -1,0 +1,105 @@
+# governance/gitleaks-ci.toml
+#
+# Dedicated config for the automated CI gitleaks scan (the `gitleaks`
+# job's `gitleaks/gitleaks-action@v2` step in
+# .github/workflows/security-scan.yml), wired via that step's
+# GITLEAKS_CONFIG env var. Gitleaks-action honors GITLEAKS_CONFIG as an
+# explicit config path with the same precedence as the gitleaks CLI's
+# --config flag (see gitleaks-action README, "Can I use a custom
+# gitleaks configuration?").
+#
+# Deliberately NOT `governance/gitleaks-tier3.toml`: that file's own
+# header scopes it to manual tier-3 pre-release whole-repo scans
+# (`gitleaks detect --config governance/gitleaks-tier3.toml ...`), not
+# this always-on per-push/per-PR CI gate. Pointing GITLEAKS_CONFIG at
+# tier3.toml would silently widen its allowlist's effect to every CI
+# run too — in particular its existing entry for
+# tests/fixtures/security/poisoned-mcp-config.json would then also
+# suppress that fixture in the automated CI scan, which is a scope
+# change nobody asked for and blurs a file whose comments promise
+# "tier-3 whole-repo scans only." Keeping CI's allowlist in its own
+# file keeps each config's blast radius equal to what its header says.
+#
+# Also NOT `.gitleaks.toml` at repo root: gitleaks auto-discovers that
+# default path from the current working directory. REQ-A8 AC-A8.1's
+# negative-direction proof (.workflow/proofs/_checks/req-A8-poisoned-gitleaks.js)
+# runs `gitleaks detect --no-git --source tests/fixtures/security/poisoned-mcp-config.json`
+# from the repo root with no --config, relying on no allowlist being
+# in effect there. A root .gitleaks.toml would be picked up by that
+# invocation too (see governance/gitleaks-tier3.toml's header for the
+# full reasoning) and could suppress the fixture's trip. This file's
+# non-default path + explicit GITLEAKS_CONFIG wiring keeps that
+# invocation config-free.
+#
+# Scope: this file allowlists ONLY known false-positive test fixtures
+# for the CI job. Do not add fixtures here that a negative-direction
+# security proof needs to trip on (see governance/gitleaks-tier3.toml's
+# two-rule checklist for that same discipline).
+#
+# Closes: SHIP_BLOCKERS.md §1.2 (gitleaks flagging
+# stratum/test/billing/verify-stripe.test.ts:16,20 as containing real
+# Stripe secrets — confirmed false positive, blocking CI).
+
+# Extends the default gitleaks rule set, plus the four custom rules at the
+# bottom of this file.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "CI gitleaks-action allowlist: known false-positive literal key-shaped strings in unit test fixtures"
+
+# stratum/test/billing/verify-stripe.test.ts pins classifyStripeKey()'s
+# skip/refuse/run branch with literal `sk_live_...` / `sk_test_...`
+# strings (see file for context). These are not real Stripe keys --
+# they are hardcoded test inputs asserting how the verifier classifies
+# a key shape, never sent anywhere.
+paths = [
+  '''^stratum/test/billing/verify-stripe\.test\.ts$''',
+]
+
+# Custom rules (added 2026-09-14 after an adversarial review of the
+# SHIP_BLOCKERS 1.3 / 1.7 security proofs planted three realistic secrets
+# in a lockfile and every tier passed them). gitleaks' built-in
+# generic-api-key rule only fires when a keyword such as "secret" or
+# "key" sits near the value, so a bare vendor-prefixed key dropped into
+# a lockfile, a fixture or a data file is invisible to it, and the
+# built-in openai-api-key rule predates the sk-proj- format. These three
+# are the highest-value gaps for THIS repo: Stratum is a multi-provider
+# LLM gateway (Anthropic + OpenAI keys are exactly what would leak) and
+# the Google OAuth client-secret shape has no default rule at all.
+# Verified 2026-09-14: 0 hits across the tracked tree (the documented
+# `sk-ant-...` placeholders are too short to match), and each rule
+# catches a planted realistic-length key.
+
+[[rules]]
+id = "devops-google-oauth-client-secret"
+description = "Google OAuth client secret (GOCSPX-...)"
+regex = '''\bGOCSPX-[A-Za-z0-9_-]{20,}'''
+keywords = ["GOCSPX-"]
+
+[[rules]]
+id = "devops-openai-project-api-key"
+description = "OpenAI project-scoped API key (sk-proj-...)"
+regex = '''\bsk-proj-[A-Za-z0-9_-]{40,}'''
+keywords = ["sk-proj-"]
+
+[[rules]]
+id = "devops-anthropic-api-key"
+description = "Anthropic API key (sk-ant-...)"
+regex = '''\bsk-ant-[A-Za-z0-9_-]{40,}'''
+keywords = ["sk-ant-"]
+
+# Added 2026-09-15 (third adversarial pass): a connection URI carrying a
+# password (postgres://user:pass@host, mongodb+srv://..., redis://:pass@...,
+# amqp://...) has no vendor prefix and no nearby keyword, so nothing above
+# sees it. Any scheme, case-insensitive; a credential of 8+ characters
+# before '@' (the user part may be empty). Known residual: a URL of the form
+# scheme://host:<8+ digits>@other also matches -- it fails toward a manual
+# look, not a miss. Verified 2026-09-15: 0 hits across the tracked tree
+# (registry/tarball URLs, git+ssh://git@... and http://localhost:4080/...
+# do not match).
+[[rules]]
+id = "devops-connection-string-credential"
+description = "Connection URI carrying a credential of 8+ chars before the @ (scheme://user:pw@host)"
+regex = '''(?i)\b[a-z][a-z0-9+.-]*://[^:/\s"']*:[^@/\s"']{8,}@'''
+keywords = ["://"]
