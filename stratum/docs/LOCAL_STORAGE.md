@@ -47,6 +47,12 @@ manually selected organization, run
 `npm run db:with-env -- npm run promote` with `PROMOTE_ORG_ID` set in the
 process environment. No nightly scheduler is configured by this check.
 
+Run `npm run db:verify-audit-git` for a disposable real-Git audit check. It
+creates a small Git history inside this project, stores a fact anchored to its
+rename commit, runs `audit:repo --persist`, verifies suppression plus the
+CONFLICT status and alert through the local API, then removes its fixtures.
+This checks the operator path; it does not run audit from proxy traffic.
+
 For a command that needs `SUPABASE_URL` and `SUPABASE_SERVICE_KEY`, use
 `npm run db:with-env -- <command> [args...]` from `stratum/`. It passes a
 short-lived local service JWT through the child process environment without
