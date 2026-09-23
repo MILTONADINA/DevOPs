@@ -109,9 +109,12 @@ recalls the same fact through SessionStart.
 
 Run `npm run db:verify-graph-read` to verify the protected, bounded
 `/v1/memory/graph` snapshot against two disposable local organizations. It
-checks key-based scope and excludes an edge pointing outside the returned
-organization's nodes. This read API supplies graph nodes and edges; source
-ingestion, node summaries, and the dashboard graph view remain separate work.
+checks key-based scope and bounded node/edge reads. The graph schema now
+rejects cross-organization edge references. Run
+`npm run db:verify-graph-integrity` to check insert and update rejection for
+foreign entity and session references. The read API supplies graph nodes and
+edges; source ingestion, node summaries, and the dashboard graph view remain
+separate work.
 
 Run `npm run db:verify-recovery` for a disposable organization backup and
 restore check. It exports a session, suppressed fact, audit status, and conflict
