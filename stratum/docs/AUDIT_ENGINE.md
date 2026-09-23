@@ -22,6 +22,11 @@ The goal: catch conflicts before they reach the LLM, at the lowest possible cost
 
 For every structured fact that is code-related (type: `FunctionChange`, `VariableChange`, or `TechDecision` with domain `"infrastructure"` or `"database"`), Git-Attestation cross-references the fact against the project's actual commit history.
 
+The current deterministic core receives indexed `CodeChange[]` records. If a
+fact names a `commit_hash`, confirmation must come from that exact commit; a
+different commit with a similar change leaves the fact UNVERIFIED. A rename
+inferred from delete-old plus add-new requires both records in one commit.
+
 ### How It Works
 
 ```typescript
