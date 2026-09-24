@@ -83,6 +83,43 @@ describe("trusted commercial conversation route", () => {
     expect(response.body).toContain("event: message_stop");
     expect(d.observeConversation).toHaveBeenCalledOnce();
   });
+
+  test("two responses finish while shadow coverage waits for the first memory write", async () => {
+    const d = deps();
+    const metrics: ShadowMetric[] = [];
+    const persisted = new Set<string>();
+    let release!: () => void;
+    let writes = 0;
+    d.resolveConversation = async () => ID;
+    d.recordMemory = async (event) => {
+      writes++;
+      if (writes === 1)
+        await new Promise<void>((resolve) => {
+          release = resolve;
+        });
+      persisted.add(event.exchangeId!);
+    };
+    d.observeConversation = createShadowObserver({ dimension: 2, encode: async (texts) => texts.map(() => Float32Array.from([1, 0])) }, (metric) => metrics.push(metric), {
+      factCoverage: async (_org, _session, _project, ids) => new Map(ids.filter((id) => persisted.has(id)).map((id) => [id, 1])),
+    });
+    app = buildProxy({ cors: false, rateLimit: false, auth, messages: d });
+    const headers = { authorization: "Bearer one" };
+    const first = await app.inject({ method: "POST", url: "/v1/messages", headers, payload: body });
+    const second = await app.inject({ method: "POST", url: "/v1/messages", headers, payload: body });
+    try {
+      expect(first.statusCode).toBe(200);
+      expect(second.statusCode).toBe(200);
+      expect(metrics).toHaveLength(0);
+    } finally {
+      release();
+    }
+    await app.close();
+    app = undefined;
+    expect(metrics).toHaveLength(2);
+    expect(metrics[0]?.candidateCount).toBe(0);
+    expect(metrics[1]?.candidateCount).toBe(2);
+    expect(metrics[1]?.factCoverage?.activeExchangeCount).toBe(1);
+  });
 });
 
 describe("shadow observer", () => {
@@ -227,5 +264,34 @@ describe("shadow observer", () => {
     await observe({ ...event, exchangeId: "current", query: "target", assistant: "pending" });
     expect(calls.at(-1)).toEqual(["old-exchange", "new-exchange"]);
     expect(metrics.at(-1)?.factCoverage).toEqual({ activeExchangeCount: 2, selectedExchangeCount: 1, droppedExchangeCount: 1 });
+  });
+
+  test("marks coverage unavailable while a failed memory exchange remains hot", async () => {
+    const metrics: ShadowMetric[] = [];
+    const observe = createShadowObserver(encoder, (metric) => metrics.push(metric), {
+      factCoverage: async () => new Map(),
+    });
+    const event = { conversationId: ID, orgId: "org", keyId: "one", query: "private query", assistant: "private answer" };
+    await observe({ ...event, exchangeId: "failed", memoryReady: Promise.resolve(false) });
+    await observe({ ...event, exchangeId: "next", memoryReady: Promise.resolve(true) });
+    expect(metrics[1]?.candidateCount).toBe(2);
+    expect(metrics[1]?.provenanceIncompleteExchangeCount).toBe(1);
+    expect(metrics[1]?.factCoverage).toBeUndefined();
+    expect(JSON.stringify(metrics)).not.toContain("private");
+  });
+
+  test("restores coverage after a failed exchange leaves the bounded hot window", async () => {
+    const metrics: ShadowMetric[] = [];
+    const observe = createShadowObserver(encoder, (metric) => metrics.push(metric), {
+      maxTurns: 2,
+      factCoverage: async () => new Map(),
+    });
+    const event = { conversationId: ID, orgId: "org", keyId: "one", query: "query", assistant: "answer" };
+    await observe({ ...event, exchangeId: "failed", memoryReady: Promise.resolve(false) });
+    await observe({ ...event, exchangeId: "next", memoryReady: Promise.resolve(true) });
+    await observe({ ...event, exchangeId: "later", memoryReady: Promise.resolve(true) });
+    expect(metrics[1]?.provenanceIncompleteExchangeCount).toBe(1);
+    expect(metrics[2]?.provenanceIncompleteExchangeCount).toBeUndefined();
+    expect(metrics[2]?.factCoverage).toEqual({ activeExchangeCount: 0, selectedExchangeCount: 0, droppedExchangeCount: 0 });
   });
 });
