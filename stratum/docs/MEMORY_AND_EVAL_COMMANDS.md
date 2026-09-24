@@ -143,8 +143,10 @@ without blocking startup.
 
 The accuracy gate decides whether pruning may ship (constitution: <5% Faithfulness
 degradation + evidence survival, on published Tier-A benchmarks). The **judged**
-runs need credits (a Claude judge scores each answer); the **survival** sweeps are
-FREE (evidence survival is a deterministic function of the prune decision).
+runs use a Claude judge for the release gate. An explicitly configured local
+OpenAI-compatible model can run an exploratory comparison at no API cost; its
+scores do not replace the Claude gate. The **survival** sweeps are FREE
+(evidence survival is a deterministic function of the prune decision).
 
 | Command | Cost | What it does |
 |---|---|---|
@@ -154,8 +156,22 @@ FREE (evidence survival is a deterministic function of the prune decision).
 | `npm run eval:longmemeval` | **NEEDS CREDITS** | Judged LongMemEval Tier-A gate. Env: `LONGMEMEVAL_QUESTIONS`, `LONGMEMEVAL_LAMBDAS`, `LONGMEMEVAL_DECAY_HORIZON_FRAC`, `LONGMEMEVAL_REPEATS` (R averaged samples/context; default 1, cost scales ×R). |
 | `npm run eval:tierb` | **NEEDS CREDITS** | Judged dev-set (Tier-B) accuracy gate. |
 
-All judged runs are **sampled + cost-bounded** and print an upper-bound model-call
-count before running; they never fabricate a score (gated-skip without a key/data).
+Both Tier-A judged runners use `EVAL_ANTHROPIC_API_KEY` (or
+`ANTHROPIC_API_KEY`) for the documented Claude gate. For an exploratory local
+run, set `EVAL_LOCAL_BASE_URL=http://127.0.0.1:1234/v1` and
+`EVAL_LOCAL_MODEL=local/<model>`. The endpoint must be literal loopback. The
+runner prints the model and labels the result exploratory. Missing provider or
+dataset exits nonzero. All judged runs are sampled, print an upper-bound
+model-call count, and never fabricate a score.
+
+A bounded local Qwen LoCoMo comparison (one published question, one judge
+sample) found the default per-hour λ=0.97 dropped all gold evidence (39/419
+turns retained, exit 1). The predeclared span-based λ=0.5 setting retained
+all gold evidence (320/419 turns, exit 0). Both judge scores were 1.0 for
+full and pruned context, so this sample alone says little about answer quality.
+The first LongMemEval haystack was about 491,000 characters; its local Qwen
+completion timed out after 180 seconds without a score. Full benchmark
+coverage and the Claude judged release gate remain open.
 
 ### Tier-A datasets (fetched on demand; gitignored — see ADR-0014)
 
