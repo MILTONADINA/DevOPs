@@ -85,13 +85,22 @@ describe("validateBackup", () => {
     expect(() => validateBackup({ ...valid, tables: { ...valid.tables, api_keys: [] } })).toThrow(/conversation.*key/i);
   });
   test("rejects missing, malformed, or duplicated decision references before restore", () => {
-    const old = { id: "d1", org_id: "o1", supersedes_id: null };
-    const newer = { id: "d2", org_id: "o1", supersedes_id: "d1" };
+    const old = { id: "d1", org_id: "o1", project_scope: "orion", created_at: "2026-09-20T00:00:00Z", supersedes_id: null };
+    const newer = {
+      id: "d2", org_id: "o1", project_scope: "orion", created_at: "2026-09-21T00:00:00Z", supersedes_id: "d1",
+      supersession_reviewer: "operator@example.test",
+      supersession_evidence: "Reviewed decision replaces the earlier runtime choice.",
+      supersession_reviewed_at: "2026-09-24T00:00:00Z",
+    };
     const valid = { ...ok, tables: { ...ok.tables, tech_decisions: [newer, old] } };
     expect(validateBackup(valid)).toBe(valid);
     expect(() => validateBackup({ ...valid, tables: { ...valid.tables, tech_decisions: [newer] } })).toThrow(/supersedes.*missing/i);
     expect(() => validateBackup({ ...valid, tables: { ...valid.tables, tech_decisions: [{ ...newer, supersedes_id: 42 }, old] } })).toThrow(/supersedes.*invalid/i);
     expect(() => validateBackup({ ...valid, tables: { ...valid.tables, tech_decisions: [newer, old, old] } })).toThrow(/duplicate.*decision/i);
+    expect(() => validateBackup({ ...valid, tables: { ...valid.tables, tech_decisions: [{ ...newer, supersession_evidence: null }, old] } })).toThrow(/review evidence/i);
+    expect(() => validateBackup({ ...valid, tables: { ...valid.tables, tech_decisions: [{ ...newer, project_scope: "vega" }, old] } })).toThrow(/supersedes.*project/i);
+    expect(() => validateBackup({ ...valid, tables: { ...valid.tables, tech_decisions: [{ ...newer, created_at: old.created_at }, old] } })).toThrow(/supersedes.*newer/i);
+    expect(() => validateBackup({ ...valid, tables: { ...valid.tables, tech_decisions: [newer, { ...newer, id: "d3" }, old] } })).toThrow(/duplicate.*successor/i);
   });
 });
 
@@ -111,24 +120,32 @@ describe("stripGeneratedCols", () => {
 });
 
 describe("restorePlan", () => {
-  test("inserts decisions before restoring forward and cyclic supersession references", () => {
+  test("inserts decisions before restoring a reviewed forward supersession", () => {
     const decisions = [
-      { id: "d2", org_id: "o1", supersedes_id: "d1", decision_text: "newer" },
-      { id: "d1", org_id: "o1", supersedes_id: "d2", decision_text: "older" },
+      {
+        id: "d2", org_id: "o1", supersedes_id: "d1", decision_text: "newer",
+        supersession_reviewer: "operator@example.test",
+        supersession_evidence: "Reviewed decision replaces the earlier runtime choice.",
+        supersession_reviewed_at: "2026-09-24T00:00:00Z",
+      },
+      { id: "d1", org_id: "o1", supersedes_id: null, decision_text: "older" },
     ];
     const backup: BackupFile = { orgId: "o1", exportedAt: "t", tables: { tech_decisions: decisions } };
     expect(restorePlan(backup)).toEqual([
       {
         table: "tech_decisions",
         rows: [
-          { ...decisions[0], supersedes_id: null },
-          { ...decisions[1], supersedes_id: null },
+          { ...decisions[0], supersedes_id: null, supersession_reviewer: null, supersession_evidence: null, supersession_reviewed_at: null },
+          decisions[1],
         ],
       },
     ]);
     expect(decisionSupersessionUpdates(backup)).toEqual([
-      { id: "d2", supersedes_id: "d1" },
-      { id: "d1", supersedes_id: "d2" },
+      {
+        id: "d2", supersedes_id: "d1", supersession_reviewer: "operator@example.test",
+        supersession_evidence: "Reviewed decision replaces the earlier runtime choice.",
+        supersession_reviewed_at: "2026-09-24T00:00:00Z",
+      },
     ]);
     expect(decisions[0].supersedes_id).toBe("d1");
   });
