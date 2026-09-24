@@ -423,7 +423,9 @@ Anthropic's reasoning-based security scanner (GA Feb 2026) reads code "the way a
   is impossible. `specs/billing/session-erasure.md` and ADR-0021 now define the
   scoped inventory, shared-graph safety, financial retention decision, and
   one-year benchmark requirements. Establish the applicable legal basis and
-  implement the boundary before an endpoint can report success. No compliance
+  implement the boundary before an endpoint can report success. A read-only
+  local database RPC now counts session-linked rows and explicitly marks
+  graph ownership, RAM, backups, and external copies unresolved. No compliance
   claim is made yet.
 - [ ] **CFO dashboard skeleton** (~3h). Read-only view of billing schema; no real billing data yet. Hidden behind `DASHBOARD_CFO_VIEW=true` env var.
 
