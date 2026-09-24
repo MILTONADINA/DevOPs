@@ -34,14 +34,35 @@ export function serviceJwt(secret: string, expiresAt: number): string {
 function docker(args: string[], env: NodeJS.ProcessEnv, input?: string): string {
   try {
     return execFileSync("docker", args, { cwd: process.cwd(), env, input, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"], maxBuffer: 16 * 1024 * 1024 });
-  } catch {
+  } catch (error) {
     // Docker output can include container environment, including the JWT secret.
-    throw new Error(`docker ${args[0] ?? ""} ${args[1] ?? ""} failed`);
+    const detail = dockerFailureDetail((error as { stderr?: unknown }).stderr);
+    throw new Error(`docker ${args[0] ?? ""} ${args[1] ?? ""} failed: ${detail}`);
   }
+}
+
+export function dockerFailureDetail(stderr: unknown): string {
+  return /toomanyrequests|rate exceeded|too many requests|\b429\b/i.test(String(stderr ?? ""))
+    ? "public registry rate limit"
+    : "docker command failed";
 }
 
 function compose(args: string[], env: NodeJS.ProcessEnv, input?: string): string {
   return docker([...composeArgs, ...args], { ...env, COMPOSE_PARALLEL_LIMIT: "1" }, input);
+}
+
+async function composeUp(args: string[], env: NodeJS.ProcessEnv): Promise<void> {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      compose(["up", "-d", "--wait", "--wait-timeout", "90", ...args], env);
+      return;
+    } catch (error) {
+      if (!(error instanceof Error) || !error.message.includes("public registry rate limit") || attempt === 2) throw error;
+      const delayMs = 2_000 * (attempt + 1);
+      process.stderr.write(`Public registry rate limit; retrying startup in ${delayMs / 1000}s.\n`);
+      await new Promise<void>((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
 }
 
 function stackEnv(secret: string): NodeJS.ProcessEnv {
@@ -95,11 +116,11 @@ async function start(): Promise<void> {
   const env = stackEnv(secret);
   let stage = "database container startup";
   try {
-    compose(["up", "-d", "--wait", "--wait-timeout", "90", "db"], env);
+    await composeUp(["db"], env);
     stage = "database migration";
     const applied = migrate(env);
     stage = "REST and gateway startup";
-    compose(["up", "-d", "--wait", "--wait-timeout", "90", "rest", "gateway"], env);
+    await composeUp(["rest", "gateway"], env);
     stage = "loopback port inspection";
     inspectPorts(env);
     stage = "local API health check";

@@ -43,7 +43,11 @@ require the real proxy/database smoke to succeed in under five minutes, and
 stop the disposable Compose stack after the check. It SHALL use no hosted
 Supabase project or provider credential. WHEN pulling the three public ECR
 images, Compose SHALL limit concurrent engine calls to one so anonymous
-registry pulls do not race against the one-pull-per-second quota.
+registry pulls do not race against the one-pull-per-second quota. IF a
+Compose startup attempt receives a registry rate-limit response, THE SYSTEM
+SHALL retry that startup at most twice after short delays; other startup
+faults SHALL fail immediately. Diagnostics SHALL classify the rate limit
+without exposing raw Docker stderr.
 
 ## Acceptance criteria
 

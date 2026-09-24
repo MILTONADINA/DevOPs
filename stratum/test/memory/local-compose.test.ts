@@ -1,7 +1,12 @@
 import { describe, expect, test } from "vitest";
-import { assertLocalPorts, serviceJwt } from "../../scripts/local-compose";
+import { assertLocalPorts, dockerFailureDetail, serviceJwt } from "../../scripts/local-compose";
 
 describe("project-local Compose boundary", () => {
+  test("classifies registry throttling without leaking Docker stderr", () => {
+    expect(dockerFailureDetail("toomanyrequests: Rate exceeded; secret-token-value")).toBe("public registry rate limit");
+    expect(dockerFailureDetail("HTTP 429 Too Many Requests; secret-token-value")).toBe("public registry rate limit");
+    expect(dockerFailureDetail("unknown Docker failure; secret-token-value")).toBe("docker command failed");
+  });
   test("accepts one loopback API port and no published DB or REST ports", () => {
     expect(() => assertLocalPorts({ db: {}, rest: {}, gateway: { "8000/tcp": [{ HostIp: "127.0.0.1", HostPort: "54321" }] } })).not.toThrow();
   });
