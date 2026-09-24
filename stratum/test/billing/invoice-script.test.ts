@@ -47,9 +47,25 @@ test("reconciliation requires period, test key, and no send or force before data
   expect(await main([...base, "--since", "2026-05-01", "--until", "2026-06-01", "--force"])).toBe(2);
 });
 
+test("claim inspection rejects missing bounds, missing key, or send/reconcile/force combinations before database access", async () => {
+  vi.stubEnv("SUPABASE_URL", "");
+  vi.stubEnv("SUPABASE_SERVICE_KEY", "");
+  vi.stubEnv("STRIPE_SECRET_KEY", "");
+  const base = ["--org-id", "00000000-0000-4000-8000-000000000001", "--inspect-claim"];
+  expect(await main(base)).toBe(2);
+  const bounded = [...base, "--since", "2026-05-01", "--until", "2026-06-01"];
+  expect(await main(bounded)).toBe(2);
+  vi.stubEnv("STRIPE_SECRET_KEY", "sk_test_fixture");
+  expect(await main([...bounded, "--send"])).toBe(2);
+  expect(await main([...bounded, "--reconcile", "in_1"])).toBe(2);
+  expect(await main([...bounded, "--csv", "report.csv"])).toBe(2);
+  expect(await main([...bounded, "--force"])).toBe(2);
+  expect(parseArgs(bounded).inspectClaim).toBe(true);
+});
+
 describe("invoice parseArgs", () => {
   test("defaults: no org/since/until/csv, send + force false", () => {
-    expect(parseArgs([])).toEqual({ send: false, force: false });
+    expect(parseArgs([])).toEqual({ send: false, force: false, inspectClaim: false });
   });
   test("parses all flags", () => {
     expect(parseArgs(["--org-id", "o1", "--since", "2026-05-01", "--until", "2026-05-31", "--csv", "/tmp/a.csv", "--send", "--force"])).toEqual({
@@ -59,6 +75,7 @@ describe("invoice parseArgs", () => {
       csv: "/tmp/a.csv",
       send: true,
       force: true,
+      inspectClaim: false,
     });
   });
   test("--force defaults false when absent (dedup guard active)", () => {

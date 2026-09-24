@@ -96,9 +96,17 @@ async function findOrCreateCustomer(cfg: StripeConfig, orgId: string): Promise<s
  * @param amountCents - expected amount in integer USD cents.
  * @returns true if a matching pending item exists (so the caller should NOT create another).
  */
-async function hasPendingInvoiceItem(cfg: StripeConfig, customerId: string, orgId: string, periodStart: string, periodEnd: string, amountCents: number): Promise<boolean> {
+async function hasPendingInvoiceItem(
+  cfg: StripeConfig,
+  customerId: string,
+  orgId: string,
+  periodStart: string,
+  periodEnd: string,
+  amountCents: number,
+  rejectOther = true,
+): Promise<string | undefined> {
   let cursor: string | undefined;
-  let foundMatch = false;
+  let foundMatch: string | undefined;
   let foundOther = false;
   const seen = new Set<string>();
   for (let page = 0; page < 100; page++) {
@@ -119,13 +127,14 @@ async function hasPendingInvoiceItem(cfg: StripeConfig, customerId: string, orgI
           throw new Error("Stripe pending invoice item amount or currency differs from current invoice");
         }
         if (foundMatch) throw new Error("Stripe found multiple pending invoice items for the same period");
-        foundMatch = true;
+        if (typeof (item as { id?: unknown }).id !== "string" || (item as { id: string }).id === "") throw new Error("Stripe pending invoice item has an invalid ID");
+        foundMatch = (item as { id: string }).id;
       } else {
         foundOther = true;
       }
     }
     if (!res["has_more"]) {
-      if (foundOther) throw new Error("Stripe found another pending invoice item on this customer");
+      if (foundOther && rejectOther) throw new Error("Stripe found another pending invoice item on this customer");
       return foundMatch;
     }
     const next = (data.at(-1) as { id?: unknown } | undefined)?.id;
@@ -145,6 +154,49 @@ function assertInvoiceAmount(invoice: Record<string, unknown>, expectedCents: nu
 export interface VerifiedStripeInvoice extends InvoiceReceipt {
   status: "open" | "paid";
   paidAt?: string;
+}
+
+export interface ClaimInspection {
+  invoiceId: string | undefined;
+  status: string | undefined;
+  pendingItemId: string | undefined;
+}
+
+/** Read-only discovery for a held claim. Absence is inconclusive because customer search can lag. */
+export async function inspectClaimedStripeInvoice(cfg: StripeConfig, expected: Invoice): Promise<ClaimInspection> {
+  if (!cfg.secretKey.startsWith("sk_test_")) throw new Error("Stripe claim inspection requires a test-mode key");
+  const query = `metadata['org_id']:'${expected.orgId}'`;
+  let cursor: string | undefined;
+  const seen = new Set<string>();
+  let invoiceId: string | undefined;
+  let status: string | undefined;
+  let pendingItemId: string | undefined;
+  for (let page = 0; page < 100; page++) {
+    const result = await stripeGet(cfg, `/v1/customers/search?query=${encodeURIComponent(query)}&limit=100${cursor ? `&page=${encodeURIComponent(cursor)}` : ""}`);
+    if (!Array.isArray(result["data"]) || typeof result["has_more"] !== "boolean") throw new Error("Stripe customer search returned an invalid page");
+    for (const customer of result["data"]) {
+      const customerId = customer && typeof customer === "object" && !Array.isArray(customer) ? (customer as { id?: unknown }).id : undefined;
+      if (typeof customerId !== "string" || !/^cus_[A-Za-z0-9]+$/.test(customerId)) throw new Error("Stripe customer search returned an invalid customer ID");
+      const existing = await findExistingInvoice(cfg, customerId, expected.orgId, expected.periodStart, expected.periodEnd, usdToCents(expected.amountDueUsd));
+      if (existing) {
+        if (invoiceId) throw new Error("Stripe found multiple invoices for the same period across customers");
+        if (!["draft", "open", "paid", "void", "uncollectible"].includes(String(existing["status"]))) throw new Error("Stripe existing invoice has an invalid status");
+        invoiceId = existing["id"] as string;
+        status = existing["status"] as string;
+      }
+      const pending = await hasPendingInvoiceItem(cfg, customerId, expected.orgId, expected.periodStart, expected.periodEnd, usdToCents(expected.amountDueUsd), false);
+      if (pending) {
+        if (pendingItemId) throw new Error("Stripe found multiple pending invoice items for the same period across customers");
+        pendingItemId = pending;
+      }
+    }
+    if (!result["has_more"]) return { invoiceId, status, pendingItemId };
+    const next = result["next_page"];
+    if (typeof next !== "string" || next === "" || seen.has(next)) throw new Error("Stripe customer search returned an invalid cursor");
+    seen.add(next);
+    cursor = next;
+  }
+  throw new Error("Stripe customer search exceeded 100 pages");
 }
 
 /** Read-only verification for recording a finalized invoice after a local ledger failure. */
