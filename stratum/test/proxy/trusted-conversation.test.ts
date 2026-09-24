@@ -176,4 +176,26 @@ describe("shadow observer", () => {
     expect(metrics[2]?.selectedCount).toBe(4);
     expect(metrics[2]?.candidateSupersededExchangeCount).toBe(1);
   });
+
+  test("does not request fresh relations from selected mixed-fact exchanges", async () => {
+    const resolvedCalls: string[][] = [];
+    const freshCalls: string[][] = [];
+    const observe = createShadowObserver(encoder, () => undefined, {
+      supersession: {
+        resolveEntities: async (_org, _session, _project, exchanges) => {
+          resolvedCalls.push(exchanges);
+          return new Map([["old", "oldFn"], ["new", "newFn"]]);
+        },
+        findFunctionSuperseded: async () => [],
+        findFreshSuperseded: async (_org, _session, _project, exchanges) => {
+          freshCalls.push(exchanges);
+          return [];
+        },
+      },
+    });
+    const event = { conversationId: ID, orgId: "org", keyId: "key", query: "q", assistant: "a" };
+    for (const exchangeId of ["old", "new", "mixed", "current"]) await observe({ ...event, exchangeId });
+    expect(resolvedCalls.at(-1)).toEqual(["old", "new", "mixed"]);
+    expect(freshCalls.at(-1)).toEqual(["old", "new"]);
+  });
 });
