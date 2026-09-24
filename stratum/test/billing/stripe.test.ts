@@ -44,8 +44,12 @@ interface Call {
   headers: Record<string, string>;
   method: string;
 }
-function fakeStripe(opts: { errorAt?: string; existingCustomer?: string; existingPendingItem?: boolean } = {}): { doFetch: StripeFetch; calls: Call[] } {
+function fakeStripe(opts: { errorAt?: string; existingCustomer?: string; existingPendingItem?: boolean; existingPendingAmount?: number; pendingPages?: unknown[] } = {}): {
+  doFetch: StripeFetch;
+  calls: Call[];
+} {
   const calls: Call[] = [];
+  let pendingPage = 0;
   const doFetch: StripeFetch = (url, init) => {
     calls.push({ url, body: init.body, headers: init.headers, method: init.method });
     if (opts.errorAt !== undefined && url.includes(opts.errorAt)) {
@@ -56,7 +60,13 @@ function fakeStripe(opts: { errorAt?: string; existingCustomer?: string; existin
     else if (url.endsWith("/finalize")) json = { id: "in_1", status: "open" };
     else if (url.includes("/v1/customers")) json = { id: "cus_1" };
     // GET = the pending-item idempotency pre-check (>24h double-charge guard); POST = create the item.
-    else if (url.includes("/v1/invoiceitems") && init.method === "GET") json = { data: opts.existingPendingItem ? [{ id: "ii_existing", metadata: { org_id: "o1", period_start: "2026-04", period_end: "(now)" } }] : [] };
+    else if (url.includes("/v1/invoiceitems") && init.method === "GET")
+      json = opts.pendingPages?.[pendingPage++] ?? {
+        has_more: false,
+        data: opts.existingPendingItem
+          ? [{ id: "ii_existing", amount: opts.existingPendingAmount ?? 6304, currency: "usd", metadata: { org_id: "o1", period_start: "2026-04", period_end: "(now)" } }]
+          : [],
+      };
     else if (url.includes("/v1/invoiceitems")) json = { id: "ii_1" };
     else if (url.includes("/v1/invoices")) json = { id: "in_1", status: "draft" };
     return Promise.resolve({ status: 200, json: () => Promise.resolve(json) });
@@ -130,6 +140,63 @@ describe("sendStripeInvoice", () => {
     const itemPosts = calls.filter((c) => c.url.includes("/v1/invoiceitems") && c.method === "POST");
     expect(itemPosts).toHaveLength(0); // no new item created — the existing pending item is reused
     expect(paths(calls)).toEqual(["/v1/customers/search", "/v1/invoiceitems", "/v1/invoices", "/v1/invoices/in_1/finalize"]);
+  });
+
+  test("finds a matching pending item after the first 100 and does not create another", async () => {
+    const first = Array.from({ length: 100 }, (_, i) => ({ id: `ii_${i}`, metadata: { org_id: "other" } }));
+    const match = { id: "ii_existing", amount: 6304, currency: "usd", metadata: { org_id: "o1", period_start: "2026-04", period_end: "(now)" } };
+    const { doFetch, calls } = fakeStripe({
+      existingCustomer: "cus_existing",
+      pendingPages: [
+        { has_more: true, data: first },
+        { has_more: false, data: [match] },
+      ],
+    });
+    await sendStripeInvoice({ secretKey: "sk_test_x", doFetch }, INVOICE);
+    const gets = calls.filter((call) => call.url.includes("/v1/invoiceitems") && call.method === "GET");
+    expect(gets).toHaveLength(2);
+    expect(new URL(gets[1]!.url).searchParams.get("starting_after")).toBe("ii_99");
+    expect(calls.filter((call) => call.url.includes("/v1/invoiceitems") && call.method === "POST")).toHaveLength(0);
+  });
+
+  test("refuses an incomplete pending-item page before creating Stripe state", async () => {
+    const { doFetch, calls } = fakeStripe({ existingCustomer: "cus_existing", pendingPages: [{ has_more: true, data: [] }] });
+    await expect(sendStripeInvoice({ secretKey: "sk_test_x", doFetch }, INVOICE)).rejects.toThrow(/pending invoice items|cursor/i);
+    expect(calls.filter((call) => call.method === "POST")).toHaveLength(0);
+  });
+
+  test("refuses a repeated pagination cursor before creating Stripe state", async () => {
+    const repeated = { id: "ii_repeated", metadata: { org_id: "other" } };
+    const { doFetch, calls } = fakeStripe({
+      existingCustomer: "cus_existing",
+      pendingPages: [
+        { has_more: true, data: [repeated] },
+        { has_more: true, data: [repeated] },
+      ],
+    });
+    await expect(sendStripeInvoice({ secretKey: "sk_test_x", doFetch }, INVOICE)).rejects.toThrow(/pending invoice items.*cursor/i);
+    expect(calls.filter((call) => call.method === "POST")).toHaveLength(0);
+  });
+
+  test("refuses to create an item when the pending-item scan reaches its page bound", async () => {
+    const pendingPages = Array.from({ length: 100 }, (_, i) => ({ has_more: true, data: [{ id: `ii_${i}`, metadata: { org_id: "other" } }] }));
+    const { doFetch, calls } = fakeStripe({ existingCustomer: "cus_existing", pendingPages });
+    await expect(sendStripeInvoice({ secretKey: "sk_test_x", doFetch }, INVOICE)).rejects.toThrow(/scan exceeded 100 pages/);
+    expect(calls.filter((call) => call.url.includes("/v1/invoiceitems") && call.method === "GET")).toHaveLength(100);
+    expect(calls.filter((call) => call.method === "POST")).toHaveLength(0);
+  });
+
+  test("refuses to reuse a pending item whose amount differs from the current invoice", async () => {
+    const { doFetch, calls } = fakeStripe({ existingCustomer: "cus_existing", existingPendingItem: true, existingPendingAmount: 6303 });
+    await expect(sendStripeInvoice({ secretKey: "sk_test_x", doFetch }, INVOICE)).rejects.toThrow(/pending invoice item.*amount/i);
+    expect(calls.filter((call) => call.method === "POST")).toHaveLength(0);
+  });
+
+  test("refuses to reuse a pending item without an explicit USD currency", async () => {
+    const pending = { id: "ii_existing", amount: 6304, metadata: { org_id: "o1", period_start: "2026-04", period_end: "(now)" } };
+    const { doFetch, calls } = fakeStripe({ existingCustomer: "cus_existing", pendingPages: [{ has_more: false, data: [pending] }] });
+    await expect(sendStripeInvoice({ secretKey: "sk_test_x", doFetch }, INVOICE)).rejects.toThrow(/pending invoice item.*currency/i);
+    expect(calls.filter((call) => call.method === "POST")).toHaveLength(0);
   });
 
   test("empty key → throws (gated)", async () => {

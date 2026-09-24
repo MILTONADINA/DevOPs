@@ -93,16 +93,39 @@ async function findOrCreateCustomer(cfg: StripeConfig, orgId: string): Promise<s
  * @param orgId - the org (metadata match).
  * @param periodStart - ISO/label period start (metadata match).
  * @param periodEnd - ISO/label period end (metadata match).
+ * @param amountCents - expected amount in integer USD cents.
  * @returns true if a matching pending item exists (so the caller should NOT create another).
  */
-async function hasPendingInvoiceItem(cfg: StripeConfig, customerId: string, orgId: string, periodStart: string, periodEnd: string): Promise<boolean> {
-  const res = await stripeGet(cfg, `/v1/invoiceitems?customer=${encodeURIComponent(customerId)}&pending=true&limit=100`);
-  const data = res["data"];
-  if (!Array.isArray(data)) return false;
-  return (data as Array<{ metadata?: Record<string, unknown> }>).some((it) => {
-    const m = it.metadata ?? {};
-    return m["org_id"] === orgId && m["period_start"] === periodStart && m["period_end"] === periodEnd;
-  });
+async function hasPendingInvoiceItem(cfg: StripeConfig, customerId: string, orgId: string, periodStart: string, periodEnd: string, amountCents: number): Promise<boolean> {
+  let cursor: string | undefined;
+  const seen = new Set<string>();
+  for (let page = 0; page < 100; page++) {
+    const path = `/v1/invoiceitems?customer=${encodeURIComponent(customerId)}&pending=true&limit=100${cursor ? `&starting_after=${encodeURIComponent(cursor)}` : ""}`;
+    const res = await stripeGet(cfg, path);
+    const data = res["data"];
+    if (!Array.isArray(data) || typeof res["has_more"] !== "boolean") throw new Error("Stripe pending invoice items returned an invalid page");
+    for (const item of data) {
+      if (!item || typeof item !== "object" || Array.isArray(item)) throw new Error("Stripe pending invoice items returned an invalid item");
+      const metadata = (item as { metadata?: unknown }).metadata;
+      if (metadata !== undefined && metadata !== null && (typeof metadata !== "object" || Array.isArray(metadata))) {
+        throw new Error("Stripe pending invoice items returned invalid metadata");
+      }
+      const m = (metadata ?? {}) as Record<string, unknown>;
+      if (m["org_id"] === orgId && m["period_start"] === periodStart && m["period_end"] === periodEnd) {
+        const pending = item as { amount?: unknown; currency?: unknown };
+        if (pending.amount !== amountCents || pending.currency !== "usd") {
+          throw new Error("Stripe pending invoice item amount or currency differs from current invoice");
+        }
+        return true;
+      }
+    }
+    if (!res["has_more"]) return false;
+    const next = (data.at(-1) as { id?: unknown } | undefined)?.id;
+    if (typeof next !== "string" || next === "" || seen.has(next)) throw new Error("Stripe pending invoice items returned an invalid cursor");
+    seen.add(next);
+    cursor = next;
+  }
+  throw new Error("Stripe pending invoice items scan exceeded 100 pages");
 }
 
 /**
@@ -134,7 +157,7 @@ export async function sendStripeInvoice(cfg: StripeConfig, invoice: Invoice): Pr
   // (a prior run crashed after creating it but before the invoice below swept it up), REUSE it rather than
   // creating a duplicate — otherwise the invoice would bill BOTH items (double charge). The period+org
   // metadata is what makes the lookup exact; it is also stored on create for this very purpose.
-  if (!(await hasPendingInvoiceItem(cfg, customerId, invoice.orgId, invoice.periodStart, invoice.periodEnd))) {
+  if (!(await hasPendingInvoiceItem(cfg, customerId, invoice.orgId, invoice.periodStart, invoice.periodEnd, usdToCents(invoice.amountDueUsd)))) {
     await stripePost(
       cfg,
       "/v1/invoiceitems",
