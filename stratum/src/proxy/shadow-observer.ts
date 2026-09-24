@@ -27,7 +27,14 @@ export interface ShadowMetric {
   /** Candidate exchanges only; a fact does not prove that a whole turn is deletable. */
   candidateSupersededExchangeCount: number;
   /** Active typed-fact exchanges in the hot window; omitted when lookup is not configured. */
-  factCoverage?: { activeExchangeCount: number; selectedExchangeCount: number; droppedExchangeCount: number };
+  factCoverage?: {
+    activeExchangeCount: number;
+    selectedExchangeCount: number;
+    droppedExchangeCount: number;
+    activeFactCount: number;
+    selectedFactCount: number;
+    droppedFactCount: number;
+  };
   /** Hot exchanges with failed memory writes; fact coverage is omitted while positive. */
   provenanceIncompleteExchangeCount?: number;
 }
@@ -93,7 +100,16 @@ export function createShadowObserver(
           const facts = exchangeIds.length ? await options.factCoverage(input.orgId, input.conversationId, projectScope, exchangeIds) : new Map<string, number>();
           const activeIds = exchangeIds.filter((id) => facts.has(id));
           const selectedExchangeCount = activeIds.filter((id) => selectedIds.has(id)).length;
-          factCoverage = { activeExchangeCount: activeIds.length, selectedExchangeCount, droppedExchangeCount: activeIds.length - selectedExchangeCount };
+          const activeFactCount = activeIds.reduce((sum, id) => sum + facts.get(id)!, 0);
+          const selectedFactCount = activeIds.reduce((sum, id) => sum + (selectedIds.has(id) ? facts.get(id)! : 0), 0);
+          factCoverage = {
+            activeExchangeCount: activeIds.length,
+            selectedExchangeCount,
+            droppedExchangeCount: activeIds.length - selectedExchangeCount,
+            activeFactCount,
+            selectedFactCount,
+            droppedFactCount: activeFactCount - selectedFactCount,
+          };
         }
         let candidateSupersededExchangeCount = 0;
         if (options.supersession && incompleteExchangeCount === 0) {
