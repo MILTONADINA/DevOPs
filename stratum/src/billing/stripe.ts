@@ -136,10 +136,43 @@ async function hasPendingInvoiceItem(cfg: StripeConfig, customerId: string, orgI
   throw new Error("Stripe pending invoice items scan exceeded 100 pages");
 }
 
-function assertInvoiceAmount(invoice: Record<string, unknown>, expectedCents: number, phase: "draft" | "finalized"): void {
+function assertInvoiceAmount(invoice: Record<string, unknown>, expectedCents: number, phase: "draft" | "finalized" | "existing"): void {
   if (invoice["currency"] !== "usd" || invoice["total"] !== expectedCents || invoice["amount_due"] !== expectedCents) {
     throw new Error(`Stripe ${phase} invoice amount or currency differs from the current invoice`);
   }
+}
+
+/** List by customer for a read-after-write retry; Stripe search is eventually consistent. */
+async function findExistingInvoice(cfg: StripeConfig, customerId: string, orgId: string, periodStart: string, periodEnd: string, amountCents: number): Promise<Record<string, unknown> | undefined> {
+  let cursor: string | undefined;
+  let match: Record<string, unknown> | undefined;
+  const seen = new Set<string>();
+  for (let page = 0; page < 100; page++) {
+    const path = `/v1/invoices?customer=${encodeURIComponent(customerId)}&limit=100${cursor ? `&starting_after=${encodeURIComponent(cursor)}` : ""}`;
+    const res = await stripeGet(cfg, path);
+    const data = res["data"];
+    if (!Array.isArray(data) || typeof res["has_more"] !== "boolean") throw new Error("Stripe invoice list returned an invalid page");
+    for (const item of data) {
+      if (!item || typeof item !== "object" || Array.isArray(item)) throw new Error("Stripe invoice list returned an invalid invoice");
+      const invoice = item as Record<string, unknown>;
+      const metadata = invoice["metadata"];
+      if (metadata !== null && metadata !== undefined && (typeof metadata !== "object" || Array.isArray(metadata))) throw new Error("Stripe invoice list returned invalid metadata");
+      const m = (metadata ?? {}) as Record<string, unknown>;
+      if (m["org_id"] !== orgId) continue;
+      if (typeof m["period_start"] !== "string" || typeof m["period_end"] !== "string") throw new Error("Stripe legacy invoice lacks period metadata");
+      if (m["period_start"] !== periodStart || m["period_end"] !== periodEnd) continue;
+      if (typeof invoice["id"] !== "string" || invoice["id"] === "") throw new Error("Stripe existing invoice has an invalid ID");
+      assertInvoiceAmount(invoice, amountCents, "existing");
+      if (match) throw new Error("Stripe found multiple invoices for the same period");
+      match = invoice;
+    }
+    if (!res["has_more"]) return match;
+    const next = (data.at(-1) as { id?: unknown } | undefined)?.id;
+    if (typeof next !== "string" || next === "" || seen.has(next)) throw new Error("Stripe invoice list returned an invalid cursor");
+    seen.add(next);
+    cursor = next;
+  }
+  throw new Error("Stripe invoice list scan exceeded 100 pages");
 }
 
 /**
@@ -166,6 +199,17 @@ export async function sendStripeInvoice(cfg: StripeConfig, invoice: Invoice): Pr
   // side (within the 24h window) rather than minting a second invoice. period bounds are stable labels.
   const idem = `${invoice.orgId}|${invoice.periodStart}|${invoice.periodEnd}`;
   const customerId = await findOrCreateCustomer(cfg, invoice.orgId);
+  const amountCents = usdToCents(invoice.amountDueUsd);
+  const existing = await findExistingInvoice(cfg, customerId, invoice.orgId, invoice.periodStart, invoice.periodEnd, amountCents);
+  if (existing) {
+    const invoiceId = existing["id"] as string;
+    if (existing["status"] === "open" || existing["status"] === "paid") return { id: invoiceId, status: existing["status"], amountUsd: invoice.amountDueUsd };
+    if (existing["status"] !== "draft") throw new Error("Stripe existing invoice has an unsupported status");
+    const finalized = await stripePost(cfg, `/v1/invoices/${invoiceId}/finalize`, {}, `${idem}|finalize`);
+    assertInvoiceAmount(finalized, amountCents, "finalized");
+    if (finalized["status"] !== "open" && finalized["status"] !== "paid") throw new Error("Stripe finalized invoice returned an invalid status");
+    return { id: invoiceId, status: finalized["status"], amountUsd: invoice.amountDueUsd };
+  }
 
   // Idempotent BEYOND Stripe's 24h key window: if a pending item for this exact org+period already exists
   // (a prior run crashed after creating it but before the invoice below swept it up), REUSE it rather than
@@ -188,7 +232,6 @@ export async function sendStripeInvoice(cfg: StripeConfig, invoice: Invoice): Pr
     );
   }
 
-  const amountCents = usdToCents(invoice.amountDueUsd);
   const created = await stripePost(
     cfg,
     "/v1/invoices",
