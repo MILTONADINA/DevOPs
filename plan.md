@@ -253,7 +253,10 @@ must be recalculated after the open gates are reconciled.
   round-trip verifies active-fact graph/vector promotion, suppressed-fact
   exclusion, and a bound graph query; it does not establish nightly operation.
 - [x] **Claude SessionStart recall bridge**. The scoped, bounded bridge reads
-  current-project Tier 2 facts and local semantic matches; see
+  current-project Tier 2 facts and local semantic matches. The operator's
+  `DEVOPS_STRATUM_PROJECT_SCOPE` filters both before limits; without it the
+  bridge selects only legacy unbound facts. A disposable local database check
+  covers two projects in one organization. See
   `stratum/scripts/session-start-context.ts` and PR #42.
 - [ ] **Live session-start binding and recall**. Configure a trusted project/org
   mapping and local database credentials, then measure retrieval/injection in

@@ -12,6 +12,37 @@ const base: SessionContextOptions = {
 };
 
 describe("session-start memory bridge", () => {
+  test("rejects malformed project scope before creating a client", async () => {
+    let calls = 0;
+    expect(await retrieveSessionContext({ ...base, projectScope: "../vega" }, {
+      makeClient: () => { calls++; throw new Error("must not connect"); },
+      encode: () => { throw new Error("must not encode"); },
+    })).toBeNull();
+    expect(calls).toBe(0);
+  });
+
+  test("recent and semantic recall use only the operator-bound project", async () => {
+    const row = (id: string, project_scope: string | null) => ({
+      id, org_id: ORG, project_scope, is_suppressed: false,
+      created_at: "2026-09-23T00:00:00Z", session_id: "s",
+      confidence: 0.9, is_verified: true, promoted_to_t3: true,
+      decision_text: id, domain: "auth",
+    });
+    const { client } = makeFakeSupabase({ tech_decisions: [row("orion", "orion"), row("vega", "vega"), row("legacy", null)] }, {}, {
+      match_memory_vectors: () => [
+        { id: "v1", source_type: "fact", source_ref: "vega", similarity: 0.99 },
+        { id: "v2", source_type: "fact", source_ref: "orion", similarity: 0.9 },
+      ],
+      match_project_fact_vectors: () => [{ id: "v2", source_type: "fact", source_ref: "orion", similarity: 0.9 }],
+    });
+    const deps = { makeClient: () => client, encode: async () => new Array(384).fill(0) };
+    const bound = JSON.parse((await retrieveSessionContext({ ...base, projectScope: "orion" }, deps)) as string);
+    expect(bound.recentFacts.map((fact: { id: string }) => fact.id)).toEqual(["orion"]);
+    expect(bound.relevantFacts.map((fact: { id: string }) => fact.id)).toEqual(["orion"]);
+    const legacy = JSON.parse((await retrieveSessionContext({ ...base, task: "" }, deps)) as string);
+    expect(legacy.recentFacts.map((fact: { id: string }) => fact.id)).toEqual(["legacy"]);
+  });
+
   test("allows only the exact allowlisted local API origin", async () => {
     const local = { ...base, supabaseUrl: "http://127.0.0.1:54321/", allowlistText: "127.0.0.1", task: "" };
     const { client } = makeFakeSupabase();
@@ -51,14 +82,14 @@ describe("session-start memory bridge", () => {
 
   test("injects bounded typed recent and semantic facts from only the bound organization", async () => {
     const row = (id: string, org_id: string, is_suppressed = false) => ({
-      id, org_id, is_suppressed, created_at: "2026-09-23T00:00:00Z", session_id: "s",
+      id, org_id, project_scope: null, is_suppressed, created_at: "2026-09-23T00:00:00Z", session_id: "s",
       confidence: 0.9, is_verified: true, promoted_to_t3: true,
       decision_text: id === "active" ? "use RS256" : "do not inject", domain: "auth",
     });
     const { client } = makeFakeSupabase({ tech_decisions: [
       row("active", ORG), row("suppressed", ORG, true), row("foreign", OTHER),
     ] }, {}, {
-      match_memory_vectors: () => [
+      match_project_fact_vectors: () => [
         { id: "v1", source_type: "fact", source_ref: "active", similarity: 0.9 },
         { id: "v2", source_type: "fact", source_ref: "suppressed", similarity: 0.8 },
         { id: "v3", source_type: "fact", source_ref: "foreign", similarity: 0.7 },
@@ -93,7 +124,7 @@ describe("session-start memory bridge", () => {
 
   test("a missing local encoder is labelled without losing recent facts", async () => {
     const { client } = makeFakeSupabase({ tech_decisions: [{
-      id: "active", org_id: ORG, is_suppressed: false, created_at: "2026-09-23T00:00:00Z",
+      id: "active", org_id: ORG, project_scope: null, is_suppressed: false, created_at: "2026-09-23T00:00:00Z",
       session_id: "s", confidence: 0.9, is_verified: false, promoted_to_t3: false,
       decision_text: "x".repeat(800), domain: "auth",
     }] });

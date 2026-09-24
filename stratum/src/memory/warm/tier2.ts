@@ -140,7 +140,7 @@ export interface WarmMemory {
    * @returns id → fact for those found (cross-org / unknown ids are absent).
    * @throws {Error} if any underlying table read fails.
    */
-  getFactsByRefs(orgId: string, refs: string[]): Promise<Map<string, AnyFact>>;
+  getFactsByRefs(orgId: string, refs: string[], projectScope?: string | null): Promise<Map<string, AnyFact>>;
 }
 
 /**
@@ -315,13 +315,16 @@ export function createWarmMemory(client: SupabaseClient): WarmMemory {
       return marked;
     },
 
-    async getFactsByRefs(orgId: string, refs: string[]): Promise<Map<string, AnyFact>> {
+    async getFactsByRefs(orgId: string, refs: string[], projectScope?: string | null): Promise<Map<string, AnyFact>> {
       const out = new Map<string, AnyFact>();
       if (refs.length === 0) return out;
       const tables = Object.values(FACT_TABLES);
       const results = await Promise.all(
         tables.map(async (table) => {
-          const { data, error } = await client.from(table).select("*").eq("org_id", orgId).eq("is_suppressed", false).in("id", refs);
+          let query = client.from(table).select("*").eq("org_id", orgId).eq("is_suppressed", false).in("id", refs);
+          if (projectScope === null) query = query.is("project_scope", null);
+          else if (projectScope !== undefined) query = query.eq("project_scope", projectScope);
+          const { data, error } = await query;
           return { table, data, error };
         }),
       );

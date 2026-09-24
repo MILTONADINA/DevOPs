@@ -7,6 +7,7 @@ import { createWarmMemory } from "../src/memory/warm/tier2";
 import { createVectorStore } from "../src/memory/cold/vectors";
 import { createOnnxEncoder } from "../src/pruner/encoder";
 import type { AnyFact } from "../src/types/facts";
+import { validProjectScope } from "../src/proxy/auth";
 
 const ORG_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const RECENT_LIMIT = 3;
@@ -16,6 +17,7 @@ export interface SessionContextOptions {
   projectRoot: string;
   boundRoot: string;
   orgId: string;
+  projectScope?: string;
   supabaseUrl: string;
   serviceKey: string;
   allowlistText: string;
@@ -41,7 +43,8 @@ export function taskFromBaton(baton: string): string {
 }
 
 export function isAllowed(opts: SessionContextOptions): boolean {
-  if (!opts.projectRoot || opts.projectRoot !== opts.boundRoot || !ORG_ID.test(opts.orgId) || !opts.serviceKey) return false;
+  if (!opts.projectRoot || opts.projectRoot !== opts.boundRoot || !ORG_ID.test(opts.orgId) || !opts.serviceKey ||
+      (opts.projectScope !== undefined && !validProjectScope(opts.projectScope))) return false;
   let url: URL;
   try { url = new URL(opts.supabaseUrl); } catch { return false; }
   const localUrl = opts.supabaseUrl === "http://127.0.0.1:54321" || opts.supabaseUrl === "http://127.0.0.1:54321/";
@@ -59,16 +62,17 @@ export async function retrieveSessionContext(opts: SessionContextOptions, deps: 
   if (!isAllowed(opts)) return null;
   const client = deps.makeClient(opts.supabaseUrl, opts.serviceKey);
   const warm = createWarmMemory(client);
-  const recentFacts = (await warm.queryRecent(opts.orgId, { limit: RECENT_LIMIT })).filter((f) => !f.is_suppressed).slice(0, RECENT_LIMIT);
+  const projectScope = opts.projectScope ?? null;
+  const recentFacts = (await warm.queryRecent(opts.orgId, { limit: RECENT_LIMIT, projectScope })).filter((f) => !f.is_suppressed).slice(0, RECENT_LIMIT);
   const relevantFacts: AnyFact[] = [];
   let semanticStatus = "not_requested";
   if (opts.task.trim()) {
     semanticStatus = "complete";
     try {
       const queryEmbedding = await deps.encode(opts.task.slice(0, 1200));
-      const matches = await createVectorStore(client).search(opts.orgId, queryEmbedding, SEMANTIC_LIMIT);
+      const matches = await createVectorStore(client).searchProjectFacts(opts.orgId, projectScope, queryEmbedding, SEMANTIC_LIMIT);
       const refs = matches.filter((m) => m.sourceType === "fact" && m.sourceRef).map((m) => m.sourceRef as string);
-      const facts = await warm.getFactsByRefs(opts.orgId, refs);
+      const facts = await warm.getFactsByRefs(opts.orgId, refs, projectScope);
       const seen = new Set<string>();
       for (const ref of refs) {
         const fact = facts.get(ref);
@@ -103,6 +107,7 @@ export async function main(): Promise<number> {
   const opts: SessionContextOptions = {
     projectRoot, boundRoot, task,
     orgId: process.env["DEVOPS_STRATUM_ORG_ID"] ?? "",
+    ...(process.env["DEVOPS_STRATUM_PROJECT_SCOPE"] !== undefined ? { projectScope: process.env["DEVOPS_STRATUM_PROJECT_SCOPE"] } : {}),
     supabaseUrl: process.env["SUPABASE_URL"] ?? "",
     serviceKey: process.env["SUPABASE_SERVICE_KEY"] ?? "",
     allowlistText: readInside(projectRoot, ".workflow/network-allowlist.txt"),
