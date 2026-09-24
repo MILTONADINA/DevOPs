@@ -23,6 +23,8 @@ describe("validateBackup", () => {
     expect(() => validateBackup({ tables: {} })).toThrow(/orgId/);
     expect(() => validateBackup({ orgId: "o1" })).toThrow(/tables/);
     expect(() => validateBackup({ orgId: "o1", tables: { organizations: [] } })).toThrow(/no organizations/);
+    expect(() => validateBackup({ orgId: "o1", tables: { organizations: [{ id: "o2" }] } })).toThrow(/organization ID/);
+    expect(() => validateBackup({ orgId: "o1", tables: { organizations: [{ id: "o1" }], source_fact_links: [{ id: "l1", org_id: "o2" }] } })).toThrow(/source link organization/);
   });
 });
 
@@ -50,6 +52,7 @@ describe("restorePlan", () => {
         knowledge_edges: [{ id: "e1" }],
         knowledge_entity_sessions: [{ entity_id: "n1", session_id: "s1" }],
         knowledge_edge_sessions: [{ edge_id: "e1", session_id: "s1" }],
+        source_fact_links: [{ id: "l1", file_entity_id: "n1" }],
         organizations: [{ id: "o1" }],
         sessions: [{ id: "s1" }],
         knowledge_entities: [{ id: "n1" }, { id: "n2" }],
@@ -58,7 +61,7 @@ describe("restorePlan", () => {
     };
     const plan = restorePlan(backup);
     const tables = plan.map((p) => p.table);
-    expect(tables).toEqual(["organizations", "sessions", "knowledge_entities", "knowledge_edges", "knowledge_entity_sessions", "knowledge_edge_sessions"]); // FK order; todos dropped
+    expect(tables).toEqual(["organizations", "sessions", "knowledge_entities", "knowledge_edges", "knowledge_entity_sessions", "knowledge_edge_sessions", "source_fact_links"]); // FK order; todos dropped
     // organizations before sessions before entities before edges (the FK chain)
     expect(tables.indexOf("organizations")).toBeLessThan(tables.indexOf("sessions"));
     expect(tables.indexOf("knowledge_entities")).toBeLessThan(tables.indexOf("knowledge_edges"));
@@ -69,6 +72,8 @@ describe("restorePlan", () => {
     expect(RESTORE_ORDER.indexOf("knowledge_entities")).toBeLessThan(RESTORE_ORDER.indexOf("knowledge_edges"));
     expect(RESTORE_ORDER.indexOf("knowledge_edges")).toBeLessThan(RESTORE_ORDER.indexOf("knowledge_entity_sessions"));
     expect(RESTORE_ORDER.indexOf("knowledge_edges")).toBeLessThan(RESTORE_ORDER.indexOf("knowledge_edge_sessions"));
+    expect(RESTORE_ORDER.indexOf("knowledge_entities")).toBeLessThan(RESTORE_ORDER.indexOf("source_fact_links"));
+    expect(RESTORE_ORDER.indexOf("function_changes")).toBeLessThan(RESTORE_ORDER.indexOf("source_fact_links"));
     expect(RESTORE_ORDER.indexOf("sessions")).toBeLessThan(RESTORE_ORDER.indexOf("audit_conflicts"));
     expect(RESTORE_ORDER.indexOf("function_changes")).toBeLessThan(RESTORE_ORDER.indexOf("audit_statuses"));
     expect(RESTORE_ORDER.indexOf("audit_conflicts")).toBeLessThan(RESTORE_ORDER.indexOf("audit_statuses"));
