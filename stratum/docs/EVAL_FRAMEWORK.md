@@ -160,6 +160,9 @@ python3 -m venv .venv
 .venv/bin/python -m pip install -r evals/requirements-deepeval.txt
 ```
 
+Claude judged runs use a project-local Python worker. A silent metric request
+times out after 10 minutes, rejects queued scores, and fails the gate.
+
 ### Output Format
 
 ```
