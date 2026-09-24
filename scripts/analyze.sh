@@ -5,7 +5,8 @@
 # Produces .workflow/profile.yml and prints a summary.
 
 set -euo pipefail
-DEVOPS_ROOT="${DEVOPS_ROOT:-$HOME/DevOPs}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DEVOPS_ROOT="${DEVOPS_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 
 if ! command -v node >/dev/null 2>&1; then
     echo "Node.js is required (>=20). Install: https://nodejs.org/" >&2
