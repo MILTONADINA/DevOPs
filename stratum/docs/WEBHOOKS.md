@@ -242,6 +242,8 @@ Fired when a ZK-Context session's TEE attestation fails. This is a security even
 ## Testing Webhooks
 
 Use the test endpoint to send a sample event to your configured webhook URL:
+In commercial mode, this requires an unbound organization API key; a
+project-bound key receives HTTP 403 before the webhook configuration is read.
 
 ```bash
 curl -X POST https://proxy.startum.com/v1/webhooks/test \

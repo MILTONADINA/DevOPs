@@ -313,6 +313,8 @@ Returns org-level CQ configuration.
 ### PATCH /v1/config
 
 Update org configuration. Changes apply to all new sessions.
+In commercial mode, use an unbound organization API key. A project-bound key
+receives HTTP 403; `GET /v1/config` remains available to authenticated keys.
 
 **Request body (all fields optional):**
 ```json

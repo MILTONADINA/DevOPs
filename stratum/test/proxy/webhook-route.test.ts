@@ -25,6 +25,22 @@ function fakeDeps(opts: { noConfig?: boolean; fail?: boolean } = {}): { deps: We
 const post = (event_type: unknown) => ({ method: "POST" as const, url: "/v1/webhooks/test?org-id=o1", headers: { "content-type": "application/json" }, payload: { event_type } });
 
 describe("POST /v1/webhooks/test", () => {
+  test("rejects a project-bound key before reading org webhook config or delivering", async () => {
+    const { deps, captured } = fakeDeps();
+    const app = buildProxy({ rateLimit: false, cors: false, auth: { resolve: async (key) =>
+      key === "bound" ? { orgId: "o1", keyId: "a", projectScopeId: "o1/orion" } :
+      key === "unbound" ? { orgId: "o1", keyId: "b" } : null,
+    }, webhooks: deps });
+    await app.ready();
+    const denied = await app.inject({ method: "POST", url: "/v1/webhooks/test?org-id=o1&project-scope=", headers: { authorization: "Bearer bound", "x-project-scope": "", "content-type": "application/json" }, payload: { event_type: "invoice.ready", project_scope: null } });
+    expect(denied.statusCode).toBe(403);
+    expect(captured).toEqual({});
+    const allowed = await app.inject({ method: "POST", url: "/v1/webhooks/test", headers: { authorization: "Bearer unbound", "content-type": "application/json" }, payload: { event_type: "invoice.ready" } });
+    expect(allowed.statusCode).toBe(200);
+    expect(captured["org"]).toBe("o1");
+    await app.close();
+  });
+
   test("builds + signs + delivers a sample event of the requested type", async () => {
     const { deps, captured } = fakeDeps();
     const app = buildProxy({ rateLimit: false, cors: false, webhooks: deps });

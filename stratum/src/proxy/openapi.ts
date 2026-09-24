@@ -226,18 +226,18 @@ export const OPENAPI_SPEC = {
         responses: { "200": { description: "Config", content: { "application/json": { schema: { $ref: "#/components/schemas/OrgConfig" } } } } },
       },
       patch: {
-        summary: "Update org config",
+        summary: "Update org config (organization-level key required in commercial mode)",
         parameters: [ORG_ID_QUERY],
         requestBody: { content: { "application/json": { schema: { $ref: "#/components/schemas/OrgConfig" } } } },
-        responses: { "200": { description: "Updated config" }, "400": ERROR_RESPONSE },
+        responses: { "200": { description: "Updated config" }, "400": ERROR_RESPONSE, "403": ERROR_RESPONSE },
       },
     },
     "/v1/webhooks/test": {
       post: {
-        summary: "Send a signed sample webhook event",
+        summary: "Send a signed sample webhook event (organization-level key required in commercial mode)",
         parameters: [ORG_ID_QUERY],
         requestBody: { required: true, content: { "application/json": { schema: { type: "object", properties: { event_type: { type: "string" } } } } } },
-        responses: { "200": { description: "Delivered" }, "400": ERROR_RESPONSE, "502": ERROR_RESPONSE },
+        responses: { "200": { description: "Delivered" }, "400": ERROR_RESPONSE, "403": ERROR_RESPONSE, "502": ERROR_RESPONSE },
       },
     },
   },
