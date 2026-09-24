@@ -18,6 +18,13 @@ proposal text.
 
 ## Current release checkpoint — 2026-09-23
 
+**2026-09-24 evaluation update:** Full published orchestration is merged:
+default `npm run test:eval` invokes the complete LoCoMo and LongMemEval gates
+after Tier-C and judged Tier-B. Tier-C remains 29/50, so the full command has
+not reached either published gate in a release run. Full judged results, CI
+scheduling, and one-week real-use validation remain open. Pruning remains
+disabled. This update changes no historical effort estimate.
+
 **2026-09-24 project-boundary update:** Commercial fact, audit,
 explicit-session, and graph reads now follow the authenticated API key's
 project slug in the local implementation. Graph nodes and edges written with
