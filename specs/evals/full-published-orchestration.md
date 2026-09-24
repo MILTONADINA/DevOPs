@@ -25,8 +25,9 @@ and SHALL report selected, scored, evidence-labeled, and unlabeled counts. A
 question without a complete usable gold-evidence label SHALL still receive
 judged Faithfulness and Answer Relevancy; it SHALL have no evidence-survival
 score rather than an invented perfect score. IF fewer questions are scored
-than selected, THEN the full gate SHALL exit nonzero. Standalone sampled mode
-SHALL keep its current selection defaults.
+than selected, THEN the full gate SHALL exit nonzero. The final verdict SHALL
+label full coverage as full, not sampled. Standalone sampled mode SHALL keep
+its current selection defaults.
 
 ## REQ-3 — Preserve gate meaning
 
