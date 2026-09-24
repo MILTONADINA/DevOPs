@@ -135,7 +135,7 @@ function recordUsageSafe(deps: MessagesDeps, request: FastifyRequest, model: str
     request.log?.warn?.({ orgId, model }, "usage record skipped: input_tokens<=0 (no count from upstream OR pre-flight)");
     return;
   }
-  void deps.recordUsage({ orgId, model, inputTokens, outputTokens }).catch((e: unknown) => {
+  void deps.recordUsage({ orgId, ...(request.projectScopeId ? { projectScopeId: request.projectScopeId } : {}), model, inputTokens, outputTokens }).catch((e: unknown) => {
     request.log?.error?.({ err: (e as Error).message }, "usage record failed (non-blocking)");
   });
 }

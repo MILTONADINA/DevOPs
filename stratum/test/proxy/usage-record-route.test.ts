@@ -30,7 +30,7 @@ function deps(over: { forward?: MessagesDeps["forward"]; countTokens?: MessagesD
   };
 }
 
-const AUTH = { resolve: async (k: string) => (k === "k1" ? { orgId: "org-7", keyId: "key-1" } : null), protectedPrefixes: ["/v1/"] };
+const AUTH = { resolve: async (k: string) => (k === "k1" ? { orgId: "org-7", keyId: "key-1" } : k === "bound" ? { orgId: "org-7", keyId: "key-2", projectScopeId: "org-7/orion" } : null), protectedPrefixes: ["/v1/"] };
 const BODY = { model: "claude-sonnet-4-6", messages: [{ role: "user", content: "hi" }], max_tokens: 100 };
 
 function post(body: unknown = BODY, key = "k1") {
@@ -45,6 +45,15 @@ describe("commercial usage persistence on /v1/messages", () => {
     const res = await post();
     expect(res.statusCode).toBe(200);
     expect(calls).toEqual([{ orgId: "org-7", model: "claude-sonnet-4-6", inputTokens: 8000, outputTokens: 42 }]);
+  });
+
+  test("normal request records only the authenticated project despite client scope fields", async () => {
+    const calls: UsageEvent[] = [];
+    app = buildProxy({ cors: false, rateLimit: false, auth: AUTH, messages: deps({ recordUsage: async (e) => void calls.push(e) }) });
+    await app.ready();
+    const res = await app.inject({ method: "POST", url: "/v1/messages?project-scope=vega", headers: { authorization: "Bearer bound", "x-project-scope": "vega" }, payload: { ...BODY, project_scope: "vega" } });
+    expect(res.statusCode).toBe(200);
+    expect(calls).toEqual([{ orgId: "org-7", projectScopeId: "org-7/orion", model: "claude-sonnet-4-6", inputTokens: 8000, outputTokens: 42 }]);
   });
 
   test("does NOT record on an upstream 4xx", async () => {
@@ -90,5 +99,22 @@ describe("commercial usage persistence on /v1/messages", () => {
     // recordUsageSafe runs in the stream's finally (before out.end()), so by the time inject resolves
     // the response stream has completed and usage was recorded with the accumulated output tokens.
     expect(calls).toEqual([{ orgId: "org-7", model: "claude-sonnet-4-6", inputTokens: 5, outputTokens: 4 }]);
+  });
+
+  test("streaming request records the authenticated project", async () => {
+    const calls: UsageEvent[] = [];
+    async function* chunks(): AsyncGenerator<string> {
+      yield 'event: message_start\ndata: {"type":"message_start","message":{"id":"m","role":"assistant","usage":{"input_tokens":5,"output_tokens":1}}}\n\n';
+      yield 'event: message_delta\ndata: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":4}}\n\n';
+      yield 'event: message_stop\ndata: {"type":"message_stop"}\n\n';
+    }
+    app = buildProxy({ cors: false, rateLimit: false, auth: AUTH, messages: {
+      ...deps({ recordUsage: async (e) => void calls.push(e) }),
+      countTokens: async () => ({ input_tokens: 5, token_count_method: "exact", message_breakdown: [] }),
+      forwardStream: async () => ({ status: 200, stream: chunks() }),
+    } });
+    await app.ready();
+    expect((await post({ ...BODY, stream: true, project_scope: "vega" }, "bound")).statusCode).toBe(200);
+    expect(calls).toEqual([{ orgId: "org-7", projectScopeId: "org-7/orion", model: "claude-sonnet-4-6", inputTokens: 5, outputTokens: 4 }]);
   });
 });
