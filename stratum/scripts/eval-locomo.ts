@@ -202,6 +202,11 @@ export async function main(): Promise<number> {
   out("Note: cat-5 (adversarial/unanswerable) is excluded — it tests refusal, not memory retention.");
   out("");
 
+  if (totalQ === 0) {
+    out("No questions evaluated. Exiting 1 (empty Tier-A selection).");
+    return 1;
+  }
+
   const encoder = createOnnxEncoder({ cacheDir: join(process.cwd(), "models") });
   const answerer = createClaudeAnswerer(provider.completion);
   const judge = createLlmJudge(provider.completion);
@@ -232,8 +237,8 @@ export async function main(): Promise<number> {
   }
 
   if (outcomes.length === 0) {
-    out("No questions evaluated. Exiting 0 (nothing to gate).");
-    return 0;
+    out("No questions evaluated. Exiting 1 (no scored Tier-A outcomes).");
+    return 1;
   }
 
   // --- Gate on the FIRST λ (the documented shipping config). ---
