@@ -364,19 +364,25 @@ export function createSupabaseBillingDeps(client: SupabaseClient): BillingDeps {
       return row ? row.plan : null;
     },
     async listBillingRecords(orgId: string, since?: string, until?: string): Promise<BillableRecord[]> {
-      let q = client.from("billing_records").select("session_id, original_tokens, quarantined_tokens, cost_delta_usd, cq_fee_usd, signed_hash").eq("org_id", orgId);
-      if (since !== undefined) q = q.gte("created_at", since);
-      if (until !== undefined) q = q.lt("created_at", until);
-      const { data, error } = await q;
-      if (error) throw new Error(`listBillingRecords failed: ${error.message}`);
-      return (data ?? []) as BillableRecord[];
+      const rows: BillableRecord[] = [];
+      let expected: number | undefined;
+      do {
+        let q = client.from("billing_records").select("session_id, original_tokens, quarantined_tokens, cost_delta_usd, cq_fee_usd, signed_hash", { count: "exact" }).eq("org_id", orgId);
+        if (since !== undefined) q = q.gte("created_at", since);
+        if (until !== undefined) q = q.lt("created_at", until);
+        const { data, error, count } = await q.order("id", { ascending: true }).range(rows.length, rows.length + 499);
+        if (error) throw new Error(`listBillingRecords failed: ${error.message}`);
+        if (count === null || count === undefined || !Number.isSafeInteger(count) || count < 0) throw new Error("listBillingRecords failed: exact count unavailable");
+        if (expected !== undefined && count !== expected) throw new Error("listBillingRecords failed: row count changed during paging");
+        expected = count;
+        const page = (data ?? []) as BillableRecord[];
+        if (page.length === 0 && rows.length < expected) throw new Error("listBillingRecords failed: empty page before exact row count");
+        rows.push(...page);
+        if (rows.length > expected) throw new Error("listBillingRecords failed: page exceeded exact row count");
+      } while (rows.length < expected);
+      return rows;
     },
     async developerBreakdown(orgId: string, since?: string, until?: string): Promise<DeveloperBreakdown[]> {
-      let q = client.from("billing_records").select("original_tokens, quarantined_tokens, cq_fee_usd, sessions(developer_id, developers(name))").eq("org_id", orgId);
-      if (since !== undefined) q = q.gte("created_at", since);
-      if (until !== undefined) q = q.lt("created_at", until);
-      const { data, error } = await q;
-      if (error) throw new Error(`developerBreakdown failed: ${error.message}`);
       type Row = {
         original_tokens: number;
         quarantined_tokens: number;
@@ -387,16 +393,32 @@ export function createSupabaseBillingDeps(client: SupabaseClient): BillingDeps {
           | null;
       };
       const map = new Map<string | null, DeveloperBreakdown>();
-      for (const row of (data ?? []) as Row[]) {
-        const session = Array.isArray(row.sessions) ? row.sessions[0] : row.sessions;
-        const devId = session?.developer_id ?? null;
-        const dev = Array.isArray(session?.developers) ? session?.developers[0] : session?.developers;
-        const name = dev?.name ?? null;
-        const e = map.get(devId) ?? { developer_id: devId, name, token_delta: 0, cq_fee_usd: 0 };
-        e.token_delta += row.original_tokens - row.quarantined_tokens;
-        e.cq_fee_usd += row.cq_fee_usd;
-        map.set(devId, e);
-      }
+      let records = 0;
+      let expected: number | undefined;
+      do {
+        let q = client.from("billing_records").select("original_tokens, quarantined_tokens, cq_fee_usd, sessions(developer_id, developers(name))", { count: "exact" }).eq("org_id", orgId);
+        if (since !== undefined) q = q.gte("created_at", since);
+        if (until !== undefined) q = q.lt("created_at", until);
+        const { data, error, count } = await q.order("id", { ascending: true }).range(records, records + 499);
+        if (error) throw new Error(`developerBreakdown failed: ${error.message}`);
+        if (count === null || count === undefined || !Number.isSafeInteger(count) || count < 0) throw new Error("developerBreakdown failed: exact count unavailable");
+        if (expected !== undefined && count !== expected) throw new Error("developerBreakdown failed: row count changed during paging");
+        expected = count;
+        const page = (data ?? []) as Row[];
+        if (page.length === 0 && records < expected) throw new Error("developerBreakdown failed: empty page before exact row count");
+        for (const row of page) {
+          const session = Array.isArray(row.sessions) ? row.sessions[0] : row.sessions;
+          const devId = session?.developer_id ?? null;
+          const dev = Array.isArray(session?.developers) ? session?.developers[0] : session?.developers;
+          const name = dev?.name ?? null;
+          const e = map.get(devId) ?? { developer_id: devId, name, token_delta: 0, cq_fee_usd: 0 };
+          e.token_delta += row.original_tokens - row.quarantined_tokens;
+          e.cq_fee_usd += row.cq_fee_usd;
+          map.set(devId, e);
+        }
+        records += page.length;
+        if (records > expected) throw new Error("developerBreakdown failed: page exceeded exact row count");
+      } while (records < expected);
       return [...map.values()].map((e) => ({ ...e, cq_fee_usd: round2cents(e.cq_fee_usd) }));
     },
     async listRecords(orgId: string, query: RecordsQuery): Promise<{ records: BillingRecordFull[]; total: number }> {
