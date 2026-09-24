@@ -74,11 +74,11 @@ export interface MemoryDeps {
   suppressFact: (orgId: string, id: string, table: string, projectScope?: string | null) => Promise<boolean>;
   listConflicts: (orgId: string, limit: number, projectScope?: string | null) => Promise<ConflictSummary[]>;
   listAuditStatuses: (orgId: string, limit: number, projectScope?: string | null) => Promise<AuditStatusSummary[]>;
-  listGraph: (orgId: string, limit: number) => Promise<GraphSnapshot>;
-  searchGraph: (orgId: string, query: string, mode: "name" | "semantic") => Promise<GraphSearchResult>;
-  listGraphFiles: (orgId: string, limit: number, after?: string) => Promise<GraphFilePage>;
-  listGraphDependencies: (orgId: string, limit: number, after?: string) => Promise<GraphDependencyPage>;
-  listRelatedFacts: (orgId: string, file: string) => Promise<GraphRelatedFact[] | null>;
+  listGraph: (orgId: string, limit: number, projectScope?: string | null) => Promise<GraphSnapshot>;
+  searchGraph: (orgId: string, query: string, mode: "name" | "semantic", projectScope?: string | null) => Promise<GraphSearchResult>;
+  listGraphFiles: (orgId: string, limit: number, after?: string, projectScope?: string | null) => Promise<GraphFilePage>;
+  listGraphDependencies: (orgId: string, limit: number, after?: string, projectScope?: string | null) => Promise<GraphDependencyPage>;
+  listRelatedFacts: (orgId: string, file: string, projectScope?: string | null) => Promise<GraphRelatedFact[] | null>;
 }
 
 const VALID_FACT_TABLES = new Set(Object.values(FACT_TABLES));
@@ -177,7 +177,7 @@ export function makeMemoryRoute(deps: MemoryDeps): FastifyPluginCallback {
     app.get("/v1/memory/graph", async (req, reply) => {
       const orgId = resolveOrg(req);
       if (orgId === undefined) return err(reply, 400, "org id required (authenticate, or pass ?org-id)");
-      return deps.listGraph(orgId, intParam(req, "limit", 100));
+      return deps.listGraph(orgId, intParam(req, "limit", 100), authenticatedProjectScope(req));
     });
 
     app.get("/v1/memory/graph/search", async (req, reply) => {
@@ -188,7 +188,7 @@ export function makeMemoryRoute(deps: MemoryDeps): FastifyPluginCallback {
       if (query.length < 2 || query.length > 100) return err(reply, 400, "q must be 2 to 100 characters");
       const mode = (req.query as Record<string, unknown>)["mode"] ?? "name";
       if (mode !== "name" && mode !== "semantic") return err(reply, 400, "mode must be name or semantic");
-      return deps.searchGraph(orgId, query, mode);
+      return deps.searchGraph(orgId, query, mode, authenticatedProjectScope(req));
     });
 
     app.get("/v1/memory/graph/files", async (req, reply) => {
@@ -196,7 +196,7 @@ export function makeMemoryRoute(deps: MemoryDeps): FastifyPluginCallback {
       if (orgId === undefined) return err(reply, 400, "org id required (authenticate, or pass ?org-id)");
       const page = pageParams(req, "name");
       if (!page) return err(reply, 400, "invalid graph page limit or after cursor");
-      return deps.listGraphFiles(orgId, page.limit, page.after);
+      return deps.listGraphFiles(orgId, page.limit, page.after, authenticatedProjectScope(req));
     });
 
     app.get("/v1/memory/graph/dependencies", async (req, reply) => {
@@ -204,7 +204,7 @@ export function makeMemoryRoute(deps: MemoryDeps): FastifyPluginCallback {
       if (orgId === undefined) return err(reply, 400, "org id required (authenticate, or pass ?org-id)");
       const page = pageParams(req, "uuid");
       if (!page) return err(reply, 400, "invalid graph page limit or after cursor");
-      return deps.listGraphDependencies(orgId, page.limit, page.after);
+      return deps.listGraphDependencies(orgId, page.limit, page.after, authenticatedProjectScope(req));
     });
 
     app.get("/v1/memory/graph/related-facts", async (req, reply) => {
@@ -212,7 +212,7 @@ export function makeMemoryRoute(deps: MemoryDeps): FastifyPluginCallback {
       if (orgId === undefined) return err(reply, 400, "org id required (authenticate, or pass ?org-id)");
       const file = (req.query as Record<string, unknown>)["file"];
       if (!validSourcePath(file)) return err(reply, 400, "file must be a project-relative source path");
-      const facts = await deps.listRelatedFacts(orgId, file);
+      const facts = await deps.listRelatedFacts(orgId, file, authenticatedProjectScope(req));
       if (facts === null) return err(reply, 404, "indexed File not found in this organization");
       return { facts };
     });
@@ -231,17 +231,31 @@ export function createSupabaseMemoryDeps(client: SupabaseClient, encodeQuery?: (
       if (!embedding) throw new Error("graph query encoding returned no vector");
       return Array.from(embedding);
     });
-  const expandMatches = async (orgId: string, matches: GraphSnapshot["entities"]): Promise<GraphSearchResult> => {
+  const expandMatches = async (orgId: string, matches: GraphSnapshot["entities"], projectScope?: string | null): Promise<GraphSearchResult> => {
     if (!matches.length) return { matches: [], entities: [], edges: [] };
     const ids = matches.map((entity) => entity.id);
-    const [outgoing, incoming] = await Promise.all([
-      client.from("knowledge_edges").select("id,edge_type,from_entity,to_entity").eq("org_id", orgId).in("from_entity", ids).limit(100),
-      client.from("knowledge_edges").select("id,edge_type,from_entity,to_entity").eq("org_id", orgId).in("to_entity", ids).limit(100),
-    ]);
+    let outgoingQuery = client.from("knowledge_edges").select("id,edge_type,from_entity,to_entity").eq("org_id", orgId).in("from_entity", ids);
+    let incomingQuery = client.from("knowledge_edges").select("id,edge_type,from_entity,to_entity").eq("org_id", orgId).in("to_entity", ids);
+    if (projectScope !== undefined) {
+      outgoingQuery = outgoingQuery.eq("scope_verified", true);
+      incomingQuery = incomingQuery.eq("scope_verified", true);
+      if (projectScope === null) {
+        outgoingQuery = outgoingQuery.is("project_scope", null);
+        incomingQuery = incomingQuery.is("project_scope", null);
+      } else {
+        outgoingQuery = outgoingQuery.eq("project_scope", projectScope);
+        incomingQuery = incomingQuery.eq("project_scope", projectScope);
+      }
+    }
+    const [outgoing, incoming] = await Promise.all([outgoingQuery.limit(100), incomingQuery.limit(100)]);
     if (outgoing.error || incoming.error) throw new Error(`searchGraph edges failed: ${outgoing.error?.message ?? incoming.error?.message}`);
     const edges = [...new Map([...(outgoing.data ?? []), ...(incoming.data ?? [])].map((edge) => [edge.id, edge] as const)).values()] as GraphSnapshot["edges"];
     const neighbors = [...new Set(edges.flatMap((edge) => [edge.from_entity, edge.to_entity]))].filter((id) => !ids.includes(id));
-    const related = neighbors.length ? await client.rpc("list_graph_neighbor_entities", { match_org: orgId, entity_ids: neighbors }) : null;
+    const related = neighbors.length
+      ? projectScope === undefined
+        ? await client.rpc("list_graph_neighbor_entities", { match_org: orgId, entity_ids: neighbors })
+        : await client.rpc("list_project_graph_neighbor_entities", { match_org: orgId, match_project_scope: projectScope, entity_ids: neighbors })
+      : null;
     if (related?.error) throw new Error(`searchGraph neighbors failed: ${related.error.message}`);
     const entities = [...matches, ...((related?.data ?? []) as GraphSnapshot["entities"])];
     const known = new Set(entities.map((entity) => entity.id));
@@ -289,59 +303,77 @@ export function createSupabaseMemoryDeps(client: SupabaseClient, encodeQuery?: (
       if (error) throw new Error(`listAuditStatuses failed: ${error.message}`);
       return (data ?? []) as AuditStatusSummary[];
     },
-    async listGraph(orgId, limit) {
-      const entitiesResult = await client.from("knowledge_entities").select("id,kind,name,session_id,file_path,summary").eq("org_id", orgId).order("created_at", { ascending: false }).limit(limit);
+    async listGraph(orgId, limit, projectScope) {
+      let query = client.from("knowledge_entities").select("id,kind,name,session_id,file_path,summary").eq("org_id", orgId);
+      if (projectScope !== undefined) {
+        query = query.eq("scope_verified", true);
+        query = projectScope === null ? query.is("project_scope", null) : query.eq("project_scope", projectScope);
+      }
+      const entitiesResult = await query.order("created_at", { ascending: false }).limit(limit);
       if (entitiesResult.error) throw new Error(`listGraph entities failed: ${entitiesResult.error.message}`);
       const entities = (entitiesResult.data ?? []) as GraphSnapshot["entities"];
       if (entities.length === 0) return { entities, edges: [] };
       const ids = entities.map((entity) => entity.id);
-      const edgesResult = await client.rpc("list_graph_snapshot_edges", { match_org: orgId, entity_ids: ids, edge_limit: 500 });
+      const edgesResult =
+        projectScope === undefined
+          ? await client.rpc("list_graph_snapshot_edges", { match_org: orgId, entity_ids: ids, edge_limit: 500 })
+          : await client.rpc("list_project_graph_snapshot_edges", { match_org: orgId, match_project_scope: projectScope, entity_ids: ids, edge_limit: 500 });
       if (edgesResult.error) throw new Error(`listGraph edges failed: ${edgesResult.error.message}`);
       return { entities, edges: (edgesResult.data ?? []) as GraphSnapshot["edges"] };
     },
-    async searchGraph(orgId, query, mode) {
+    async searchGraph(orgId, query, mode, projectScope) {
       const embedding = mode === "semantic" ? await encode(query) : undefined;
       const found =
         mode === "semantic"
-          ? await client.rpc("search_graph_semantic_entities", { match_org: orgId, query_embedding: embedding, result_limit: 20 })
-          : await client.rpc("search_graph_entities", { match_org: orgId, search_text: query, result_limit: 20 });
+          ? projectScope === undefined
+            ? await client.rpc("search_graph_semantic_entities", { match_org: orgId, query_embedding: embedding, result_limit: 20 })
+            : await client.rpc("search_project_graph_semantic_entities", { match_org: orgId, match_project_scope: projectScope, query_embedding: embedding, result_limit: 20 })
+          : projectScope === undefined
+            ? await client.rpc("search_graph_entities", { match_org: orgId, search_text: query, result_limit: 20 })
+            : await client.rpc("search_project_graph_entities", { match_org: orgId, match_project_scope: projectScope, search_text: query, result_limit: 20 });
       if (found.error) throw new Error(`searchGraph matches failed: ${found.error.message}`);
       const matches = (found.data ?? []) as GraphSnapshot["entities"];
-      return expandMatches(orgId, matches);
+      return expandMatches(orgId, matches, projectScope);
     },
-    async listGraphFiles(orgId, limit, after) {
-      let request = client
-        .from("knowledge_entities")
-        .select("id,kind,name,session_id,file_path,summary")
-        .eq("org_id", orgId)
-        .eq("kind", "File")
-        .order("name")
-        .limit(limit + 1);
+    async listGraphFiles(orgId, limit, after, projectScope) {
+      let request = client.from("knowledge_entities").select("id,kind,name,session_id,file_path,summary").eq("org_id", orgId).eq("kind", "File");
+      if (projectScope !== undefined) {
+        request = request.eq("scope_verified", true);
+        request = projectScope === null ? request.is("project_scope", null) : request.eq("project_scope", projectScope);
+      }
+      request = request.order("name").limit(limit + 1);
       if (after !== undefined) request = request.gt("name", after);
       const result = await request;
       if (result.error) throw new Error(`listGraphFiles failed: ${result.error.message}`);
       const files = ((result.data ?? []) as GraphSnapshot["entities"]).slice(0, limit);
       return { files, next: (result.data ?? []).length > limit ? files.at(-1)!.name : null };
     },
-    async listGraphDependencies(orgId, limit, after) {
-      let request = client
-        .from("knowledge_edges")
-        .select("id,edge_type,from_entity,to_entity")
-        .eq("org_id", orgId)
-        .eq("edge_type", "DEPENDS_ON")
-        .order("id")
-        .limit(limit + 1);
+    async listGraphDependencies(orgId, limit, after, projectScope) {
+      let request = client.from("knowledge_edges").select("id,edge_type,from_entity,to_entity").eq("org_id", orgId).eq("edge_type", "DEPENDS_ON");
+      if (projectScope !== undefined) {
+        request = request.eq("scope_verified", true);
+        request = projectScope === null ? request.is("project_scope", null) : request.eq("project_scope", projectScope);
+      }
+      request = request.order("id").limit(limit + 1);
       if (after !== undefined) request = request.gt("id", after);
       const result = await request;
       if (result.error) throw new Error(`listGraphDependencies failed: ${result.error.message}`);
       const edges = ((result.data ?? []) as GraphSnapshot["edges"]).slice(0, limit);
       return { edges, next: (result.data ?? []).length > limit ? edges.at(-1)!.id : null };
     },
-    async listRelatedFacts(orgId, file) {
-      const indexed = await client.from("knowledge_entities").select("id").eq("org_id", orgId).eq("kind", "File").eq("name", file).eq("file_path", file).limit(1);
+    async listRelatedFacts(orgId, file, projectScope) {
+      let query = client.from("knowledge_entities").select("id").eq("org_id", orgId).eq("kind", "File").eq("name", file).eq("file_path", file);
+      if (projectScope !== undefined) {
+        query = query.eq("scope_verified", true);
+        query = projectScope === null ? query.is("project_scope", null) : query.eq("project_scope", projectScope);
+      }
+      const indexed = await query.limit(1);
       if (indexed.error) throw new Error(`listRelatedFacts File check failed: ${indexed.error.message}`);
       if (!indexed.data?.length) return null;
-      const result = await client.rpc("list_source_related_facts", { match_org: orgId, match_file: indexed.data[0]!.id, result_limit: 50 });
+      const result =
+        projectScope === undefined
+          ? await client.rpc("list_source_related_facts", { match_org: orgId, match_file: indexed.data[0]!.id, result_limit: 50 })
+          : await client.rpc("list_project_source_related_facts", { match_org: orgId, match_project_scope: projectScope, match_file: indexed.data[0]!.id, result_limit: 50 });
       if (result.error) throw new Error(`listRelatedFacts query failed: ${result.error.message}`);
       return (result.data ?? []) as GraphRelatedFact[];
     },

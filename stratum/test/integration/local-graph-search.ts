@@ -41,6 +41,7 @@ try {
   const filler = Array.from({ length: 500 }, (_, i) => ({
     id: i === 0 ? neighbor : i === 1 ? typo : randomUUID(),
     org_id: own,
+    scope_verified: true,
     kind: "File",
     name: i === 1 ? "src/needel-handler.ts" : `src/filler-${i}.ts`,
     created_at: "2026-09-23T00:00:00Z",
@@ -49,20 +50,21 @@ try {
     await db
       .from("knowledge_entities")
       .insert([
-        { id: needle, org_id: own, kind: "File", name: "src/needle-handler.ts", file_path: "src/needle-handler.ts", summary: "Needle handler", created_at: "2020-01-01T00:00:00Z" },
+        { id: needle, org_id: own, scope_verified: true, kind: "File", name: "src/needle-handler.ts", file_path: "src/needle-handler.ts", summary: "Needle handler", created_at: "2020-01-01T00:00:00Z" },
         ...filler,
-        { id: foreignNeedle, org_id: foreign, kind: "File", name: "src/needle-handler.ts", created_at: "2020-01-01T00:00:00Z" },
-        { id: foreignOther, org_id: foreign, kind: "File", name: "src/foreign-other.ts", created_at: "2020-01-01T00:00:00Z" },
+        { id: foreignNeedle, org_id: foreign, scope_verified: true, kind: "File", name: "src/needle-handler.ts", created_at: "2020-01-01T00:00:00Z" },
+        { id: foreignOther, org_id: foreign, scope_verified: true, kind: "File", name: "src/foreign-other.ts", created_at: "2020-01-01T00:00:00Z" },
       ]),
     "insert graph nodes",
   );
   const fixtureEdges = filler.map((node, i) => ({
     org_id: own,
+    scope_verified: true,
     from_entity: i < 250 ? needle : node.id,
     to_entity: i < 250 ? node.id : needle,
     edge_type: "DEPENDS_ON",
   }));
-  checked(await db.from("knowledge_edges").insert([...fixtureEdges, { org_id: foreign, from_entity: foreignNeedle, to_entity: foreignOther, edge_type: "DEPENDS_ON" }]), "insert edges");
+  checked(await db.from("knowledge_edges").insert([...fixtureEdges, { org_id: foreign, scope_verified: true, from_entity: foreignNeedle, to_entity: foreignOther, edge_type: "DEPENDS_ON" }]), "insert edges");
   app = buildProxy(
     buildStartOptions({ CQ_COMMERCIAL: "true", SUPABASE_URL: url, SUPABASE_SERVICE_KEY: key }, { cors: false, rateLimit: false }, (clientUrl, clientKey) =>
       createClient(clientUrl, clientKey, { auth: { persistSession: false } }),

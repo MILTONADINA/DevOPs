@@ -40,11 +40,11 @@ try {
   checked(await db.from("organizations").insert({ id: org, name: "DevOPs local promotion check" }), "insert org");
   checked(await db.from("sessions").insert([
     { id: session, org_id: org, model: "local-check" },
-    { id: secondSession, org_id: org, model: "local-check" },
+    { id: secondSession, org_id: org, project_scope: "vega", model: "local-check" },
   ]), "insert sessions");
   checked(await db.from("function_changes").insert([
     { id: active, org_id: org, session_id: session, confidence: 0.9, is_suppressed: false, old_name: oldName, new_name: newName, change_type: "renamed" },
-    { id: secondActive, org_id: org, session_id: secondSession, confidence: 0.9, is_suppressed: false, old_name: secondOldName, new_name: secondNewName, change_type: "renamed" },
+    { id: secondActive, org_id: org, project_scope: "vega", session_id: secondSession, confidence: 0.9, is_suppressed: false, old_name: secondOldName, new_name: secondNewName, change_type: "renamed" },
     { id: suppressed, org_id: org, session_id: session, confidence: 0.9, is_suppressed: true, old_name: "hidden_old", new_name: "hidden_new", change_type: "renamed" },
   ]), "insert facts");
 
@@ -75,15 +75,18 @@ try {
   }
   const entityLinks = checked(await db.from("knowledge_entity_sessions").select("entity_id,session_id").eq("org_id", org), "read entity provenance");
   const edgeLinks = checked(await db.from("knowledge_edge_sessions").select("edge_id,session_id").eq("org_id", org), "read edge provenance");
-  const entities = checked(await db.from("knowledge_entities").select("provenance_complete").eq("org_id", org), "read entity completeness");
-  const edges = checked(await db.from("knowledge_edges").select("provenance_complete").eq("org_id", org), "read edge completeness");
+  const entities = checked(await db.from("knowledge_entities").select("name,project_scope,scope_verified,provenance_complete").eq("org_id", org), "read entity completeness");
+  const edges = checked(await db.from("knowledge_edges").select("project_scope,scope_verified,provenance_complete").eq("org_id", org), "read edge completeness");
   if (entityLinks.length !== 4 || edgeLinks.length !== 2
       || entityLinks.filter((row) => row.session_id === session).length !== 2
       || entityLinks.filter((row) => row.session_id === secondSession).length !== 2
       || edgeLinks.filter((row) => row.session_id === session).length !== 1
       || edgeLinks.filter((row) => row.session_id === secondSession).length !== 1
-      || entities.some((row) => row.provenance_complete !== true)
-      || edges.some((row) => row.provenance_complete !== true)) {
+      || entities.some((row) => row.provenance_complete !== true || row.scope_verified !== true
+        || row.project_scope !== (row.name === secondOldName || row.name === secondNewName ? "vega" : null))
+      || edges.some((row) => row.provenance_complete !== true || row.scope_verified !== true)
+      || edges.filter((row) => row.project_scope === "vega").length !== 1
+      || edges.filter((row) => row.project_scope === null).length !== 1) {
     throw new Error("promotion did not record complete session graph provenance");
   }
 

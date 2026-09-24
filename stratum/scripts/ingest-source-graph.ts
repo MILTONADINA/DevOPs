@@ -3,6 +3,7 @@ import { lstatSync, readFileSync, readdirSync, realpathSync, statSync } from "no
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { createClient } from "@supabase/supabase-js";
 import { createKnowledgeGraph } from "../src/memory/cold/graph";
+import { validProjectScope } from "../src/proxy/auth";
 import { indexSourceFiles, type SourceFileInput } from "../src/memory/source-graph";
 import { graphEncoder, graphEntityText } from "../src/memory/graph-embedding";
 import { createLocalSourceCompletion, summarizeSourceFiles } from "../src/memory/source-summary";
@@ -49,6 +50,8 @@ export async function main(): Promise<void> {
   if (url !== "http://127.0.0.1:54321" || !key || !orgId || !UUID.test(orgId)) {
     throw new Error("local Compose URL, service key, and UUID INGEST_ORG_ID are required");
   }
+  const projectScope = process.env["INGEST_PROJECT_SCOPE"] ?? null;
+  if (projectScope !== null && !validProjectScope(projectScope)) throw new Error("INGEST_PROJECT_SCOPE must be a valid project slug");
   const summaryModel = process.env["CQ_SOURCE_SUMMARY_MODEL"];
   const summaryUrl = process.env["CQ_LOCAL_BASE_URL"];
   if (summaryModel && !summaryUrl) throw new Error("CQ_LOCAL_BASE_URL is required when CQ_SOURCE_SUMMARY_MODEL is set");
@@ -67,7 +70,7 @@ export async function main(): Promise<void> {
   const store = createKnowledgeGraph(client);
   const ids = new Map<string, string>();
   for (const entity of graph.entities) {
-    ids.set(entity.name, await store.ensureEntity({ orgId, kind: entity.kind, name: entity.name, filePath: entity.filePath, summary: entity.summary }));
+    ids.set(entity.name, await store.ensureEntity({ orgId, projectScope, kind: entity.kind, name: entity.name, filePath: entity.filePath, summary: entity.summary }));
   }
   for (let offset = 0; offset < graph.entities.length; offset += 16) {
     const batch = graph.entities.slice(offset, offset + 16);
@@ -84,7 +87,7 @@ export async function main(): Promise<void> {
     const fromEntity = ids.get(edge.fromName);
     const toEntity = ids.get(edge.toName);
     if (!fromEntity || !toEntity) throw new Error("source graph edge has a missing endpoint");
-    await store.addEdge({ orgId, fromEntity, toEntity, edgeType: edge.edgeType });
+    await store.addEdge({ orgId, projectScope, fromEntity, toEntity, edgeType: edge.edgeType });
   }
   process.stdout.write(`Indexed ${files.length} source files, ${graph.entities.length} entities, ${graph.edges.length} edges for org ${orgId.slice(0, 8)}…\n`);
 }

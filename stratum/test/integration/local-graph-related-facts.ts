@@ -52,8 +52,8 @@ try {
   checked(await db.from("api_keys").insert({ org_id: own, key_hash: hashApiKey(raw), name: "related-facts" }), "insert key");
   checked(
     await db.from("knowledge_entities").insert([
-      { org_id: own, kind: "File", name: "src/auth.ts", file_path: "src/auth.ts" },
-      { org_id: foreign, kind: "File", name: "src/auth.ts", file_path: "src/auth.ts" },
+      { org_id: own, scope_verified: true, kind: "File", name: "src/auth.ts", file_path: "src/auth.ts" },
+      { org_id: foreign, scope_verified: true, kind: "File", name: "src/auth.ts", file_path: "src/auth.ts" },
     ]),
     "insert File nodes",
   );
@@ -142,7 +142,7 @@ try {
   checked(await db.from("knowledge_entities").update({ name: "src/auth.ts", file_path: "src/auth.ts" }).eq("org_id", own).eq("kind", "File").eq("name", "src/renamed.ts"), "restore indexed File path");
   if ((await links()).length !== 2) throw new Error("restored File path did not relink active facts");
 
-  checked(await db.from("knowledge_entities").insert({ org_id: own, kind: "File", name: "src/missing.ts", file_path: "src/missing.ts" }), "insert File after facts");
+  checked(await db.from("knowledge_entities").insert({ org_id: own, scope_verified: true, kind: "File", name: "src/missing.ts", file_path: "src/missing.ts" }), "insert File after facts");
   if (!(await links()).some((link) => link.function_change_id === missingFileChange)) throw new Error("File-after-fact insert did not backfill its link");
   checked(await db.from("knowledge_entities").delete().eq("org_id", own).eq("kind", "File").eq("name", "src/missing.ts"), "delete indexed File");
   if ((await links()).some((link) => link.function_change_id === missingFileChange)) throw new Error("deleted File retained its link");
@@ -150,7 +150,7 @@ try {
   const ownFile = checked(await db.from("knowledge_entities").select("id").eq("org_id", own).eq("kind", "File").eq("name", "src/auth.ts").single(), "read own File").id;
   const foreignFile = checked(await db.from("knowledge_entities").select("id").eq("org_id", foreign).eq("kind", "File").eq("name", "src/auth.ts").single(), "read foreign File").id;
   const nonFile = checked(
-    await db.from("knowledge_entities").insert({ org_id: own, kind: "Function", name: "src/auth.ts#verify", file_path: "src/auth.ts" }).select("id").single(),
+    await db.from("knowledge_entities").insert({ org_id: own, scope_verified: true, kind: "Function", name: "src/auth.ts#verify", file_path: "src/auth.ts" }).select("id").single(),
     "insert non-File node",
   ).id;
   for (const row of [

@@ -8,6 +8,24 @@ import { createKnowledgeGraph } from "../../src/memory/cold/graph";
 import { makeFakeSupabase } from "./fake-supabase";
 
 describe("Tier-3 knowledge graph (Supabase adapter)", () => {
+  test("keeps same-name graph rows and metadata separate by project, excluding uncertain history", async () => {
+    const { client, store } = makeFakeSupabase({
+      knowledge_entities: [{ id: "old", org_id: "o1", kind: "File", name: "src/auth.ts", summary: "uncertain historical summary", project_scope: null, scope_verified: false }],
+    });
+    const graph = createKnowledgeGraph(client);
+    const orion = await graph.ensureEntity({ orgId: "o1", projectScope: "orion", kind: "File", name: "src/auth.ts", summary: "Orion auth" });
+    const vega = await graph.ensureEntity({ orgId: "o1", projectScope: "vega", kind: "File", name: "src/auth.ts", summary: "Vega auth" });
+    const unbound = await graph.ensureEntity({ orgId: "o1", projectScope: null, kind: "File", name: "src/auth.ts", summary: "Unbound auth" });
+    expect(new Set([orion, vega, unbound, "old"]).size).toBe(4);
+    expect(await graph.ensureEntity({ orgId: "o1", projectScope: "orion", kind: "File", name: "src/auth.ts" })).toBe(orion);
+    expect(store["knowledge_entities"]).toMatchObject([
+      { id: "old", scope_verified: false },
+      { id: orion, project_scope: "orion", scope_verified: true, summary: "Orion auth" },
+      { id: vega, project_scope: "vega", scope_verified: true, summary: "Vega auth" },
+      { id: unbound, project_scope: null, scope_verified: true, summary: "Unbound auth" },
+    ]);
+  });
+
   test("ensureEntity creates a node when absent and returns its id", async () => {
     const { client, store } = makeFakeSupabase();
     const g = createKnowledgeGraph(client);

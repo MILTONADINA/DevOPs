@@ -112,8 +112,9 @@ client-supplied scope. Run `npm run db:verify-project-explicit-sessions` to
 verify that commercial `/v1/sessions` creation, reads, stats, and ending obey
 the authenticated project, including parallel creates against the
 organization-wide session cap. Unbound keys see only unbound sessions;
-personal mode remains organization-wide. Graph and other organization-wide
-APIs are not yet project-isolated. This does not enable pruning.
+personal mode remains organization-wide. The graph API's project boundary is
+described below. Other organization-wide APIs may still need project review.
+This does not enable pruning.
 
 Run `npm run db:verify-message-memory` to check a successful authenticated
 `/v1/messages` request through a loopback fake extraction model. It verifies
@@ -146,6 +147,13 @@ Run `npm run db:verify-graph-read` to verify the protected, bounded
 `/v1/memory/graph` snapshot against two disposable local organizations. It
 checks key-based scope and bounded node/edge reads. The graph schema now
 rejects cross-organization edge references. Run
+`npm run db:verify-project-graph` to verify the commercial project boundary
+across snapshots, name and semantic search, File and dependency pages, related
+facts, and database provenance guards. Older graph rows with no trustworthy
+project identity remain visible only in personal mode; reindex source files
+to create project-scoped commercial rows. Set `INGEST_PROJECT_SCOPE` to the
+same slug as the project's API key when running `ingest-source-graph`; omit it
+for an unbound key. The slug is validated before graph writes. Run
 `npm run db:verify-graph-integrity` to check insert and update rejection for
 foreign entity and session references. The read API supplies graph nodes and
 edges. Run `npm run db:verify-source-graph` for a disposable source fixture
