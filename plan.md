@@ -371,7 +371,7 @@ Anthropic's reasoning-based security scanner (GA Feb 2026) reads code "the way a
 
 ### 7a. Onboarding
 
-- [ ] **`npm run setup`** (~15h). One-command setup script at repo root. Detect OS; install Supabase local (Docker required); install Stratum deps; configure env vars; smoke-test proxy startup; output success message with next steps. Cross-platform (macOS / Linux / WSL2).
+- [ ] **`npm run setup`** (~15h). The root command detects macOS/Linux/WSL2, installs missing Stratum dependencies, starts project-local Supabase Compose, and smoke-tests the real proxy/database listener without `.env` access. It passed on this Mac; clean-laptop timing, Linux/WSL2 runs, and provider-backed message traffic remain unverified.
 - [ ] **PERSONAL_USE.md v2** — full polish (~5h). Daily workflow, env vars, troubleshooting common errors, FAQ.
 - [ ] **DEVELOPER_GUIDE.md** (~6h). For friends contributing: dev environment setup, test running, lint/format, PR conventions, signing setup (PB-16 closed).
 - [ ] **ARCHITECTURE.md** (~6h). System design overview. Diagrams. Component responsibilities. Data flow. Cross-reference to ADRs.
