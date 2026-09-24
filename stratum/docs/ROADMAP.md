@@ -82,10 +82,10 @@
   - Handle all edge cases (empty history, single turn, σ=0)
 - [ ] Implement `src/pruner/pruner.ts` — orchestrates encoder + KadaneDial
 - [ ] Build the eval harness (`evals/harness/runner.ts`)
-- [ ] Port or download the Tier A benchmark datasets (LoCoMo, MT-Bench+, SCM4LLMs)
+- [x] Add LoCoMo and LongMemEval Tier-A loaders and separate judged runners; full passing judged runs remain open
 - [ ] Create the Tier B developer workload scenarios (at least 4)
 - [x] Create the Tier C golden query set (50 synthetic critical cases); the
-  default λ=0.97 run currently fails 30 cases, so the zero-failure gate below
+  default λ=0.97 run currently fails 21 cases, so the zero-failure gate below
   remains open.
 - [ ] Run evals against full-context baseline — confirm thresholds are met
 - [ ] Integrate pruner into the Phase 1 proxy (now it prunes before forwarding)

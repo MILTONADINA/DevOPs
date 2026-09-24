@@ -4,7 +4,7 @@
  * The gating/reporting ENGINE these types feed (compare.ts / golden.ts /
  * report.ts) is deterministic and unit-tested NOW. The metric SOURCE (the
  * LLM-judged Faithfulness/Answer-Relevancy scores) and the DATASETS
- * (LoCoMo/MT-Bench+/SCM4LLMs + the §2b-derived developer set) are gated — see
+ * (LoCoMo/LongMemEval + the §2b-derived developer set) are gated — see
  * metrics.ts (judge seam) and runner.ts (gated-skip). Thresholds + tiers mirror
  * docs/EVAL_FRAMEWORK.md verbatim.
  */

@@ -19,8 +19,8 @@
  * sample (ADR-0011 discipline / forbidden over-fitting). This code is NOT wired
  * into the proxy and pruning is NOT enabled anywhere — it is preparatory v0.4.x
  * core. Do NOT enable pruning in the request path until the gate passes
- * (<5% Faithfulness degradation AND evidence survival holds). MT-Bench+/SCM4LLMs
- * Tier-A loaders are still pending.
+ * (<5% Faithfulness degradation AND evidence survival holds). LoCoMo and
+ * LongMemEval loaders exist; passing judged Tier-A runs remain pending.
  *   CALIBRATION (ADR-0015, free corpus-wide survival sweep `eval:locomo:survival`,
  *   10 conv / 120 q, deterministic — no API): the fixed per-HOUR λ is the wrong
  *   PRIOR for long-horizon recall — λ=0.97 retains 2% of EARLY gold evidence,
