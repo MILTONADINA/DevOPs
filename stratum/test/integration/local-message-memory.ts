@@ -33,10 +33,10 @@ const model = createServer(async (request, response) => {
   }
   response.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({
     id: "local-check", object: "chat.completion", created: 1, model: "check",
-    choices: [{ index: 0, message: { role: "assistant", content: JSON.stringify([
-      { fact_type: "FunctionChange", old_name: "oldLocal", new_name: "newLocal", change_type: "renamed", confidence: 0.9,
+    choices: [{ index: 0, message: { role: "assistant", content: `${modelCalls === 2 ? "Thinking: tentative candidate " : ""}${JSON.stringify([
+      { fact_type: "FunctionChange", old_name: modelCalls === 2 ? "truncatedLocal" : "oldLocal", new_name: "newLocal", change_type: "renamed", confidence: 0.9,
         org_id: randomUUID(), session_id: randomUUID(), source_exchange_id: randomUUID(), is_suppressed: true },
-    ]) }, finish_reason: "stop" }],
+    ])}${modelCalls === 2 ? " Final answer: [{\"fact_type\":\"FunctionChange\"" : ""}` }, finish_reason: modelCalls === 2 ? "length" : "stop" }],
     usage: { prompt_tokens: 10, completion_tokens: 10, total_tokens: 20 },
   }));
 });
@@ -68,12 +68,18 @@ try {
   const recorder = options.messages?.recordMemory;
   if (!recorder || !options.messages) throw new Error("commercial recorder was not wired");
   let exchangeId: string | undefined;
-  options.messages.recordMemory = async (event) => { exchangeId = event.exchangeId; await recorder(event); };
+  options.messages.recordMemory = async (event) => { exchangeId ??= event.exchangeId; await recorder(event); };
   app = buildProxy(options);
   const answer = await app.inject({ method: "POST", url: "/v1/messages", headers: { authorization: `Bearer ${rawKey}` },
     payload: { model: "local/check", messages: [{ role: "user", content: "older question" },
       { role: "assistant", content: "older answer" }, { role: "user", content: "latest question" }], max_tokens: 32 } });
   if (answer.statusCode !== 200) throw new Error(`message request returned ${answer.statusCode}`);
+  const truncated = await app.inject({ method: "POST", url: "/v1/messages",
+    headers: { authorization: `Bearer ${rawKey}`, "x-cq-conversation-id": String(answer.headers["x-cq-conversation-id"]) },
+    payload: { model: "local/check", messages: [{ role: "user", content: "latest question" }], max_tokens: 32 } });
+  if (truncated.statusCode !== 200 || truncated.headers["x-cq-conversation-id"] !== answer.headers["x-cq-conversation-id"]) {
+    throw new Error("truncated extraction changed the upstream response or conversation");
+  }
   await app.close();
   app = undefined;
   const sessions = checked(await db.from("sessions").select("id,org_id,kind").eq("org_id", org), "read conversation session");
@@ -85,8 +91,8 @@ try {
   const facts = checked(await db.from("function_changes").select("id,org_id,session_id,source_exchange_id,is_suppressed,old_name").eq("org_id", org), "read memory fact");
   if (facts.length !== 1 || facts[0].session_id !== sessionId || facts[0].source_exchange_id !== exchangeId ||
       !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(exchangeId ?? "") ||
-      facts[0].old_name !== "oldLocal" || facts[0].is_suppressed || modelCalls !== 1) {
-    throw new Error("typed fact was not stored under the trusted session");
+      facts[0].old_name !== "oldLocal" || facts[0].is_suppressed || modelCalls !== 2) {
+    throw new Error("completed fact was not stored alone under the trusted session");
   }
   let extracted = false;
   const rejectForeign = createSupabaseMessageMemoryRecorder(db, { extract: async () => { extracted = true; return []; } });

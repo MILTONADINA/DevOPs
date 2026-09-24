@@ -208,6 +208,9 @@ export function buildStartOptions(env: StartEnv, base: BuildProxyOptions, makeCl
           async complete(prompt) {
             const response = await forward({ model, messages: [{ role: "user", content: prompt }], max_tokens: 1024 }, "");
             if (response.status >= 400) throw new Error(`local extraction model returned HTTP ${response.status}`);
+            if ((response.data as { stop_reason?: string } | null)?.stop_reason === "max_tokens") {
+              throw new Error("local extraction model output truncated");
+            }
             const blocks = (response.data as { content?: { type?: string; text?: string }[] } | null)?.content;
             const answer = blocks
               ?.filter((block) => block.type === "text" && typeof block.text === "string")
