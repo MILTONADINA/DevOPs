@@ -3,6 +3,8 @@
 DevOPs is built on a strict philosophy: every change must be justifiable,
 verifiable, and surgical. This document is the rulebook.
 
+For checkout setup and current commands, see the [developer guide](DEVELOPER_GUIDE.md).
+
 ---
 
 ## Before you write any code
@@ -61,24 +63,24 @@ the local pre-flight; CI runs the gating pieces; reviewer confirms.
 |---|---|---|
 | 1 | Claude Code `/code-review` (in-session) | Diff correctness, style, surgical scope, spec tracing. Author-driven, ad-hoc. Run before pushing the PR branch. |
 | 2 | Claude Code `/security-review` (in-session) | Security-focused diff review. Catches obvious issues before CI does. Optional if the PR is non-security-touching, but cheap insurance. |
-| 3 | `npm run validate:claims -- --all` | Proof re-runs across the entire claim corpus. Confirms validator stays at baseline (94/N where N = total claims; 1 fail = PB-21 coupled exception until PB-13 closes). |
-| 4 | `npm run lint && npx tsc --noEmit` (where applicable) | Lint + typecheck clean. |
-| 5 | Test suite for the touched subtree: `npm test` (root) OR `cd stratum && npm test`. Vitest binding per Q8.1. |
+| 3 | `npm run validate:claims -- path/to/claim.yml --no-rerun` | New claim schema, Git provenance, and reproducibility hash. Re-run its recorded test when the required environment is available. |
+| 4 | `cd stratum && npm run lint && npm run typecheck` (for Stratum code) | Lint and typecheck clean. |
+| 5 | Test suite for the touched subtree: `npm test` (root) or `cd stratum && npm test`. | Relevant behavior passes before opening the PR. |
 
 ### CI-gated (runs on every `pull_request` to `main`)
 
 | Workflow | What it gates | Failure → |
 |---|---|---|
-| `.github/workflows/ci.yml` | Lint + typecheck + test + coverage thresholds | merge blocked |
-| `.github/workflows/security-scan.yml` | Tiered: gitleaks (secrets), semgrep (static analysis), `threat-model-validity` (custom lint) | merge blocked |
-| `.github/workflows/claude-security-review.yml` | **AI-powered semantic security analysis** of changed files. Posts inline review comments. Catches semantic bugs pattern-matching scanners miss (ReDoS, logic-level injection, FAIL-OPEN paths). Uses Opus 4.7. See ADR-014. | findings posted as inline PR comments; merge NOT auto-blocked (reviewer judgment call, but every finding must be addressed or explicitly waived). |
+| `.github/workflows/ci.yml` | Fresh Linux root setup and smoke; claim, Renovate, skill, and root test validation | merge blocked |
+| `.github/workflows/security-scan.yml` | Gitleaks, Semgrep, and DeepTeam scans | merge blocked |
+| `.github/workflows/claude-security-review.yml` | Conditional Claude semantic review of the PR diff. A missing `CLAUDE_API_KEY` produces a visible skip, not review evidence. See ADR-014. | advisory; inspect findings or skip status before merge |
 
 ### Reviewer confirmation (before squash-merge)
 
 - [ ] All CI checks green (or red findings addressed/waived in PR comments).
 - [ ] Spec/ADR reference verified.
 - [ ] Threat-model lint clean if any security-bearing file touched (see rule 6 above).
-- [ ] Claim emission (if applicable) has matching `.workflow/proofs/claim-2026-05-22-NNN.yml` + check script + test log.
+- [ ] Claim emission (if applicable) has a dated `.workflow/proofs/claim-*.yml` and matching test log.
 - [ ] Polish-backlog updated if PB scope changed (new PB filed, existing PB closed, severity changed).
 
 ### Squash-merge convention
