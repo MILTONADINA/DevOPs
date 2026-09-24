@@ -53,6 +53,24 @@ describe("createSupabaseUsageRecorder", () => {
     expect(ok).toBe(true);
   });
 
+  test("passes an event UUID through to the signed append-only row", async () => {
+    const { client, inserts } = fakeClient();
+    const rec = createSupabaseUsageRecorder({ client, signingSecret: SECRET, now: () => NOW });
+    const eventId = "00000000-0000-4000-8000-000000000123";
+    await rec.recordUsage({ orgId: "org-1", eventId, model: "claude-sonnet-4-6", inputTokens: 8000, outputTokens: 500 });
+    const row = inserts.find((i) => i.table === "billing_records")?.row;
+    expect(row?.["usage_event_id"]).toBe(eventId);
+    expect(verifyBillingRecord({ orgId: "org-1", sessionId: "sess-1", usageEventId: eventId, originalTokens: 8000, quarantinedTokens: 8000, apiPricePerToken: 0.000003 }, row?.["signed_hash"] as string, SECRET)).toBe(true);
+  });
+
+  test("a replay after midnight keeps the original usage bucket day", async () => {
+    const { client, inserts } = fakeClient();
+    const rec = createSupabaseUsageRecorder({ client, signingSecret: SECRET, now: () => NOW + 86_400_000 });
+    const occurredAt = new Date(NOW).toISOString();
+    await rec.recordUsage({ orgId: "org-1", eventId: "00000000-0000-4000-8000-000000000123", occurredAt, model: "claude-sonnet-4-6", inputTokens: 8000, outputTokens: 500 });
+    expect(inserts.find((i) => i.table === "sessions")?.row["created_at"]).toBe(occurredAt);
+  });
+
   test("reuses one session per (org, day, model) — N requests ⇒ 1 session insert, N billing rows", async () => {
     const { client, inserts } = fakeClient();
     const rec = createSupabaseUsageRecorder({ client, signingSecret: SECRET, now: () => NOW });
