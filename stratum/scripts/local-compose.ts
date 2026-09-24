@@ -34,14 +34,39 @@ export function serviceJwt(secret: string, expiresAt: number): string {
 function docker(args: string[], env: NodeJS.ProcessEnv, input?: string): string {
   try {
     return execFileSync("docker", args, { cwd: process.cwd(), env, input, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"], maxBuffer: 16 * 1024 * 1024 });
-  } catch {
+  } catch (error) {
     // Docker output can include container environment, including the JWT secret.
-    throw new Error(`docker ${args[0] ?? ""} ${args[1] ?? ""} failed`);
+    const detail = dockerFailureDetail((error as { stderr?: unknown }).stderr);
+    throw new Error(`docker ${args[0] ?? ""} ${args[1] ?? ""} failed: ${detail}`);
   }
 }
 
+export function dockerFailureDetail(stderr: unknown): string {
+  return /toomanyrequests|rate exceeded|too many requests|\b429\b/i.test(String(stderr ?? ""))
+    ? "public registry rate limit"
+    : "docker command failed";
+}
+
 function compose(args: string[], env: NodeJS.ProcessEnv, input?: string): string {
-  return docker([...composeArgs, ...args], env, input);
+  return docker([...composeArgs, ...args], { ...env, COMPOSE_PARALLEL_LIMIT: "1" }, input);
+}
+
+export async function retryRateLimited(action: () => void, wait: (ms: number) => Promise<void> = (ms) => new Promise((resolve) => setTimeout(resolve, ms))): Promise<void> {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      action();
+      return;
+    } catch (error) {
+      if (!(error instanceof Error) || !error.message.includes("public registry rate limit") || attempt === 2) throw error;
+      const delayMs = 2_000 * (attempt + 1);
+      process.stderr.write(`Public registry rate limit; retrying startup in ${delayMs / 1000}s.\n`);
+      await wait(delayMs);
+    }
+  }
+}
+
+async function composeUp(args: string[], env: NodeJS.ProcessEnv): Promise<void> {
+  await retryRateLimited(() => { compose(["up", "-d", "--wait", "--wait-timeout", "90", ...args], env); });
 }
 
 function stackEnv(secret: string): NodeJS.ProcessEnv {
@@ -54,6 +79,17 @@ function inspectPorts(env: NodeJS.ProcessEnv): void {
     ports[service] = JSON.parse(docker(["inspect", "--format", "{{json .NetworkSettings.Ports}}", names[service]], env)) as Ports;
   }
   assertLocalPorts(ports);
+}
+
+function containerStates(env: NodeJS.ProcessEnv): string {
+  return services.map((service) => {
+    try {
+      const state = docker(["inspect", "--format", "{{.State.Status}}/{{.State.ExitCode}}", names[service]], env).trim();
+      return `${service}=${state}`;
+    } catch {
+      return `${service}=absent`;
+    }
+  }).join(", ");
 }
 
 function migrate(env: NodeJS.ProcessEnv): number {
@@ -82,17 +118,23 @@ function currentSecret(): string {
 async function start(): Promise<void> {
   const secret = Buffer.from(randomBytes(32)).toString("hex");
   const env = stackEnv(secret);
+  let stage = "database container startup";
   try {
-    compose(["up", "-d", "--wait", "--wait-timeout", "90", "db"], env);
+    await composeUp(["db"], env);
+    stage = "database migration";
     const applied = migrate(env);
-    compose(["up", "-d", "--wait", "--wait-timeout", "90", "rest", "gateway"], env);
+    stage = "REST and gateway startup";
+    await composeUp(["rest", "gateway"], env);
+    stage = "loopback port inspection";
     inspectPorts(env);
+    stage = "local API health check";
     const response = await fetch("http://127.0.0.1:54321/rest/v1/", { headers: { Authorization: `Bearer ${serviceJwt(secret, Math.floor(Date.now() / 1000) + 3600)}` }, signal: AbortSignal.timeout(5000) });
     if (!response.ok) throw new Error(`local API returned HTTP ${response.status}`);
     process.stdout.write(`Local Supabase API ready on 127.0.0.1:54321; ${applied} migration(s) applied.\n`);
   } catch (error) {
+    const states = containerStates(env);
     try { compose(["down"], env); } catch { /* preserve startup error */ }
-    throw error;
+    throw new Error(`local stack ${stage} failed (${states}): ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 

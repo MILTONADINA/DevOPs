@@ -8,7 +8,10 @@ WHEN an operator runs `npm run setup` from the repository root on macOS,
 Linux, or WSL2, THE SYSTEM SHALL check Node and Docker Compose prerequisites,
 install Stratum dependencies when missing, start the loopback-only local stack,
 and smoke-test the proxy listener and local database health. It SHALL exit
-nonzero with an actionable error if a prerequisite or smoke check fails.
+nonzero with an actionable error if a prerequisite or smoke check fails. A
+local Compose startup failure SHALL identify the failing stage and each
+container's state/exit code before cleanup, without printing Docker
+environment variables or credentials.
 
 ## REQ-2 — Secret boundary and honest readiness
 
@@ -31,6 +34,21 @@ WHEN an operator runs `npm run analyze` from this checkout without setting
 and refresh `.workflow/profile.yml`. The npm entry SHALL work even when a
 local copy has lost the executable bit on the shell script.
 
+## REQ-5 — Isolated Linux cold setup gate
+
+WHEN a pull request runs CI, THE SYSTEM SHALL run the root setup command on a
+fresh Linux checkout with no preinstalled Stratum dependencies or existing
+project Compose volume. It SHALL measure the setup command's elapsed time,
+require the real proxy/database smoke to succeed in under five minutes, and
+stop the disposable Compose stack after the check. It SHALL use no hosted
+Supabase project or provider credential. WHEN pulling the three public ECR
+images, Compose SHALL limit concurrent engine calls to one so anonymous
+registry pulls do not race against the one-pull-per-second quota. IF a
+Compose startup attempt receives a registry rate-limit response, THE SYSTEM
+SHALL retry that startup at most twice after short delays; other startup
+faults SHALL fail immediately. Diagnostics SHALL classify the rate limit
+without exposing raw Docker stderr.
+
 ## Acceptance criteria
 
 - **AC-1:** root `npm run setup -- --help` documents supported systems and
@@ -44,3 +62,6 @@ local copy has lost the executable bit on the shell script.
   and the old dotenv-writing Stratum setup script is absent.
 - **AC-5:** `npm run analyze` exits zero without `DEVOPS_ROOT` and writes a
   current profile from this checkout.
+- **AC-6:** the Linux CI job passes the complete `npm run setup` path on its
+  clean runner, records elapsed seconds below 300, and runs Compose teardown
+  even if setup fails.
