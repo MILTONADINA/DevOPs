@@ -173,16 +173,23 @@ Do not re-encode the entire history on each turn. The embedding for each turn is
 
 ## Validation
 
-Before shipping any change to the algorithm, run the eval suite:
+Before shipping a pruning change, run the offline critical gate and both
+published judged gates with a configured provider:
 
 ```bash
-npm run test:eval -- --suite kadanedial
+npm run eval:tierc
+npm run eval:locomo
+npm run eval:longmemeval
 ```
 
-The suite tests against three dialogue benchmarks (LoCoMo, MT-Bench+, SCM4LLMs) with the CQ-specific developer workload additions. Acceptable thresholds:
+The offline Tier-C command checks the unchanged critical corpus and currently
+fails 21/50 cases. Full passing Tier-A judged runs and full-suite orchestration
+remain open. Acceptable thresholds:
 
 - Faithfulness score: > 0.90 (< 5% degradation from full-context baseline)
 - Answer Relevancy: > 0.88
+- Gold evidence survival: ≥ 0.80 on each scored scenario
+- Critical Tier-C queries: 50/50
 - Latency (ONNX encode + KadaneDial): < 15ms p99 on a MacBook M2
 
 See `docs/EVAL_FRAMEWORK.md` for full methodology.

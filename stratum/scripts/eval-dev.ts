@@ -5,7 +5,7 @@
  * KadaneDial prune() → real Claude answerer on pruned vs full context → real LLM
  * judge → the deterministic gate. This is the dev-set proxy for the accuracy gate
  * (docs/EVAL_FRAMEWORK.md); the PUBLISHED-benchmark numbers still require the
- * Tier-A datasets (LoCoMo/MT-Bench+/SCM4LLMs). It proves the pipeline is wired
+ * separate Tier-A runners (LoCoMo/LongMemEval). It proves the pipeline is wired
  * correctly + that the pruner keeps the answer-critical turn.
  *
  *   ANTHROPIC_API_KEY=... npm run eval:dev   (first run downloads the model)

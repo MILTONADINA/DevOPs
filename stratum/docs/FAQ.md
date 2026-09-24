@@ -14,7 +14,7 @@ Truncation cuts from the beginning — it removes the oldest context regardless 
 
 ### Will CQ make my AI less accurate?
 
-That is the central question we take seriously. Our eval suite measures this on every build against three published benchmarks (LoCoMo, MT-Bench+, SCM4LLMs) plus our own developer-specific scenarios. The threshold is strict: Faithfulness must remain above 0.90 and Answer Relevancy above 0.88 compared to the full-context baseline. If a pruning change causes degradation beyond 5%, it does not ship. In practice, many users report the AI becomes more accurate because it is no longer distracted by noise.
+That is the central question we take seriously. Pruning is currently disabled because its offline critical-query gate passes only 29/50 cases. LoCoMo and LongMemEval have separate long-horizon judged runners, but the full release evaluation and one week of real-use checks remain open. The planned gate requires Faithfulness above 0.90, Answer Relevancy above 0.88, no more than 5% degradation from full context, and retention of answer evidence.
 
 ### What does "Git-Attested Memory" mean?
 

@@ -148,7 +148,7 @@ and real-use gates remain open; the runners now fail nonzero without a provider.
 
 ### 3c. Eval harness
 
-- [ ] **Tier A datasets** (~15h). Port or download LoCoMo + MT-Bench+ + SCM4LLMs to `stratum/evals/datasets/`. Document acquisition + license per dataset.
+- [x] **Tier A dataset loaders**. LoCoMo and LongMemEval loaders and separate judged runners exist; local benchmark files are ignored. `stratum/docs/EVAL_FRAMEWORK.md` records acquisition, license, and why MT-Bench-101/SCM4LLMs are not this long-horizon evidence gate. Full judged runs remain open.
 - [ ] **`stratum/evals/harness/runner.ts`** (~10h). Eval orchestrator: load dataset → run pruner → compute Faithfulness (DeepEval) + Answer Relevancy + Latency. Output JSON results per run.
 - [ ] **Tier A baseline run** (~3h). Full-context (no prune) baseline. Save as `stratum/evals/results/tier-a-baseline.json`.
 - [ ] **Tier A pruner run** (~3h). With pruner enabled. Save as `stratum/evals/results/tier-a-pruner.json`. Verify Faithfulness >0.90 + Answer Relevancy >0.88 vs baseline.
@@ -167,7 +167,7 @@ and real-use gates remain open; the runners now fail nonzero without a provider.
   commercial reads. Other org-wide APIs may still need project review. The pruner is still out of
   the request path and unbound keys supply no project scope. Zero
   Tier-C failures remains a v0.4 ship gate.
-- [ ] **`npm run test:eval` wires** all three tiers into one command. CI runs Tier C on every PR; Tier A weekly; Tier B on Phase 2-touching PRs.
+- [ ] **`npm run test:eval` wires** all three tiers into one command. It currently runs Tier C first and then Tier B when available; full Tier-A orchestration, CI scheduling, and a green Tier-C result remain open.
 
 ### 3d. Pruner integration into proxy
 

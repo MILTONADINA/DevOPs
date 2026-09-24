@@ -66,15 +66,16 @@ degradation-dominant metric gate, so the suite neither false-PASSes a bluffing p
 
 ## Eval Datasets
 
-### Tier A — Published Benchmarks (from DyCP paper)
+### Tier A — Published long-horizon benchmarks
 
-Used to validate that our implementation of KadaneDial is correct and that the CQ-Extended variant does not regress vs. base DyCP.
+Used to measure long-horizon evidence retention and judged answer quality before activating CQ-Extended pruning.
 
 | Dataset | Description | Turns | Fits the pruning evidence-survival gate? |
 |---|---|---|---|
-| **LoCoMo** | Long-term conversational memory; multi-session, timestamped, gold `evidence` dia-ids | 369–689 turns over 19–32 sessions / **weeks** | ✅ **YES** — long horizon + gold evidence anchors. Integrated + run. |
+| **LoCoMo** | Long-term conversational memory; multi-session, timestamped, gold `evidence` dia-ids | 369–689 turns over 19–32 sessions / **weeks** | ✅ **YES** — long horizon + gold evidence anchors. Loader and sampled runner integrated. |
+| **LongMemEval** | Long-term chat memory; timestamped sessions and `has_answer` evidence flags | 500 questions across long histories | ✅ **YES** — second long-horizon evidence benchmark. Loader and separate runner integrated. |
 | ~~MT-Bench+ / MT-Bench-101~~ | Multi-turn response-QUALITY benchmark (13 tasks, subjective judging) | **≤7 turns, single session, no timestamps** | ❌ NO — too short to stress long-horizon memory; no gold evidence to measure survival against. (Apache-2.0; mtbench101/mt-bench-101.) |
-| ~~SCM4LLMs~~ | A self-controlled-memory **FRAMEWORK codebase**, not a dataset | n/a | ❌ NO — ships **no eval dataset** (the authors state one doesn't exist; "validated solely through manual verification"). |
+| ~~SCM4LLMs~~ | A self-controlled-memory **framework**, not an integrated benchmark in this project | n/a | ❌ NO — its code repository does not supply the long-horizon, turn-level evidence fixture this gate consumes. |
 
 **Tier-A triage (2026-05-29):** the blueprint's original Tier-A list was inaccurate
 — verified by inspecting each repo (Session 18). Only **LoCoMo** is a long-horizon,
@@ -86,13 +87,25 @@ sessions; the recommended second benchmark) and **MSC / Multi-Session Chat**. Tr
 as PB-41. Do not modify a fetched dataset; if results diverge from a paper's numbers,
 investigate the implementation, not the data.
 
-**Status (2026-05-29):** LoCoMo is integrated + RUN — `npm run eval:locomo`
+**Status (2026-09-24):** LoCoMo is integrated + sampled judged RUN — `npm run eval:locomo`
 (loader `evals/harness/locomo.ts`, sampled + cost-bounded; data CC-BY-NC,
 gitignored, not redistributed). Result at the documented λ=0.97: **RED** —
 1.4% evidence survival, 92% context reduction; the λ sweep shows λ=1.0 recovers
 84% evidence at 47% reduction. Pruning stays OUT of the request path. Full
-analysis: **ADR-0014**. The second-benchmark loader (LongMemEval/MSC, per the
-Tier-A triage above — NOT MT-Bench+/SCM4LLMs, which don't fit) is pending (PB-41).
+analysis: **ADR-0014**. LongMemEval's loader and separate judged runner
+(`npm run eval:longmemeval`) are also implemented. A full passing judged run
+on both benchmarks and full-suite orchestration remain open (PB-41).
+
+**Acquisition and license:** Obtain `locomo10.json` from the
+[official LoCoMo repository](https://github.com/snap-research/locomo/tree/main/data)
+for local noncommercial evaluation under its
+[CC BY-NC 4.0 license](https://github.com/snap-research/locomo/blob/main/LICENSE.txt).
+Obtain `longmemeval_s.json` from the
+[official LongMemEval dataset instructions](https://github.com/xiaowu0162/LongMemEval/blob/main/README.md#data)
+for local evaluation under the repository's
+[MIT license](https://github.com/xiaowu0162/LongMemEval/blob/main/LICENSE).
+Keep downloaded corpora out of Git. Dataset availability does not satisfy a
+judged quality gate.
 
 ### Tier B — CQ Developer Workload Dataset
 
@@ -122,9 +135,9 @@ Format:
 ```
 
 Critical queries must pass with 100% accuracy. The documented default
-λ=0.97, gainShift=0, θ=1 scored **20/50** locally; this gate is RED. Nine
-project-scope cases leaked a foreign anchor and several dormant facts were
-dropped. Run `npm run eval:tierc` for the offline gate and inspect every
+λ=0.97, gainShift=0, θ=1 scored **29/50** after trusted project filtering;
+this gate is RED. The remaining 21 cases include dormant facts, multi-fact
+answers, and stale alternatives. Run `npm run eval:tierc` for the offline gate and inspect every
 missing/leaked anchor before changing pruning behavior.
 
 ---
@@ -150,8 +163,7 @@ CQ Eval Suite v1.0
 
 Tier A — Published Benchmarks
   LoCoMo        Faithfulness: 0.924  AnswerRelevancy: 0.911  ✓
-  MT-Bench+     Faithfulness: 0.901  AnswerRelevancy: 0.889  ✓
-  SCM4LLMs      Faithfulness: 0.918  AnswerRelevancy: 0.903  ✓
+  LongMemEval   Faithfulness: 0.901  AnswerRelevancy: 0.889  ✓
 
 Tier B — Developer Workload
   func_deprecation   Faithfulness: 0.956  AnswerRelevancy: 0.941  ✓
@@ -174,8 +186,7 @@ Action required: increase context window for cross-project sessions or tune θ p
 evals/
 ├── datasets/
 │   ├── locomo/           ← LoCoMo benchmark data
-│   ├── mtbench/          ← MT-Bench+ data
-│   ├── scm4llms/         ← SCM4LLMs data
+│   ├── longmemeval/      ← LongMemEval benchmark data
 │   ├── developer/        ← Tier B synthetic sessions
 │   └── golden/           ← Tier C golden query set
 ├── harness/

@@ -55,7 +55,7 @@ cannot detect on their own.
 
 Defer the fix to a dedicated, Tier-A-validated change (do NOT over-fit the 11
 synthetic scenarios). The proposed approach, to be validated against the published
-Tier-A datasets (LoCoMo / MT-Bench+ / SCM4LLMs) before activation:
+long-horizon Tier-A datasets (LoCoMo / LongMemEval) before activation:
 
 1. **Supersession edges from Tier-3 (primary).** The knowledge graph models
    `SUPERSEDES` edges (Decision→Decision) and `DEPRECATED_BY` (Function). When a

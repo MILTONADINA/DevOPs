@@ -5,7 +5,7 @@
  * (evals/datasets/developer/tier-b.jsonl) and runs each scenario through the
  * REAL pipeline (encode → KadaneDial prune → answer pruned vs full → judge →
  * gate). This is the dev-set accuracy gate for the scenarios CQ is built for;
- * the PUBLISHED benchmarks (LoCoMo/MT-Bench+/SCM4LLMs) are still separate.
+ * the PUBLISHED long-horizon benchmarks (LoCoMo/LongMemEval) are separate.
  *
  *   ANTHROPIC_API_KEY=... npm run eval:tierb
  */
