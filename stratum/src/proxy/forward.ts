@@ -88,6 +88,10 @@ export interface MessagesDeps {
   usageOutbox?: Pick<UsageOutbox, "enqueue" | "close">;
   /** Optional commercial local fact extraction after a successful upstream response. */
   recordMemory?: (event: MessageMemoryEvent) => Promise<void>;
+  /** Commercial identity resolved from authenticated key bindings before forwarding. */
+  resolveConversation?: (input: { orgId: string; keyId: string; projectScopeId?: string; model: string; requestedId?: string }) => Promise<string>;
+  /** Optional local observer; never changes forwarding or billing. */
+  observeConversation?: (input: { conversationId: string; orgId: string; keyId: string; projectScopeId?: string; query: string; assistant: string }) => Promise<void>;
 }
 
 /**

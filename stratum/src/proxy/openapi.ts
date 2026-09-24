@@ -77,6 +77,7 @@ export const OPENAPI_SPEC = {
     "/v1/messages": {
       post: {
         summary: "Anthropic-compatible Messages proxy (count + forward + capture)",
+        parameters: [{ name: "x-cq-conversation-id", in: "header", required: false, description: "Commercial continuation ID from a prior response; bound to the same API key and project.", schema: { type: "string", format: "uuid" } }],
         requestBody: {
           required: true,
           content: {
@@ -85,7 +86,7 @@ export const OPENAPI_SPEC = {
             },
           },
         },
-        responses: { "200": { description: "Upstream Anthropic response (verbatim)" }, "400": ERROR_RESPONSE, "429": ERROR_RESPONSE, "502": ERROR_RESPONSE },
+        responses: { "200": { description: "Upstream Anthropic response (verbatim); commercial mode returns x-cq-conversation-id header", headers: { "x-cq-conversation-id": { schema: { type: "string", format: "uuid" } } } }, "400": ERROR_RESPONSE, "404": ERROR_RESPONSE, "429": ERROR_RESPONSE, "502": ERROR_RESPONSE, "503": ERROR_RESPONSE },
       },
     },
     "/v1/tokens/count": {
