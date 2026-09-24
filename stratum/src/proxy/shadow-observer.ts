@@ -26,6 +26,13 @@ export interface ShadowMetric {
   prunedCount: number;
   /** Candidate exchanges only; a fact does not prove that a whole turn is deletable. */
   candidateSupersededExchangeCount: number;
+  /** Proposed completion of selected trusted exchanges; counts only. */
+  exchangeCompletion?: {
+    selectedExchangeCount: number;
+    partialExchangeCount: number;
+    addedTurnCount: number;
+    candidateSelectedCount: number;
+  };
   /** Active typed-fact exchanges in the hot window; omitted when lookup is not configured. */
   factCoverage?: {
     activeExchangeCount: number;
@@ -106,6 +113,24 @@ export function createShadowObserver(
         const liveTurns = current.manager.hot.recent().filter((turn) => turn.scopeId === scopeId);
         const exchangeIds = [...new Set(liveTurns.flatMap((turn) => (turn.exchangeId ? [turn.exchangeId] : [])))];
         const selectedRefs = new Set(selectedTurns);
+        const selectedExchangeIds = new Set(selectedTurns.flatMap((turn) => (turn.exchangeId ? [turn.exchangeId] : [])));
+        let exchangeCompletion: ShadowMetric["exchangeCompletion"];
+        if (selectedExchangeIds.size > 0) {
+          const partialIds = new Set<string>();
+          let addedTurnCount = 0;
+          for (const turn of liveTurns) {
+            if (turn.exchangeId && selectedExchangeIds.has(turn.exchangeId) && !selectedRefs.has(turn)) {
+              partialIds.add(turn.exchangeId);
+              addedTurnCount++;
+            }
+          }
+          exchangeCompletion = {
+            selectedExchangeCount: selectedExchangeIds.size,
+            partialExchangeCount: partialIds.size,
+            addedTurnCount,
+            candidateSelectedCount: decision.selectedIndices.length + addedTurnCount,
+          };
+        }
         const completeSelectedIds = new Set(exchangeIds);
         for (const turn of liveTurns) if (turn.exchangeId && !selectedRefs.has(turn)) completeSelectedIds.delete(turn.exchangeId);
         let factCoverage: ShadowMetric["factCoverage"];
@@ -171,6 +196,7 @@ export function createShadowObserver(
           selectedCount: decision.selectedIndices.length,
           prunedCount: decision.prunedIndices.length,
           candidateSupersededExchangeCount,
+          ...(exchangeCompletion ? { exchangeCompletion } : {}),
           ...(factCoverage ? { factCoverage } : {}),
           ...(queryFactRescue ? { queryFactRescue } : {}),
           ...(incompleteExchangeCount > 0 ? { provenanceIncompleteExchangeCount: incompleteExchangeCount } : {}),

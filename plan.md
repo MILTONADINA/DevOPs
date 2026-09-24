@@ -172,6 +172,8 @@ and real-use gates remain open; the runners now fail nonzero without a provider.
   evidence-resolved questions it retained complete evidence for 1,265/1,407
   LoCoMo and 116/120 LongMemEval cases at about 62% context reduction
   (`specs/evals/session-neighbor-retrieval.md`). It remains exploratory:
+  shadow observation now counts the extra turns needed to complete selected
+  server-minted exchanges (`specs/memory/shadow-exchange-completion.md`), but
   Tier-C stale/dormant failures, per-question published evidence, full judged
   quality, and real-use gates must pass before request-path selection changes.
 - [ ] **`npm run test:eval` wires** all three tiers into one command. The default `npm run test:eval` now invokes full LoCoMo and LongMemEval after Tier-C and judged Tier-B; `--fast` stops after Tier-B. Tier-C 29/50, full judged results, CI scheduling, and one-week real-use validation remain open.
