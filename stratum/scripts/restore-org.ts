@@ -23,6 +23,7 @@ export const RESTORE_ORDER = [
   "organizations",
   "developers",
   "org_config",
+  "api_keys",
   "sessions",
   "function_changes",
   "tech_decisions",
@@ -40,7 +41,6 @@ export const RESTORE_ORDER = [
   "memory_vectors",
   "audit_conflicts",
   "audit_statuses",
-  "api_keys",
 ] as const;
 
 /** Columns the DB GENERATEs — must NOT be sent on insert (it recomputes them). */
@@ -89,9 +89,14 @@ export function validateBackup(obj: unknown): BackupFile {
     }
   }
   const sessionIds = new Set<string>();
+  const keyIds = new Set((b.tables["api_keys"] ?? []).map((row) => (row as { id?: unknown } | null)?.id));
   for (const row of b.tables["sessions"] ?? []) {
-    const id = (row as { id?: unknown } | null)?.id;
+    const session = row as { id?: unknown; kind?: unknown; conversation_key_id?: unknown } | null;
+    const id = session?.id;
     if (typeof id !== "string" || id === "") throw new Error("backup session ID missing");
+    if (session?.kind === "conversation" && (typeof session.conversation_key_id !== "string" || !keyIds.has(session.conversation_key_id))) {
+      throw new Error("backup conversation key missing from organization");
+    }
     sessionIds.add(id);
   }
   if (
