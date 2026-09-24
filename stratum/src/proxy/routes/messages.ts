@@ -29,7 +29,7 @@ function textContent(value: unknown): string {
     .join("\n");
 }
 
-function recordMemorySafe(deps: MessagesDeps, request: FastifyRequest, body: MessagesBody, response: unknown, pending: Set<Promise<void>>): void {
+function recordMemorySafe(deps: MessagesDeps, request: FastifyRequest, body: MessagesBody, response: unknown, conversationId: string | null, pending: Set<Promise<void>>): void {
   const orgId = request.orgId;
   if (!deps.recordMemory || !orgId) return;
   const lastUser = [...body.messages].reverse().find((message) => message.role === "user");
@@ -40,6 +40,7 @@ function recordMemorySafe(deps: MessagesDeps, request: FastifyRequest, body: Mes
     const task = deps.recordMemory({
       orgId,
       ...(request.projectScopeId ? { projectScopeId: request.projectScopeId } : {}),
+      ...(conversationId && request.apiKeyId ? { conversationId, keyId: request.apiKeyId } : {}),
       model: body.model,
       turns: [
         { role: "user", content: userText },
@@ -344,7 +345,7 @@ async function handleStreaming(body: MessagesBody, request: FastifyRequest, repl
         if (sawStop) for (const chunk of heldCompletion) out.write(chunk);
       }
       if (usageRecorded && !streamFailed && streamError === undefined) {
-        recordMemorySafe(deps, request, body, message, pending);
+        recordMemorySafe(deps, request, body, message, conversationId, pending);
         observeSafe(deps, request, body, message, conversationId, pending);
       }
       out.end();
@@ -446,7 +447,7 @@ export function makeMessagesRoute(deps: MessagesDeps): FastifyPluginCallback {
       if (!recordUsageSafe(deps, request, body.model, billedInput, outputTokensOf(forwarded.data), pendingWrites)) {
         return reply.status(503).send({ type: "error", error: { type: "billing_unavailable", message: "usage journal unavailable" } });
       }
-      recordMemorySafe(deps, request, body, forwarded.data, pendingWrites);
+      recordMemorySafe(deps, request, body, forwarded.data, conversationId, pendingWrites);
       observeSafe(deps, request, body, forwarded.data, conversationId, pendingWrites);
 
       // nosemgrep: javascript.express.security.audit.xss.direct-response-write.direct-response-write -- FALSE POSITIVE: transparent JSON proxy. Forwards the upstream Anthropic response (Fastify sends it as application/json) to the Claude Code CLI client; never HTML rendered in a browser, so no XSS surface. The "user input" is the upstream provider's own JSON, not attacker markup.

@@ -69,7 +69,7 @@ try {
   await app.close(); app = undefined; // drain all asynchronous extraction writes
   const sessions = checked(await db.from("sessions").select("id,kind").eq("org_id", org), "read sessions");
   const facts = checked(await db.from("tech_decisions").select("id,session_id,decision_text,is_suppressed").eq("org_id", org), "read decisions");
-  if (sessions.length !== 51 || sessions.some((session) => session.kind !== "memory") ||
+  if (sessions.length !== 51 || sessions.some((session) => session.kind !== "conversation") ||
       facts.length !== 1 || facts[0].is_suppressed || !facts[0].decision_text.includes(marker) ||
       !sessions.some((session) => session.id === facts[0].session_id) || modelCalls !== 51 || decisions !== 1) {
     throw new Error("first fact did not survive fifty later message requests");
@@ -91,8 +91,8 @@ try {
   failure = error;
 } finally {
   try { await app?.close(); } catch (error) { if (!failure) failure = error; }
-  for (const [table, column] of [["tech_decisions", "org_id"], ["api_keys", "org_id"],
-    ["sessions", "org_id"], ["organizations", "id"]]) {
+  for (const [table, column] of [["tech_decisions", "org_id"], ["sessions", "org_id"],
+    ["api_keys", "org_id"], ["organizations", "id"]]) {
     try { checked(await db.from(table!).delete().eq(column!, org), `delete ${table}`); }
     catch (error) { if (!failure) failure = error; }
   }

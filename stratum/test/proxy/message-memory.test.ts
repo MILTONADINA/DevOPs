@@ -68,6 +68,21 @@ test.each([false, true])("a bound key carries trusted project scope into a compl
     turns: [{ role: "user", content: "latest question" }, { role: "assistant", content: "assistant answer" }] });
 });
 
+test.each([false, true])("commercial memory uses the verified conversation and authenticated key (stream=%s)", async (stream) => {
+  const { messages, memory } = deps();
+  const conversationId = "c68f130e-c584-43fa-aefe-7b2e54aa34a8";
+  messages.resolveConversation = async () => conversationId;
+  app = buildProxy({ cors: false, rateLimit: false, auth: boundAuth, messages });
+  const response = await app.inject({ method: "POST", url: "/v1/messages?conversation_id=forged&project-scope=vega",
+    headers: { authorization: "Bearer bound", "x-project-scope": "vega", "x-cq-conversation-id": "c492b37d-4673-4d59-8ae8-63e1c0eef96a" },
+    payload: { ...payload, stream, conversation_id: "forged", project_scope: "vega" } });
+  expect(response.statusCode).toBe(200);
+  expect(response.headers["x-cq-conversation-id"]).toBe(conversationId);
+  expect(memory).toHaveBeenCalledExactlyOnceWith({ orgId: "trusted-org", projectScopeId: "trusted-org/orion",
+    conversationId, keyId: "key-bound", model: "local/check",
+    turns: [{ role: "user", content: "latest question" }, { role: "assistant", content: "assistant answer" }] });
+});
+
 test("an SSE error after partial assistant text does not create a memory write", async () => {
   const { messages, memory } = deps();
   messages.forwardStream = async () => ({ status: 200, stream: (async function* () {

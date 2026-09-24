@@ -63,6 +63,9 @@ export interface MessageMemoryEvent {
   orgId: string;
   /** Authenticated organization/project binding; never supplied by the request body. */
   projectScopeId?: string;
+  /** Server-verified conversation and authenticating key, when available. */
+  conversationId?: string;
+  keyId?: string;
   model: string;
   turns: { role: "user" | "assistant"; content: string }[];
 }
