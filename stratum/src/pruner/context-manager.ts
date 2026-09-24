@@ -102,8 +102,9 @@ export function createContextManager(encoder: BiEncoder, opts: ContextManagerOpt
       // window's own span (seconds). history is ascending by timestamp (Tier-1
       // keeps order), so span = last − first. ≥2 turns needed for a span.
       const params: KadaneDialParams = { ...dial, nowSeconds: nowMs / 1000 };
-      if (decayHorizonFraction !== undefined && history.length > 1) {
-        const spanSeconds = history[history.length - 1]!.timestampSeconds - history[0]!.timestampSeconds;
+      const spanHistory = queryScopeId === undefined ? history : history.filter((turn) => turn.scopeId === queryScopeId);
+      if (decayHorizonFraction !== undefined && spanHistory.length > 1) {
+        const spanSeconds = spanHistory[spanHistory.length - 1]!.timestampSeconds - spanHistory[0]!.timestampSeconds;
         params.decayHorizonSeconds = Math.max(1, decayHorizonFraction * spanSeconds);
       }
       const decision = prune(queryVec, history, params, queryScopeId);
