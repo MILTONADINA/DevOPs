@@ -86,7 +86,21 @@ export async function main(): Promise<number> {
   for (const orgId of orgIds) {
     const facts = await warm.queryUnpromoted(orgId, { olderThanIso, limit });
     if (facts.length === 0) continue;
-    const promo = await promoteFacts({ graph, vectors, encoder }, facts, { orgId });
+    // queryUnpromoted reads trusted session_id FKs from the database. Keep that
+    // binding through graph/vector promotion; a whole-org batch may span sessions.
+    const bySession = new Map<string, typeof facts>();
+    for (const fact of facts) {
+      const group = bySession.get(fact.session_id);
+      if (group) group.push(fact);
+      else bySession.set(fact.session_id, [fact]);
+    }
+    const promo = { entities: 0, edges: 0, vectors: 0 };
+    for (const [sessionId, group] of bySession) {
+      const result = await promoteFacts({ graph, vectors, encoder }, group, { orgId, sessionId });
+      promo.entities += result.entities;
+      promo.edges += result.edges;
+      promo.vectors += result.vectors;
+    }
     const marked = await warm.markPromoted(facts, orgId);
     totalFacts += facts.length;
     totalEntities += promo.entities;
