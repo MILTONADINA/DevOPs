@@ -72,8 +72,8 @@ export interface MemoryDeps {
   listFacts: (orgId: string, limit: number, projectScope?: string | null) => Promise<AnyFact[]>;
   /** Suppress fact `id` in `table` for `orgId`; returns whether a row was affected. */
   suppressFact: (orgId: string, id: string, table: string, projectScope?: string | null) => Promise<boolean>;
-  listConflicts: (orgId: string, limit: number) => Promise<ConflictSummary[]>;
-  listAuditStatuses: (orgId: string, limit: number) => Promise<AuditStatusSummary[]>;
+  listConflicts: (orgId: string, limit: number, projectScope?: string | null) => Promise<ConflictSummary[]>;
+  listAuditStatuses: (orgId: string, limit: number, projectScope?: string | null) => Promise<AuditStatusSummary[]>;
   listGraph: (orgId: string, limit: number) => Promise<GraphSnapshot>;
   searchGraph: (orgId: string, query: string, mode: "name" | "semantic") => Promise<GraphSearchResult>;
   listGraphFiles: (orgId: string, limit: number, after?: string) => Promise<GraphFilePage>;
@@ -165,13 +165,13 @@ export function makeMemoryRoute(deps: MemoryDeps): FastifyPluginCallback {
     app.get("/v1/memory/conflicts", async (req, reply) => {
       const orgId = resolveOrg(req);
       if (orgId === undefined) return err(reply, 400, "org id required (authenticate, or pass ?org-id)");
-      return { conflicts: await deps.listConflicts(orgId, intParam(req, "limit", 50)) };
+      return { conflicts: await deps.listConflicts(orgId, intParam(req, "limit", 50), authenticatedProjectScope(req)) };
     });
 
     app.get("/v1/memory/audit-statuses", async (req, reply) => {
       const orgId = resolveOrg(req);
       if (orgId === undefined) return err(reply, 400, "org id required (authenticate, or pass ?org-id)");
-      return { statuses: await deps.listAuditStatuses(orgId, intParam(req, "limit", 50)) };
+      return { statuses: await deps.listAuditStatuses(orgId, intParam(req, "limit", 50), authenticatedProjectScope(req)) };
     });
 
     app.get("/v1/memory/graph", async (req, reply) => {
@@ -258,7 +258,12 @@ export function createSupabaseMemoryDeps(client: SupabaseClient, encodeQuery?: (
       if (error) throw new Error(`suppressFact failed: ${error.message}`);
       return (data ?? []).length > 0;
     },
-    async listConflicts(orgId, limit) {
+    async listConflicts(orgId, limit, projectScope) {
+      if (projectScope !== undefined) {
+        const { data, error } = await client.rpc("list_project_audit_conflicts", { match_org: orgId, match_project_scope: projectScope, result_limit: limit });
+        if (error) throw new Error(`listConflicts failed: ${error.message}`);
+        return (data ?? []) as ConflictSummary[];
+      }
       const { data, error } = await client
         .from("audit_conflicts")
         .select("id, detected_at, fact_table, fact_id, claimed_state, actual_state, conflict_commit, acknowledged")
@@ -269,7 +274,12 @@ export function createSupabaseMemoryDeps(client: SupabaseClient, encodeQuery?: (
       if (error) throw new Error(`listConflicts failed: ${error.message}`);
       return (data ?? []) as ConflictSummary[];
     },
-    async listAuditStatuses(orgId, limit) {
+    async listAuditStatuses(orgId, limit, projectScope) {
+      if (projectScope !== undefined) {
+        const { data, error } = await client.rpc("list_project_audit_statuses", { match_org: orgId, match_project_scope: projectScope, result_limit: limit });
+        if (error) throw new Error(`listAuditStatuses failed: ${error.message}`);
+        return (data ?? []) as AuditStatusSummary[];
+      }
       const { data, error } = await client
         .from("audit_statuses")
         .select("fact_table, fact_id, status, audited_at, evidence_commit, detail")
