@@ -62,6 +62,16 @@ This ADR makes no compliance determination.
 4. Wire the authenticated endpoint, verify foreign-org isolation and no
    success on incomplete deletion, then benchmark a one-year fixture.
 
+The first part of step 1 is implemented by the service-role-only
+`inspect_session_erasure(org_id, session_id)` RPC in migration
+`20260924000000_session_erasure_inventory.sql`. It reports counts for each
+session-linked public table and explicitly marks organization-only classes,
+graph ownership, RAM, backups, and external copies as unresolved. Its
+rolled-back local fixture checks every current public table is classified,
+derived vectors/links are counted, cross-organization calls return no row,
+and public roles cannot invoke it. The RPC performs no deletion; step 1 is
+still open for RAM, backup, and external-store inventory.
+
 ## Rejected shortcut
 
 Replacing the session ID in `billing_records` with a salted hash is impossible
