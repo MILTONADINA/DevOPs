@@ -17,6 +17,31 @@ export function createExchangeFunctionLookup(client: SupabaseClient) {
   };
 }
 
+/** Active typed-fact counts for a bounded set of trusted conversation exchanges. */
+export function createFactExchangeCoverageLookup(client: SupabaseClient) {
+  return async (orgId: string, sessionId: string, projectScope: string | null, exchangeIds: string[]): Promise<Map<string, number>> => {
+    if (projectScope !== null && !validProjectScope(projectScope)) throw new Error("invalid project scope for fact coverage lookup");
+    if (exchangeIds.length === 0) return new Map();
+    if (exchangeIds.length > 128) throw new Error("fact coverage lookup exceeds hot-window bound");
+    const { data, error } = await client.rpc("find_active_fact_exchanges", {
+      match_org: orgId,
+      match_session: sessionId,
+      match_project_scope: projectScope,
+      exchange_ids: exchangeIds,
+    });
+    if (error) throw new Error(`find_active_fact_exchanges failed: ${error.message}`);
+    const requested = new Set(exchangeIds);
+    const out = new Map<string, number>();
+    for (const row of (data ?? []) as { exchange_id: string; fact_count: number }[]) {
+      if (!requested.has(row.exchange_id) || !Number.isSafeInteger(row.fact_count) || row.fact_count < 1 || out.has(row.exchange_id)) {
+        throw new Error("find_active_fact_exchanges returned invalid count");
+      }
+      out.set(row.exchange_id, row.fact_count);
+    }
+    return out;
+  };
+}
+
 /** Graph relation for Function nodes only; same project/provenance rules as the generic lookup. */
 export function createProjectFunctionSupersessionLookup(client: SupabaseClient) {
   return async (orgId: string, projectScope: string | null, names: string[]): Promise<{ superseded: string; supersededBy: string }[]> => {

@@ -1,5 +1,6 @@
 import type { BiEncoder } from "../pruner/encoder";
 import { createContextManager, type ContextManager } from "../pruner/context-manager";
+import { createHotMemory } from "../memory/hot/tier1";
 import { suppressSuperseded } from "../pruner/supersession";
 import { validProjectScope } from "./auth";
 
@@ -23,6 +24,8 @@ export interface ShadowMetric {
   prunedCount: number;
   /** Candidate exchanges only; a fact does not prove that a whole turn is deletable. */
   candidateSupersededExchangeCount: number;
+  /** Active typed-fact exchanges in the hot window; omitted when lookup is not configured. */
+  factCoverage?: { activeExchangeCount: number; selectedExchangeCount: number; droppedExchangeCount: number };
 }
 
 export interface ShadowSupersessionDeps {
@@ -35,13 +38,20 @@ export interface ShadowSupersessionDeps {
 export function createShadowObserver(
   encoder: BiEncoder,
   emit: (metric: ShadowMetric) => void,
-  options: { now?: () => number; maxConversations?: number; maxTurns?: number; supersession?: ShadowSupersessionDeps } = {},
+  options: {
+    now?: () => number;
+    maxConversations?: number;
+    maxTurns?: number;
+    supersession?: ShadowSupersessionDeps;
+    factCoverage?: (orgId: string, sessionId: string, projectScope: string | null, exchangeIds: string[]) => Promise<Map<string, number>>;
+  } = {},
 ): (input: ShadowInput) => Promise<void> {
   const now = options.now ?? Date.now;
   const maxConversations = Math.max(1, options.maxConversations ?? 100);
   const maxTurns = Math.max(2, options.maxTurns ?? 128);
   const idleMs = 7_200_000;
   const windows = new Map<string, { manager: ContextManager; lastUsed: number; chain: Promise<void>; binding: string }>();
+  const newManager = (): ContextManager => createContextManager(encoder, { hot: createHotMemory({ now }) });
 
   return async (input) => {
     const at = now();
@@ -51,7 +61,7 @@ export function createShadowObserver(
     if (entry && entry.binding !== binding) throw new Error("conversation binding changed");
     if (!entry) {
       while (windows.size >= maxConversations) windows.delete(windows.keys().next().value!);
-      entry = { manager: createContextManager(encoder), lastUsed: at, chain: Promise.resolve(), binding };
+      entry = { manager: newManager(), lastUsed: at, chain: Promise.resolve(), binding };
       windows.set(input.conversationId, entry);
     }
     entry.lastUsed = at;
@@ -64,10 +74,19 @@ export function createShadowObserver(
         const query = input.query.slice(0, 1200);
         const assistant = input.assistant.slice(0, 1200);
         const { decision, selectedTurns } = await current.manager.select(query, now(), scopeId);
+        const projectScope = input.projectScopeId === undefined ? null : input.projectScopeId.startsWith(`${input.orgId}/`) ? input.projectScopeId.slice(input.orgId.length + 1) : "";
+        if ((options.supersession || options.factCoverage) && projectScope !== null && !validProjectScope(projectScope)) throw new Error("invalid shadow project binding");
+        let factCoverage: ShadowMetric["factCoverage"];
+        if (options.factCoverage) {
+          const exchangeIds = [...new Set(current.manager.hot.recent().flatMap((turn) => (turn.scopeId === scopeId && turn.exchangeId ? [turn.exchangeId] : [])))];
+          const selectedIds = new Set(selectedTurns.flatMap((turn) => (turn.exchangeId ? [turn.exchangeId] : [])));
+          const facts = exchangeIds.length ? await options.factCoverage(input.orgId, input.conversationId, projectScope, exchangeIds) : new Map<string, number>();
+          const activeIds = exchangeIds.filter((id) => facts.has(id));
+          const selectedExchangeCount = activeIds.filter((id) => selectedIds.has(id)).length;
+          factCoverage = { activeExchangeCount: activeIds.length, selectedExchangeCount, droppedExchangeCount: activeIds.length - selectedExchangeCount };
+        }
         let candidateSupersededExchangeCount = 0;
         if (options.supersession) {
-          const projectScope = input.projectScopeId === undefined ? null : input.projectScopeId.startsWith(`${input.orgId}/`) ? input.projectScopeId.slice(input.orgId.length + 1) : "";
-          if (projectScope !== null && !validProjectScope(projectScope)) throw new Error("invalid shadow project binding");
           const exchangeIds = [...new Set(selectedTurns.map((turn) => turn.exchangeId).filter((id): id is string => id !== undefined))];
           if (exchangeIds.length > 0) {
             const entities = await options.supersession.resolveEntities(input.orgId, input.conversationId, projectScope, exchangeIds);
@@ -100,9 +119,10 @@ export function createShadowObserver(
           selectedCount: decision.selectedIndices.length,
           prunedCount: decision.prunedIndices.length,
           candidateSupersededExchangeCount,
+          ...(factCoverage ? { factCoverage } : {}),
         });
         // Keep the current exchange and cap prior context without retaining unbounded raw turns.
-        if (current.manager.hot.size() + 2 > maxTurns) current.manager = createContextManager(encoder);
+        if (current.manager.hot.size() + 2 > maxTurns) current.manager = newManager();
         const timestampMs = now();
         await current.manager.ingest({ role: "user", content: query, timestampMs, scopeId, ...(input.exchangeId ? { exchangeId: input.exchangeId } : {}) });
         await current.manager.ingest({ role: "assistant", content: assistant, timestampMs, scopeId, ...(input.exchangeId ? { exchangeId: input.exchangeId } : {}) });
