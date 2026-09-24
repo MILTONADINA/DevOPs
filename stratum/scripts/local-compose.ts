@@ -51,18 +51,22 @@ function compose(args: string[], env: NodeJS.ProcessEnv, input?: string): string
   return docker([...composeArgs, ...args], { ...env, COMPOSE_PARALLEL_LIMIT: "1" }, input);
 }
 
-async function composeUp(args: string[], env: NodeJS.ProcessEnv): Promise<void> {
+export async function retryRateLimited(action: () => void, wait: (ms: number) => Promise<void> = (ms) => new Promise((resolve) => setTimeout(resolve, ms))): Promise<void> {
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
-      compose(["up", "-d", "--wait", "--wait-timeout", "90", ...args], env);
+      action();
       return;
     } catch (error) {
       if (!(error instanceof Error) || !error.message.includes("public registry rate limit") || attempt === 2) throw error;
       const delayMs = 2_000 * (attempt + 1);
       process.stderr.write(`Public registry rate limit; retrying startup in ${delayMs / 1000}s.\n`);
-      await new Promise<void>((resolve) => setTimeout(resolve, delayMs));
+      await wait(delayMs);
     }
   }
+}
+
+async function composeUp(args: string[], env: NodeJS.ProcessEnv): Promise<void> {
+  await retryRateLimited(() => { compose(["up", "-d", "--wait", "--wait-timeout", "90", ...args], env); });
 }
 
 function stackEnv(secret: string): NodeJS.ProcessEnv {
