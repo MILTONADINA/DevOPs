@@ -65,7 +65,7 @@ duration`, with λ=0.5, so the half-life is k× the whole span.)
    Same discipline as ADR-0011 / `trimCarriedTurns` / `suppressSuperseded`: build
    the mechanism, keep it off, gate activation on the FULL Tier-A suite passing
    (evidence survival + Faithfulness/Answer-Relevancy via the API'd `eval:locomo`,
-   re-run on the chosen config) AND validation on MT-Bench+/SCM4LLMs (PB-41) so
+   re-run on the chosen config) AND LongMemEval validation (PB-41) so
    the choice is not over-fit to one benchmark. Evidence survival is ground truth,
    not a judge score, so this measurement is not "teaching to the test" — but the
    activation bar is still the full judged gate.
