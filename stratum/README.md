@@ -48,12 +48,18 @@ Full operator + API surface: [`docs/MEMORY_AND_EVAL_COMMANDS.md`](docs/MEMORY_AN
 ## Quick Start
 
 ```bash
-git clone https://github.com/your-org/startum
-cd startum
-npm install
-cp .env.example .env
+git clone https://github.com/MILTONADINA/DevOPs.git
+cd DevOPs
+npm run setup                 # requires Node >=20.11 and Docker Compose
+cd stratum
+# Configure a provider in your process environment or secret manager first.
 npm run dev
 ```
+
+Root setup starts the loopback-only local database and verifies proxy/database
+startup. It does not install an LLM provider or leave the proxy running. For a
+local OpenAI-compatible provider, set `CQ_LOCAL_BASE_URL` to its loopback API
+before `npm run dev`.
 
 Point Claude Code at the proxy:
 
@@ -63,12 +69,12 @@ export ANTHROPIC_BASE_URL=http://localhost:4080
 
 Waste dashboard: `http://localhost:4080/dashboard`
 
-**Commercial (multi-tenant) mode** — set `SUPABASE_URL` + `SUPABASE_SERVICE_KEY` in `.env`, then:
+**Commercial (multi-tenant) mode** — use the local Compose credential handoff
+and configure a provider in the process environment:
 
 ```bash
-npm run setup                                  # validate env + report which tiers are live
-CQ_COMMERCIAL=true npm run dev                 # multi-tenant proxy: /v1/* requires an API key
-npm run create-api-key -- --org-id <uuid> --name "my key"
+CQ_COMMERCIAL=true npm run db:with-env -- npm run dev
+npm run db:with-env -- npm run create-api-key -- --org-id <uuid> --name "my key"
 # then: curl -H "Authorization: Bearer <key>" http://localhost:4080/v1/config
 ```
 
