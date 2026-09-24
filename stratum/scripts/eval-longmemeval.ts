@@ -106,6 +106,11 @@ export async function main(): Promise<number> {
   out(repeats > 1 ? `Judge sampling: R=${repeats} repeats/context, averaged` : "Judge sampling: single shot (set LONGMEMEVAL_REPEATS>1 to damp noise)");
   out("");
 
+  if (questions.length === 0) {
+    out("No questions evaluated. Exiting 1 (empty Tier-A selection).");
+    return 1;
+  }
+
   const encoder = createOnnxEncoder({ cacheDir: join(process.cwd(), "models") });
   const answerer = createClaudeAnswerer(provider.completion);
   const judge = createLlmJudge(provider.completion);
@@ -142,8 +147,8 @@ export async function main(): Promise<number> {
   }
 
   if (outcomes.length === 0) {
-    out("No questions evaluated. Exiting 0.");
-    return 0;
+    out("No questions evaluated. Exiting 1 (no scored Tier-A outcomes).");
+    return 1;
   }
 
   const scenarioResults: ScenarioResult[] = outcomes.map((o, i) => ({
