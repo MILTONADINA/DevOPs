@@ -179,6 +179,17 @@ try {
   if (missingEndpoint.status === 0 || !missingEndpoint.stderr.includes("CQ_LOCAL_BASE_URL is required") || summaryCalls !== 4) {
     throw new Error("source summary model accepted a missing endpoint or made a request");
   }
+  const bound = run(source, { INGEST_PROJECT_SCOPE: "orion" });
+  if (bound.status !== 0) throw new Error(`project-bound source ingest failed: ${bound.stderr || bound.stdout}`);
+  const scopedFiles = checked(await db.from("knowledge_entities").select("id,project_scope,scope_verified").eq("org_id", org).eq("kind", "File").eq("name", sourceFile), "read same-name project Files");
+  if (scopedFiles.length !== 2 || !scopedFiles.some((row) => row.id === fileRow.id && row.project_scope === null && row.scope_verified === true)
+      || !scopedFiles.some((row) => row.id !== fileRow.id && row.project_scope === "orion" && row.scope_verified === true)) {
+    throw new Error("project-bound source ingest reused or changed an unbound File");
+  }
+  const invalidScope = run(source, { INGEST_PROJECT_SCOPE: "Bad/Scope" });
+  if (invalidScope.status === 0 || !invalidScope.stderr.includes("INGEST_PROJECT_SCOPE must be a valid project slug")) {
+    throw new Error("source ingest accepted an invalid project slug");
+  }
   process.stdout.write("local JS/TS, Rust, and Python graph ingestion plus loopback File summary persistence passed\n");
 } catch (error) {
   failure = error;

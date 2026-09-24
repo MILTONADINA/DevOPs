@@ -23,7 +23,9 @@ function checked(result: { error: { message: string } | null }, step: string): v
   if (result.error) throw new Error(`${step}: ${result.error.message}`);
 }
 function rejected(result: { error: { code?: string; message: string } | null }, step: string): void {
-  if (result.error?.code !== "23503") throw new Error(`${step} accepted a foreign graph reference`);
+  if (result.error?.code !== "23503" && !(result.error?.code === "P0001" && /graph .* (missing|mismatch)/.test(result.error.message))) {
+    throw new Error(`${step} accepted a foreign graph reference or failed for an unrelated reason: ${result.error?.message ?? "no error"}`);
+  }
 }
 
 try {

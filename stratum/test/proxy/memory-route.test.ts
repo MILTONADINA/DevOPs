@@ -31,24 +31,24 @@ function fakeDeps(): { deps: MemoryDeps; captured: Record<string, unknown> } {
       captured["statuses"] = { orgId, limit, ...(projectScope !== undefined ? { projectScope } : {}) };
       return Promise.resolve([STATUS]);
     },
-    listGraph: (orgId, limit) => {
-      captured["graph"] = { orgId, limit };
+    listGraph: (orgId, limit, projectScope) => {
+      captured["graph"] = { orgId, limit, ...(projectScope !== undefined ? { projectScope } : {}) };
       return Promise.resolve({ entities: [{ id: "n1", kind: "Function", name: "parseToken", session_id: null }], edges: [] });
     },
-    searchGraph: (orgId, query, mode) => {
-      captured["search"] = { orgId, query, mode };
+    searchGraph: (orgId, query, mode, projectScope) => {
+      captured["search"] = { orgId, query, mode, ...(projectScope !== undefined ? { projectScope } : {}) };
       return Promise.resolve({ matches: ["n1"], entities: [{ id: "n1", kind: "Function", name: "parseToken", session_id: null, file_path: "src/token.ts", summary: "Parses a token" }], edges: [] });
     },
-    listGraphFiles: (orgId, limit, after) => {
-      captured["files"] = { orgId, limit, after };
+    listGraphFiles: (orgId, limit, after, projectScope) => {
+      captured["files"] = { orgId, limit, after, ...(projectScope !== undefined ? { projectScope } : {}) };
       return Promise.resolve({ files: [{ id: "n2", kind: "File", name: "src/token.ts", session_id: null, file_path: "src/token.ts", summary: "Token source" }], next: null });
     },
-    listGraphDependencies: (orgId, limit, after) => {
-      captured["dependencies"] = { orgId, limit, after };
+    listGraphDependencies: (orgId, limit, after, projectScope) => {
+      captured["dependencies"] = { orgId, limit, after, ...(projectScope !== undefined ? { projectScope } : {}) };
       return Promise.resolve({ edges: [{ id: "e1", edge_type: "DEPENDS_ON", from_entity: "n1", to_entity: "n2" }], next: null });
     },
-    listRelatedFacts: (orgId, file) => {
-      captured["related"] = { orgId, file };
+    listRelatedFacts: (orgId, file, projectScope) => {
+      captured["related"] = { orgId, file, ...(projectScope !== undefined ? { projectScope } : {}) };
       return Promise.resolve(file === "missing.ts" ? null : [{ id: "f1", kind: "FunctionChange", summary: "parseToken deprecated", created_at: "2026-09-23T00:00:00Z" }]);
     },
   };
@@ -63,7 +63,7 @@ describe("GET /v1/memory/graph", () => {
     const res = await app.inject({ method: "GET", url: "/v1/memory/graph?org-id=other&limit=900", headers: { authorization: "Bearer k" } });
     expect(res.statusCode).toBe(200);
     expect(res.json().entities[0].name).toBe("parseToken");
-    expect(captured["graph"]).toEqual({ orgId: "o9", limit: 500 });
+    expect(captured["graph"]).toEqual({ orgId: "o9", limit: 500, projectScope: null });
     expect((await app.inject({ method: "GET", url: "/v1/memory/graph?org-id=other" })).statusCode).toBe(401);
     await app.close();
   });
@@ -76,6 +76,32 @@ describe("GET /v1/memory/graph", () => {
   });
 });
 
+describe("commercial graph project scope", () => {
+  test("passes the authenticated slug to every graph read and ignores client scope", async () => {
+    const { deps, captured } = fakeDeps();
+    const app = buildProxy({ rateLimit: false, cors: false, auth: { resolve: async (key) =>
+      key === "bound" ? { orgId: "o9", keyId: "a", projectScopeId: "o9/orion" } :
+      key === "unbound" ? { orgId: "o9", keyId: "b" } : null,
+    }, memory: deps });
+    await app.ready();
+    for (const [key, expected] of [["bound", "orion"], ["unbound", null]] as const) {
+      const headers = { authorization: `Bearer ${key}`, "x-project-scope": "vega" };
+      const tail = "&org-id=foreign&project-scope=vega";
+      expect((await app.inject({ method: "GET", url: `/v1/memory/graph?limit=2${tail}`, headers })).statusCode).toBe(200);
+      expect(captured["graph"]).toEqual({ orgId: "o9", limit: 2, projectScope: expected });
+      expect((await app.inject({ method: "GET", url: `/v1/memory/graph/search?q=token${tail}`, headers })).statusCode).toBe(200);
+      expect(captured["search"]).toEqual({ orgId: "o9", query: "token", mode: "name", projectScope: expected });
+      expect((await app.inject({ method: "GET", url: `/v1/memory/graph/files?limit=2${tail}`, headers })).statusCode).toBe(200);
+      expect(captured["files"]).toEqual({ orgId: "o9", limit: 2, after: undefined, projectScope: expected });
+      expect((await app.inject({ method: "GET", url: `/v1/memory/graph/dependencies?limit=2${tail}`, headers })).statusCode).toBe(200);
+      expect(captured["dependencies"]).toEqual({ orgId: "o9", limit: 2, after: undefined, projectScope: expected });
+      expect((await app.inject({ method: "GET", url: `/v1/memory/graph/related-facts?file=src%2Ftoken.ts${tail}`, headers })).statusCode).toBe(200);
+      expect(captured["related"]).toEqual({ orgId: "o9", file: "src/token.ts", projectScope: expected });
+    }
+    await app.close();
+  });
+});
+
 describe("GET /v1/memory/graph/search", () => {
   test("uses the authenticated organization and trims the query", async () => {
     const { deps, captured } = fakeDeps();
@@ -84,7 +110,7 @@ describe("GET /v1/memory/graph/search", () => {
     const res = await app.inject({ method: "GET", url: "/v1/memory/graph/search?org-id=other&q=%20parseTokn%20", headers: { authorization: "Bearer k" } });
     expect(res.statusCode).toBe(200);
     expect(res.json().matches).toEqual(["n1"]);
-    expect(captured["search"]).toEqual({ orgId: "o9", query: "parseTokn", mode: "name" });
+    expect(captured["search"]).toEqual({ orgId: "o9", query: "parseTokn", mode: "name", projectScope: null });
     expect((await app.inject({ method: "GET", url: "/v1/memory/graph/search?org-id=other&q=token" })).statusCode).toBe(401);
     await app.close();
   });
@@ -107,7 +133,7 @@ describe("GET /v1/memory/graph/search", () => {
     const headers = { authorization: "Bearer k" };
     const result = await app.inject({ method: "GET", url: "/v1/memory/graph/search?org-id=foreign&q=token%20parser&mode=semantic", headers });
     expect(result.statusCode).toBe(200);
-    expect(captured["search"]).toEqual({ orgId: "o9", query: "token parser", mode: "semantic" });
+    expect(captured["search"]).toEqual({ orgId: "o9", query: "token parser", mode: "semantic", projectScope: null });
     expect((await app.inject({ method: "GET", url: "/v1/memory/graph/search?q=token&mode=other", headers })).statusCode).toBe(400);
     await app.close();
   });
@@ -121,11 +147,11 @@ describe("graph traversal pages", () => {
     const files = await app.inject({ method: "GET", url: "/v1/memory/graph/files?org-id=other&limit=2&after=src%2Fa.ts", headers: { authorization: "Bearer k" } });
     expect(files.statusCode).toBe(200);
     expect(files.json().files[0].name).toBe("src/token.ts");
-    expect(captured["files"]).toEqual({ orgId: "o9", limit: 2, after: "src/a.ts" });
+    expect(captured["files"]).toEqual({ orgId: "o9", limit: 2, after: "src/a.ts", projectScope: null });
     const cursor = "11111111-1111-4111-8111-111111111111";
     const edges = await app.inject({ method: "GET", url: `/v1/memory/graph/dependencies?org-id=other&limit=3&after=${cursor}`, headers: { authorization: "Bearer k" } });
     expect(edges.statusCode).toBe(200);
-    expect(captured["dependencies"]).toEqual({ orgId: "o9", limit: 3, after: cursor });
+    expect(captured["dependencies"]).toEqual({ orgId: "o9", limit: 3, after: cursor, projectScope: null });
     expect((await app.inject({ method: "GET", url: "/v1/memory/graph/files?org-id=other" })).statusCode).toBe(401);
     await app.close();
   });
@@ -153,7 +179,7 @@ describe("GET /v1/memory/graph/related-facts", () => {
     const res = await app.inject({ method: "GET", url: "/v1/memory/graph/related-facts?file=src%2Ftoken.ts&org-id=other", headers: { authorization: "Bearer k" } });
     expect(res.statusCode).toBe(200);
     expect(res.json().facts[0].kind).toBe("FunctionChange");
-    expect(captured["related"]).toEqual({ orgId: "o9", file: "src/token.ts" });
+    expect(captured["related"]).toEqual({ orgId: "o9", file: "src/token.ts", projectScope: null });
     expect((await app.inject({ method: "GET", url: "/v1/memory/graph/related-facts?file=src%2Ftoken.ts" })).statusCode).toBe(401);
     await app.close();
   });

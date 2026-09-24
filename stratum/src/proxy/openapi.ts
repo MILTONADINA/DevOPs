@@ -176,35 +176,35 @@ export const OPENAPI_SPEC = {
     },
     "/v1/memory/graph": {
       get: {
-        summary: "Bounded organization graph snapshot",
+        summary: "Bounded authenticated-project graph snapshot (organization-wide in personal mode)",
         parameters: [ORG_ID_QUERY, { name: "limit", in: "query", schema: { type: "integer", maximum: 500 } }],
         responses: { "200": { description: "Entities and their in-snapshot edges" }, "400": ERROR_RESPONSE },
       },
     },
     "/v1/memory/graph/search": {
       get: {
-        summary: "Fuzzy graph-name matches and immediate neighbors",
+        summary: "Project-scoped graph matches and immediate neighbors",
         parameters: [ORG_ID_QUERY, { name: "q", in: "query", required: true, schema: { type: "string", minLength: 2, maxLength: 100 } }],
         responses: { "200": { description: "Up to 20 matches with bounded neighbor graph" }, "400": ERROR_RESPONSE },
       },
     },
     "/v1/memory/graph/files": {
       get: {
-        summary: "Organization File-node page for graph tours",
+        summary: "Project-scoped File-node page for graph tours",
         parameters: [ORG_ID_QUERY, { name: "limit", in: "query", schema: { type: "integer", minimum: 1, maximum: 500 } }, { name: "after", in: "query", schema: { type: "string" } }],
         responses: { "200": { description: "File nodes and next cursor" }, "400": ERROR_RESPONSE },
       },
     },
     "/v1/memory/graph/dependencies": {
       get: {
-        summary: "Organization dependency-edge page for graph tours",
+        summary: "Project-scoped dependency-edge page for graph tours",
         parameters: [ORG_ID_QUERY, { name: "limit", in: "query", schema: { type: "integer", minimum: 1, maximum: 500 } }, { name: "after", in: "query", schema: { type: "string", format: "uuid" } }],
         responses: { "200": { description: "Dependency edges and next cursor" }, "400": ERROR_RESPONSE },
       },
     },
     "/v1/memory/graph/related-facts": {
       get: {
-        summary: "Active Tier-2 facts for an indexed source File",
+        summary: "Project-scoped active Tier-2 facts for an indexed source File",
         parameters: [ORG_ID_QUERY, { name: "file", in: "query", required: true, schema: { type: "string", minLength: 1, maxLength: 1024 } }],
         responses: { "200": { description: "Up to 50 exact-path fact summaries" }, "400": ERROR_RESPONSE, "404": ERROR_RESPONSE },
       },

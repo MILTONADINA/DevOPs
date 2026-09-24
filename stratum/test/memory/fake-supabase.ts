@@ -33,7 +33,8 @@ export function makeFakeSupabase(
   rpcHandlers: Record<string, (args: Record<string, unknown>) => unknown> = {},
 ): FakeDb {
   const store: Record<string, Row[]> = {};
-  for (const [k, v] of Object.entries(seed)) store[k] = v.map((r) => ({ ...r }));
+  for (const [k, v] of Object.entries(seed)) store[k] = v.map((r) =>
+    k === "knowledge_entities" || k === "knowledge_edges" ? { project_scope: null, scope_verified: false, ...r } : { ...r });
   let idSeq = 0;
   const nextId = (): string => `id-${++idSeq}`;
 

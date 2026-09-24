@@ -65,6 +65,8 @@ export function factToGraphOps(fact: AnyFact): GraphOps {
 export interface PromoteContext {
   orgId: string;
   sessionId?: string;
+  /** Trusted scope of the fact's database session; null is an unbound session. */
+  projectScope?: string | null;
 }
 
 export interface PromoteResult {
@@ -89,7 +91,13 @@ export async function promoteFactsToGraph(graph: KnowledgeGraph, facts: AnyFact[
     const ops = factToGraphOps(fact);
     const idByName = new Map<string, string>();
     for (const e of ops.entities) {
-      const id = await graph.ensureEntity({ orgId: ctx.orgId, kind: e.kind, name: e.name, ...(ctx.sessionId !== undefined ? { sessionId: ctx.sessionId } : {}) });
+      const id = await graph.ensureEntity({
+        orgId: ctx.orgId,
+        kind: e.kind,
+        name: e.name,
+        ...(ctx.sessionId !== undefined ? { sessionId: ctx.sessionId } : {}),
+        ...(ctx.projectScope !== undefined ? { projectScope: ctx.projectScope } : {}),
+      });
       idByName.set(e.name, id);
       entities++;
     }
@@ -97,7 +105,14 @@ export async function promoteFactsToGraph(graph: KnowledgeGraph, facts: AnyFact[
       const fromId = idByName.get(edge.fromName);
       const toId = idByName.get(edge.toName);
       if (fromId === undefined || toId === undefined) continue; // unreachable: edge names are always ensured above
-      await graph.addEdge({ orgId: ctx.orgId, fromEntity: fromId, toEntity: toId, edgeType: edge.edgeType, ...(ctx.sessionId !== undefined ? { sessionId: ctx.sessionId } : {}) });
+      await graph.addEdge({
+        orgId: ctx.orgId,
+        fromEntity: fromId,
+        toEntity: toId,
+        edgeType: edge.edgeType,
+        ...(ctx.sessionId !== undefined ? { sessionId: ctx.sessionId } : {}),
+        ...(ctx.projectScope !== undefined ? { projectScope: ctx.projectScope } : {}),
+      });
       edges++;
     }
   }

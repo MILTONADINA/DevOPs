@@ -38,13 +38,13 @@ try {
   checked(await db.from("api_keys").insert({ org_id: own, key_hash: hashApiKey(raw), name: "semantic-graph" }), "key");
   checked(
     await db.from("knowledge_entities").insert([
-      { id: hit, org_id: own, kind: "Function", name: "src/auth.ts#verify", summary: "Checks a bearer credential" },
-      { id: neighbor, org_id: own, kind: "File", name: "src/auth.ts" },
-      { id: alien, org_id: foreign, kind: "Function", name: "src/foreign.ts#verify" },
+      { id: hit, org_id: own, scope_verified: true, kind: "Function", name: "src/auth.ts#verify", summary: "Checks a bearer credential" },
+      { id: neighbor, org_id: own, scope_verified: true, kind: "File", name: "src/auth.ts" },
+      { id: alien, org_id: foreign, scope_verified: true, kind: "Function", name: "src/foreign.ts#verify" },
     ]),
     "entities",
   );
-  checked(await db.from("knowledge_edges").insert({ org_id: own, from_entity: neighbor, to_entity: hit, edge_type: "DECLARES" }), "edge");
+  checked(await db.from("knowledge_edges").insert({ org_id: own, scope_verified: true, from_entity: neighbor, to_entity: hit, edge_type: "DECLARES" }), "edge");
   checked(
     await db.from("memory_vectors").insert([
       { org_id: own, source_type: "entity", source_ref: hit, embedding: vector(0.9, 0.1) },

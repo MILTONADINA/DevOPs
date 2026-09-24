@@ -18,6 +18,17 @@ proposal text.
 
 ## Current release checkpoint — 2026-09-23
 
+**2026-09-24 project-boundary update:** Commercial fact, audit,
+explicit-session, and graph reads now follow the authenticated API key's
+project slug in the local implementation. Graph nodes and edges written with
+verified project identity are separate across projects; older graph rows with
+uncertain identity are excluded from commercial graph reads and remain
+available in personal mode. A disposable local three-key graph fixture and
+existing graph/promotion/recovery fixtures verify this boundary. Pruning
+remains disabled; this update does not change the historical progress estimate
+or close the judged quality, clean-machine, real-data recovery, and partner
+release gates.
+
 **v0.3.0 is published.** The signed tag points to `250f90a011da38361678cf384b463e57621e01a2`;
 `git tag -v v0.3.0` reported a good SSH signature for the owner's registered
 key. [GitHub Release](https://github.com/MILTONADINA/DevOPs/releases/tag/v0.3.0)

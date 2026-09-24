@@ -60,16 +60,16 @@ try {
   checked(await db.from("sessions").insert({ id: session, org_id: org, model: "local-check" }), "insert session");
   checked(await db.from("sessions").insert({ id: sharedSession, org_id: org, model: "local-check" }), "insert shared session");
   checked(await db.from("knowledge_entities").insert([
-    { id: entityA, org_id: org, session_id: session, kind: "Decision", name: `recovery-a-${org}`, provenance_complete: true },
-    { id: entityB, org_id: org, session_id: session, kind: "Decision", name: `recovery-b-${org}`, provenance_complete: true },
+    { id: entityA, org_id: org, session_id: session, kind: "Decision", name: `recovery-a-${org}`, provenance_complete: true, scope_verified: true },
+    { id: entityB, org_id: org, session_id: session, kind: "Decision", name: `recovery-b-${org}`, provenance_complete: true, scope_verified: true },
   ]), "insert graph entities");
   checked(await db.from("knowledge_entities").insert({
     id: fileEntity, org_id: org, session_id: session, kind: "File",
-    name: filePath, file_path: filePath, provenance_complete: true,
+    name: filePath, file_path: filePath, provenance_complete: true, scope_verified: true,
   }), "insert File entity");
   checked(await db.from("knowledge_edges").insert({
     id: edge, org_id: org, session_id: session, from_entity: entityA,
-    to_entity: entityB, edge_type: "SUPERSEDES", provenance_complete: true,
+    to_entity: entityB, edge_type: "SUPERSEDES", provenance_complete: true, scope_verified: true,
   }), "insert graph edge");
   checked(await db.from("knowledge_entity_sessions").insert({ org_id: org, entity_id: entityA, session_id: sharedSession }), "link shared entity");
   checked(await db.from("knowledge_edge_sessions").insert({ org_id: org, edge_id: edge, session_id: sharedSession }), "link shared edge");

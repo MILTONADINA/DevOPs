@@ -45,6 +45,8 @@ export type EdgeType = "SUPERSEDES" | "DEPRECATED_BY" | "REFERENCED_IN" | "AUTHO
 
 export interface EnsureEntityInput {
   orgId: string;
+  /** Trusted project slug; undefined is the historical personal-mode graph. */
+  projectScope?: string | null;
   kind: EntityKind;
   name: string;
   sessionId?: string;
@@ -54,6 +56,7 @@ export interface EnsureEntityInput {
 
 export interface AddEdgeInput {
   orgId: string;
+  projectScope?: string | null;
   /** Source node. For SUPERSEDES, the SUPERSEDING (newer) entity. */
   fromEntity: string;
   /** Target node. For SUPERSEDES, the SUPERSEDED (stale) entity. */
@@ -125,7 +128,16 @@ export function createKnowledgeGraph(client: SupabaseClient): KnowledgeGraph {
 
   return {
     async ensureEntity(input: EnsureEntityInput): Promise<string> {
-      const existing = await client.from("knowledge_entities").select("id,file_path,summary,provenance_complete").eq("org_id", input.orgId).eq("kind", input.kind).eq("name", input.name).limit(1);
+      let query = client
+        .from("knowledge_entities")
+        .select("id,file_path,summary,provenance_complete")
+        .eq("org_id", input.orgId)
+        .eq("kind", input.kind)
+        .eq("name", input.name)
+        .eq("scope_verified", input.projectScope !== undefined);
+      if (input.projectScope === null || input.projectScope === undefined) query = query.is("project_scope", null);
+      else query = query.eq("project_scope", input.projectScope);
+      const existing = await query.limit(1);
       if (existing.error) throw new Error(`ensureEntity select failed: ${existing.error.message}`);
       const first = ((existing.data ?? []) as { id: string; file_path?: string; summary?: string; provenance_complete?: boolean }[])[0];
       const metadata: Record<string, string> = {};
@@ -145,7 +157,14 @@ export function createKnowledgeGraph(client: SupabaseClient): KnowledgeGraph {
         return first.id;
       }
 
-      const row: Record<string, unknown> = { org_id: input.orgId, kind: input.kind, name: input.name, ...metadata };
+      const row: Record<string, unknown> = {
+        org_id: input.orgId,
+        kind: input.kind,
+        name: input.name,
+        project_scope: input.projectScope ?? null,
+        scope_verified: input.projectScope !== undefined,
+        ...metadata,
+      };
       if (input.sessionId !== undefined) {
         row["session_id"] = input.sessionId;
         row["provenance_complete"] = true;
@@ -158,14 +177,17 @@ export function createKnowledgeGraph(client: SupabaseClient): KnowledgeGraph {
     },
 
     async addEdge(input: AddEdgeInput): Promise<string> {
-      const existing = await client
+      let query = client
         .from("knowledge_edges")
         .select("id,provenance_complete")
         .eq("org_id", input.orgId) // org-scope the existence check (no cross-tenant read)
         .eq("from_entity", input.fromEntity)
         .eq("to_entity", input.toEntity)
         .eq("edge_type", input.edgeType)
-        .limit(1);
+        .eq("scope_verified", input.projectScope !== undefined);
+      if (input.projectScope === null || input.projectScope === undefined) query = query.is("project_scope", null);
+      else query = query.eq("project_scope", input.projectScope);
+      const existing = await query.limit(1);
       if (existing.error) throw new Error(`addEdge select failed: ${existing.error.message}`);
       const first = ((existing.data ?? []) as { id: string; provenance_complete?: boolean }[])[0];
       if (first) {
@@ -183,6 +205,8 @@ export function createKnowledgeGraph(client: SupabaseClient): KnowledgeGraph {
         from_entity: input.fromEntity,
         to_entity: input.toEntity,
         edge_type: input.edgeType,
+        project_scope: input.projectScope ?? null,
+        scope_verified: input.projectScope !== undefined,
       };
       if (input.sessionId !== undefined) {
         row["session_id"] = input.sessionId;
