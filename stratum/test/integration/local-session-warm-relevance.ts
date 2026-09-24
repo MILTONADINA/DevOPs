@@ -17,6 +17,7 @@ const org = randomUUID();
 const session = randomUUID();
 const vegaSession = randomUUID();
 const answer = randomUUID();
+const replacement = randomUUID();
 const foreign = randomUUID();
 const suppressed = randomUUID();
 const noise = [randomUUID(), randomUUID(), randomUUID()];
@@ -54,29 +55,28 @@ try {
         fact(noise[0]!, session, "orion", "The logo was aligned on mobile.", 20),
         fact(noise[1]!, session, "orion", "The changelog spelling was corrected.", 21),
         fact(noise[2]!, session, "orion", "The footer color was adjusted.", 22),
-        fact(foreign, vegaSession, "vega", "Production recovery follows VEGA_RECOVERY.md.", 23),
-        fact(suppressed, session, "orion", "Production recovery follows SUPPRESSED_RECOVERY.md.", 24, true),
+        { ...fact(foreign, vegaSession, "vega", "Production recovery follows VEGA_RECOVERY.md.", 23), supersedes_id: answer },
+        { ...fact(suppressed, session, "orion", "Production recovery follows SUPPRESSED_RECOVERY.md.", 24, true), supersedes_id: answer },
       ]),
     "insert facts",
   );
 
-  const output = await retrieveSessionContext(
-    {
-      projectRoot: root,
-      boundRoot: root,
-      orgId: org,
-      projectScope: "orion",
-      supabaseUrl: url,
-      serviceKey: key,
-      allowlistText: "127.0.0.1",
-      task: "Which document describes production recovery?",
-    },
-    {
-      makeClient: () => db,
-      encode: async (query) => Array.from((await encoder.encode([query]))[0]!),
-      encodeMany: async (texts) => (await encoder.encode(texts)).map((vector) => Array.from(vector)),
-    },
-  );
+  const options = {
+    projectRoot: root,
+    boundRoot: root,
+    orgId: org,
+    projectScope: "orion",
+    supabaseUrl: url,
+    serviceKey: key,
+    allowlistText: "127.0.0.1",
+    task: "Which document describes production recovery?",
+  };
+  const deps = {
+    makeClient: () => db,
+    encode: async (query: string) => Array.from((await encoder.encode([query]))[0]!),
+    encodeMany: async (texts: string[]) => (await encoder.encode(texts)).map((vector) => Array.from(vector)),
+  };
+  const output = await retrieveSessionContext(options, deps);
   const result = JSON.parse(output ?? "null") as { recentFacts: { id: string }[]; relevantFacts: { id: string }[]; semanticStatus: string } | null;
   if (
     !result ||
@@ -90,7 +90,27 @@ try {
       `warm relevance failed: ${JSON.stringify({ recent: result?.recentFacts.map((fact) => fact.id), relevant: result?.relevantFacts.map((fact) => fact.id), status: result?.semanticStatus })}`,
     );
   }
+  checked(
+    await db.from("tech_decisions").insert({
+      ...fact(replacement, session, "orion", "Production recovery now follows NEW_RUNBOOK.md.", 24),
+      supersedes_id: answer,
+    }),
+    "insert linked replacement",
+  );
+  const after = await retrieveSessionContext(options, deps);
+  const linked = JSON.parse(after ?? "null") as { recentFacts: { id: string }[]; relevantFacts: { id: string }[] } | null;
+  if (
+    !linked ||
+    linked.recentFacts.some((fact) => fact.id === answer) ||
+    linked.relevantFacts.some((fact) => fact.id === answer) ||
+    !linked.recentFacts.some((fact) => fact.id === replacement) ||
+    after?.includes(foreign) ||
+    after?.includes(suppressed)
+  ) {
+    throw new Error("explicit same-project supersession did not remove the old fact");
+  }
   process.stdout.write(`local warm relevance passed; status=${result.semanticStatus}\n`);
+  process.stdout.write("local explicit decision supersession passed\n");
 } catch (error) {
   failure = error;
 } finally {
