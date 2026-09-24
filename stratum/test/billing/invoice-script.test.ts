@@ -9,7 +9,30 @@ afterEach(() => vi.unstubAllEnvs());
 test("missing explicit database credentials fail before billing or Stripe access", async () => {
   vi.stubEnv("SUPABASE_URL", "");
   vi.stubEnv("SUPABASE_SERVICE_KEY", "");
-  expect(await main(["--org-id", "00000000-0000-4000-8000-000000000001", "--send"])).toBe(1);
+  vi.stubEnv("STRIPE_SECRET_KEY", "sk_test_fixture");
+  expect(await main(["--org-id", "00000000-0000-4000-8000-000000000001", "--since", "2026-05-01", "--until", "2026-06-01", "--send"])).toBe(1);
+});
+
+test("sending without exact increasing bounds refuses before credential or database access", async () => {
+  vi.stubEnv("SUPABASE_URL", "");
+  vi.stubEnv("SUPABASE_SERVICE_KEY", "");
+  const base = ["--org-id", "00000000-0000-4000-8000-000000000001", "--send"];
+  expect(await main(base)).toBe(2);
+  expect(await main([...base, "--since", "2026-06-01", "--until", "2026-05-01"])).toBe(2);
+  expect(await main([...base, "--since", "bad", "--until", "2026-06-01"])).toBe(2);
+});
+
+test("--force cannot bypass period dedup before credential or database access", async () => {
+  vi.stubEnv("SUPABASE_URL", "");
+  vi.stubEnv("SUPABASE_SERVICE_KEY", "");
+  expect(await main(["--org-id", "00000000-0000-4000-8000-000000000001", "--since", "2026-05-01", "--until", "2026-06-01", "--send", "--force"])).toBe(2);
+});
+
+test("a missing Stripe test key refuses before taking a durable claim", async () => {
+  vi.stubEnv("SUPABASE_URL", "");
+  vi.stubEnv("SUPABASE_SERVICE_KEY", "");
+  vi.stubEnv("STRIPE_SECRET_KEY", "");
+  expect(await main(["--org-id", "00000000-0000-4000-8000-000000000001", "--since", "2026-05-01", "--until", "2026-06-01", "--send"])).toBe(2);
 });
 
 describe("invoice parseArgs", () => {
