@@ -53,6 +53,7 @@ export function makeWebhookRoute(deps: WebhookDeps): FastifyPluginCallback {
     app.post("/v1/webhooks/test", async (req, reply) => {
       const orgId = resolveOrg(req);
       if (orgId === undefined) return err(reply, 400, "org id required (authenticate, or pass ?org-id)");
+      if (req.authEnforced === true && req.projectScopeId !== undefined) return err(reply, 403, "organization-level key required");
       const body = (req.body ?? {}) as Record<string, unknown>;
       if (!isWebhookEventType(body["event_type"])) {
         return err(reply, 400, `event_type must be one of: ${WEBHOOK_EVENT_TYPES.join(", ")}`);
