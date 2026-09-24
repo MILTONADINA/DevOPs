@@ -167,6 +167,13 @@ and real-use gates remain open; the runners now fail nonzero without a provider.
   commercial reads. Other org-wide APIs may still need project review. The pruner is still out of
   the request path and unbound keys supply no project scope. Zero
   Tier-C failures remains a v0.4 ship gate.
+- [ ] **Session-aware evidence retrieval**. A read-only candidate adds one
+  same-session neighbor to dense-plus-lexical raw-turn retrieval. On independent
+  evidence-resolved questions it retained complete evidence for 1,265/1,407
+  LoCoMo and 116/120 LongMemEval cases at about 62% context reduction
+  (`specs/evals/session-neighbor-retrieval.md`). It remains exploratory:
+  Tier-C stale/dormant failures, per-question published evidence, full judged
+  quality, and real-use gates must pass before request-path selection changes.
 - [ ] **`npm run test:eval` wires** all three tiers into one command. The default `npm run test:eval` now invokes full LoCoMo and LongMemEval after Tier-C and judged Tier-B; `--fast` stops after Tier-B. Tier-C 29/50, full judged results, CI scheduling, and one-week real-use validation remain open.
 
 ### 3d. Pruner integration into proxy
