@@ -142,6 +142,33 @@ function assertInvoiceAmount(invoice: Record<string, unknown>, expectedCents: nu
   }
 }
 
+export interface VerifiedStripeInvoice extends InvoiceReceipt {
+  status: "open" | "paid";
+  paidAt?: string;
+}
+
+/** Read-only verification for recording a finalized invoice after a local ledger failure. */
+export async function verifyStripeInvoiceForReconciliation(cfg: StripeConfig, invoiceId: string, expected: Invoice): Promise<VerifiedStripeInvoice> {
+  if (!/^in_[A-Za-z0-9]+$/.test(invoiceId)) throw new Error("Stripe reconciliation requires a valid invoice ID");
+  if (!cfg.secretKey.startsWith("sk_test_")) throw new Error("Stripe reconciliation requires a test-mode key");
+  const retrieved = await stripeGet(cfg, `/v1/invoices/${invoiceId}`);
+  if (retrieved["id"] !== invoiceId || retrieved["object"] !== "invoice") throw new Error("Stripe reconciliation invoice identity differs");
+  const metadata = retrieved["metadata"];
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) throw new Error("Stripe reconciliation invoice metadata is missing");
+  const m = metadata as Record<string, unknown>;
+  if (m["org_id"] !== expected.orgId || m["period_start"] !== expected.periodStart || m["period_end"] !== expected.periodEnd) {
+    throw new Error("Stripe reconciliation invoice organization or period differs");
+  }
+  assertInvoiceAmount(retrieved, usdToCents(expected.amountDueUsd), "existing");
+  if (retrieved["status"] === "open") return { id: invoiceId, status: "open", amountUsd: expected.amountDueUsd };
+  if (retrieved["status"] !== "paid") throw new Error("Stripe reconciliation requires an open or paid invoice");
+  const transitions = retrieved["status_transitions"];
+  const paidAtSeconds = transitions && typeof transitions === "object" && !Array.isArray(transitions) ? (transitions as Record<string, unknown>)["paid_at"] : undefined;
+  const paidAt = typeof paidAtSeconds === "number" && Number.isSafeInteger(paidAtSeconds) && paidAtSeconds > 0 ? new Date(paidAtSeconds * 1000) : null;
+  if (!paidAt || !Number.isFinite(paidAt.getTime())) throw new Error("Stripe paid invoice lacks a valid paid timestamp");
+  return { id: invoiceId, status: "paid", amountUsd: expected.amountDueUsd, paidAt: paidAt.toISOString() };
+}
+
 /** List by customer for a read-after-write retry; Stripe search is eventually consistent. */
 async function findExistingInvoice(cfg: StripeConfig, customerId: string, orgId: string, periodStart: string, periodEnd: string, amountCents: number): Promise<Record<string, unknown> | undefined> {
   let cursor: string | undefined;
