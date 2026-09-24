@@ -167,8 +167,8 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
   const url = process.env["SUPABASE_URL"];
   const key = process.env["SUPABASE_SERVICE_KEY"];
   if (!url || !key) {
-    out("backup SKIPPED: set SUPABASE_URL + SUPABASE_SERVICE_KEY to export. Exiting 0.");
-    return 0;
+    out("backup failed: set SUPABASE_URL + SUPABASE_SERVICE_KEY to export.");
+    return 1;
   }
   const client = createClient(url, key);
 

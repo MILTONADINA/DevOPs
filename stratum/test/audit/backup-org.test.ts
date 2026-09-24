@@ -3,7 +3,25 @@
 // seeded throwaway org (see the commit's live-verification notes).
 
 import { describe, test, expect } from "vitest";
-import { parseArgs, summarizeBackup, totalRows, backupFilename, ORG_SCOPED_TABLES, type BackupFile } from "../../scripts/backup-org";
+import { parseArgs, summarizeBackup, totalRows, backupFilename, main, ORG_SCOPED_TABLES, type BackupFile } from "../../scripts/backup-org";
+
+test("backup exits nonzero without database credentials", async () => {
+  const url = process.env["SUPABASE_URL"];
+  const key = process.env["SUPABASE_SERVICE_KEY"];
+  try {
+    for (const missing of ["SUPABASE_URL", "SUPABASE_SERVICE_KEY"] as const) {
+      process.env["SUPABASE_URL"] = "http://127.0.0.1:54321";
+      process.env["SUPABASE_SERVICE_KEY"] = "test-only";
+      delete process.env[missing];
+      expect(await main(["--org-id", "00000000-0000-0000-0000-000000000001"])).toBe(1);
+    }
+  } finally {
+    if (url !== undefined) process.env["SUPABASE_URL"] = url;
+    else delete process.env["SUPABASE_URL"];
+    if (key !== undefined) process.env["SUPABASE_SERVICE_KEY"] = key;
+    else delete process.env["SUPABASE_SERVICE_KEY"];
+  }
+});
 
 test("org backup includes the per-fact audit statuses", () => {
   expect(ORG_SCOPED_TABLES).toContain("audit_statuses");
