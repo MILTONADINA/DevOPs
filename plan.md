@@ -73,7 +73,7 @@ These unblock the trust-chain story. Do these BEFORE starting Phase 0 corpus cap
 
 - [ ] **5+ real session captures** (~1 week of normal Claude Code use). Process: `cd stratum && npm install && npm run capture` in one terminal; in Claude Code terminal `export ANTHROPIC_BASE_URL=http://localhost:4090`; do normal work; Ctrl+C the capture when done. Repeat across ≥5 different projects/contexts (different stacks: web/server, scripts, refactors, debugging). Files land in `stratum/data/sessions/session-<uuid>.json`. NOTE: this is YOUR data, gitignored.
 - [ ] **Fill `stratum/docs/waste-taxonomy.md`** (~3h analysis). Read the 5+ captured JSON files. Identify ≥4 named waste categories (e.g., system prompt repetition, tool output echoes, redundant reasoning traces, full-file re-reads). Fill all 23 `<!--` markers. **Critical**: answer "#1 Waste Type" at line 119 — this is the load-bearing finding driving Phase 2 pruner heuristics.
-- [ ] **DyCP paper notes** (~4h reading + writing). Read arXiv:2601.07994 (Dynamic Context Pruning for Long-Form Dialogue with LLMs). Fill `stratum/docs/paper-notes.md` (currently a stub). Write ≥5 substantive notes covering: algorithm summary, key parameters (θ, decay λ), benchmark results on LoCoMo + MT-Bench+, failure cases the paper documents, and our adaptation choices (specifically what CQ-Extended changes vs vanilla DyCP).
+- [x] **DyCP paper notes** (~4h reading + writing). Read arXiv:2601.07994 (Dynamic Context Pruning for Long-Form Dialogue with LLMs). Fill `stratum/docs/paper-notes.md` with ≥5 substantive notes covering: algorithm summary, paper thresholds (τ, θ) versus our decay λ, benchmark results on LoCoMo + MT-Bench+, documented failure cases, and CQ-Extended adaptation choices.
 
 ### 2c. Phase 0 closure
 
