@@ -152,6 +152,8 @@ describe("evidence-survival co-gate (ADR-0016 / PB-39)", () => {
     const verdict = evaluateSuite(result);
     expect(verdict.passed).toBe(false);
     expect(verdict.failures[0]).toMatch(/EvidenceSurvival/);
+    expect(verdict.actionRequired).toMatch(/dropped gold evidence/i);
+    expect(verdict.actionRequired).not.toMatch(/Answer Relevancy/);
   });
 });
 

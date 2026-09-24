@@ -25,13 +25,12 @@
  * forbidden); they would only ever be a reported reference signal.
  */
 
-import "dotenv/config";
 import { join } from "node:path";
 import { existsSync } from "node:fs";
 import { createOnnxEncoder } from "../src/pruner/encoder";
 import { prune, type HistoryEmbedding } from "../src/pruner/pruner";
 import { DEFAULT_KADANEDIAL, halfLifeHours } from "../src/pruner/kadanedial";
-import { createClaudeAnswerer, createLlmJudge, scoreContextRepeated, type Answerer, type Judge } from "../evals/harness/metrics";
+import { createClaudeAnswerer, createLlmJudge, scoreContextRepeated, selectEvalProvider, type Answerer, type Judge } from "../evals/harness/metrics";
 import { summarizeScores } from "../evals/harness/aggregate";
 import { gateScenario } from "../evals/harness/compare";
 import { evaluateSuite, renderReport } from "../evals/harness/report";
@@ -163,14 +162,14 @@ export async function main(): Promise<number> {
 
   const file = join(process.cwd(), "evals", "datasets", "locomo", "locomo10.json");
   const haveData = existsSync(file);
-  const haveKey = Boolean(process.env["ANTHROPIC_API_KEY"]);
-  if (!haveData || !haveKey) {
+  const provider = selectEvalProvider();
+  if (!haveData || !provider) {
     out("LoCoMo Tier-A gate — GATED (an input is missing; not run)");
     out("=========================================================");
     out(`  locomo10.json:  ${haveData ? "yes" : "NO  (evals/datasets/locomo/locomo10.json — CC-BY-NC, fetch from snap-research/locomo)"}`);
-    out(`  judge API key:  ${haveKey ? "yes" : "NO  (set ANTHROPIC_API_KEY)"}`);
-    out("Refusing to emit fabricated scores. Exiting 0.");
-    return 0;
+    out(`  eval provider:  ${provider ? provider.label : "NO (set EVAL_ANTHROPIC_API_KEY or EVAL_LOCAL_BASE_URL + EVAL_LOCAL_MODEL)"}`);
+    out("Refusing to emit fabricated scores. Exiting 1.");
+    return 1;
   }
 
   const nConv = envInt("LOCOMO_CONVERSATIONS", 2);
@@ -190,20 +189,22 @@ export async function main(): Promise<number> {
   const totalQ = plan.reduce((a, p) => a + p.qs.length, 0);
   const callBudget = totalQ * repeats * (2 + 2 * lambdas.length); // ×R repeats (PB-42); baseline + per-λ each (answer+judge)
 
-  out("CQ Eval Suite — Tier-A LoCoMo (real ONNX encoder + Claude judge)");
+  out(`CQ Eval Suite — Tier-A LoCoMo (real ONNX encoder + ${provider.label} judge${provider.exploratory ? "; EXPLORATORY local-model result" : ""})`);
   out("=".repeat(64));
   out(`Conversations: ${conversations.length}/10   Questions/conv: ${nQ} (cats ${cats.join(",")})   Sampled questions: ${totalQ}`);
-  out(`λ characterized: [${lambdas.join(", ")}]   GATE λ = ${gateLambda} (half-life ${halfLifeHours(gateLambda).toFixed(1)}h)`);
+  out(
+    `λ characterized: [${lambdas.join(", ")}]   GATE λ = ${gateLambda} (${horizonFrac > 0 ? `half-life ${((horizonFrac * -1) / Math.log2(gateLambda)).toFixed(2)}×span` : `half-life ${halfLifeHours(gateLambda).toFixed(1)}h`})`,
+  );
   out(horizonFrac > 0 ? `Decay: SCALE-INVARIANT (ADR-0015) — horizon = ${horizonFrac}×span per conversation` : "Decay: absolute per-hour (documented default)");
   out(repeats > 1 ? `Judge sampling: R=${repeats} repeats/scenario, AVERAGED (PB-42 noise damping)` : "Judge sampling: single shot (set LOCOMO_REPEATS>1 to damp judge noise — ADR-0015/PB-42)");
   out(`Thresholds: Faithfulness ≥ ${DEFAULT_THRESHOLDS.faithfulnessMin}, Answer-Relevancy ≥ ${DEFAULT_THRESHOLDS.answerRelevancyMin}, max degradation ${DEFAULT_THRESHOLDS.maxDegradation}`);
-  out(`Upper-bound model calls: ${callBudget} (Claude Haiku; pruned calls deduped by selection).`);
+  out(`Upper-bound model calls: ${callBudget} (${provider.label}; pruned calls deduped by selection).`);
   out("Note: cat-5 (adversarial/unanswerable) is excluded — it tests refusal, not memory retention.");
   out("");
 
   const encoder = createOnnxEncoder({ cacheDir: join(process.cwd(), "models") });
-  const answerer = createClaudeAnswerer();
-  const judge = createLlmJudge();
+  const answerer = createClaudeAnswerer(provider.completion);
+  const judge = createLlmJudge(provider.completion);
 
   const outcomes: QuestionOutcome[] = [];
   for (const { c, qs } of plan) {
@@ -290,7 +291,8 @@ export async function main(): Promise<number> {
   }
 
   out("");
-  out(`${verdict.passed ? "PASS" : "FAIL"} — Tier-A LoCoMo gate (sampled, λ=${gateLambda}).`);
+  out(`${provider.exploratory ? "EXPLORATORY " : ""}${verdict.passed ? "PASS" : "FAIL"} — Tier-A LoCoMo ${provider.exploratory ? "local-model check" : "gate"} (sampled, λ=${gateLambda}).`);
+  if (provider.exploratory) out("Local-model results do not satisfy the documented Claude Haiku release gate; published benchmark coverage remains open.");
   if (!verdict.passed) {
     out(
       "A FAIL here is the EXPECTED finding if λ=0.97 crushes weeks-old evidence: do NOT ship pruning in the request path. " +

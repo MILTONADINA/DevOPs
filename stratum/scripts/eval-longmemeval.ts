@@ -18,13 +18,12 @@
  * finding; gold answers are NOT used to tune λ (evidence survival is deterministic).
  */
 
-import "dotenv/config";
 import { join } from "node:path";
 import { existsSync } from "node:fs";
 import { createOnnxEncoder } from "../src/pruner/encoder";
 import { prune, type HistoryEmbedding } from "../src/pruner/pruner";
 import { DEFAULT_KADANEDIAL, halfLifeHours } from "../src/pruner/kadanedial";
-import { createClaudeAnswerer, createLlmJudge } from "../evals/harness/metrics";
+import { createClaudeAnswerer, createLlmJudge, selectEvalProvider } from "../evals/harness/metrics";
 import { scoreLongMemContexts } from "../evals/harness/longmemeval-scoring";
 import { gateScenario } from "../evals/harness/compare";
 import { evaluateSuite, renderReport } from "../evals/harness/report";
@@ -74,14 +73,14 @@ export async function main(): Promise<number> {
   const haystack = join(dir, "longmemeval_s.json");
   const oracle = join(dir, "longmemeval_oracle.json");
   const file = existsSync(haystack) ? haystack : existsSync(oracle) ? oracle : null;
-  const haveKey = Boolean(process.env["ANTHROPIC_API_KEY"]);
-  if (!file || !haveKey) {
+  const provider = selectEvalProvider();
+  if (!file || !provider) {
     out("LongMemEval Tier-A gate — GATED (an input is missing; not run)");
     out("==============================================================");
     out(`  longmemeval data:  ${file ? `yes (${file.endsWith("longmemeval_s.json") ? "haystack" : "oracle"})` : "NO  (evals/datasets/longmemeval/longmemeval_s.json — MIT, HF xiaowu0162/longmemeval-cleaned)"}`);
-    out(`  judge API key:     ${haveKey ? "yes" : "NO  (set ANTHROPIC_API_KEY)"}`);
-    out("Refusing to emit fabricated scores. Exiting 0.");
-    return 0;
+    out(`  eval provider:     ${provider ? provider.label : "NO (set EVAL_ANTHROPIC_API_KEY or EVAL_LOCAL_BASE_URL + EVAL_LOCAL_MODEL)"}`);
+    out("Refusing to emit fabricated scores. Exiting 1.");
+    return 1;
   }
   const isOracle = file === oracle;
 
@@ -96,18 +95,20 @@ export async function main(): Promise<number> {
   const questions = sampleLongMemQuestions(loadLongMemEval(file), types ? { maxQuestions: nQ, types } : { maxQuestions: nQ });
   const callBudget = questions.length * 4 * repeats; // R × baseline and pruned answer+judge cycles
 
-  out("CQ Eval Suite — Tier-A LongMemEval (real ONNX encoder + Claude judge)");
+  out(`CQ Eval Suite — Tier-A LongMemEval (real ONNX encoder + ${provider.label} judge${provider.exploratory ? "; EXPLORATORY local-model result" : ""})`);
   out("=".repeat(68));
   out(`Source: ${isOracle ? "oracle (evidence-only — degenerate for pruning)" : "haystack longmemeval_s.json"}   Questions: ${questions.length}${types ? ` (types ${types.join(",")})` : ""}`);
-  out(`GATE λ = ${gateLambda} (half-life ${halfLifeHours(gateLambda).toFixed(1)}h)   Decay: ${horizonFrac > 0 ? `SCALE-INVARIANT ${horizonFrac}×span (ADR-0015)` : "absolute per-hour"}`);
+  out(
+    `GATE λ = ${gateLambda} (${horizonFrac > 0 ? `half-life ${((horizonFrac * -1) / Math.log2(gateLambda)).toFixed(2)}×span` : `half-life ${halfLifeHours(gateLambda).toFixed(1)}h`})   Decay: ${horizonFrac > 0 ? `SCALE-INVARIANT ${horizonFrac}×span (ADR-0015)` : "absolute per-hour"}`,
+  );
   out(`Thresholds: Faithfulness ≥ ${DEFAULT_THRESHOLDS.faithfulnessMin}, Answer-Relevancy ≥ ${DEFAULT_THRESHOLDS.answerRelevancyMin}, max degradation ${DEFAULT_THRESHOLDS.maxDegradation}, evidence survival ≥ ${DEFAULT_THRESHOLDS.evidenceSurvivalMin}`);
-  out(`Upper-bound model calls: ${callBudget} (Claude Haiku).`);
+  out(`Upper-bound model calls: ${callBudget} (${provider.label}).`);
   out(repeats > 1 ? `Judge sampling: R=${repeats} repeats/context, averaged` : "Judge sampling: single shot (set LONGMEMEVAL_REPEATS>1 to damp noise)");
   out("");
 
   const encoder = createOnnxEncoder({ cacheDir: join(process.cwd(), "models") });
-  const answerer = createClaudeAnswerer();
-  const judge = createLlmJudge();
+  const answerer = createClaudeAnswerer(provider.completion);
+  const judge = createLlmJudge(provider.completion);
 
   const outcomes: QOutcome[] = [];
   for (const q of questions) {
@@ -168,7 +169,8 @@ export async function main(): Promise<number> {
   }
   out(`  Scenarios passing the COMPLETE gate: ${scenarios.filter((s) => s.passed).length}/${scenarios.length}`);
   out("");
-  out(`${verdict.passed ? "PASS" : "FAIL"} — Tier-A LongMemEval gate (sampled).`);
+  out(`${provider.exploratory ? "EXPLORATORY " : ""}${verdict.passed ? "PASS" : "FAIL"} — Tier-A LongMemEval ${provider.exploratory ? "local-model check" : "gate"} (sampled).`);
+  if (provider.exploratory) out("Local-model results do not satisfy the documented Claude Haiku release gate; published benchmark coverage remains open.");
   if (isOracle) out("NOTE: oracle is evidence-only (little to prune) — run on longmemeval_s.json for the real pruning signal.");
   return verdict.passed ? 0 : 1;
 }
