@@ -33,6 +33,14 @@ SHALL perform this check before either a dry-run success or a database write.
 An explicitly empty table SHALL be valid. Older snapshots with a different
 table set require an explicit migration before restore.
 
+## REQ-5 — Organization-bound restore rows
+
+WHEN an operator restores an organization backup, THE SYSTEM SHALL verify that
+every organization-scoped row belongs to the backup organization and that every
+pruning log names a session contained in the same backup. It SHALL reject a
+cross-organization or orphaned row before either a dry-run success or a
+database write.
+
 ## Acceptance criteria
 
 - **AC-1:** a simulated REST row cap still exports all 1,001 rows of a table;
@@ -43,3 +51,5 @@ table set require an explicit migration before restore.
   the scoped fact and audit records.
 - **AC-4:** a missing, malformed, or unknown table makes restore exit nonzero
   before any write; a current complete snapshot with empty tables succeeds.
+- **AC-5:** a foreign organization row in any scoped table or a pruning log
+  for a session outside the backup makes restore exit nonzero before any write.

@@ -36,6 +36,18 @@ describe("validateBackup", () => {
     expect(() => validateBackup({ ...ok, tables: { ...ok.tables, sessions: {} } })).toThrow(/sessions/);
     expect(() => validateBackup({ ...ok, tables: { ...ok.tables, future_table: [{ id: "x" }] } })).toThrow(/future_table/);
   });
+  test("rejects foreign organization rows from every scoped table", () => {
+    for (const table of ORG_SCOPED_TABLES) {
+      const foreign = { ...ok, tables: { ...ok.tables, [table]: [{ id: "other", org_id: "o2" }] } };
+      expect(() => validateBackup(foreign), table).toThrow(/organization mismatch/);
+    }
+  });
+  test("rejects pruning logs for sessions outside the backup", () => {
+    const valid = { ...ok, tables: { ...ok.tables, sessions: [{ id: "s1", org_id: "o1" }], pruning_logs: [{ id: "p1", session_id: "s1" }] } };
+    expect(validateBackup(valid)).toBe(valid);
+    expect(() => validateBackup({ ...valid, tables: { ...valid.tables, pruning_logs: [{ id: "p2", session_id: "s2" }] } })).toThrow(/pruning_logs/);
+    expect(() => validateBackup({ ...valid, tables: { ...valid.tables, sessions: [{ org_id: "o1" }], pruning_logs: [{ id: "p2" }] } })).toThrow(/session/);
+  });
 });
 
 describe("stripGeneratedCols", () => {

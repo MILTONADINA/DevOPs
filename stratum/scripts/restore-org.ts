@@ -83,6 +83,25 @@ export function validateBackup(obj: unknown): BackupFile {
   if (sourceLinks?.some((row) => (row as { org_id?: unknown } | null)?.org_id !== b.orgId)) {
     throw new Error("backup source link organization mismatch");
   }
+  for (const table of ORG_SCOPED_TABLES) {
+    if (b.tables[table]?.some((row) => (row as { org_id?: unknown } | null)?.org_id !== b.orgId)) {
+      throw new Error(`backup table ${table} organization mismatch`);
+    }
+  }
+  const sessionIds = new Set<string>();
+  for (const row of b.tables["sessions"] ?? []) {
+    const id = (row as { id?: unknown } | null)?.id;
+    if (typeof id !== "string" || id === "") throw new Error("backup session ID missing");
+    sessionIds.add(id);
+  }
+  if (
+    b.tables["pruning_logs"]?.some((row) => {
+      const id = (row as { session_id?: unknown } | null)?.session_id;
+      return typeof id !== "string" || !sessionIds.has(id);
+    })
+  ) {
+    throw new Error("backup pruning_logs session mismatch");
+  }
   return b as BackupFile;
 }
 
