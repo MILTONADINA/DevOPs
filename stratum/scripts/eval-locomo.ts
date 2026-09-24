@@ -308,7 +308,7 @@ export async function main(): Promise<number> {
   }
 
   out("");
-  out(`${provider.exploratory ? "EXPLORATORY " : ""}${verdict.passed ? "PASS" : "FAIL"} — Tier-A LoCoMo ${provider.exploratory ? "local-model check" : "gate"} (sampled, λ=${gateLambda}).`);
+  out(`${provider.exploratory ? "EXPLORATORY " : ""}${verdict.passed ? "PASS" : "FAIL"} — Tier-A LoCoMo ${provider.exploratory ? "local-model check" : "gate"} (${full ? "full" : "sampled"}, λ=${gateLambda}).`);
   if (provider.exploratory) out("Local-model results do not satisfy the documented Claude Haiku release gate; published benchmark coverage remains open.");
   if (!verdict.passed) {
     out(
