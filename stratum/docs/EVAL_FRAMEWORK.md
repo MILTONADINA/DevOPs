@@ -154,6 +154,10 @@ npm run test:eval -- --fast
 
 # Offline critical-query gate (no judge or API key)
 npm run eval:tierc
+
+# Claude judged gates only: install pinned Python DeepEval in a project-local venv
+python3 -m venv .venv
+.venv/bin/python -m pip install -r evals/requirements-deepeval.txt
 ```
 
 ### Output Format
@@ -192,7 +196,9 @@ evals/
 │   └── golden/           ← Tier C golden query set
 ├── harness/
 │   ├── runner.ts         ← Main eval runner
-│   ├── metrics.ts        ← DeepEval integration
+│   ├── metrics.ts        ← answerer + exploratory scalar judge
+│   ├── deepeval-judge.ts ← persistent release-judge bridge
+│   ├── deepeval_worker.py ← Python DeepEval metrics
 │   ├── baseline.ts       ← Full-context (no pruning) baseline runner
 │   └── compare.ts        ← Delta computation vs baseline
 ├── fixtures/

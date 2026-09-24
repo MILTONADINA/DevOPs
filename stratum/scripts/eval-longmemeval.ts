@@ -23,7 +23,7 @@ import { existsSync } from "node:fs";
 import { createOnnxEncoder } from "../src/pruner/encoder";
 import { prune, type HistoryEmbedding } from "../src/pruner/pruner";
 import { DEFAULT_KADANEDIAL, halfLifeHours } from "../src/pruner/kadanedial";
-import { createClaudeAnswerer, createLlmJudge, selectEvalProvider } from "../evals/harness/metrics";
+import { createClaudeAnswerer, createSelectedJudge, selectEvalProvider } from "../evals/harness/metrics";
 import { scoreLongMemContexts } from "../evals/harness/longmemeval-scoring";
 import { gateScenario } from "../evals/harness/compare";
 import { evaluateSuite, renderReport } from "../evals/harness/report";
@@ -101,9 +101,9 @@ export async function main(): Promise<number> {
   const loaded = loadLongMemEval(file);
   const coverage = full ? planFullLongMemEval(loaded) : undefined;
   const questions = coverage?.questions ?? sampleLongMemQuestions(loaded, types ? { maxQuestions: nQ, types } : { maxQuestions: nQ });
-  const callBudget = questions.length * 4 * repeats; // R × baseline and pruned answer+judge cycles
+  const cycleCount = questions.length * 2 * repeats; // R × baseline and pruned answer+judge cycles
 
-  out(`CQ Eval Suite — Tier-A LongMemEval (real ONNX encoder + ${provider.label} judge${provider.exploratory ? "; EXPLORATORY local-model result" : ""})`);
+  out(`CQ Eval Suite — Tier-A LongMemEval (real ONNX encoder + ${provider.label} ${provider.exploratory ? "EXPLORATORY scalar judge" : "DeepEval Python 4.2.6 metrics"})`);
   out("=".repeat(68));
   out(`Source: ${isOracle ? "oracle (evidence-only — degenerate for pruning)" : "haystack longmemeval_s.json"}   Questions: ${questions.length}${types ? ` (types ${types.join(",")})` : ""}`);
   if (coverage) out(`Full coverage: selected ${coverage.selected}/500; evidence-labeled ${coverage.labeled}; unlabeled ${coverage.unlabeled}.`);
@@ -111,7 +111,7 @@ export async function main(): Promise<number> {
     `GATE λ = ${gateLambda} (${horizonFrac > 0 ? `half-life ${((horizonFrac * -1) / Math.log2(gateLambda)).toFixed(2)}×span` : `half-life ${halfLifeHours(gateLambda).toFixed(1)}h`})   Decay: ${horizonFrac > 0 ? `SCALE-INVARIANT ${horizonFrac}×span (ADR-0015)` : "absolute per-hour"}`,
   );
   out(`Thresholds: Faithfulness ≥ ${DEFAULT_THRESHOLDS.faithfulnessMin}, Answer-Relevancy ≥ ${DEFAULT_THRESHOLDS.answerRelevancyMin}, max degradation ${DEFAULT_THRESHOLDS.maxDegradation}, evidence survival ≥ ${DEFAULT_THRESHOLDS.evidenceSurvivalMin}`);
-  out(`Upper-bound model calls: ${callBudget} (${provider.label}).`);
+  out(`Answer+judge cycles: up to ${cycleCount} (${provider.label}). DeepEval metrics may make multiple model calls per cycle.`);
   out(repeats > 1 ? `Judge sampling: R=${repeats} repeats/context, averaged` : "Judge sampling: single shot (set LONGMEMEVAL_REPEATS>1 to damp noise)");
   out("");
 
@@ -122,7 +122,9 @@ export async function main(): Promise<number> {
 
   const encoder = createOnnxEncoder({ cacheDir: join(process.cwd(), "models") });
   const answerer = createClaudeAnswerer(provider.completion);
-  const judge = createLlmJudge(provider.completion);
+  const judge = createSelectedJudge(provider);
+
+  try {
 
   const outcomes: QOutcome[] = [];
   for (const q of questions) {
@@ -193,6 +195,9 @@ export async function main(): Promise<number> {
   if (provider.exploratory) out("Local-model results do not satisfy the documented Claude Haiku release gate; published benchmark coverage remains open.");
   if (isOracle) out("NOTE: oracle is evidence-only (little to prune) — run on longmemeval_s.json for the real pruning signal.");
   return verdict.passed && (!full || !provider.exploratory) ? 0 : 1;
+  } finally {
+    await judge.close?.();
+  }
 }
 
 const entryPath = process.argv[1] ?? "";
