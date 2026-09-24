@@ -2,9 +2,39 @@
 // stripGeneratedCols, restorePlan). The live insert is verified by the
 // backup→delete→restore round-trip (see the commit's live-verification notes).
 
-import { describe, test, expect } from "vitest";
-import { parseArgs, validateBackup, stripGeneratedCols, restorePlan, RESTORE_ORDER } from "../../scripts/restore-org";
+import { describe, test, expect, vi } from "vitest";
+import { join } from "node:path";
+import { parseArgs, validateBackup, stripGeneratedCols, restorePlan, main, RESTORE_ORDER } from "../../scripts/restore-org";
 import { ORG_SCOPED_TABLES, type BackupFile } from "../../scripts/backup-org";
+
+test("real restore fails without credentials while dry run validates the file", async () => {
+  const { mkdtempSync, rmSync, writeFileSync } = await vi.importActual<typeof import("node:fs")>("node:fs");
+  const dir = mkdtempSync(join(process.cwd(), "../.workflow/state/recovery-credential-"));
+  const file = join(dir, "fixture.backup.json");
+  const backup: BackupFile = {
+    orgId: "00000000-0000-0000-0000-000000000001",
+    exportedAt: "2026-09-24T00:00:00Z",
+    tables: Object.fromEntries([["organizations", [{ id: "00000000-0000-0000-0000-000000000001" }]], ...ORG_SCOPED_TABLES.map((table) => [table, []]), ["pruning_logs", []]]),
+  };
+  const url = process.env["SUPABASE_URL"];
+  const key = process.env["SUPABASE_SERVICE_KEY"];
+  try {
+    writeFileSync(file, JSON.stringify(backup));
+    for (const missing of ["SUPABASE_URL", "SUPABASE_SERVICE_KEY"] as const) {
+      process.env["SUPABASE_URL"] = "http://127.0.0.1:54321";
+      process.env["SUPABASE_SERVICE_KEY"] = "test-only";
+      delete process.env[missing];
+      expect(await main(["--file", file, "--dry-run"])).toBe(0);
+      expect(await main(["--file", file])).toBe(1);
+    }
+  } finally {
+    if (url !== undefined) process.env["SUPABASE_URL"] = url;
+    else delete process.env["SUPABASE_URL"];
+    if (key !== undefined) process.env["SUPABASE_SERVICE_KEY"] = key;
+    else delete process.env["SUPABASE_SERVICE_KEY"];
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
 
 describe("parseArgs", () => {
   test("defaults + flags", () => {

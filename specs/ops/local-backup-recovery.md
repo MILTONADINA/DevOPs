@@ -41,6 +41,20 @@ pruning log names a session contained in the same backup. It SHALL reject a
 cross-organization or orphaned row before either a dry-run success or a
 database write.
 
+## REQ-6 — Missing credentials fail recovery commands
+
+WHEN an operator runs a backup or a non-dry-run restore without either
+`SUPABASE_URL` or `SUPABASE_SERVICE_KEY` in the process environment, THE
+SYSTEM SHALL exit nonzero and state that credentials are missing. A restore
+dry run SHALL validate the file without requiring database credentials.
+
+## REQ-7 — Local recovery runbook
+
+WHEN an operator needs to back up or recover the local Stratum stack, THE
+PROJECT SHALL provide a runbook with the exact supported commands, an
+inspection step before restore, clean-target and secret-handling limits, and
+the distinction between the disposable recovery check and real-data recovery.
+
 ## Acceptance criteria
 
 - **AC-1:** a simulated REST row cap still exports all 1,001 rows of a table;
@@ -53,3 +67,7 @@ database write.
   before any write; a current complete snapshot with empty tables succeeds.
 - **AC-5:** a foreign organization row in any scoped table or a pruning log
   for a session outside the backup makes restore exit nonzero before any write.
+- **AC-6:** backup and real restore return nonzero for each missing credential;
+  a valid restore dry run still succeeds without credentials.
+- **AC-7:** the runbook documents local startup, backup, dry run, clean-target
+  restore, verification, and incident triage without claiming a real-data drill.
