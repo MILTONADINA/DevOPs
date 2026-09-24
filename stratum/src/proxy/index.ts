@@ -34,7 +34,7 @@ import { createLocalUsageOutbox } from "../billing/durable-usage-outbox";
 import { createTokenBudget } from "./token-budget";
 import { createSupabaseHealthCheck } from "./routes/health";
 import { createFactExtractor } from "../memory/warm/extractor";
-import { createRoutedForward } from "./providers/router";
+import { createLocalFactCompletion } from "../memory/warm/local-completion";
 import { createSupabaseMessageMemoryRecorder } from "./message-memory";
 import { createSupabaseConversationResolver } from "./conversation";
 import { createShadowObserver } from "./shadow-observer";
@@ -203,23 +203,7 @@ export function buildStartOptions(env: StartEnv, base: BuildProxyOptions, makeCl
         }
         const endpoint = localExtractionUrl(env.CQ_LOCAL_BASE_URL);
         const model = env.CQ_MEMORY_EXTRACT_MODEL;
-        const forward = createRoutedForward({ CQ_LOCAL_BASE_URL: endpoint, CQ_LOCAL_API_KEY: env.CQ_LOCAL_API_KEY });
-        const extractor = createFactExtractor({
-          async complete(prompt) {
-            const response = await forward({ model, messages: [{ role: "user", content: prompt }], max_tokens: 1024 }, "");
-            if (response.status >= 400) throw new Error(`local extraction model returned HTTP ${response.status}`);
-            if ((response.data as { stop_reason?: string } | null)?.stop_reason === "max_tokens") {
-              throw new Error("local extraction model output truncated");
-            }
-            const blocks = (response.data as { content?: { type?: string; text?: string }[] } | null)?.content;
-            const answer = blocks
-              ?.filter((block) => block.type === "text" && typeof block.text === "string")
-              .map((block) => block.text)
-              .join("\n");
-            if (!answer) throw new Error("local extraction model returned no text");
-            return answer;
-          },
-        });
+        const extractor = createFactExtractor(createLocalFactCompletion(endpoint, model, env.CQ_LOCAL_API_KEY));
         const auditRepoRoot = env.CQ_AUDIT_REPO_ROOT ? resolveAuditRepoRoot(env.CQ_AUDIT_REPO_ROOT, env.DEVOPS_STRATUM_PROJECT_ROOT ?? "") : undefined;
         base.messages.recordMemory = createSupabaseMessageMemoryRecorder(client, extractor, auditRepoRoot);
       }
