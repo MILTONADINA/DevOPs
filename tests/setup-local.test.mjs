@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { test } from "node:test";
 import { detectPlatform, main } from "../scripts/setup-local.mjs";
 
@@ -24,4 +24,10 @@ test("root npm setup help describes the local stack without starting it", () => 
   assert.match(output, /Docker Compose/);
   assert.match(output, /macOS.*Linux.*WSL2/);
   assert.match(output, /provider/i);
+});
+
+test("Stratum setup uses the same local workflow without a dotenv-writing legacy script", () => {
+  const packageJson = JSON.parse(readFileSync(new URL("../stratum/package.json", import.meta.url), "utf8"));
+  assert.equal(packageJson.scripts.setup, "node ../scripts/setup-local.mjs");
+  assert.equal(existsSync(new URL("../stratum/scripts/setup.ts", import.meta.url)), false);
 });

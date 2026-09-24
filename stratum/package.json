@@ -5,7 +5,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "setup": "tsx scripts/setup.ts",
+    "setup": "node ../scripts/setup-local.mjs",
     "dev": "tsx src/proxy/index.ts",
     "build": "tsc --noEmit -p tsconfig.typecheck.json",
     "build:vercel": "npx esbuild vercel-src/entry.ts --bundle --platform=node --format=esm --packages=external --tsconfig=tsconfig.json --outfile=api/index.js",
