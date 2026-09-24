@@ -87,6 +87,14 @@ API keys, then verifies authenticated fact, conflict, and status reads stay in
 the key's organization even with a foreign `org-id` query. It also checks
 missing/inactive keys and cross-organization suppression before cleanup.
 
+Run `npm run db:verify-project-scope` after migrations to check operator-bound
+API key project identity. Create a key with
+`npm run db:with-env -- npm run create-api-key -- --org-id <uuid> --name <label> --project-scope <slug>`.
+Use a separate key for each project. The trusted request scope is the
+authenticated organization plus the stored slug; client headers and query
+parameters cannot change it. Existing keys without `--project-scope` remain
+unbound and cannot supply a scoped pruning decision. Pruning remains disabled.
+
 Run `npm run db:verify-message-memory` to check a successful authenticated
 `/v1/messages` request through a loopback fake extraction model. It verifies
 one automatically created memory session and one validated fact under the

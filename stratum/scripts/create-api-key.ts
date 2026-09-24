@@ -5,17 +5,17 @@
  * prints the raw key ONCE — it cannot be recovered later. Pairs with the proxy auth gate
  * (src/proxy/auth.ts). Gated on Supabase creds.
  *
- *   npm run create-api-key -- --org-id <uuid> --name "<label>" [--env test]
+ *   npm run create-api-key -- --org-id <uuid> --name "<label>" [--env test] [--project-scope <slug>]
  */
 
-import "dotenv/config";
 import { createClient } from "@supabase/supabase-js";
-import { generateApiKey } from "../src/proxy/auth";
+import { generateApiKey, validProjectScope } from "../src/proxy/auth";
 
 interface Args {
   orgId?: string;
   name?: string;
   env: "live" | "test";
+  projectScope?: string;
 }
 
 export function parseArgs(argv: string[]): Args {
@@ -33,6 +33,12 @@ export function parseArgs(argv: string[]): Args {
       case "--env":
         out.env = val() === "test" ? "test" : "live";
         break;
+      case "--project-scope": {
+        const scope = val();
+        if (!validProjectScope(scope)) throw new Error("invalid --project-scope (use a lowercase project slug, 1-64 characters)");
+        out.projectScope = scope;
+        break;
+      }
       default:
         break;
     }
@@ -46,7 +52,7 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
   };
   const args = parseArgs(argv);
   if (args.orgId === undefined || args.orgId === "" || args.name === undefined || args.name === "") {
-    out('usage: npm run create-api-key -- --org-id <uuid> --name "<label>" [--env test]');
+    out('usage: npm run create-api-key -- --org-id <uuid> --name "<label>" [--env test] [--project-scope <slug>]');
     return 1;
   }
 
@@ -67,7 +73,11 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
   }
 
   const { raw, hash } = generateApiKey(args.env);
-  const { data, error } = await client.from("api_keys").insert({ org_id: args.orgId, key_hash: hash, name: args.name }).select("id").limit(1);
+  const { data, error } = await client
+    .from("api_keys")
+    .insert({ org_id: args.orgId, key_hash: hash, name: args.name, ...(args.projectScope ? { project_scope: args.projectScope } : {}) })
+    .select("id")
+    .limit(1);
   if (error) throw new Error(`insert api key failed: ${error.message}`);
   const keyId = ((data ?? [])[0] as { id: string } | undefined)?.id ?? "?";
 
@@ -78,6 +88,7 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
   out(`  id:    ${keyId}`);
   out(`  org:   ${args.orgId}`);
   out(`  name:  ${args.name}`);
+  out(`  project: ${args.projectScope ?? "unbound"}`);
   out("Use it as:  Authorization: Bearer <key>   (or x-api-key: <key>)");
   return 0;
 }
