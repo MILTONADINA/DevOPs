@@ -4,7 +4,7 @@
 
 import { describe, test, expect } from "vitest";
 import type { Invoice } from "../../src/types/billing";
-import { usdToCents, encodeForm, sendStripeInvoice, type StripeFetch } from "../../src/billing/stripe";
+import { usdToCents, encodeForm, sendStripeInvoice, verifyStripeInvoiceForReconciliation, type StripeFetch } from "../../src/billing/stripe";
 
 describe("usdToCents", () => {
   test("converts dollars to integer cents (the mischarge-risk conversion)", () => {
@@ -324,5 +324,44 @@ describe("sendStripeInvoice", () => {
     const { doFetch, calls } = fakeStripe();
     await sendStripeInvoice({ secretKey: "sk_live_ok", doFetch, allowLiveKey: true }, INVOICE);
     expect(calls.length).toBeGreaterThan(0);
+  });
+});
+
+describe("verifyStripeInvoiceForReconciliation", () => {
+  const billed = () => ({
+    id: "in_existing",
+    object: "invoice",
+    status: "paid",
+    total: 6304,
+    amount_due: 6304,
+    currency: "usd",
+    metadata: { org_id: "o1", period_start: "2026-04", period_end: "(now)" },
+    status_transitions: { paid_at: 1_700_000_000 },
+  });
+
+  test("retrieves and verifies a paid invoice without any POST", async () => {
+    const calls: Call[] = [];
+    const doFetch: StripeFetch = (url, init) => {
+      calls.push({ url, body: init.body, headers: init.headers, method: init.method });
+      return Promise.resolve({ status: 200, json: () => Promise.resolve(billed()) });
+    };
+    const receipt = await verifyStripeInvoiceForReconciliation({ secretKey: "sk_test_x", doFetch }, "in_existing", INVOICE);
+    expect(receipt).toEqual({ id: "in_existing", status: "paid", amountUsd: 63.04, paidAt: "2023-11-14T22:13:20.000Z" });
+    expect(paths(calls)).toEqual(["/v1/invoices/in_existing"]);
+    expect(calls[0]?.method).toBe("GET");
+  });
+
+  test("rejects wrong identity, metadata, amount, draft, or absent paid time", async () => {
+    const cases = [
+      { ...billed(), id: "in_other" },
+      { ...billed(), metadata: { ...billed().metadata, org_id: "other" } },
+      { ...billed(), total: 6303 },
+      { ...billed(), status: "draft" },
+      { ...billed(), status_transitions: {} },
+    ];
+    for (const body of cases) {
+      const doFetch: StripeFetch = () => Promise.resolve({ status: 200, json: () => Promise.resolve(body) });
+      await expect(verifyStripeInvoiceForReconciliation({ secretKey: "sk_test_x", doFetch }, "in_existing", INVOICE)).rejects.toThrow();
+    }
   });
 });
