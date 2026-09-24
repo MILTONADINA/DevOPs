@@ -3,12 +3,7 @@
 // embeddings — no model needed). The accuracy eval is separate + deferred.
 
 import { describe, test, expect } from "vitest";
-import {
-  l2Normalize,
-  cosineSimilarity,
-  createOnnxEncoder,
-  EMBEDDING_DIM,
-} from "../../src/pruner/encoder";
+import { l2Normalize, cosineSimilarity, createOnnxEncoder, EMBEDDING_DIM } from "../../src/pruner/encoder";
 import { prune, type HistoryEmbedding } from "../../src/pruner/pruner";
 import { DEFAULT_KADANEDIAL, type KadaneDialParams } from "../../src/pruner/kadanedial";
 
@@ -87,5 +82,34 @@ describe("prune — orchestrator over injected embeddings", () => {
     const d = prune(v(1, 0), [], params());
     expect(d.selectedIndices).toEqual([]);
     expect(d.spans).toEqual([]);
+  });
+
+  test("trusted query scope excludes a higher-scoring foreign turn before selection", () => {
+    const history: HistoryEmbedding[] = [
+      { embedding: v(1, 0), timestampSeconds: NOW, scopeId: "vega" },
+      { embedding: v(0.8, 0.6), timestampSeconds: NOW, scopeId: "orion" },
+      { embedding: v(1, 0), timestampSeconds: NOW },
+    ];
+    const d = prune(v(1, 0), history, params({ lambda: 1 }), "orion");
+    expect(d.selectedIndices).toEqual([1]);
+    expect(d.prunedIndices).toEqual([0, 2]);
+    expect(d.candidateIndices).toEqual([1]);
+  });
+
+  test("scoped spans and scores keep their original-history positions", () => {
+    const history: HistoryEmbedding[] = [
+      { embedding: v(1, 0), timestampSeconds: NOW, scopeId: "orion" },
+      { embedding: v(1, 0), timestampSeconds: NOW, scopeId: "vega" },
+      { embedding: v(1, 0), timestampSeconds: NOW, scopeId: "orion" },
+    ];
+    const d = prune(v(1, 0), history, params({ lambda: 1 }), "orion");
+    expect(d.selectedIndices).toEqual([0, 2]);
+    expect(d.spans).toEqual([
+      [0, 0],
+      [2, 2],
+    ]);
+    expect(d.candidateIndices).toEqual([0, 2]);
+    expect(d.normalizedScores).toHaveLength(2);
+    expect(() => prune(v(1, 0), history, params(), "")).toThrow(/scope must be nonempty/);
   });
 });

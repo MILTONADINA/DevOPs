@@ -26,6 +26,7 @@ export function parseTierCCorpus(jsonl: string): DevScenario[] {
     }
     const full = entry.turns.map((turn) => turn.text).join("\n");
     if (entry.turns.some((turn) => !Number.isFinite(turn.ageHours) || turn.ageHours < 0)) throw new Error(`Tier-C ${entry.id}: invalid turn age`);
+    if (entry.scenario === "project_scope" && (!entry.scopeId || entry.turns.some((turn) => !turn.scopeId))) throw new Error(`Tier-C ${entry.id}: project scope metadata required`);
     for (const anchor of [...entry.golden.contains, ...entry.golden.notContains]) {
       if (anchor === "" || !full.includes(anchor)) throw new Error(`Tier-C ${entry.id}: anchor absent from source turns`);
     }
@@ -53,8 +54,9 @@ export async function runTierC(cases: DevScenario[], encoder: BiEncoder): Promis
     if (vectors.length !== texts.length + 1 || !vectors[texts.length]) throw new Error(`Tier-C ${entry.id}: encoder returned incomplete vectors`);
     const decision = prune(
       vectors[texts.length]!,
-      entry.turns.map((turn, index) => ({ embedding: vectors[index]!, timestampSeconds: NOW_SECONDS - turn.ageHours * 3600 })),
+      entry.turns.map((turn, index) => ({ embedding: vectors[index]!, timestampSeconds: NOW_SECONDS - turn.ageHours * 3600, ...(turn.scopeId ? { scopeId: turn.scopeId } : {}) })),
       { ...DEFAULT_KADANEDIAL, nowSeconds: NOW_SECONDS },
+      entry.scopeId,
     );
     const selected = decision.selectedIndices.map((index) => texts[index]!).join("\n");
     results.push({ id: entry.id, selectedIndices: decision.selectedIndices, golden: checkGoldenQuery(selected, toGoldenQuery(entry)) });
