@@ -233,6 +233,10 @@ the next time you open the project.
 
 See `docs/PLAYBOOK.md` for the full operational guide.
 
+For the optional local Stratum database and proxy smoke check, install Docker
+Compose and run `npm run setup` from this repository root. See
+`stratum/README.md` for provider setup and proxy startup.
+
 ### Executable bits
 
 Some scripts (`scripts/devops-cli.js`, hooks) carry POSIX executable
