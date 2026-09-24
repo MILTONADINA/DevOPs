@@ -24,6 +24,15 @@ restore them through the CLI, and verify that IDs, fact suppression, audit
 status, and conflict evidence survived. This local result SHALL NOT be treated
 as a clean-machine or production recovery test.
 
+## REQ-4 — Complete restore manifest
+
+WHEN an operator restores an organization backup, THE SYSTEM SHALL reject a
+snapshot that omits any table exported by the current backup command, contains
+a non-array table, or names a table the restore command does not support. It
+SHALL perform this check before either a dry-run success or a database write.
+An explicitly empty table SHALL be valid. Older snapshots with a different
+table set require an explicit migration before restore.
+
 ## Acceptance criteria
 
 - **AC-1:** a simulated REST row cap still exports all 1,001 rows of a table;
@@ -32,3 +41,5 @@ as a clean-machine or production recovery test.
   and use the passed process credentials.
 - **AC-3:** local backup, deletion, restore, and final fixture cleanup pass for
   the scoped fact and audit records.
+- **AC-4:** a missing, malformed, or unknown table makes restore exit nonzero
+  before any write; a current complete snapshot with empty tables succeeds.

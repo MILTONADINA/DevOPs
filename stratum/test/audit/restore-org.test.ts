@@ -4,7 +4,7 @@
 
 import { describe, test, expect } from "vitest";
 import { parseArgs, validateBackup, stripGeneratedCols, restorePlan, RESTORE_ORDER } from "../../scripts/restore-org";
-import type { BackupFile } from "../../scripts/backup-org";
+import { ORG_SCOPED_TABLES, type BackupFile } from "../../scripts/backup-org";
 
 describe("parseArgs", () => {
   test("defaults + flags", () => {
@@ -14,7 +14,11 @@ describe("parseArgs", () => {
 });
 
 describe("validateBackup", () => {
-  const ok: BackupFile = { orgId: "o1", exportedAt: "t", tables: { organizations: [{ id: "o1" }] } };
+  const ok: BackupFile = {
+    orgId: "o1",
+    exportedAt: "t",
+    tables: Object.fromEntries([["organizations", [{ id: "o1" }]], ...ORG_SCOPED_TABLES.map((table) => [table, []]), ["pruning_logs", []]]),
+  };
   test("accepts a well-formed backup", () => {
     expect(validateBackup(ok)).toBe(ok);
   });
@@ -24,7 +28,13 @@ describe("validateBackup", () => {
     expect(() => validateBackup({ orgId: "o1" })).toThrow(/tables/);
     expect(() => validateBackup({ orgId: "o1", tables: { organizations: [] } })).toThrow(/no organizations/);
     expect(() => validateBackup({ orgId: "o1", tables: { organizations: [{ id: "o2" }] } })).toThrow(/organization ID/);
-    expect(() => validateBackup({ orgId: "o1", tables: { organizations: [{ id: "o1" }], source_fact_links: [{ id: "l1", org_id: "o2" }] } })).toThrow(/source link organization/);
+    expect(() => validateBackup({ ...ok, tables: { ...ok.tables, source_fact_links: [{ id: "l1", org_id: "o2" }] } })).toThrow(/source link organization/);
+  });
+  test("rejects missing, malformed, and unsupported tables before planning a restore", () => {
+    expect(() => validateBackup({ ...ok, tables: { ...ok.tables, audit_statuses: undefined } })).toThrow(/audit_statuses/);
+    expect(() => validateBackup({ ...ok, tables: { ...ok.tables, pruning_logs: undefined } })).toThrow(/pruning_logs/);
+    expect(() => validateBackup({ ...ok, tables: { ...ok.tables, sessions: {} } })).toThrow(/sessions/);
+    expect(() => validateBackup({ ...ok, tables: { ...ok.tables, future_table: [{ id: "x" }] } })).toThrow(/future_table/);
   });
 });
 
@@ -68,6 +78,7 @@ describe("restorePlan", () => {
   });
 
   test("RESTORE_ORDER puts organizations first and edges after entities", () => {
+    expect(new Set(RESTORE_ORDER)).toEqual(new Set(["organizations", ...ORG_SCOPED_TABLES, "pruning_logs"]));
     expect(RESTORE_ORDER[0]).toBe("organizations");
     expect(RESTORE_ORDER.indexOf("knowledge_entities")).toBeLessThan(RESTORE_ORDER.indexOf("knowledge_edges"));
     expect(RESTORE_ORDER.indexOf("knowledge_edges")).toBeLessThan(RESTORE_ORDER.indexOf("knowledge_entity_sessions"));
