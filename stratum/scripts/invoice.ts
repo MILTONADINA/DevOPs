@@ -11,7 +11,6 @@
  *   npm run invoice -- --org-id <uuid> [--since <iso>] [--until <iso>] [--csv <path>] [--send]
  */
 
-import "dotenv/config";
 import { writeFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
 import { generateInvoice, toAuditCsv, renderInvoice } from "../src/billing/invoice";
@@ -74,8 +73,8 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
   const url = process.env["SUPABASE_URL"];
   const key = process.env["SUPABASE_SERVICE_KEY"];
   if (!url || !key) {
-    out("invoice SKIPPED: set SUPABASE_URL + SUPABASE_SERVICE_KEY to read billing_records. Exiting 0.");
-    return 0;
+    out(`invoice requires ${[!url && "SUPABASE_URL", !key && "SUPABASE_SERVICE_KEY"].filter(Boolean).join(" and ")} to read billing_records.`);
+    return 1;
   }
   const client = createClient(url, key);
 
