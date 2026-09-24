@@ -69,9 +69,9 @@ export interface GraphRelatedFact {
 }
 
 export interface MemoryDeps {
-  listFacts: (orgId: string, limit: number) => Promise<AnyFact[]>;
+  listFacts: (orgId: string, limit: number, projectScope?: string | null) => Promise<AnyFact[]>;
   /** Suppress fact `id` in `table` for `orgId`; returns whether a row was affected. */
-  suppressFact: (orgId: string, id: string, table: string) => Promise<boolean>;
+  suppressFact: (orgId: string, id: string, table: string, projectScope?: string | null) => Promise<boolean>;
   listConflicts: (orgId: string, limit: number) => Promise<ConflictSummary[]>;
   listAuditStatuses: (orgId: string, limit: number) => Promise<AuditStatusSummary[]>;
   listGraph: (orgId: string, limit: number) => Promise<GraphSnapshot>;
@@ -91,6 +91,13 @@ function resolveOrg(req: FastifyRequest): string | undefined {
   if (req.authEnforced === true) return undefined;
   const v = (req.query as Record<string, unknown>)["org-id"];
   return typeof v === "string" && v !== "" ? v : undefined;
+}
+
+function authenticatedProjectScope(req: FastifyRequest): string | null | undefined {
+  if (req.authEnforced !== true) return undefined;
+  if (req.projectScopeId === undefined) return null;
+  if (!req.orgId || !req.projectScopeId.startsWith(`${req.orgId}/`)) throw new Error("invalid authenticated project scope");
+  return req.projectScopeId.slice(req.orgId.length + 1);
 }
 
 function intParam(req: FastifyRequest, name: string, def: number): number {
@@ -139,7 +146,7 @@ export function makeMemoryRoute(deps: MemoryDeps): FastifyPluginCallback {
     app.get("/v1/memory/facts", async (req, reply) => {
       const orgId = resolveOrg(req);
       if (orgId === undefined) return err(reply, 400, "org id required (authenticate, or pass ?org-id)");
-      return { facts: await deps.listFacts(orgId, intParam(req, "limit", 50)) };
+      return { facts: await deps.listFacts(orgId, intParam(req, "limit", 50), authenticatedProjectScope(req)) };
     });
 
     app.delete("/v1/memory/facts/:id", async (req, reply) => {
@@ -150,7 +157,7 @@ export function makeMemoryRoute(deps: MemoryDeps): FastifyPluginCallback {
       if (typeof table !== "string" || !VALID_FACT_TABLES.has(table)) {
         return err(reply, 400, `?table is required and must be one of: ${[...VALID_FACT_TABLES].join(", ")}`);
       }
-      const suppressed = await deps.suppressFact(orgId, id, table);
+      const suppressed = await deps.suppressFact(orgId, id, table, authenticatedProjectScope(req));
       if (!suppressed) return err(reply, 404, "fact not found (or already gone) in that table for this org");
       return { id, table, suppressed: true };
     });
@@ -241,10 +248,13 @@ export function createSupabaseMemoryDeps(client: SupabaseClient, encodeQuery?: (
     return { matches: ids, entities, edges: edges.filter((edge) => known.has(edge.from_entity) && known.has(edge.to_entity)) };
   };
   return {
-    listFacts: (orgId, limit) => warm.queryRecent(orgId, { limit }),
-    async suppressFact(orgId, id, table) {
+    listFacts: (orgId, limit, projectScope) => warm.queryRecent(orgId, { limit, ...(projectScope !== undefined ? { projectScope } : {}) }),
+    async suppressFact(orgId, id, table, projectScope) {
       if (!VALID_FACT_TABLES.has(table)) throw new Error(`unknown fact table: ${table}`);
-      const { data, error } = await client.from(table).update({ is_suppressed: true }).eq("id", id).eq("org_id", orgId).select("id");
+      let request = client.from(table).update({ is_suppressed: true }).eq("id", id).eq("org_id", orgId);
+      if (projectScope === null) request = request.is("project_scope", null);
+      else if (projectScope !== undefined) request = request.eq("project_scope", projectScope);
+      const { data, error } = await request.select("id");
       if (error) throw new Error(`suppressFact failed: ${error.message}`);
       return (data ?? []).length > 0;
     },
