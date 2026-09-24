@@ -36,6 +36,9 @@ import { createSupabaseHealthCheck } from "./routes/health";
 import { createFactExtractor } from "../memory/warm/extractor";
 import { createRoutedForward } from "./providers/router";
 import { createSupabaseMessageMemoryRecorder } from "./message-memory";
+import { createSupabaseConversationResolver } from "./conversation";
+import { createShadowObserver } from "./shadow-observer";
+import { createOnnxEncoder } from "../pruner/encoder";
 
 export interface StartEnv {
   CQ_COMMERCIAL?: string | undefined;
@@ -53,6 +56,7 @@ export interface StartEnv {
   CQ_LOCAL_API_KEY?: string | undefined;
   CQ_AUDIT_REPO_ROOT?: string | undefined;
   DEVOPS_STRATUM_PROJECT_ROOT?: string | undefined;
+  CQ_SHADOW_OBSERVE?: string | undefined;
 }
 
 /** Resolve a local Git checkout without following a path outside the project. */
@@ -154,6 +158,13 @@ export function buildStartOptions(env: StartEnv, base: BuildProxyOptions, makeCl
       opts.stripeWebhook = createSupabaseStripeWebhookDeps(client, env.STRIPE_WEBHOOK_SECRET);
     }
     if (base.messages !== undefined) {
+      base.messages.resolveConversation = createSupabaseConversationResolver(client);
+      if (env.CQ_SHADOW_OBSERVE === "true" || env.CQ_SHADOW_OBSERVE === "1") {
+        const encoder = createOnnxEncoder({ cacheDir: path.join(process.cwd(), "models"), localOnly: true });
+        base.messages.observeConversation = createShadowObserver(encoder, (metric) => {
+          logger.info(metric, "shadow conversation selection");
+        });
+      }
       // Reuse the already-wired exact token counter for /v1/tokens/count.
       opts.tokens = { countTokens: base.messages.countTokens };
       // Per-org token-budget gate on /v1/messages (commercial).
@@ -181,14 +192,15 @@ export function buildStartOptions(env: StartEnv, base: BuildProxyOptions, makeCl
             const response = await forward({ model, messages: [{ role: "user", content: prompt }], max_tokens: 1024 }, "");
             if (response.status >= 400) throw new Error(`local extraction model returned HTTP ${response.status}`);
             const blocks = (response.data as { content?: { type?: string; text?: string }[] } | null)?.content;
-            const answer = blocks?.filter((block) => block.type === "text" && typeof block.text === "string").map((block) => block.text).join("\n");
+            const answer = blocks
+              ?.filter((block) => block.type === "text" && typeof block.text === "string")
+              .map((block) => block.text)
+              .join("\n");
             if (!answer) throw new Error("local extraction model returned no text");
             return answer;
           },
         });
-        const auditRepoRoot = env.CQ_AUDIT_REPO_ROOT
-          ? resolveAuditRepoRoot(env.CQ_AUDIT_REPO_ROOT, env.DEVOPS_STRATUM_PROJECT_ROOT ?? "")
-          : undefined;
+        const auditRepoRoot = env.CQ_AUDIT_REPO_ROOT ? resolveAuditRepoRoot(env.CQ_AUDIT_REPO_ROOT, env.DEVOPS_STRATUM_PROJECT_ROOT ?? "") : undefined;
         base.messages.recordMemory = createSupabaseMessageMemoryRecorder(client, extractor, auditRepoRoot);
       }
     }
@@ -217,6 +229,7 @@ export async function start(): Promise<void> {
     CQ_LOCAL_API_KEY: process.env["CQ_LOCAL_API_KEY"],
     CQ_AUDIT_REPO_ROOT: process.env["CQ_AUDIT_REPO_ROOT"],
     DEVOPS_STRATUM_PROJECT_ROOT: process.env["DEVOPS_STRATUM_PROJECT_ROOT"],
+    CQ_SHADOW_OBSERVE: process.env["CQ_SHADOW_OBSERVE"],
   };
   assertCommercialStartup(env);
   const base: BuildProxyOptions = {

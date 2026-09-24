@@ -18,13 +18,15 @@ import { isStreamingRequest } from "../stream-forward";
 import { createSseParser, createStreamAccumulator } from "../sse";
 import { emitTurnTelemetry } from "../telemetry";
 import { logger } from "../../lib/logger";
+import { ConversationError } from "../conversation";
 
 function textContent(value: unknown): string {
   if (typeof value === "string") return value;
   if (!Array.isArray(value)) return "";
-  return value.filter((block): block is { type: "text"; text: string } =>
-    block !== null && typeof block === "object" && block.type === "text" && typeof block.text === "string")
-    .map((block) => block.text).join("\n");
+  return value
+    .filter((block): block is { type: "text"; text: string } => block !== null && typeof block === "object" && block.type === "text" && typeof block.text === "string")
+    .map((block) => block.text)
+    .join("\n");
 }
 
 function recordMemorySafe(deps: MessagesDeps, request: FastifyRequest, body: MessagesBody, response: unknown, pending: Set<Promise<void>>): void {
@@ -35,13 +37,72 @@ function recordMemorySafe(deps: MessagesDeps, request: FastifyRequest, body: Mes
   const assistantText = textContent((response as { content?: unknown } | null)?.content);
   if (!userText || !assistantText) return;
   try {
-    const task = deps.recordMemory({ orgId, ...(request.projectScopeId ? { projectScopeId: request.projectScopeId } : {}), model: body.model,
-      turns: [{ role: "user", content: userText }, { role: "assistant", content: assistantText }] });
+    const task = deps.recordMemory({
+      orgId,
+      ...(request.projectScopeId ? { projectScopeId: request.projectScopeId } : {}),
+      model: body.model,
+      turns: [
+        { role: "user", content: userText },
+        { role: "assistant", content: assistantText },
+      ],
+    });
     pending.add(task);
-    void task.catch((error: unknown) => logger.error({ err: (error as Error).message }, "memory write failed (non-blocking)"))
-      .finally(() => pending.delete(task));
+    void task.catch((error: unknown) => logger.error({ err: (error as Error).message }, "memory write failed (non-blocking)")).finally(() => pending.delete(task));
   } catch (error) {
     logger.error({ err: (error as Error).message }, "memory write failed (non-blocking)");
+  }
+}
+
+async function resolveConversation(deps: MessagesDeps, request: FastifyRequest, reply: FastifyReply, model: string): Promise<string | null> {
+  if (!deps.resolveConversation) return null;
+  if (!request.orgId || !request.apiKeyId) {
+    void reply.status(503).send({ type: "error", error: { type: "conversation_unavailable", message: "authenticated conversation unavailable" } });
+    return null;
+  }
+  const header = request.headers["x-cq-conversation-id"];
+  if (Array.isArray(header)) {
+    void reply.status(400).send({ type: "error", error: { type: "invalid_request_error", message: "invalid conversation ID" } });
+    return null;
+  }
+  try {
+    const id = await deps.resolveConversation({
+      orgId: request.orgId,
+      keyId: request.apiKeyId,
+      ...(request.projectScopeId ? { projectScopeId: request.projectScopeId } : {}),
+      model,
+      ...(header !== undefined ? { requestedId: header } : {}),
+    });
+    void reply.header("x-cq-conversation-id", id);
+    return id;
+  } catch (error) {
+    const status = error instanceof ConversationError ? error.status : 503;
+    void reply.status(status).send({
+      type: "error",
+      error: { type: status === 400 ? "invalid_request_error" : "conversation_unavailable", message: error instanceof ConversationError ? error.message : "conversation unavailable" },
+    });
+    return null;
+  }
+}
+
+function observeSafe(deps: MessagesDeps, request: FastifyRequest, body: MessagesBody, response: unknown, conversationId: string | null, pending: Set<Promise<void>>): void {
+  if (!conversationId || !deps.observeConversation || !request.orgId || !request.apiKeyId) return;
+  const user = [...body.messages].reverse().find((message) => message.role === "user");
+  const query = textContent(user?.content);
+  const assistant = textContent((response as { content?: unknown } | null)?.content);
+  if (!query || !assistant) return;
+  try {
+    const task = deps.observeConversation({
+      conversationId,
+      orgId: request.orgId,
+      keyId: request.apiKeyId,
+      ...(request.projectScopeId ? { projectScopeId: request.projectScopeId } : {}),
+      query,
+      assistant,
+    });
+    pending.add(task);
+    void task.catch(() => logger.warn("shadow observation failed")).finally(() => pending.delete(task));
+  } catch {
+    logger.warn("shadow observation failed");
   }
 }
 
@@ -136,15 +197,22 @@ function recordUsageSafe(deps: MessagesDeps, request: FastifyRequest, model: str
     return deps.usageOutbox === undefined;
   }
   try {
-    const event = { orgId, ...(request.projectScopeId ? { projectScopeId: request.projectScopeId } : {}), eventId: randomUUID(), occurredAt: new Date().toISOString(), model, inputTokens, outputTokens };
+    const event = {
+      orgId,
+      ...(request.projectScopeId ? { projectScopeId: request.projectScopeId } : {}),
+      eventId: randomUUID(),
+      occurredAt: new Date().toISOString(),
+      model,
+      inputTokens,
+      outputTokens,
+    };
     if (deps.usageOutbox) {
       deps.usageOutbox.enqueue(event);
       return true;
     }
     const task = deps.recordUsage!(event);
     pending.add(task);
-    void task.catch((e: unknown) => request.log?.error?.({ err: (e as Error).message }, "usage record failed (non-blocking)"))
-      .finally(() => pending.delete(task));
+    void task.catch((e: unknown) => request.log?.error?.({ err: (e as Error).message }, "usage record failed (non-blocking)")).finally(() => pending.delete(task));
   } catch (e) {
     request.log?.error?.({ err: (e as Error).message }, deps.usageOutbox ? "usage journal failed" : "usage record failed (non-blocking)");
     return deps.usageOutbox === undefined;
@@ -160,6 +228,8 @@ async function handleStreaming(body: MessagesBody, request: FastifyRequest, repl
   // Count + budget-check BEFORE forwarding (so an over-budget request never reaches upstream).
   const tokens = await deps.countTokens(body).catch(() => ESTIMATED_FALLBACK);
   if (await checkTokenBudget(deps, request, tokens.input_tokens, reply)) return reply;
+  const conversationId = await resolveConversation(deps, request, reply, body.model);
+  if (deps.resolveConversation && !conversationId) return reply;
 
   let sf;
   try {
@@ -273,7 +343,10 @@ async function handleStreaming(body: MessagesBody, request: FastifyRequest, repl
         if (pendingChunk !== undefined && sawStop) out.write(pendingChunk);
         if (sawStop) for (const chunk of heldCompletion) out.write(chunk);
       }
-      if (usageRecorded && !streamFailed && streamError === undefined) recordMemorySafe(deps, request, body, message, pending);
+      if (usageRecorded && !streamFailed && streamError === undefined) {
+        recordMemorySafe(deps, request, body, message, pending);
+        observeSafe(deps, request, body, message, conversationId, pending);
+      }
       out.end();
     }
   })();
@@ -290,7 +363,10 @@ async function handleStreaming(body: MessagesBody, request: FastifyRequest, repl
 export function makeMessagesRoute(deps: MessagesDeps): FastifyPluginCallback {
   return function messagesPlugin(app: FastifyInstance, _opts, done): void {
     const pendingWrites = new Set<Promise<void>>();
-    app.addHook("onClose", async () => { await Promise.allSettled([...pendingWrites]); await deps.usageOutbox?.close(); });
+    app.addHook("onClose", async () => {
+      await Promise.allSettled([...pendingWrites]);
+      await deps.usageOutbox?.close();
+    });
     app.post("/v1/messages", async (request, reply) => {
       const start = Date.now();
       const body = request.body as MessagesBody;
@@ -319,6 +395,8 @@ export function makeMessagesRoute(deps: MessagesDeps): FastifyPluginCallback {
 
       // Per-org token-budget gate (commercial) — reject before forwarding if over budget.
       if (await checkTokenBudget(deps, request, tokens.input_tokens, reply)) return reply;
+      const conversationId = await resolveConversation(deps, request, reply, body.model);
+      if (deps.resolveConversation && !conversationId) return reply;
 
       // Forward upstream. validateStatus:true means HTTP errors come back as a
       // result (not a throw); a throw here is a genuine network/transport error.
@@ -369,6 +447,7 @@ export function makeMessagesRoute(deps: MessagesDeps): FastifyPluginCallback {
         return reply.status(503).send({ type: "error", error: { type: "billing_unavailable", message: "usage journal unavailable" } });
       }
       recordMemorySafe(deps, request, body, forwarded.data, pendingWrites);
+      observeSafe(deps, request, body, forwarded.data, conversationId, pendingWrites);
 
       // nosemgrep: javascript.express.security.audit.xss.direct-response-write.direct-response-write -- FALSE POSITIVE: transparent JSON proxy. Forwards the upstream Anthropic response (Fastify sends it as application/json) to the Claude Code CLI client; never HTML rendered in a browser, so no XSS surface. The "user input" is the upstream provider's own JSON, not attacker markup.
       return reply.send(forwarded.data);
