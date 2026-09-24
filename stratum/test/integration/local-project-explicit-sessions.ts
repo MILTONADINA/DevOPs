@@ -73,6 +73,12 @@ try {
   const legacyId = legacy.json().id as string;
   const storedLegacy = checked(await db.from("sessions").select("project_scope").eq("id", legacyId).single(), "read unbound scope");
   assert(storedLegacy?.project_scope === null, "unbound creation was scoped by client input");
+  const preflightUrl = `/v1/sessions/${legacyId}/erasure-preflight${spoof}`;
+  assert((await app.inject({ method: "GET", url: preflightUrl, headers: headers("vega") })).statusCode === 403, "project key inspected organization erasure inventory");
+  const preflight = await app.inject({ method: "GET", url: preflightUrl, headers: headers("legacy") });
+  assert(preflight.statusCode === 200, `organization erasure preflight failed: ${preflight.statusCode} ${preflight.body}`);
+  assert(preflight.json().status === "blocked_incomplete_inventory" && preflight.json().inventory.session_id === legacyId &&
+    preflight.json().inventory.org_id === org && preflight.json().reasons.includes("stores_not_inventoried"), "erasure preflight overstated readiness or lost scope");
   const legacyList = await app.inject({ method: "GET", url: "/v1/sessions", headers: headers("legacy") });
   assert(legacyList.json().sessions.length === 1 && legacyList.json().sessions[0].id === legacyId, "unbound list crossed into a project");
   assert((await app.inject({ method: "DELETE", url: `/v1/sessions/${legacyId}`, headers: headers("legacy") })).statusCode === 200, "unbound key cannot end own session");
