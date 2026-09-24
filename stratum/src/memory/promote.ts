@@ -139,6 +139,8 @@ export function factToText(fact: AnyFact): string {
       return `todo: ${fact.description}`;
     case "VariableChange":
       return `variable ${fact.var_name} = ${fact.new_value}`;
+    case "OperationalReference":
+      return `reference ${fact.subject}: ${fact.reference}`;
   }
 }
 

@@ -15,15 +15,25 @@ INSERT INTO public.audit_statuses(org_id, fact_table, fact_id, status)
 VALUES (:'org_a'::uuid, 'function_changes', :'fact_a'::uuid, 'CONFLICT');
 INSERT INTO public.audit_conflicts(org_id, session_id, fact_table, fact_id, claimed_state, actual_state)
 VALUES (:'org_a'::uuid, :'session_a'::uuid, 'function_changes', :'fact_a'::uuid, 'old_fn', 'new_fn');
+INSERT INTO public.operational_references(org_id, session_id, confidence, subject, reference)
+VALUES (:'org_a'::uuid, :'session_a'::uuid, 0.9, 'recovery runbook', 'RUNBOOK_RECOVERY.md')
+RETURNING id AS reference_a \gset
+INSERT INTO public.audit_statuses(org_id, fact_table, fact_id, status)
+VALUES (:'org_a'::uuid, 'operational_references', :'reference_a'::uuid, 'UNVERIFIED');
 
-INSERT INTO public.knowledge_entities(org_id, session_id, kind, name, file_path)
-VALUES (:'org_a'::uuid, :'session_a'::uuid, 'File', 'a.ts', 'a.ts') RETURNING id AS entity_a \gset
-INSERT INTO public.knowledge_entities(org_id, session_id, kind, name, file_path)
-VALUES (:'org_a'::uuid, :'session_shared'::uuid, 'File', 'shared.ts', 'shared.ts') RETURNING id AS entity_shared \gset
-INSERT INTO public.knowledge_edges(org_id, session_id, from_entity, to_entity, edge_type)
-VALUES (:'org_a'::uuid, :'session_shared'::uuid, :'entity_shared'::uuid, :'entity_a'::uuid, 'REFERENCED_IN');
+INSERT INTO public.knowledge_entities(org_id, session_id, kind, name, file_path, scope_verified)
+VALUES (:'org_a'::uuid, :'session_a'::uuid, 'File', 'a.ts', 'a.ts', true) RETURNING id AS entity_a \gset
+INSERT INTO public.knowledge_entities(org_id, session_id, kind, name, file_path, scope_verified)
+VALUES (:'org_a'::uuid, :'session_shared'::uuid, 'File', 'shared.ts', 'shared.ts', true) RETURNING id AS entity_shared \gset
+INSERT INTO public.function_changes(org_id, session_id, confidence, old_name, change_type, file_path)
+VALUES (:'org_a'::uuid, :'session_a'::uuid, 0.9, 'active_fn', 'deprecated', 'a.ts');
+INSERT INTO public.knowledge_edges(org_id, session_id, from_entity, to_entity, edge_type, scope_verified)
+VALUES (:'org_a'::uuid, :'session_shared'::uuid, :'entity_shared'::uuid, :'entity_a'::uuid, 'REFERENCED_IN', true);
 INSERT INTO public.memory_vectors(org_id, session_id, source_type, source_ref, embedding)
 VALUES (:'org_a'::uuid, :'session_shared'::uuid, 'fact', :'fact_a',
+  ('[' || array_to_string(array_fill(0, ARRAY[384]), ',') || ']')::vector);
+INSERT INTO public.memory_vectors(org_id, session_id, source_type, source_ref, embedding)
+VALUES (:'org_a'::uuid, :'session_a'::uuid, 'fact', :'reference_a',
   ('[' || array_to_string(array_fill(0, ARRAY[384]), ',') || ']')::vector);
 
 INSERT INTO public.pruning_logs(session_id, turns_total, lambda_used, gain_shift_used, theta_used)
@@ -41,15 +51,16 @@ DECLARE report jsonb := current_setting('devops_test.erasure_inventory')::jsonb;
 BEGIN
   IF report->>'scope' IS DISTINCT FROM 'local_database_only'
      OR (report->'counts'->>'billing_records')::integer IS DISTINCT FROM 1
-     OR (report->'counts'->>'function_changes')::integer IS DISTINCT FROM 1
-     OR (report->'counts'->>'audit_statuses')::integer IS DISTINCT FROM 1
+     OR (report->'counts'->>'function_changes')::integer IS DISTINCT FROM 2
+     OR (report->'counts'->>'operational_references')::integer IS DISTINCT FROM 1
+     OR (report->'counts'->>'audit_statuses')::integer IS DISTINCT FROM 2
      OR (report->'counts'->>'audit_conflicts')::integer IS DISTINCT FROM 1
-     OR (report->'counts'->>'source_fact_links')::integer IS DISTINCT FROM 1
+     OR (report->'counts'->>'source_fact_links')::integer IS DISTINCT FROM 2
      OR (report->'counts'->>'knowledge_entities')::integer IS DISTINCT FROM 1
      OR (report->'counts'->>'knowledge_edges')::integer IS DISTINCT FROM 1
      OR (report->'counts'->>'knowledge_entity_sessions')::integer IS DISTINCT FROM 1
      OR (report->'counts'->>'knowledge_edge_sessions')::integer IS DISTINCT FROM 0
-     OR (report->'counts'->>'memory_vectors')::integer IS DISTINCT FROM 1
+     OR (report->'counts'->>'memory_vectors')::integer IS DISTINCT FROM 2
      OR (report->>'graph_ownership') IS DISTINCT FROM 'ambiguous'
      OR (report->>'external_copies') IS DISTINCT FROM 'not_inventoried'
      OR (report->>'backups') IS DISTINCT FROM 'not_inventoried'

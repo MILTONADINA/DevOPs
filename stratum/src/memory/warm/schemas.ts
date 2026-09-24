@@ -81,8 +81,15 @@ export const variableChangeSchema = z.object({
   context: z.string().optional(),
 });
 
+export const operationalReferenceSchema = z.object({
+  ...baseFields,
+  fact_type: z.literal("OperationalReference"),
+  subject: z.string().min(1),
+  reference: z.string().min(1),
+});
+
 /** Discriminated union over all fact types (keyed on fact_type). */
-export const factSchema = z.discriminatedUnion("fact_type", [functionChangeSchema, techDecisionSchema, policyUpdateSchema, todoSchema, variableChangeSchema]);
+export const factSchema = z.discriminatedUnion("fact_type", [functionChangeSchema, techDecisionSchema, policyUpdateSchema, todoSchema, variableChangeSchema, operationalReferenceSchema]);
 
 /**
  * Validate an extracted fact, returning it typed or null (discard on miss).

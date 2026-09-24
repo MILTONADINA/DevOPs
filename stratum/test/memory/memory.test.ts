@@ -122,6 +122,28 @@ describe("fact extractor (injected fake completion — no real model)", () => {
     expect(values[1]).toMatchObject({ fact_type: "PolicyUpdate", old_value: "90", new_value: "30", confidence: 0.8 });
   });
 
+  test("operational references require a source-verbatim value and cannot forge provenance", async () => {
+    const candidate = (reference: string) =>
+      JSON.stringify([
+        {
+          fact_type: "OperationalReference",
+          subject: "production recovery runbook",
+          reference,
+          confidence: 0.9,
+          org_id: "forged-org",
+          source_exchange_id: "forged-exchange",
+          is_verified: true,
+        },
+      ]);
+    const turns = [{ role: "user", content: "Production recovery follows RUNBOOK_RECOVERY.md." }];
+    const extractor = createFactExtractor({ complete: async () => candidate("RUNBOOK_RECOVERY.md") }, { now: ctx.now, mintId: ctx.mintId });
+    expect(await extractor.extract({ session_id: "s9", turns })).toMatchObject([
+      { fact_type: "OperationalReference", subject: "production recovery runbook", reference: "RUNBOOK_RECOVERY.md", session_id: "s9", is_verified: false },
+    ]);
+    expect(parseExtractedFacts(candidate("RUNBOOK_RECOVERY.md"), ctx)).toEqual([]);
+    expect(parseExtractedFacts(candidate("runbook_recovery.md"), { ...ctx, sourceTurns: turns.map((turn) => turn.content) })).toEqual([]);
+  });
+
   test("STRIPS model-forged system/FK fields (developer_id, commit_hash, supersedes_id, is_verified)", () => {
     // an untrusted model tries to forge authorship, the attestation anchor, a
     // supersession edge, and the verified flag — all must be stripped/overridden.

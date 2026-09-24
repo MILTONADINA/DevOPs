@@ -29,6 +29,7 @@ export const RESTORE_ORDER = [
   "policy_updates",
   "todos",
   "variable_changes",
+  "operational_references",
   "pruning_logs",
   "billing_records",
   "invoices",
@@ -72,6 +73,9 @@ export function validateBackup(obj: unknown): BackupFile {
   if (!Array.isArray(orgRows) || orgRows.length === 0) throw new Error("backup has no organizations row");
   if (orgRows.length !== 1 || (orgRows[0] as { id?: unknown } | null)?.id !== b.orgId) throw new Error("backup organization ID mismatch");
   const expected = new Set<string>(["organizations", ...ORG_SCOPED_TABLES, "pruning_logs"]);
+  if (!Array.isArray(b.tables["operational_references"])) {
+    throw new Error("backup predates operational_references; restore requires a complete current-schema export");
+  }
   for (const table of expected) {
     if (!Array.isArray(b.tables[table])) throw new Error(`backup table ${table} missing or not an array`);
   }
