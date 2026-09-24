@@ -5,7 +5,8 @@ import { buildStartOptions } from "../src/proxy/index";
 import { createDefaultMessagesDeps } from "../src/proxy/default-deps";
 
 async function main(): Promise<void> {
-  if (process.env["SUPABASE_URL"] !== "http://127.0.0.1:54321" || !process.env["SUPABASE_SERVICE_KEY"]) {
+  const port = process.env["DEVOPS_LOCAL_PORT"] ?? "54321";
+  if (process.env["SUPABASE_URL"] !== `http://127.0.0.1:${port}` || !process.env["SUPABASE_SERVICE_KEY"]) {
     throw new Error("run through npm run db:with-env from stratum/");
   }
   // The local-only address lets the real proxy boot without implying a model is installed.

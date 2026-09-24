@@ -24,6 +24,7 @@ test("root npm setup help describes the local stack without starting it", () => 
   assert.match(output, /Docker Compose/);
   assert.match(output, /macOS.*Linux.*WSL2/);
   assert.match(output, /provider/i);
+  assert.match(output, /DEVOPS_LOCAL_INSTANCE.*DEVOPS_LOCAL_PORT/);
 });
 
 test("Stratum setup uses the same local workflow without a dotenv-writing legacy script", () => {

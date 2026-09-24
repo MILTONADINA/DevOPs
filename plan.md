@@ -371,7 +371,7 @@ Anthropic's reasoning-based security scanner (GA Feb 2026) reads code "the way a
 
 ### 7a. Onboarding
 
-- [ ] **`npm run setup`** (~15h). The root command detects macOS/Linux/WSL2, installs missing Stratum dependencies, starts project-local Supabase Compose, and smoke-tests the real proxy/database listener without `.env` access. It passed on this Mac. A fresh Ubuntu 24.04 hosted runner installed 402 packages, applied 29 migrations, and passed the real loopback proxy/database smoke in 63 seconds (CI run `35949123662`). Clean macOS and WSL2 laptops, provider-backed message traffic, and real-data recovery remain unverified.
+- [ ] **`npm run setup`** (~15h). The root command detects macOS/Linux/WSL2, installs missing Stratum dependencies, starts project-local Supabase Compose, and smoke-tests the real proxy/database listener without `.env` access. A fresh Ubuntu 24.04 hosted runner installed 402 packages, applied 29 migrations, and passed the real loopback proxy/database smoke in 67 seconds (CI run `35949731799`). A project-local fresh macOS clone with no Stratum dependencies or database volume passed the same setup in 53 seconds using an isolated Compose instance; its teardown left the primary stack running. Docker images were cached on that Mac. Clean macOS and WSL2 laptops, provider-backed message traffic, and real-data recovery remain unverified.
 - [ ] **PERSONAL_USE.md v2** — full polish (~5h). Daily workflow, env vars, troubleshooting common errors, FAQ.
 - [ ] **DEVELOPER_GUIDE.md** (~6h). For friends contributing: dev environment setup, test running, lint/format, PR conventions, signing setup (PB-16 closed).
 - [ ] **ARCHITECTURE.md** (~6h). System design overview. Diagrams. Component responsibilities. Data flow. Cross-reference to ADRs.

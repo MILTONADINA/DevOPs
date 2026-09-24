@@ -1,7 +1,30 @@
 import { describe, expect, test } from "vitest";
-import { assertLocalPorts, dockerFailureDetail, retryRateLimited, serviceJwt } from "../../scripts/local-compose";
+import { assertLocalPorts, dockerFailureDetail, resolveLocalStackConfig, retryRateLimited, serviceJwt } from "../../scripts/local-compose";
 
 describe("project-local Compose boundary", () => {
+  test("isolated verification instance has distinct names and loopback port", () => {
+    const primary = resolveLocalStackConfig({});
+    expect(primary.project).toBe("devops-stratum-compose");
+    expect(primary.names.db).toBe("devops-stratum-local-db");
+    expect(primary.port).toBe("54321");
+    const isolated = resolveLocalStackConfig({ DEVOPS_LOCAL_INSTANCE: "coldmac", DEVOPS_LOCAL_PORT: "54322" });
+    expect(isolated.project).toBe("devops-stratum-isolated-coldmac");
+    expect(isolated.names.db).toBe("devops-stratum-isolated-coldmac-db");
+    expect(isolated.port).toBe("54322");
+    expect(() => assertLocalPorts({ db: {}, rest: {}, gateway: { "8000/tcp": [{ HostIp: "127.0.0.1", HostPort: "54322" }] } }, isolated.port)).not.toThrow();
+  });
+
+  test("isolated verification rejects incomplete or unsafe override pairs", () => {
+    for (const env of [
+      { DEVOPS_LOCAL_INSTANCE: "coldmac" },
+      { DEVOPS_LOCAL_PORT: "54322" },
+      { DEVOPS_LOCAL_INSTANCE: "../escape", DEVOPS_LOCAL_PORT: "54322" },
+      { DEVOPS_LOCAL_INSTANCE: "local", DEVOPS_LOCAL_PORT: "54322" },
+      { DEVOPS_LOCAL_INSTANCE: "coldmac", DEVOPS_LOCAL_PORT: "54321" },
+      { DEVOPS_LOCAL_INSTANCE: "coldmac", DEVOPS_LOCAL_PORT: "054322" },
+      { DEVOPS_LOCAL_INSTANCE: "coldmac", DEVOPS_LOCAL_PORT: "0" },
+    ]) expect(() => resolveLocalStackConfig(env)).toThrow();
+  });
   test("classifies registry throttling without leaking Docker stderr", () => {
     expect(dockerFailureDetail("toomanyrequests: Rate exceeded; secret-token-value")).toBe("public registry rate limit");
     expect(dockerFailureDetail("HTTP 429 Too Many Requests; secret-token-value")).toBe("public registry rate limit");

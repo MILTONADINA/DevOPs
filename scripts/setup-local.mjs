@@ -24,7 +24,7 @@ function run(command, args, failure) {
 
 export function main(argv = process.argv.slice(2)) {
   if (argv.includes("--help")) {
-    process.stdout.write("Usage: npm run setup\nRequires Node >=20.11, Docker Compose and a running Docker engine on macOS, Linux, or WSL2.\nStarts local Supabase and smoke-tests the proxy. Configure a provider before sending messages.\n");
+    process.stdout.write("Usage: npm run setup\nRequires Node >=20.11, Docker Compose and a running Docker engine on macOS, Linux, or WSL2.\nStarts local Supabase and smoke-tests the proxy. Configure a provider before sending messages.\nFor an isolated checkout, set DEVOPS_LOCAL_INSTANCE and DEVOPS_LOCAL_PORT together.\n");
     return;
   }
   const system = detectPlatform(platform(), release());
@@ -36,7 +36,7 @@ export function main(argv = process.argv.slice(2)) {
   if (!existsSync(join(stratum, "node_modules", ".bin", "tsx"))) {
     run("npm", ["ci", "--prefix", "stratum"], "Stratum dependency installation failed. Check npm registry access, then rerun npm run setup.");
   }
-  run("npm", ["run", "db:start", "--prefix", "stratum"], "The local Supabase stack did not start. Check Docker and loopback port 54321.");
+  run("npm", ["run", "db:start", "--prefix", "stratum"], "The local Supabase stack did not start. Check Docker and the configured loopback port.");
   run("npm", ["run", "db:with-env", "--prefix", "stratum", "--", "tsx", "scripts/smoke-setup.ts"], "The proxy/database startup smoke check failed.");
   process.stdout.write("Local database and proxy startup smoke passed. Run `cd stratum && npm run dev` after configuring a provider to send messages.\n");
   process.stdout.write("This machine check does not satisfy clean-machine, cross-platform, or real-data recovery release gates.\n");

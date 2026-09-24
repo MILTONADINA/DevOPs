@@ -22,6 +22,13 @@ Docker bindings and shuts down on any broad binding. A restart preserves the
 Compose volume and skips migrations already recorded in
 `devops_local.migrations`. `db:stop` preserves the volume too.
 
+For a second checkout on the same host, set both `DEVOPS_LOCAL_INSTANCE` to a
+short lowercase label and `DEVOPS_LOCAL_PORT` to a free, distinct loopback
+port (1024–65535) before `npm run setup`. Use the same two values when running
+`npm run db:stop` from that checkout. The alternate Compose project, container
+names, and database volume are separate from the default stack; the proxy
+smoke checks its selected port. Omit both settings for the usual 54321 stack.
+
 The database uses trust authentication only within this project's Docker
 network. This is acceptable for a local development stack whose database has
 no published port. Do not use this Compose file as a production deployment.
