@@ -96,7 +96,9 @@ export async function main(): Promise<number> {
     }
     const promo = { entities: 0, edges: 0, vectors: 0 };
     for (const [sessionId, group] of bySession) {
-      const result = await promoteFacts({ graph, vectors, encoder }, group, { orgId, sessionId });
+      const session = await client.from("sessions").select("project_scope").eq("org_id", orgId).eq("id", sessionId).single();
+      if (session.error || !session.data) throw new Error(`promotion session lookup failed: ${session.error?.message ?? sessionId}`);
+      const result = await promoteFacts({ graph, vectors, encoder }, group, { orgId, sessionId, projectScope: session.data.project_scope as string | null });
       promo.entities += result.entities;
       promo.edges += result.edges;
       promo.vectors += result.vectors;

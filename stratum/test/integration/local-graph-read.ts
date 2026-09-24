@@ -33,14 +33,14 @@ try {
     { org_id: b, key_hash: hashApiKey(rawB), name: "graph-b" },
   ]), "insert keys");
   checked(await db.from("knowledge_entities").insert([
-    { id: ids[0], org_id: a, kind: "Function", name: "graphAOld" },
-    { id: ids[1], org_id: a, kind: "Function", name: "graphANew" },
-    { id: ids[2], org_id: b, kind: "Function", name: "graphBOld" },
-    { id: ids[3], org_id: b, kind: "Function", name: "graphBNew" },
+    { id: ids[0], org_id: a, scope_verified: true, kind: "Function", name: "graphAOld" },
+    { id: ids[1], org_id: a, scope_verified: true, kind: "Function", name: "graphANew" },
+    { id: ids[2], org_id: b, scope_verified: true, kind: "Function", name: "graphBOld" },
+    { id: ids[3], org_id: b, scope_verified: true, kind: "Function", name: "graphBNew" },
   ]), "insert entities");
   checked(await db.from("knowledge_edges").insert([
-    { org_id: a, from_entity: ids[1], to_entity: ids[0], edge_type: "SUPERSEDES" },
-    { org_id: b, from_entity: ids[3], to_entity: ids[2], edge_type: "SUPERSEDES" },
+    { org_id: a, scope_verified: true, from_entity: ids[1], to_entity: ids[0], edge_type: "SUPERSEDES" },
+    { org_id: b, scope_verified: true, from_entity: ids[3], to_entity: ids[2], edge_type: "SUPERSEDES" },
   ]), "insert edges");
 
   app = buildProxy(buildStartOptions({ CQ_COMMERCIAL: "true", SUPABASE_URL: url, SUPABASE_SERVICE_KEY: key },
