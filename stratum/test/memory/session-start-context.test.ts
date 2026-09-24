@@ -43,6 +43,141 @@ describe("session-start memory bridge", () => {
     expect(legacy.recentFacts.map((fact: { id: string }) => fact.id)).toEqual(["legacy"]);
   });
 
+  test("finds two older unpromoted warm facts beyond the recent three in the bound project", async () => {
+    const row = (id: string, project_scope: string | null, day: number, is_suppressed = false) => ({
+      id,
+      org_id: ORG,
+      project_scope,
+      is_suppressed,
+      created_at: `2026-09-${String(day).padStart(2, "0")}T00:00:00Z`,
+      session_id: "s",
+      confidence: 0.9,
+      is_verified: false,
+      promoted_to_t3: false,
+      decision_text: id,
+      domain: "admin",
+    });
+    const { client } = makeFakeSupabase(
+      {
+        tech_decisions: [
+          row("Clerk authentication", "orion", 10),
+          row("__admin_session cookie", "orion", 11),
+          row("dashboard color", "orion", 20),
+          row("formatter", "orion", 21),
+          row("logo", "orion", 22),
+          row("foreign Clerk", "vega", 23),
+          row("suppressed cookie", "orion", 24, true),
+        ],
+      },
+      {},
+      { match_project_fact_vectors: () => [] },
+    );
+    const output = await retrieveSessionContext(
+      { ...base, projectScope: "orion", task: "Which auth provider and cookie protect admin?" },
+      {
+        makeClient: () => client,
+        encode: async () => [1, ...new Array(383).fill(0)],
+        encodeMany: async (texts) => texts.map((text) => (text.includes("Clerk") || text.includes("__admin_session") ? [1, ...new Array(383).fill(0)] : [0, 1, ...new Array(382).fill(0)])),
+      },
+    );
+    const result = JSON.parse(output as string) as { recentFacts: { id: string }[]; relevantFacts: { id: string }[]; semanticStatus: string };
+    expect(result.recentFacts.map((fact) => fact.id)).toEqual(["logo", "formatter", "dashboard color"]);
+    expect(result.relevantFacts.map((fact) => fact.id)).toContain("Clerk authentication");
+    expect(result.relevantFacts.map((fact) => fact.id)).toContain("__admin_session cookie");
+    expect(result.relevantFacts).toHaveLength(3);
+    expect(output).not.toContain("foreign Clerk");
+    expect(output).not.toContain("suppressed cookie");
+    expect(result.semanticStatus).toBe("complete");
+  });
+
+  test("keeps ranked warm facts when promoted-vector search fails", async () => {
+    const { client } = makeFakeSupabase(
+      {
+        tech_decisions: [
+          {
+            id: "warm",
+            org_id: ORG,
+            project_scope: "orion",
+            is_suppressed: false,
+            created_at: "2026-09-20T00:00:00Z",
+            session_id: "s",
+            confidence: 0.9,
+            is_verified: false,
+            promoted_to_t3: false,
+            decision_text: "recovery runbook",
+            domain: "operations",
+          },
+        ],
+      },
+      {},
+      {
+        match_project_fact_vectors: () => {
+          throw new Error("vector unavailable");
+        },
+      },
+    );
+    const output = await retrieveSessionContext(
+      { ...base, projectScope: "orion" },
+      {
+        makeClient: () => client,
+        encode: async () => [1, ...new Array(383).fill(0)],
+        encodeMany: async () => [[1, ...new Array(383).fill(0)]],
+      },
+    );
+    const result = JSON.parse(output as string) as { relevantFacts: { id: string }[]; semanticStatus: string };
+    expect(result.relevantFacts.map((fact) => fact.id)).toEqual(["warm"]);
+    expect(result.semanticStatus).toBe("partial");
+  });
+
+  test("keeps promoted facts when warm ranking fails and deduplicates a shared fact", async () => {
+    const row = (id: string) => ({
+      id,
+      org_id: ORG,
+      project_scope: "orion",
+      is_suppressed: false,
+      created_at: "2026-09-20T00:00:00Z",
+      session_id: "s",
+      confidence: 0.9,
+      is_verified: true,
+      promoted_to_t3: true,
+      decision_text: "recovery runbook",
+      domain: "operations",
+    });
+    const { client } = makeFakeSupabase(
+      { tech_decisions: [row("shared")] },
+      {},
+      {
+        match_project_fact_vectors: () => [{ id: "vector", source_type: "fact", source_ref: "shared", similarity: 0.8 }],
+      },
+    );
+    const opts = { ...base, projectScope: "orion" };
+    const failed = JSON.parse(
+      (await retrieveSessionContext(opts, {
+        makeClient: () => client,
+        encode: async () => [1, ...new Array(383).fill(0)],
+        encodeMany: async () => {
+          throw new Error("warm encoder unavailable");
+        },
+      })) as string,
+    ) as { relevantFacts: { id: string }[]; semanticStatus: string };
+    expect(failed.relevantFacts.map((fact) => fact.id)).toEqual(["shared"]);
+    expect(failed.semanticStatus).toBe("partial");
+    const encoded: string[][] = [];
+    const complete = JSON.parse(
+      (await retrieveSessionContext(opts, {
+        makeClient: () => client,
+        encode: async () => [1, ...new Array(383).fill(0)],
+        encodeMany: async (texts) => {
+          encoded.push(texts);
+          return texts.map(() => [1, ...new Array(383).fill(0)]);
+        },
+      })) as string,
+    ) as { relevantFacts: { id: string }[]; semanticStatus: string };
+    expect(complete.relevantFacts.map((fact) => fact.id)).toEqual(["shared"]);
+    expect(complete.semanticStatus).toBe("complete");
+    expect(encoded).toEqual([["recovery runbook operations"]]);
+  });
+
   test("allows only the exact allowlisted local API origin", async () => {
     const local = { ...base, supabaseUrl: "http://127.0.0.1:54321/", allowlistText: "127.0.0.1", task: "" };
     const { client } = makeFakeSupabase();
