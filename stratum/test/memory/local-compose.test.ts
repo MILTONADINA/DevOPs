@@ -1,7 +1,31 @@
 import { describe, expect, test } from "vitest";
-import { assertLocalPorts, serviceJwt } from "../../scripts/local-compose";
+import { assertLocalPorts, dockerFailureDetail, retryRateLimited, serviceJwt } from "../../scripts/local-compose";
 
 describe("project-local Compose boundary", () => {
+  test("classifies registry throttling without leaking Docker stderr", () => {
+    expect(dockerFailureDetail("toomanyrequests: Rate exceeded; secret-token-value")).toBe("public registry rate limit");
+    expect(dockerFailureDetail("HTTP 429 Too Many Requests; secret-token-value")).toBe("public registry rate limit");
+    expect(dockerFailureDetail("unknown Docker failure; secret-token-value")).toBe("docker command failed");
+  });
+
+  test("retries registry throttling twice and fails other errors immediately", async () => {
+    let calls = 0;
+    const delays: number[] = [];
+    await retryRateLimited(() => {
+      calls++;
+      if (calls < 3) throw new Error("public registry rate limit");
+    }, async (ms) => { delays.push(ms); });
+    expect(calls).toBe(3);
+    expect(delays).toEqual([2000, 4000]);
+
+    calls = 0;
+    await expect(retryRateLimited(() => { calls++; throw new Error("port in use"); }, async () => { throw new Error("unexpected delay"); })).rejects.toThrow("port in use");
+    expect(calls).toBe(1);
+
+    calls = 0;
+    await expect(retryRateLimited(() => { calls++; throw new Error("public registry rate limit"); }, async () => {})).rejects.toThrow("public registry rate limit");
+    expect(calls).toBe(3);
+  });
   test("accepts one loopback API port and no published DB or REST ports", () => {
     expect(() => assertLocalPorts({ db: {}, rest: {}, gateway: { "8000/tcp": [{ HostIp: "127.0.0.1", HostPort: "54321" }] } })).not.toThrow();
   });

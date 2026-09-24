@@ -371,7 +371,7 @@ Anthropic's reasoning-based security scanner (GA Feb 2026) reads code "the way a
 
 ### 7a. Onboarding
 
-- [ ] **`npm run setup`** (~15h). The root command detects macOS/Linux/WSL2, installs missing Stratum dependencies, starts project-local Supabase Compose, and smoke-tests the real proxy/database listener without `.env` access. It passed on this Mac; clean-laptop timing, Linux/WSL2 runs, and provider-backed message traffic remain unverified.
+- [ ] **`npm run setup`** (~15h). The root command detects macOS/Linux/WSL2, installs missing Stratum dependencies, starts project-local Supabase Compose, and smoke-tests the real proxy/database listener without `.env` access. It passed on this Mac. A fresh Ubuntu 24.04 hosted runner installed 402 packages, applied 29 migrations, and passed the real loopback proxy/database smoke in 63 seconds (CI run `35949123662`). Clean macOS and WSL2 laptops, provider-backed message traffic, and real-data recovery remain unverified.
 - [ ] **PERSONAL_USE.md v2** — full polish (~5h). Daily workflow, env vars, troubleshooting common errors, FAQ.
 - [ ] **DEVELOPER_GUIDE.md** (~6h). For friends contributing: dev environment setup, test running, lint/format, PR conventions, signing setup (PB-16 closed).
 - [ ] **ARCHITECTURE.md** (~6h). System design overview. Diagrams. Component responsibilities. Data flow. Cross-reference to ADRs.
@@ -387,7 +387,7 @@ Anthropic's reasoning-based security scanner (GA Feb 2026) reads code "the way a
 
 - [ ] **Multi-environment config** (~4h). `config.dev.yml` / `config.prod.yml` overrides. Document in PERSONAL_USE.md.
 - [ ] **Versioned schema + migration scripts** (~4h). `stratum/scripts/migrate-session-schema.ts` (already in Phase 0 spec). Test v0.1.0 → v0.2.0 round trip.
-- [ ] **Backup + restore** (~5h). The local Compose check now backs up, deletes, and restores a disposable audited organization, including suppression, status, and alert evidence. Paged export prevents silent truncation under a REST row cap. Clean-machine and real-data recovery, plus the full operator runbook, remain open.
+- [ ] **Backup + restore** (~5h). The local Compose check now backs up, deletes, and restores a disposable audited organization, including suppression, status, and alert evidence. Paged export prevents silent truncation under a REST row cap. The local operator runbook is in `docs/runbooks/LOCAL_STRATUM.md`. Clean-machine and real-data recovery remain open.
 - [ ] **Telemetry policy + opt-out** (~3h). What does Stratum emit? Where? Where's `STRATUM_TELEMETRY_OPT_OUT=true`? Documented in PERSONAL_USE.md + new `TELEMETRY.md`.
 
 ### 7d. Distribution polish
