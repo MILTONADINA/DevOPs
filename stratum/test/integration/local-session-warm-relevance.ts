@@ -55,8 +55,8 @@ try {
         fact(noise[0]!, session, "orion", "The logo was aligned on mobile.", 20),
         fact(noise[1]!, session, "orion", "The changelog spelling was corrected.", 21),
         fact(noise[2]!, session, "orion", "The footer color was adjusted.", 22),
-        { ...fact(foreign, vegaSession, "vega", "Production recovery follows VEGA_RECOVERY.md.", 23), supersedes_id: answer },
-        { ...fact(suppressed, session, "orion", "Production recovery follows SUPPRESSED_RECOVERY.md.", 24, true), supersedes_id: answer },
+        fact(foreign, vegaSession, "vega", "Production recovery follows VEGA_RECOVERY.md.", 23),
+        fact(suppressed, session, "orion", "Production recovery follows SUPPRESSED_RECOVERY.md.", 24, true),
       ]),
     "insert facts",
   );
@@ -93,10 +93,13 @@ try {
   checked(
     await db.from("tech_decisions").insert({
       ...fact(replacement, session, "orion", "Production recovery now follows NEW_RUNBOOK.md.", 24),
-      supersedes_id: answer,
     }),
-    "insert linked replacement",
+    "insert replacement",
   );
+  checked(await db.rpc("review_tech_decision_supersession", {
+    match_org: org, match_project_scope: "orion", newer_id: replacement, older_id: answer,
+    reviewer: "local-operator", evidence: "RUNBOOK_RECOVERY.md was explicitly replaced by NEW_RUNBOOK.md.",
+  }), "review replacement");
   const after = await retrieveSessionContext(options, deps);
   const linked = JSON.parse(after ?? "null") as { recentFacts: { id: string }[]; relevantFacts: { id: string }[] } | null;
   if (

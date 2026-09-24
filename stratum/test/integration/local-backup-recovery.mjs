@@ -17,6 +17,8 @@ const session = randomUUID();
 const sharedSession = randomUUID();
 const fact = randomUUID();
 const activeFact = randomUUID();
+const oldDecision = randomUUID();
+const newDecision = randomUUID();
 const conflict = randomUUID();
 const entityA = randomUUID();
 const entityB = randomUUID();
@@ -47,6 +49,7 @@ async function clearRows() {
   for (const [table, column, value] of [
     ["audit_statuses", "fact_id", fact], ["audit_conflicts", "id", conflict],
     ["function_changes", "id", fact], ["function_changes", "id", activeFact],
+    ["tech_decisions", "id", newDecision], ["tech_decisions", "id", oldDecision],
     ["knowledge_edges", "id", edge],
     ["knowledge_entities", "id", entityA], ["knowledge_entities", "id", entityB],
     ["knowledge_entities", "id", fileEntity],
@@ -87,6 +90,14 @@ try {
     id: activeFact, org_id: org, session_id: session, confidence: 0.9,
     old_name: "linkedRecovery", new_name: "linkedRecoveryNew", change_type: "renamed", file_path: filePath,
   }), "insert active linked fact");
+  checked(await db.from("tech_decisions").insert([
+    { id: oldDecision, org_id: org, session_id: session, created_at: "2026-09-20T00:00:00Z", confidence: 0.9, decision_text: "old runtime", domain: "runtime" },
+    { id: newDecision, org_id: org, session_id: session, created_at: "2026-09-21T00:00:00Z", confidence: 0.9, decision_text: "new runtime", domain: "runtime" },
+  ]), "insert review decisions");
+  checked(await db.rpc("review_tech_decision_supersession", {
+    match_org: org, match_project_scope: null, newer_id: newDecision, older_id: oldDecision,
+    reviewer: "local-operator", evidence: "Local recovery fixture verifies the reviewed decision link.",
+  }), "review decision supersession");
   const originalSourceLink = checked(await db.from("source_fact_links").select("id,created_at").eq("org_id", org).eq("file_entity_id", fileEntity).eq("function_change_id", activeFact).single(), "read original source link");
 
   // If either CLI loads dotenv, this harmless project-local override points it
@@ -97,6 +108,7 @@ try {
   const backup = JSON.parse(readFileSync(backupPath, "utf8"));
   if (backup.orgId !== org || backup.tables.organizations.length !== 1 ||
       backup.tables.sessions.length !== 2 || backup.tables.function_changes.length !== 2 ||
+      backup.tables.tech_decisions.length !== 2 ||
       backup.tables.knowledge_entities.length !== 3 || backup.tables.knowledge_edges.length !== 1 ||
       backup.tables.knowledge_entity_sessions.length !== 4 || backup.tables.knowledge_edge_sessions.length !== 2 ||
       backup.tables.source_fact_links.length !== 1 || backup.tables.source_fact_links[0].id !== originalSourceLink.id ||
@@ -131,6 +143,8 @@ try {
   run("scripts/restore-org.ts", ["--file", backupPath]);
 
   const restoredFact = checked(await db.from("function_changes").select("id,is_suppressed,session_id").eq("id", fact).single(), "read restored fact");
+  const restoredDecision = checked(await db.from("tech_decisions").select("supersedes_id,supersession_reviewer,supersession_evidence,supersession_reviewed_at").eq("id", newDecision).single(), "read reviewed decision");
+  const backedDecision = backup.tables.tech_decisions.find((row) => row.id === newDecision);
   const restoredStatus = checked(await db.from("audit_statuses").select("status").eq("fact_id", fact).eq("org_id", org).single(), "read restored status");
   const restoredAlert = checked(await db.from("audit_conflicts").select("id,conflict_commit,acknowledged").eq("id", conflict).eq("org_id", org).single(), "read restored alert");
   const restoredShared = checked(await db.from("knowledge_entity_sessions").select("session_id").eq("org_id", org).eq("entity_id", entityA), "read restored entity links");
@@ -138,6 +152,8 @@ try {
   const restoredSourceLink = checked(await db.from("source_fact_links").select("id,created_at").eq("org_id", org).eq("file_entity_id", fileEntity).eq("function_change_id", activeFact).single(), "read restored source link");
   const inventory = checked(await db.rpc("inspect_session_erasure", { p_org_id: org, p_session_id: session }), "read restored erasure inventory");
   if (restoredFact.id !== fact || restoredFact.session_id !== session || !restoredFact.is_suppressed ||
+      restoredDecision.supersedes_id !== oldDecision || restoredDecision.supersession_reviewer !== backedDecision.supersession_reviewer ||
+      restoredDecision.supersession_evidence !== backedDecision.supersession_evidence || restoredDecision.supersession_reviewed_at !== backedDecision.supersession_reviewed_at ||
       restoredStatus.status !== "CONFLICT" || restoredAlert.id !== conflict ||
       restoredAlert.conflict_commit !== "local-check" || restoredAlert.acknowledged ||
       restoredShared.length !== 2 || restoredEdgeLinks.length !== 2 || inventory.graph_ownership !== "shared" ||

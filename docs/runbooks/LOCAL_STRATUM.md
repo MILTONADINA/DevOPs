@@ -20,6 +20,18 @@ not part of this procedure. Run commands from `stratum/` unless stated otherwise
 applying migrations to data you need, make an organization backup and verify
 that its file exists. There is no supported automatic database reset command.
 
+## Review a decision replacement
+
+When a newer TechDecision genuinely replaces an older one, record the exact
+decision UUIDs, operator identity, and concrete evidence through the local
+service-role RPC `review_tech_decision_supersession(match_org,
+match_project_scope, newer_id, older_id, reviewer, evidence)`. Both decisions
+must be active in the same organization and project, and the newer one must
+have a later creation time. A shared domain or similar wording is insufficient
+evidence. The link and its review metadata cannot be edited after creation.
+Use the local service JWT from `npm run db:with-env` when calling the RPC;
+never put that JWT in a project file. Backups retain the original review record.
+
 ## Back up one organization
 
 1. Identify the organization's UUID from your own authorized records. Choose

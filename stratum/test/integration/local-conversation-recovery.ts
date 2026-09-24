@@ -60,6 +60,7 @@ try {
           session_id: conversationId,
           project_scope: "orion",
           source_exchange_id: exchangeId,
+          created_at: "2026-09-20T00:00:00Z",
           decision_text: "Use old signing",
           domain: "auth",
           confidence: 0.9,
@@ -75,15 +76,18 @@ try {
         session_id: conversationId,
         project_scope: "orion",
         source_exchange_id: exchangeId,
+        created_at: "2026-09-21T00:00:00Z",
         decision_text: "Use new signing",
         domain: "auth",
         confidence: 0.9,
-        supersedes_id: olderDecisionId,
       })
     ).error,
     "insert newer decision",
   );
-  checked((await db.from("tech_decisions").update({ supersedes_id: newerDecisionId }).eq("id", olderDecisionId).eq("org_id", orgId)).error, "link older decision back to newer decision");
+  checked((await db.rpc("review_tech_decision_supersession", {
+    match_org: orgId, match_project_scope: "orion", newer_id: newerDecisionId, older_id: olderDecisionId,
+    reviewer: "local-operator", evidence: "The newer signing decision replaces the older signing decision.",
+  })).error, "review decision replacement");
   mkdirSync(backupDir, { recursive: true });
   runCli("backup-org.ts", ["--org-id", orgId, "--out", backupPath]);
   const invalidBackup = JSON.parse(readFileSync(backupPath, "utf8")) as { tables: { tech_decisions: Array<Record<string, unknown>> } };
@@ -107,7 +111,7 @@ try {
   if (!auth || auth.orgId !== orgId || auth.keyId !== keyId || auth.projectScopeId !== `${orgId}/orion`) throw new Error("restored key binding differs");
   const continued = await createSupabaseConversationResolver(db)({ orgId: auth.orgId, keyId: auth.keyId, projectScopeId: auth.projectScopeId, model: "local/check", requestedId: conversationId });
   if (continued !== conversationId) throw new Error("restored conversation cannot continue");
-  const decisions = await db.from("tech_decisions").select("id,session_id,supersedes_id,source_exchange_id").eq("org_id", orgId).order("id");
+  const decisions = await db.from("tech_decisions").select("id,session_id,supersedes_id,source_exchange_id,supersession_reviewer,supersession_evidence,supersession_reviewed_at").eq("org_id", orgId).order("id");
   checked(decisions.error, "read restored decisions");
   if (
     decisions.data?.length !== 2 ||
@@ -115,9 +119,12 @@ try {
     decisions.data[0]?.session_id !== conversationId ||
     decisions.data[0]?.source_exchange_id !== exchangeId ||
     decisions.data[0]?.supersedes_id !== olderDecisionId ||
+    decisions.data[0]?.supersession_reviewer !== "local-operator" ||
+    decisions.data[0]?.supersession_evidence !== "The newer signing decision replaces the older signing decision." ||
+    !decisions.data[0]?.supersession_reviewed_at ||
     decisions.data[1]?.id !== olderDecisionId ||
     decisions.data[1]?.source_exchange_id !== exchangeId ||
-    decisions.data[1]?.supersedes_id !== newerDecisionId
+    decisions.data[1]?.supersedes_id !== null
   ) {
     throw new Error("restored decision supersession differs from backup");
   }
