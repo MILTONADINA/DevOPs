@@ -36,12 +36,12 @@ export interface SessionStats {
 }
 
 export interface SessionsDeps {
-  listSessions: (orgId: string, limit: number) => Promise<SessionSummary[]>;
-  getSession: (orgId: string, id: string) => Promise<SessionSummary | null>;
+  listSessions: (orgId: string, limit: number, projectScope?: string | null) => Promise<SessionSummary[]>;
+  getSession: (orgId: string, id: string, projectScope?: string | null) => Promise<SessionSummary | null>;
   /** Token stats for a session, or null if the session is not in this org. */
-  getSessionStats: (orgId: string, id: string) => Promise<SessionStats | null>;
+  getSessionStats: (orgId: string, id: string, projectScope?: string | null) => Promise<SessionStats | null>;
   /** End a session (set ended_at); returns the updated session, or null if not in this org. */
-  endSession: (orgId: string, id: string) => Promise<SessionSummary | null>;
+  endSession: (orgId: string, id: string, projectScope?: string | null) => Promise<SessionSummary | null>;
   /** The org's plan (drives the concurrent-session cap), or null if the org is unknown. */
   getPlan: (orgId: string) => Promise<string | null>;
   /** Count the org's currently-active (not-yet-ended) sessions. */
@@ -53,7 +53,7 @@ export interface SessionsDeps {
    * returns the new session, or null if already at/over the cap. Serializes concurrent creates per org
    * (a DB advisory lock) so the cap cannot be raced — unlike a separate count-then-insert (TOCTOU).
    */
-  createSessionIfUnderCap: (orgId: string, model: string, limit: number) => Promise<SessionSummary | null>;
+  createSessionIfUnderCap: (orgId: string, model: string, limit: number, projectScope?: string | null) => Promise<SessionSummary | null>;
 }
 
 function resolveOrg(req: FastifyRequest): string | undefined {
@@ -63,6 +63,13 @@ function resolveOrg(req: FastifyRequest): string | undefined {
   if (req.authEnforced === true) return undefined;
   const v = (req.query as Record<string, unknown>)["org-id"];
   return typeof v === "string" && v !== "" ? v : undefined;
+}
+
+function authenticatedProjectScope(req: FastifyRequest): string | null | undefined {
+  if (req.authEnforced !== true) return undefined;
+  if (req.projectScopeId === undefined) return null;
+  if (!req.orgId || !req.projectScopeId.startsWith(`${req.orgId}/`)) throw new Error("invalid authenticated project scope");
+  return req.projectScopeId.slice(req.orgId.length + 1);
 }
 
 function intParam(req: FastifyRequest, name: string, def: number): number {
@@ -86,13 +93,13 @@ export function makeSessionsRoute(deps: SessionsDeps): FastifyPluginCallback {
     app.get("/v1/sessions", async (req, reply) => {
       const orgId = resolveOrg(req);
       if (orgId === undefined) return err(reply, 400, "org id required (authenticate, or pass ?org-id)");
-      return { sessions: await deps.listSessions(orgId, intParam(req, "limit", 50)) };
+      return { sessions: await deps.listSessions(orgId, intParam(req, "limit", 50), authenticatedProjectScope(req)) };
     });
 
     app.get("/v1/sessions/:id", async (req, reply) => {
       const orgId = resolveOrg(req);
       if (orgId === undefined) return err(reply, 400, "org id required (authenticate, or pass ?org-id)");
-      const session = await deps.getSession(orgId, (req.params as { id: string }).id);
+      const session = await deps.getSession(orgId, (req.params as { id: string }).id, authenticatedProjectScope(req));
       if (session === null) return err(reply, 404, "session not found for this org");
       return session;
     });
@@ -110,7 +117,7 @@ export function makeSessionsRoute(deps: SessionsDeps): FastifyPluginCallback {
       // ATOMIC cap check + insert (advisory-locked in the DB): a parallel pair of POSTs for the same org
       // cannot both observe "active < limit" and both insert. The prior count-then-create was a TOCTOU
       // window that let a starter org (cap 1) open N sessions by racing N concurrent requests.
-      const session = await deps.createSessionIfUnderCap(orgId, model, limit);
+      const session = await deps.createSessionIfUnderCap(orgId, model, limit, authenticatedProjectScope(req));
       if (session === null) {
         return reply
           .code(429)
@@ -122,7 +129,7 @@ export function makeSessionsRoute(deps: SessionsDeps): FastifyPluginCallback {
     app.get("/v1/sessions/:id/stats", async (req, reply) => {
       const orgId = resolveOrg(req);
       if (orgId === undefined) return err(reply, 400, "org id required (authenticate, or pass ?org-id)");
-      const stats = await deps.getSessionStats(orgId, (req.params as { id: string }).id);
+      const stats = await deps.getSessionStats(orgId, (req.params as { id: string }).id, authenticatedProjectScope(req));
       if (stats === null) return err(reply, 404, "session not found for this org");
       return stats;
     });
@@ -131,7 +138,7 @@ export function makeSessionsRoute(deps: SessionsDeps): FastifyPluginCallback {
     app.delete("/v1/sessions/:id", async (req, reply) => {
       const orgId = resolveOrg(req);
       if (orgId === undefined) return err(reply, 400, "org id required (authenticate, or pass ?org-id)");
-      const session = await deps.endSession(orgId, (req.params as { id: string }).id);
+      const session = await deps.endSession(orgId, (req.params as { id: string }).id, authenticatedProjectScope(req));
       if (session === null) return err(reply, 404, "session not found for this org");
       return { ended: true, session };
     });
@@ -144,19 +151,25 @@ const SESSION_COLS = "id, created_at, ended_at, model, lambda, gain_shift, theta
 
 /** Live session store over Supabase (sessions table + billing_records). */
 export function createSupabaseSessionsDeps(client: SupabaseClient): SessionsDeps {
-  const getSession = async (orgId: string, id: string): Promise<SessionSummary | null> => {
+  const getSession = async (orgId: string, id: string, projectScope?: string | null): Promise<SessionSummary | null> => {
     // kind='explicit' guard: a kind='usage' bucket id (observable to a client via billing_records.session_id)
     // must be invisible here — so it can't be fetched, stat'd, or ENDED via DELETE (which would break that
     // day's usage bucket). getSessionStats + endSession both scope-check through getSession, so this one
     // guard covers all three.
-    const { data, error } = await client.from("sessions").select(SESSION_COLS).eq("id", id).eq("org_id", orgId).eq("kind", "explicit").limit(1);
+    let query = client.from("sessions").select(SESSION_COLS).eq("id", id).eq("org_id", orgId).eq("kind", "explicit");
+    if (projectScope === null) query = query.is("project_scope", null);
+    else if (projectScope !== undefined) query = query.eq("project_scope", projectScope);
+    const { data, error } = await query.limit(1);
     if (error) throw new Error(`getSession failed: ${error.message}`);
     return ((data ?? [])[0] as SessionSummary | undefined) ?? null;
   };
   return {
-    async listSessions(orgId, limit) {
+    async listSessions(orgId, limit, projectScope) {
       // Only EXPLICIT sessions are client-facing; kind='usage' rows are internal daily billing buckets.
-      const { data, error } = await client.from("sessions").select(SESSION_COLS).eq("org_id", orgId).eq("kind", "explicit").order("created_at", { ascending: false }).limit(limit);
+      let query = client.from("sessions").select(SESSION_COLS).eq("org_id", orgId).eq("kind", "explicit");
+      if (projectScope === null) query = query.is("project_scope", null);
+      else if (projectScope !== undefined) query = query.eq("project_scope", projectScope);
+      const { data, error } = await query.order("created_at", { ascending: false }).limit(limit);
       if (error) throw new Error(`listSessions failed: ${error.message}`);
       return (data ?? []) as SessionSummary[];
     },
@@ -181,11 +194,14 @@ export function createSupabaseSessionsDeps(client: SupabaseClient): SessionsDeps
       if (!row) throw new Error("createSession returned no row");
       return row;
     },
-    async createSessionIfUnderCap(orgId, model, limit) {
+    async createSessionIfUnderCap(orgId, model, limit, projectScope) {
       // Atomic: create_session_if_under_cap (migration 20260530050000) takes a per-org advisory lock,
       // re-counts active explicit sessions, and inserts only if under `limit` — all inside one DB call,
       // so concurrent POSTs are serialized and the cap can't be raced. Empty result = at/over cap.
-      const { data, error } = await client.rpc("create_session_if_under_cap", { p_org_id: orgId, p_model: model, p_cap: limit });
+      const { data, error } =
+        projectScope === undefined
+          ? await client.rpc("create_session_if_under_cap", { p_org_id: orgId, p_model: model, p_cap: limit })
+          : await client.rpc("create_project_session_if_under_cap", { p_org_id: orgId, p_model: model, p_cap: limit, p_project_scope: projectScope });
       if (error) throw new Error(`createSessionIfUnderCap failed: ${error.message}`);
       const row = ((data ?? []) as Record<string, unknown>[])[0];
       if (!row) return null;
@@ -202,16 +218,19 @@ export function createSupabaseSessionsDeps(client: SupabaseClient): SessionsDeps
         audit_enabled: row["audit_enabled"] as boolean,
       };
     },
-    async endSession(orgId, id) {
+    async endSession(orgId, id, projectScope) {
       // Scope-check first so a cross-org id is a clean 404, not a silent no-op update.
-      if ((await getSession(orgId, id)) === null) return null;
-      const { data, error } = await client.from("sessions").update({ ended_at: new Date().toISOString() }).eq("id", id).eq("org_id", orgId).select(SESSION_COLS).limit(1);
+      if ((await getSession(orgId, id, projectScope)) === null) return null;
+      let query = client.from("sessions").update({ ended_at: new Date().toISOString() }).eq("id", id).eq("org_id", orgId).eq("kind", "explicit");
+      if (projectScope === null) query = query.is("project_scope", null);
+      else if (projectScope !== undefined) query = query.eq("project_scope", projectScope);
+      const { data, error } = await query.select(SESSION_COLS).limit(1);
       if (error) throw new Error(`endSession failed: ${error.message}`);
       return ((data ?? [])[0] as SessionSummary | undefined) ?? null;
     },
-    async getSessionStats(orgId, id) {
+    async getSessionStats(orgId, id, projectScope) {
       // Scope check first: only an org's own session yields stats (no cross-tenant peeking).
-      if ((await getSession(orgId, id)) === null) return null;
+      if ((await getSession(orgId, id, projectScope)) === null) return null;
       const { data, error } = await client.from("billing_records").select("original_tokens, quarantined_tokens, cost_delta_usd, cq_fee_usd").eq("org_id", orgId).eq("session_id", id);
       if (error) throw new Error(`getSessionStats failed: ${error.message}`);
       const rows = (data ?? []) as { original_tokens: number; quarantined_tokens: number; cost_delta_usd: number; cq_fee_usd: number }[];

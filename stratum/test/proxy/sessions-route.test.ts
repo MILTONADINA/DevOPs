@@ -144,6 +144,34 @@ describe("GET /v1/sessions/:id/stats", () => {
   });
 });
 
+describe("commercial explicit-session project scope", () => {
+  test("passes only the authenticated scope to every route operation", async () => {
+    const calls: Array<[string, unknown]> = [];
+    const { deps } = fakeDeps();
+    deps.listSessions = async (_org, _limit, scope) => { calls.push(["list", scope]); return [SESSION]; };
+    deps.getSession = async (_org, _id, scope) => { calls.push(["get", scope]); return SESSION; };
+    deps.getSessionStats = async (_org, _id, scope) => { calls.push(["stats", scope]); return STATS; };
+    deps.endSession = async (_org, _id, scope) => { calls.push(["end", scope]); return SESSION; };
+    deps.createSessionIfUnderCap = async (_org, _model, _limit, scope) => { calls.push(["create", scope]); return SESSION; };
+    const app = buildProxy({ rateLimit: false, cors: false, sessions: deps, auth: {
+      resolve: async (key) => key === "bound" ? { orgId: "o1", keyId: "k1", projectScopeId: "o1/orion" } :
+        key === "unbound" ? { orgId: "o1", keyId: "k2" } : null,
+    } });
+    await app.ready();
+    for (const [key, expected] of [["bound", "orion"], ["unbound", null]] as const) {
+      const headers = { authorization: `Bearer ${key}`, "x-project-scope": "vega" };
+      const url = "?org-id=spoofed&project-scope=vega";
+      expect((await app.inject({ method: "GET", url: `/v1/sessions${url}`, headers })).statusCode).toBe(200);
+      expect((await app.inject({ method: "GET", url: `/v1/sessions/s1${url}`, headers })).statusCode).toBe(200);
+      expect((await app.inject({ method: "GET", url: `/v1/sessions/s1/stats${url}`, headers })).statusCode).toBe(200);
+      expect((await app.inject({ method: "DELETE", url: `/v1/sessions/s1${url}`, headers })).statusCode).toBe(200);
+      expect((await app.inject({ method: "POST", url: `/v1/sessions${url}`, headers, payload: { model: "m", project_scope: "vega" } })).statusCode).toBe(201);
+      expect(calls.splice(0)).toEqual([["list", expected], ["get", expected], ["stats", expected], ["end", expected], ["create", expected]]);
+    }
+    await app.close();
+  });
+});
+
 describe("createSupabaseSessionsDeps.countActiveSessions — only active EXPLICIT sessions (PB-46)", () => {
   test("filters org_id + kind='explicit' + ended_at IS NULL (usage buckets excluded from the cap)", async () => {
     const eqs: [string, unknown][] = [];
@@ -214,5 +242,30 @@ describe("createSupabaseSessionsDeps.createSessionIfUnderCap — atomic advisory
     const client = { rpc: () => Promise.resolve({ data: [], error: null }) } as unknown as SupabaseClient;
     const row = await createSupabaseSessionsDeps(client).createSessionIfUnderCap("o1", "m", 1);
     expect(row).toBeNull();
+  });
+});
+
+describe("createSupabaseSessionsDeps project scope", () => {
+  test("uses a scope-filtered session query and a scoped atomic create RPC", async () => {
+    const eqs: [string, unknown][] = [];
+    let rpcName: string | undefined;
+    let rpcArgs: unknown;
+    const builder = {
+      select() { return builder; },
+      eq(col: string, value: unknown) { eqs.push([col, value]); return builder; },
+      is() { return builder; },
+      order() { return builder; },
+      limit() { return Promise.resolve({ data: [], error: null }); },
+    };
+    const client = {
+      from: () => builder,
+      rpc(name: string, args: unknown) { rpcName = name; rpcArgs = args; return Promise.resolve({ data: [], error: null }); },
+    } as unknown as SupabaseClient;
+    const deps = createSupabaseSessionsDeps(client);
+    await deps.listSessions("o1", 10, "orion");
+    expect(eqs).toContainEqual(["project_scope", "orion"]);
+    await deps.createSessionIfUnderCap("o1", "m", 1, "orion");
+    expect(rpcName).toBe("create_project_session_if_under_cap");
+    expect(rpcArgs).toEqual({ p_org_id: "o1", p_model: "m", p_cap: 1, p_project_scope: "orion" });
   });
 });

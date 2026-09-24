@@ -108,8 +108,12 @@ legacy unbound facts. The database rejects a fact whose project differs from
 its session. Run `npm run db:verify-project-audit-reads` to verify that
 commercial conflict and audit-status reads follow their referenced facts'
 project scope before result limits, exclude orphaned audit rows, and ignore
-client-supplied scope. Graph and other organization-wide APIs are not yet
-project-isolated. This does not enable pruning.
+client-supplied scope. Run `npm run db:verify-project-explicit-sessions` to
+verify that commercial `/v1/sessions` creation, reads, stats, and ending obey
+the authenticated project, including parallel creates against the
+organization-wide session cap. Unbound keys see only unbound sessions;
+personal mode remains organization-wide. Graph and other organization-wide
+APIs are not yet project-isolated. This does not enable pruning.
 
 Run `npm run db:verify-message-memory` to check a successful authenticated
 `/v1/messages` request through a loopback fake extraction model. It verifies
