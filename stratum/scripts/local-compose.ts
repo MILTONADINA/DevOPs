@@ -56,6 +56,17 @@ function inspectPorts(env: NodeJS.ProcessEnv): void {
   assertLocalPorts(ports);
 }
 
+function containerStates(env: NodeJS.ProcessEnv): string {
+  return services.map((service) => {
+    try {
+      const state = docker(["inspect", "--format", "{{.State.Status}}/{{.State.ExitCode}}", names[service]], env).trim();
+      return `${service}=${state}`;
+    } catch {
+      return `${service}=absent`;
+    }
+  }).join(", ");
+}
+
 function migrate(env: NodeJS.ProcessEnv): number {
   const sql = (args: string[], input?: string): string => compose(["exec", "-T", "db", "psql", "-X", "-v", "ON_ERROR_STOP=1", "-U", "supabase_admin", "-d", "postgres", ...args], env, input);
   sql(["-c", "CREATE SCHEMA IF NOT EXISTS devops_local; CREATE TABLE IF NOT EXISTS devops_local.migrations (version text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())"]);
@@ -96,8 +107,9 @@ async function start(): Promise<void> {
     if (!response.ok) throw new Error(`local API returned HTTP ${response.status}`);
     process.stdout.write(`Local Supabase API ready on 127.0.0.1:54321; ${applied} migration(s) applied.\n`);
   } catch (error) {
+    const states = containerStates(env);
     try { compose(["down"], env); } catch { /* preserve startup error */ }
-    throw new Error(`local stack ${stage} failed: ${error instanceof Error ? error.message : String(error)}`);
+    throw new Error(`local stack ${stage} failed (${states}): ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
