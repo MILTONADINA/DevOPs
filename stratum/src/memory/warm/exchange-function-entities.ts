@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { validProjectScope } from "../../proxy/auth";
 
-/** Resolve unambiguous function names from trusted commercial exchange IDs. */
+/** Resolve exclusive active Function facts from trusted commercial exchange IDs. */
 export function createExchangeFunctionLookup(client: SupabaseClient) {
   return async (orgId: string, sessionId: string, projectScope: string | null, exchangeIds: string[]): Promise<Map<string, string>> => {
     if (projectScope !== null && !validProjectScope(projectScope)) throw new Error("invalid project scope for exchange lookup");

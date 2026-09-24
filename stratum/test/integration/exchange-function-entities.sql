@@ -8,6 +8,10 @@ DECLARE
   vega_session uuid := gen_random_uuid(); memory_session uuid := gen_random_uuid();
   old_exchange uuid := gen_random_uuid(); new_exchange uuid := gen_random_uuid();
   ambiguous_exchange uuid := gen_random_uuid(); suppressed_exchange uuid := gen_random_uuid();
+  mixed_exchange uuid := gen_random_uuid(); duplicate_exchange uuid := gen_random_uuid();
+  suppressed_other_exchange uuid := gen_random_uuid();
+  policy_exchange uuid := gen_random_uuid(); todo_exchange uuid := gen_random_uuid();
+  variable_exchange uuid := gen_random_uuid();
   decision_old uuid := gen_random_uuid(); decision_new uuid := gen_random_uuid();
   function_old uuid := gen_random_uuid(); function_new uuid := gen_random_uuid();
   names text[];
@@ -28,14 +32,36 @@ BEGIN
     (org_id, orion_session, 'orion', ambiguous_exchange, 0.9, 'oneFn', NULL, 'deprecated', false),
     (org_id, orion_session, 'orion', ambiguous_exchange, 0.9, 'twoFn', NULL, 'deprecated', false),
     (org_id, orion_session, 'orion', suppressed_exchange, 0.9, 'hiddenFn', 'hiddenNew', 'renamed', true),
+    (org_id, orion_session, 'orion', mixed_exchange, 0.9, 'mixedFn', NULL, 'deprecated', false),
+    (org_id, orion_session, 'orion', duplicate_exchange, 0.9, 'duplicateFn', NULL, 'deprecated', false),
+    (org_id, orion_session, 'orion', duplicate_exchange, 0.9, 'duplicateFn', NULL, 'deprecated', false),
+    (org_id, orion_session, 'orion', suppressed_other_exchange, 0.9, 'suppressedOtherFn', NULL, 'deprecated', false),
+    (org_id, orion_session, 'orion', policy_exchange, 0.9, 'policyFn', NULL, 'deprecated', false),
+    (org_id, orion_session, 'orion', todo_exchange, 0.9, 'todoFn', NULL, 'deprecated', false),
+    (org_id, orion_session, 'orion', variable_exchange, 0.9, 'variableFn', NULL, 'deprecated', false),
     (org_id, other_session, 'orion', new_exchange, 0.9, 'otherSessionFn', 'otherNew', 'renamed', false),
     (org_id, vega_session, 'vega', old_exchange, 0.9, 'vegaFn', 'vegaNew', 'renamed', false),
     (org_id, memory_session, 'orion', NULL, 0.9, 'legacyFn', NULL, 'deprecated', false);
+  INSERT INTO public.tech_decisions(org_id, session_id, project_scope, source_exchange_id,
+    confidence, decision_text, domain, is_suppressed) VALUES
+    (org_id, orion_session, 'orion', mixed_exchange, 0.9, 'Keep this decision', 'runtime', false),
+    (org_id, orion_session, 'orion', suppressed_other_exchange, 0.9, 'Suppressed decision', 'runtime', true);
+  INSERT INTO public.policy_updates(org_id, session_id, project_scope, source_exchange_id,
+    confidence, policy_name, new_value, policy_type) VALUES
+    (org_id, orion_session, 'orion', policy_exchange, 0.9, 'retention', '7 days', 'process');
+  INSERT INTO public.todos(org_id, session_id, project_scope, source_exchange_id,
+    confidence, description) VALUES
+    (org_id, orion_session, 'orion', todo_exchange, 0.9, 'Ship migration');
+  INSERT INTO public.variable_changes(org_id, session_id, project_scope, source_exchange_id,
+    confidence, var_name, new_value) VALUES
+    (org_id, orion_session, 'orion', variable_exchange, 0.9, 'PORT', '54321');
   SELECT array_agg(entity_name ORDER BY entity_name) INTO names
     FROM public.find_exchange_function_entities(org_id, orion_session, 'orion',
-      ARRAY[old_exchange, new_exchange, ambiguous_exchange, suppressed_exchange]);
-  IF names IS DISTINCT FROM ARRAY['newFn', 'oldFn']::text[] THEN
-    RAISE EXCEPTION 'Orion exchange mapping leaked or kept ambiguous facts: %', names;
+      ARRAY[old_exchange, new_exchange, ambiguous_exchange, suppressed_exchange,
+        mixed_exchange, duplicate_exchange, suppressed_other_exchange,
+        policy_exchange, todo_exchange, variable_exchange]);
+  IF names IS DISTINCT FROM ARRAY['newFn', 'oldFn', 'suppressedOtherFn']::text[] THEN
+    RAISE EXCEPTION 'Orion exchange mapping leaked mixed or duplicate facts: %', names;
   END IF;
   SELECT array_agg(entity_name) INTO names
     FROM public.find_exchange_function_entities(org_id, vega_session, 'vega', ARRAY[old_exchange]);

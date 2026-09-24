@@ -12,6 +12,11 @@ session, verified project, and selected exchange IDs, THE SYSTEM SHALL return
 one function entity name per exchange only when active typed `FunctionChange`
 facts in that exact binding agree on one name. A fact with a nonempty new name
 SHALL identify the new function; otherwise it SHALL identify the old function.
+THE LOOKUP SHALL omit an exchange if it has more than one active FunctionChange
+fact or any active TechDecision, PolicyUpdate, Todo, or VariableChange fact in
+the same authenticated binding. A suppressed unrelated fact SHALL NOT make an
+otherwise eligible exchange ambiguous. This classification is a diagnostic
+boundary; it SHALL NOT authorize removal of the exchange's dialogue turns.
 The lookup SHALL exclude suppressed facts, legacy facts without exchange IDs,
 foreign organizations, sessions, projects, and non-conversation sessions. An
 ambiguous exchange SHALL return no entity. Anonymous and authenticated database
@@ -38,7 +43,8 @@ bounded conversation window and default-off deployment switch.
   empty-list handling, ambiguous/unbound turns retained, and numeric-only
   shadow supersession counts.
 - A rolled-back local PostgreSQL fixture shows same-named functions in two
-  projects, two sessions, suppressed and ambiguous facts, and service-only
-  access. Only the exact conversation/project/exchange binding resolves.
+  projects, two sessions, suppressed, duplicate, ambiguous and mixed-type
+  facts, and service-only access. Only an exclusive active Function fact in the
+  exact conversation/project/exchange binding resolves.
 - The unchanged Tier-C corpus and judged Tier-A requirements remain release
   gates; this diagnostic does not activate request pruning.
