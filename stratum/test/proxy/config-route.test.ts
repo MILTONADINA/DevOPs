@@ -69,6 +69,25 @@ describe("GET /v1/config", () => {
 });
 
 describe("PATCH /v1/config", () => {
+  test("rejects a project-bound key before changing shared organization config", async () => {
+    const { deps, captured } = fakeDeps();
+    const app = buildProxy({ rateLimit: false, cors: false, auth: { resolve: async (key) =>
+      key === "bound" ? { orgId: "o1", keyId: "a", projectScopeId: "o1/orion" } :
+      key === "unbound" ? { orgId: "o1", keyId: "b" } : null,
+    }, config: deps });
+    await app.ready();
+    const bound = { authorization: "Bearer bound", "x-project-scope": "", "content-type": "application/json" };
+    const denied = await app.inject({ method: "PATCH", url: "/v1/config?org-id=o1&project-scope=", headers: bound, payload: { audit_enabled: false, project_scope: null } });
+    expect(denied.statusCode).toBe(403);
+    expect(captured).toEqual({});
+    const read = await app.inject({ method: "GET", url: "/v1/config", headers: bound });
+    expect(read.statusCode).toBe(200);
+    expect(read.json()).not.toHaveProperty("webhook_secret");
+    expect((await app.inject({ method: "PATCH", url: "/v1/config", headers: { authorization: "Bearer unbound", "content-type": "application/json" }, payload: { audit_enabled: false } })).statusCode).toBe(200);
+    expect(captured).toEqual({ orgId: "o1", patch: { audit_enabled: false } });
+    await app.close();
+  });
+
   test("validates + upserts the patch and returns the updated config", async () => {
     const { deps, captured } = fakeDeps();
     const app = buildProxy({ rateLimit: false, cors: false, config: deps });

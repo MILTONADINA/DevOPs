@@ -109,6 +109,7 @@ export function makeConfigRoute(deps: ConfigDeps): FastifyPluginCallback {
     app.patch("/v1/config", async (req, reply) => {
       const orgId = resolveOrg(req);
       if (orgId === undefined) return err(reply, 400, "org id required (authenticate, or pass ?org-id)");
+      if (req.authEnforced === true && req.projectScopeId !== undefined) return err(reply, 403, "organization-level key required");
       const v = validateConfigPatch(req.body);
       if (!v.ok) return err(reply, 400, v.error);
       return deps.upsertConfig(orgId, v.patch);
