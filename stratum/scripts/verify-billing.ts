@@ -38,6 +38,7 @@ interface BillingRow {
   quarantined_tokens: number;
   api_price_per_token: number;
   pruning_log_id: string | null;
+  usage_event_id?: string | null;
   signed_hash: string;
 }
 
@@ -50,6 +51,7 @@ export function rowToInput(r: BillingRow): BillingInput {
     quarantinedTokens: r.quarantined_tokens,
     apiPricePerToken: r.api_price_per_token,
     ...(r.pruning_log_id !== null ? { pruningLogId: r.pruning_log_id } : {}),
+    ...(r.usage_event_id != null ? { usageEventId: r.usage_event_id } : {}),
   };
 }
 
@@ -61,7 +63,7 @@ export async function verifyOrgBilling(client: SupabaseClient, orgId: string, se
   while (records === 0 || records < (expected ?? 0)) {
     let query = client
       .from("billing_records")
-      .select("id, session_id, org_id, original_tokens, quarantined_tokens, api_price_per_token, pruning_log_id, signed_hash", { count: "exact" })
+      .select("id, session_id, org_id, original_tokens, quarantined_tokens, api_price_per_token, pruning_log_id, usage_event_id, signed_hash", { count: "exact" })
       .eq("org_id", orgId);
     if (bounds.since !== undefined) query = query.gte("created_at", bounds.since);
     if (bounds.until !== undefined) query = query.lte("created_at", bounds.until);

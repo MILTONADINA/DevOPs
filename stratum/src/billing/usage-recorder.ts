@@ -27,6 +27,10 @@ export interface UsageEvent {
   orgId: string;
   /** Authenticated organization/project binding; never client-supplied. */
   projectScopeId?: string;
+  /** Stable server-generated UUID; reuse this ID for retries of the same response. */
+  eventId?: string;
+  /** Server-recorded UTC time; keeps replay in the original daily bucket. */
+  occurredAt?: string;
   model: string;
   inputTokens: number;
   outputTokens: number;
@@ -62,8 +66,8 @@ export function createSupabaseUsageRecorder(opts: UsageRecorderOptions): UsageRe
   const now = opts.now ?? ((): number => Date.now());
   const price = opts.priceFn ?? ((m: string): number => pricePerInputTokenUsd(m));
 
-  function ensureSession(orgId: string, model: string, projectScope: string | null): Promise<string> {
-    const day = new Date(now()).toISOString().slice(0, 10); // UTC date bucket
+  function ensureSession(orgId: string, model: string, projectScope: string | null, occurredAt?: string): Promise<string> {
+    const day = new Date(occurredAt ?? now()).toISOString().slice(0, 10); // UTC date bucket
     // Evict prior-day entries: the key embeds the UTC day, so any entry whose middle segment != today is
     // stale (its bucket is permanently resolved in the DB) and unreachable. Without this the Map grows one
     // entry per (org, model) per day forever on a long-lived (non-serverless) instance — an unbounded leak.
@@ -84,7 +88,7 @@ export function createSupabaseUsageRecorder(opts: UsageRecorderOptions): UsageRe
       // each miss their own cache and would insert DUPLICATE daily buckets, fragmenting a day's billing
       // across many session ids. Try the insert; on a unique-violation (23505) another instance won the
       // race, so re-read its bucket — all instances then converge on the one row.
-      const ins = await opts.client.from("sessions").insert({ org_id: orgId, project_scope: projectScope, model, kind: "usage" }).select("id").limit(1);
+      const ins = await opts.client.from("sessions").insert({ org_id: orgId, project_scope: projectScope, model, kind: "usage", ...(occurredAt !== undefined ? { created_at: occurredAt } : {}) }).select("id").limit(1);
       if (!ins.error) {
         const id = ((ins.data ?? [])[0] as { id: string } | undefined)?.id;
         if (id === undefined || id === "") throw new Error("ensureSession returned no id");
@@ -114,11 +118,13 @@ export function createSupabaseUsageRecorder(opts: UsageRecorderOptions): UsageRe
       if (event.projectScopeId !== undefined && (!event.projectScopeId.startsWith(`${event.orgId}/`) || !validProjectScope(projectScope))) {
         throw new Error("invalid authenticated project scope");
       }
-      const sessionId = await ensureSession(event.orgId, event.model, projectScope);
+      if (event.occurredAt !== undefined && new Date(event.occurredAt).toISOString() !== event.occurredAt) throw new Error("invalid usage occurrence time");
+      const sessionId = await ensureSession(event.orgId, event.model, projectScope, event.occurredAt);
       await recordBilling(
         { client: opts.client, secret: opts.signingSecret },
         {
           orgId: event.orgId,
+          ...(event.eventId !== undefined ? { usageEventId: event.eventId } : {}),
           sessionId,
           originalTokens: event.inputTokens,
           quarantinedTokens: event.inputTokens, // no pruning yet ⇒ 0 savings (honest usage record)

@@ -7,6 +7,7 @@ import { signBillingRecord, verifyBillingRecord, recordBilling, type BillingInpu
 
 const SECRET = "test-billing-secret-please-rotate";
 const INPUT: BillingInput = { sessionId: "s1", orgId: "o1", originalTokens: 50_000, quarantinedTokens: 7_500, apiPricePerToken: 0.000015, pruningLogId: "pl1" };
+const EVENT_ID = "00000000-0000-4000-8000-000000000123";
 
 describe("signBillingRecord", () => {
   test("deterministic 64-hex HMAC; throws on an empty secret", () => {
@@ -43,6 +44,15 @@ describe("signBillingRecord", () => {
     // and a record verified under one split must NOT verify under the colliding split
     const hash = signBillingRecord({ ...INPUT, originalTokens: 10, quarantinedTokens: 100 }, SECRET);
     expect(verifyBillingRecord({ ...INPUT, originalTokens: 1010, quarantinedTokens: 0 }, hash, SECRET)).toBe(false);
+  });
+
+  test("binds a usage event ID without changing the legacy signature", () => {
+    const legacy = signBillingRecord(INPUT, SECRET);
+    const bound = signBillingRecord({ ...INPUT, usageEventId: EVENT_ID }, SECRET);
+    expect(bound).not.toBe(legacy);
+    expect(verifyBillingRecord({ ...INPUT, usageEventId: EVENT_ID }, bound, SECRET)).toBe(true);
+    expect(verifyBillingRecord({ ...INPUT, usageEventId: "00000000-0000-4000-8000-000000000124" }, bound, SECRET)).toBe(false);
+    expect(signBillingRecord(INPUT, SECRET)).toBe(legacy);
   });
 });
 
@@ -110,5 +120,27 @@ describe("recordBilling", () => {
   test("a DB error throws", async () => {
     const { client } = fakeClient({ error: "insert blocked" });
     await expect(recordBilling({ client, secret: SECRET } as RecorderDeps, INPUT)).rejects.toThrow(/recordBilling failed: insert blocked/);
+  });
+
+  test("a duplicate usage event returns the existing row only when its signed inputs match", async () => {
+    const input = { ...INPUT, usageEventId: EVENT_ID };
+    const originalHash = signBillingRecord(input, SECRET);
+    const client = {
+      from(table: string) {
+        expect(table).toBe("billing_records");
+        return {
+          insert: () => ({ select: () => ({ limit: () => Promise.resolve({ data: null, error: { code: "23505", message: "duplicate event" } }) }) }),
+          select: () => {
+            const query = {
+              eq: () => query,
+              limit: () => Promise.resolve({ data: [{ id: "original", org_id: "o1", signed_hash: originalHash }], error: null }),
+            };
+            return query;
+          },
+        };
+      },
+    } as unknown as SupabaseClient;
+    expect((await recordBilling({ client, secret: SECRET }, input)).id).toBe("original");
+    await expect(recordBilling({ client, secret: SECRET }, { ...input, originalTokens: input.originalTokens + 1 })).rejects.toThrow(/event.*mismatch|mismatch.*event/i);
   });
 });

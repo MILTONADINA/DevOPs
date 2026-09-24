@@ -12,6 +12,7 @@
 
 import type { FastifyInstance, FastifyPluginCallback, FastifyReply, FastifyRequest } from "fastify";
 import { PassThrough } from "node:stream";
+import { randomUUID } from "node:crypto";
 import type { ForwardHeaders, MessagesBody, MessagesDeps, TokenCountResult } from "../forward";
 import { isStreamingRequest } from "../stream-forward";
 import { createSseParser, createStreamAccumulator } from "../sse";
@@ -136,7 +137,7 @@ function recordUsageSafe(deps: MessagesDeps, request: FastifyRequest, model: str
     return;
   }
   try {
-    const task = deps.recordUsage({ orgId, ...(request.projectScopeId ? { projectScopeId: request.projectScopeId } : {}), model, inputTokens, outputTokens });
+    const task = deps.recordUsage({ orgId, ...(request.projectScopeId ? { projectScopeId: request.projectScopeId } : {}), eventId: randomUUID(), occurredAt: new Date().toISOString(), model, inputTokens, outputTokens });
     pending.add(task);
     void task.catch((e: unknown) => request.log?.error?.({ err: (e as Error).message }, "usage record failed (non-blocking)"))
       .finally(() => pending.delete(task));
