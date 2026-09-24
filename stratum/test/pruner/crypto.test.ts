@@ -1,6 +1,6 @@
-import { createCipheriv, webcrypto } from "node:crypto";
+import { createCipheriv, generateKeyPairSync, webcrypto } from "node:crypto";
 import { describe, test, expect } from "vitest";
-import { deriveSessionKey, encryptSpans, type EncryptedPayload } from "../../src/pruner/crypto";
+import { deriveSessionKey, encryptSpans, wrapSessionKey, type EncryptedPayload } from "../../src/pruner/crypto";
 
 const MASTER = Uint8Array.from({ length: 32 }, (_, i) => i);
 const NONCE = "verified-attestation-challenge";
@@ -58,5 +58,41 @@ describe("client encryption primitive", () => {
     await expect(deriveSessionKey(MASTER, " ")).rejects.toThrow(/session ID/);
     await expect(encryptSpans("private", new Uint8Array(31), NONCE)).rejects.toThrow(/32-byte session key/);
     await expect(encryptSpans("private", MASTER, " ")).rejects.toThrow(/attestation nonce/);
+  });
+});
+
+describe("offline enclave session-key wrapping", () => {
+  const enclave = generateKeyPairSync("rsa", { modulusLength: 3072 });
+  const publicDer = enclave.publicKey.export({ format: "der", type: "spki" });
+
+  test("WebCrypto opens only the attestation-nonce-bound RSA-OAEP-SHA-256 ciphertext", async () => {
+    const key = await deriveSessionKey(MASTER, "session-a");
+    const first = await wrapSessionKey(key, publicDer, NONCE);
+    const second = await wrapSessionKey(key, publicDer, NONCE);
+    expect(first.algorithm).toBe("RSA-OAEP-SHA256-v1");
+    expect(first.attestation_nonce).toBe(NONCE);
+    expect(first.ciphertext).not.toBe(second.ciphertext);
+    expect(Buffer.from(first.ciphertext, "base64")).toHaveLength(384);
+
+    const privateDer = enclave.privateKey.export({ format: "der", type: "pkcs8" });
+    const privateKey = await webcrypto.subtle.importKey("pkcs8", privateDer, { name: "RSA-OAEP", hash: "SHA-256" }, false, ["decrypt"]);
+    const decrypt = (nonce: string, ciphertext = first.ciphertext) =>
+      webcrypto.subtle.decrypt({ name: "RSA-OAEP", label: Buffer.from(`cq-sek-wrap-v1:${nonce}`) }, privateKey, Buffer.from(ciphertext, "base64"));
+    expect(new Uint8Array(await decrypt(NONCE))).toEqual(key);
+    await expect(decrypt("changed")).rejects.toThrow();
+    await expect(decrypt(NONCE, Buffer.alloc(384).toString("base64"))).rejects.toThrow();
+    const wrongPrivateDer = generateKeyPairSync("rsa", { modulusLength: 3072 }).privateKey.export({ format: "der", type: "pkcs8" });
+    const wrongPrivateKey = await webcrypto.subtle.importKey("pkcs8", wrongPrivateDer, { name: "RSA-OAEP", hash: "SHA-256" }, false, ["decrypt"]);
+    await expect(webcrypto.subtle.decrypt({ name: "RSA-OAEP", label: Buffer.from(`cq-sek-wrap-v1:${NONCE}`) }, wrongPrivateKey, Buffer.from(first.ciphertext, "base64"))).rejects.toThrow();
+  });
+
+  test("rejects invalid key material and nonce before returning ciphertext", async () => {
+    const ec = generateKeyPairSync("ec", { namedCurve: "prime256v1" }).publicKey.export({ format: "der", type: "spki" });
+    const small = generateKeyPairSync("rsa", { modulusLength: 2048 }).publicKey.export({ format: "der", type: "spki" });
+    await expect(wrapSessionKey(new Uint8Array(31), publicDer, NONCE)).rejects.toThrow(/32-byte session key/);
+    await expect(wrapSessionKey(MASTER, publicDer, " ")).rejects.toThrow(/attestation nonce/);
+    await expect(wrapSessionKey(MASTER, Buffer.from("invalid"), NONCE)).rejects.toThrow(/DER SPKI/);
+    await expect(wrapSessionKey(MASTER, ec, NONCE)).rejects.toThrow(/RSA public key/);
+    await expect(wrapSessionKey(MASTER, small, NONCE)).rejects.toThrow(/3072/);
   });
 });

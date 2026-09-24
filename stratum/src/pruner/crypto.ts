@@ -6,8 +6,8 @@
  * (docs/SECURITY.md). Session key derived via HKDF-SHA256 from the customer's
  * master key.
  *
- * Offline primitive only. No request path calls it. Enclave attestation, key
- * wrapping, and enclave decryption remain separate release gates; a nonce
+ * Offline primitives only. No request path calls them. Enclave attestation,
+ * matching key unwrapping, and enclave decryption remain release gates; a nonce
  * string alone does not prove attestation. See ADR-0022.
  *
  * SECURITY (binding when implemented, per stratum CLAUDE.md + docs/SECURITY.md):
@@ -16,7 +16,7 @@
  *   - Never log decrypted context outside the TEE boundary.
  */
 
-import { createCipheriv, hkdfSync, randomBytes } from "node:crypto";
+import { constants, createCipheriv, createPublicKey, hkdfSync, publicEncrypt, randomBytes } from "node:crypto";
 
 /** Encrypted payload shape (mirrors src/types/proxy.ts EncryptedPayload). */
 export interface EncryptedPayload {
@@ -27,6 +27,13 @@ export interface EncryptedPayload {
   /** Base64 GCM authentication tag. */
   auth_tag: string;
   /** Nonce binding the ciphertext to a verified TEE attestation. */
+  attestation_nonce: string;
+}
+
+/** Offline RSA-OAEP envelope for an attested enclave public key. */
+export interface WrappedSessionKey {
+  algorithm: "RSA-OAEP-SHA256-v1";
+  ciphertext: string;
   attestation_nonce: string;
 }
 
@@ -69,4 +76,24 @@ export async function encryptSpans(plaintext: string, sessionKey: Uint8Array, at
     auth_tag: Buffer.from(cipher.getAuthTag()).toString("base64"),
     attestation_nonce: attestationNonce,
   };
+}
+
+/** Wrap a session key to a separately verified Nitro attestation public key. */
+export async function wrapSessionKey(sessionKey: Uint8Array, publicKeyDer: Uint8Array, attestationNonce: string): Promise<WrappedSessionKey> {
+  if (!(sessionKey instanceof Uint8Array) || sessionKey.length !== 32) throw new Error("key wrapping requires a 32-byte session key");
+  if (typeof attestationNonce !== "string" || attestationNonce.trim() === "") throw new Error("key wrapping requires a nonempty attestation nonce");
+  if (!(publicKeyDer instanceof Uint8Array) || publicKeyDer.length === 0 || publicKeyDer.length > 1024) throw new Error("key wrapping requires a DER SPKI public key");
+
+  let publicKey;
+  try {
+    publicKey = createPublicKey({ key: Buffer.from(publicKeyDer), format: "der", type: "spki" });
+    if (!Buffer.from(publicKeyDer).equals(publicKey.export({ format: "der", type: "spki" }))) throw new Error("noncanonical DER");
+  } catch {
+    throw new Error("key wrapping requires a DER SPKI public key");
+  }
+  if (publicKey.asymmetricKeyType !== "rsa") throw new Error("key wrapping requires an RSA public key");
+  if ((publicKey.asymmetricKeyDetails?.modulusLength ?? 0) < 3072) throw new Error("key wrapping requires RSA modulus of at least 3072 bits");
+
+  const ciphertext = publicEncrypt({ key: publicKey, padding: constants.RSA_PKCS1_OAEP_PADDING, oaepHash: "sha256", oaepLabel: Buffer.from(`cq-sek-wrap-v1:${attestationNonce}`, "utf8") }, sessionKey);
+  return { algorithm: "RSA-OAEP-SHA256-v1", ciphertext: Buffer.from(ciphertext).toString("base64"), attestation_nonce: attestationNonce };
 }
