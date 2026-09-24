@@ -10,7 +10,8 @@ published judged Tier-A gates.
 WHEN a service caller supplies an authenticated organization, conversation
 session, exact verified project, and bounded exchange IDs, THE DATABASE SHALL
 return one count per exchange with at least one active FunctionChange,
-TechDecision, PolicyUpdate, Todo, or VariableChange fact in that binding. It
+TechDecision, PolicyUpdate, Todo, VariableChange, or OperationalReference fact
+in that binding. It
 SHALL count multiple facts from the same exchange without returning their
 content. It SHALL exclude suppressed and legacy facts, foreign organizations,
 sessions, projects, and non-conversation sessions. Anonymous and authenticated
@@ -22,7 +23,9 @@ WHEN opt-in shadow selection runs on a trusted conversation, THE OBSERVER SHALL
 compare all in-window exchange IDs with the selected exchange IDs and report
 active, selected, and dropped fact-bearing exchange counts. A dialogue exchange
 with several active facts SHALL count once in each exchange count. The metric
-SHALL contain only numeric counts and trusted IDs. A lookup failure SHALL not
+SHALL count an exchange as selected only when every in-window turn from that
+exchange is selected; a partly selected exchange SHALL count as dropped. The
+metric SHALL contain only numeric counts and trusted IDs. A lookup failure SHALL not
 alter the forwarded response. The observer SHALL keep its bounded window and
 SHALL NOT treat the metric as proof that exchanges without extracted facts are
 safe to remove. WHEN a clock is injected for observation or replay, THE HOT
