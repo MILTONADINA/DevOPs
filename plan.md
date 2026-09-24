@@ -420,8 +420,10 @@ Anthropic's reasoning-based security scanner (GA Feb 2026) reads code "the way a
   verifies full reads. Real partner invoice and payment remain open.
 - [ ] **GDPR erasure endpoint** (~5h). The current immutable billing records
   have organization/session foreign keys, so in-place session-ID replacement
-  is impossible. Design a separate retention/identity boundary, establish the
-  applicable legal basis, then test one-year erasure in <30s. No compliance
+  is impossible. `specs/billing/session-erasure.md` and ADR-0021 now define the
+  scoped inventory, shared-graph safety, financial retention decision, and
+  one-year benchmark requirements. Establish the applicable legal basis and
+  implement the boundary before an endpoint can report success. No compliance
   claim is made yet.
 - [ ] **CFO dashboard skeleton** (~3h). Read-only view of billing schema; no real billing data yet. Hidden behind `DASHBOARD_CFO_VIEW=true` env var.
 
