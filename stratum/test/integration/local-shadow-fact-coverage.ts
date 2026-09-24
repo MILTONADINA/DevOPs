@@ -1,0 +1,72 @@
+// Disposable service-RPC → adapter → shadow-observer fact-coverage proof.
+import { randomUUID } from "node:crypto";
+import { createClient } from "@supabase/supabase-js";
+import type { BiEncoder } from "../../src/pruner/encoder";
+import { createFactExchangeCoverageLookup } from "../../src/memory/warm/exchange-function-entities";
+import { createShadowObserver, type ShadowMetric } from "../../src/proxy/shadow-observer";
+
+const url = process.env["SUPABASE_URL"];
+const key = process.env["SUPABASE_SERVICE_KEY"];
+if (url !== "http://127.0.0.1:54321" || !key || !process.env["DEVOPS_STRATUM_PROJECT_ROOT"]) {
+  throw new Error("run through db:with-env from stratum/");
+}
+const db = createClient(url, key, { auth: { persistSession: false } });
+const org = randomUUID();
+const apiKey = randomUUID();
+const session = randomUUID();
+const oldExchange = randomUUID();
+const newExchange = randomUUID();
+let failure: unknown;
+
+function checked(result: { error: { message: string } | null }, step: string): void {
+  if (result.error) throw new Error(`${step}: ${result.error.message}`);
+}
+function assert(value: unknown, message: string): asserts value {
+  if (!value) throw new Error(message);
+}
+
+try {
+  checked(await db.from("organizations").insert({ id: org, name: "Shadow fact coverage fixture" }), "insert org");
+  checked(await db.from("api_keys").insert({ id: apiKey, org_id: org, project_scope: "orion", key_hash: "d".repeat(64), name: "fixture" }), "insert key");
+  checked(await db.from("sessions").insert({ id: session, org_id: org, project_scope: "orion", model: "local/check", kind: "conversation", conversation_key_id: apiKey }), "insert session");
+  checked(
+    await db.from("function_changes").insert([
+      { org_id: org, session_id: session, project_scope: "orion", source_exchange_id: oldExchange, confidence: 0.9, old_name: "oldFn", change_type: "deprecated" },
+      { org_id: org, session_id: session, project_scope: "orion", source_exchange_id: newExchange, confidence: 0.9, old_name: "newFn", change_type: "deprecated" },
+    ]),
+    "insert function facts",
+  );
+  checked(
+    await db
+      .from("tech_decisions")
+      .insert({ org_id: org, session_id: session, project_scope: "orion", source_exchange_id: oldExchange, confidence: 0.9, decision_text: "Keep old context", domain: "fixture" }),
+    "insert second old fact",
+  );
+
+  const metrics: ShadowMetric[] = [];
+  const encoder: BiEncoder = { dimension: 2, encode: async (texts) => texts.map((text) => (text === "old" ? Float32Array.from([0, 1]) : Float32Array.from([1, 0]))) };
+  const observe = createShadowObserver(encoder, (metric) => metrics.push(metric), {
+    now: () => 100_000_000,
+    factCoverage: createFactExchangeCoverageLookup(db),
+  });
+  const event = { conversationId: session, orgId: org, keyId: apiKey, projectScopeId: `${org}/orion` };
+  await observe({ ...event, exchangeId: oldExchange, query: "old", assistant: "old" });
+  await observe({ ...event, exchangeId: newExchange, query: "new", assistant: "new" });
+  await observe({ ...event, exchangeId: randomUUID(), query: "target", assistant: "pending" });
+  const coverage = metrics.at(-1)?.factCoverage;
+  assert(coverage?.activeExchangeCount === 2 && coverage.selectedExchangeCount === 1 && coverage.droppedExchangeCount === 1, `unexpected live shadow fact coverage: ${JSON.stringify(coverage)}`);
+  process.stdout.write("local scoped fact coverage RPC and shadow selection passed\n");
+} catch (error) {
+  failure = error;
+} finally {
+  try {
+    checked(await db.from("tech_decisions").delete().eq("session_id", session), "delete decisions");
+    checked(await db.from("function_changes").delete().eq("session_id", session), "delete functions");
+    checked(await db.from("sessions").delete().eq("id", session), "delete session");
+    checked(await db.from("api_keys").delete().eq("id", apiKey), "delete key");
+    checked(await db.from("organizations").delete().eq("id", org), "delete org");
+  } catch (error) {
+    if (!failure) failure = error;
+  }
+}
+if (failure) throw failure;
