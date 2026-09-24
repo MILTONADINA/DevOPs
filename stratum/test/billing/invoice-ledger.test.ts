@@ -3,18 +3,25 @@
 
 import { describe, test, expect } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { claimAndFinalizeInvoice, createSupabaseInvoiceLedger, type InvoiceLedger } from "../../src/billing/invoice-ledger";
+import { claimAndFinalizeInvoice, createSupabaseInvoiceLedger, reconcileClaimedInvoice, type InvoiceLedger } from "../../src/billing/invoice-ledger";
 import type { Invoice } from "../../src/types/billing";
 
 interface FakeOpts {
   selectResult?: { data?: unknown[] | null; error?: { message: string } | null };
   insertResult?: { error?: { message: string; code?: string } | null };
+  rpcResult?: { error?: { message: string } | null };
 }
 function fakeClient(opts: FakeOpts = {}): {
   client: SupabaseClient;
-  calls: { from: string[]; eq: [string, unknown][]; neq: [string, unknown][]; inserted: Record<string, unknown>[] };
+  calls: { from: string[]; eq: [string, unknown][]; neq: [string, unknown][]; inserted: Record<string, unknown>[]; rpc: Array<{ name: string; args: Record<string, unknown> }> };
 } {
-  const calls = { from: [] as string[], eq: [] as [string, unknown][], neq: [] as [string, unknown][], inserted: [] as Record<string, unknown>[] };
+  const calls = {
+    from: [] as string[],
+    eq: [] as [string, unknown][],
+    neq: [] as [string, unknown][],
+    inserted: [] as Record<string, unknown>[],
+    rpc: [] as Array<{ name: string; args: Record<string, unknown> }>,
+  };
   const builder = {
     select() {
       return builder;
@@ -39,6 +46,10 @@ function fakeClient(opts: FakeOpts = {}): {
     from(table: string) {
       calls.from.push(table);
       return builder;
+    },
+    rpc(name: string, args: Record<string, unknown>) {
+      calls.rpc.push({ name, args });
+      return Promise.resolve(opts.rpcResult ?? { error: null });
     },
   };
   return { client: client as unknown as SupabaseClient, calls };
@@ -108,6 +119,37 @@ describe("createSupabaseInvoiceLedger — claimPeriod", () => {
   });
 });
 
+test("hasClaim reads only the exact organization and period", async () => {
+  const { client, calls } = fakeClient({ selectResult: { data: [{ org_id: "org1" }], error: null } });
+  expect(await createSupabaseInvoiceLedger(client).hasClaim("org1", "2026-05-01", "2026-06-01")).toBe(true);
+  expect(calls.from).toEqual(["invoice_send_claims"]);
+  expect(calls.eq).toEqual([
+    ["org_id", "org1"],
+    ["period_start", "2026-05-01"],
+    ["period_end", "2026-06-01"],
+  ]);
+});
+
+test("recordReconciled persists verified paid state and timestamp", async () => {
+  const { client, calls } = fakeClient();
+  await createSupabaseInvoiceLedger(client).recordReconciled("org1", {
+    stripeInvoiceId: "in_9",
+    amountCents: 100,
+    currency: "usd",
+    periodStart: "2026-05-01",
+    periodEnd: "2026-06-01",
+    status: "paid",
+    paidAt: "2023-11-14T22:13:20.000Z",
+  });
+  expect(calls.inserted).toHaveLength(0);
+  expect(calls.rpc).toEqual([
+    {
+      name: "reconcile_claimed_invoice",
+      args: { p_org_id: "org1", p_stripe_invoice_id: "in_9", p_amount_cents: 100, p_status: "paid", p_period_start: "2026-05-01", p_period_end: "2026-06-01", p_paid_at: "2023-11-14T22:13:20.000Z" },
+    },
+  ]);
+});
+
 const INVOICE: Invoice = {
   orgId: "org1",
   plan: "growth",
@@ -136,9 +178,11 @@ describe("claimAndFinalizeInvoice", () => {
         return true;
       },
       findActiveForPeriod: async () => null,
+      hasClaim: async () => true,
       recordSent: async () => {
         calls.push("record");
       },
+      recordReconciled: async () => {},
     };
     const sink = {
       send: async () => {
@@ -159,10 +203,12 @@ describe("claimAndFinalizeInvoice", () => {
         return true;
       },
       findActiveForPeriod: async () => null,
+      hasClaim: async () => true,
       recordSent: async () => {
         calls.push("record");
         throw new Error("database unavailable");
       },
+      recordReconciled: async () => {},
     };
     const sink = {
       send: async () => {
@@ -172,5 +218,90 @@ describe("claimAndFinalizeInvoice", () => {
     };
     await expect(claimAndFinalizeInvoice(ledger, sink, "org1", "2026-05-01", "2026-06-01", INVOICE)).rejects.toThrow(/in_9 finalized but local ledger write failed: database unavailable/);
     expect(calls).toEqual(["claim", "stripe", "record"]);
+  });
+});
+
+describe("reconcileClaimedInvoice", () => {
+  const verified = { id: "in_9", status: "paid" as const, amountUsd: 1, paidAt: "2023-11-14T22:13:20.000Z" };
+
+  test("requires a held claim and refuses a conflicting local invoice before Stripe lookup", async () => {
+    const calls: string[] = [];
+    const ledger: InvoiceLedger = {
+      claimPeriod: async () => true,
+      hasClaim: async () => false,
+      findActiveForPeriod: async () => {
+        calls.push("local");
+        return null;
+      },
+      recordSent: async () => {},
+      recordReconciled: async () => {
+        calls.push("record");
+      },
+    };
+    await expect(
+      reconcileClaimedInvoice(
+        ledger,
+        async () => {
+          calls.push("stripe");
+          return verified;
+        },
+        "org1",
+        "2026-05-01",
+        "2026-06-01",
+        "in_9",
+        INVOICE,
+      ),
+    ).rejects.toThrow(/claim/i);
+    expect(calls).toEqual([]);
+    ledger.hasClaim = async () => true;
+    ledger.findActiveForPeriod = async () => ({ stripe_invoice_id: "in_other", status: "sent" });
+    await expect(
+      reconcileClaimedInvoice(
+        ledger,
+        async () => {
+          calls.push("stripe");
+          return verified;
+        },
+        "org1",
+        "2026-05-01",
+        "2026-06-01",
+        "in_9",
+        INVOICE,
+      ),
+    ).rejects.toThrow(/different.*invoice/i);
+    expect(calls).toEqual([]);
+  });
+
+  test("records verified paid state idempotently and keeps the claim on replay", async () => {
+    const calls: string[] = [];
+    let active: { stripe_invoice_id: string; status: string } | null = null;
+    const ledger: InvoiceLedger = {
+      claimPeriod: async () => true,
+      hasClaim: async () => true,
+      findActiveForPeriod: async () => active,
+      recordSent: async () => {},
+      recordReconciled: async (_org, row) => {
+        calls.push(`${row.stripeInvoiceId}:${row.status}:${row.paidAt}`);
+        active = { stripe_invoice_id: row.stripeInvoiceId, status: row.status };
+      },
+    };
+    await expect(reconcileClaimedInvoice(ledger, async () => verified, "org1", "2026-05-01", "2026-06-01", "in_9", INVOICE)).resolves.toEqual(verified);
+    await expect(reconcileClaimedInvoice(ledger, async () => verified, "org1", "2026-05-01", "2026-06-01", "in_9", INVOICE)).resolves.toEqual(verified);
+    expect(calls).toEqual(["in_9:paid:2023-11-14T22:13:20.000Z", "in_9:paid:2023-11-14T22:13:20.000Z"]);
+  });
+
+  test("promotes a same-ID local sent row when Stripe verifies payment", async () => {
+    const writes: string[] = [];
+    const ledger: InvoiceLedger = {
+      claimPeriod: async () => true,
+      hasClaim: async () => true,
+      findActiveForPeriod: async () => ({ stripe_invoice_id: "in_9", status: "sent" }),
+      recordSent: async () => {},
+      recordReconciled: async (_org, row) => {
+        writes.push(`${row.stripeInvoiceId}:${row.status}`);
+      },
+    };
+    await expect(reconcileClaimedInvoice(ledger, async () => verified, "org1", "2026-05-01", "2026-06-01", "in_9", INVOICE)).resolves.toEqual(verified);
+    expect(writes).toEqual(["in_9:paid"]);
   });
 });

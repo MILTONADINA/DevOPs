@@ -35,6 +35,18 @@ test("a missing Stripe test key refuses before taking a durable claim", async ()
   expect(await main(["--org-id", "00000000-0000-4000-8000-000000000001", "--since", "2026-05-01", "--until", "2026-06-01", "--send"])).toBe(2);
 });
 
+test("reconciliation requires period, test key, and no send or force before database access", async () => {
+  vi.stubEnv("SUPABASE_URL", "");
+  vi.stubEnv("SUPABASE_SERVICE_KEY", "");
+  vi.stubEnv("STRIPE_SECRET_KEY", "");
+  const base = ["--org-id", "00000000-0000-4000-8000-000000000001", "--reconcile", "in_existing"];
+  expect(await main(base)).toBe(2);
+  expect(await main([...base, "--since", "2026-05-01", "--until", "2026-06-01"])).toBe(2);
+  vi.stubEnv("STRIPE_SECRET_KEY", "sk_test_fixture");
+  expect(await main([...base, "--since", "2026-05-01", "--until", "2026-06-01", "--send"])).toBe(2);
+  expect(await main([...base, "--since", "2026-05-01", "--until", "2026-06-01", "--force"])).toBe(2);
+});
+
 describe("invoice parseArgs", () => {
   test("defaults: no org/since/until/csv, send + force false", () => {
     expect(parseArgs([])).toEqual({ send: false, force: false });
@@ -51,6 +63,9 @@ describe("invoice parseArgs", () => {
   });
   test("--force defaults false when absent (dedup guard active)", () => {
     expect(parseArgs(["--org-id", "o1", "--send"]).force).toBe(false);
+  });
+  test("parses the named Stripe invoice for read-only provider reconciliation", () => {
+    expect(parseArgs(["--org-id", "o1", "--since", "2026-05-01", "--until", "2026-06-01", "--reconcile", "in_9"]).reconcile).toBe("in_9");
   });
   test("a flag missing its value does not crash", () => {
     expect(parseArgs(["--org-id"]).orgId).toBe("");

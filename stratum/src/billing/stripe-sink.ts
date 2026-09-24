@@ -51,7 +51,7 @@ export interface StripeSinkOptions {
 }
 
 /** Adapt the global fetch to the {@link StripeFetch} shape. */
-const defaultStripeFetch: StripeFetch = (url, init) => fetch(url, init).then((r) => ({ status: r.status, json: () => r.json() }));
+export const defaultStripeFetch: StripeFetch = (url, init) => fetch(url, init).then((r) => ({ status: r.status, json: () => r.json() }));
 
 /**
  * The real Stripe sink — runs the customer → invoice-item → invoice → finalize flow (src/billing/stripe.ts).
