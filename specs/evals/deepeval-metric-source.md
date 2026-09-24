@@ -44,3 +44,11 @@ until the unchanged Tier-C gate and real Claude run pass.
 WHEN the local operator installs the pinned evaluator and runs Claude judged
 metrics, THE PROJECT SHALL allow only the PyPI package hosts and Anthropic API
 host required by those actions.
+
+## REQ-5 — Bound a silent metric worker
+
+WHEN a DeepEval worker stops replying to a score request, THE JUDGE SHALL
+reject the request within a bounded time, terminate the worker, reject any
+queued scores, and refuse later scores from that judge. A silent worker SHALL
+NOT hang a full benchmark or produce a fabricated score. Focused offline tests
+SHALL prove timeout and worker cleanup without an external model call.
