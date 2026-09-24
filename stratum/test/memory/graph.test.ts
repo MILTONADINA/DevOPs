@@ -147,6 +147,34 @@ describe("Tier-3 knowledge graph (Supabase adapter)", () => {
     expect(await g.findSuperseded("o1", [])).toEqual([]);
   });
 
+  test("project supersession lookup binds org, project, and names to the service RPC", async () => {
+    const calls: Record<string, unknown>[] = [];
+    const { client } = makeFakeSupabase(
+      {},
+      {},
+      {
+        find_project_superseded: (args) => {
+          calls.push(args);
+          return [{ superseded: "AWS Lambda", superseded_by: "Cloudflare Workers" }];
+        },
+      },
+    );
+    const graph = createKnowledgeGraph(client);
+    expect(await graph.findProjectSuperseded("o1", "orion", ["AWS Lambda"])).toEqual([{ superseded: "AWS Lambda", supersededBy: "Cloudflare Workers" }]);
+    expect(calls).toEqual([{ match_org: "o1", match_project_scope: "orion", names: ["AWS Lambda"] }]);
+    expect(await graph.findProjectSuperseded("o1", null, ["AWS Lambda"])).toHaveLength(1);
+    expect(calls[1]).toEqual({ match_org: "o1", match_project_scope: null, names: ["AWS Lambda"] });
+    expect(await graph.findProjectSuperseded("o1", null, [])).toEqual([]);
+    expect(calls).toHaveLength(2);
+    await expect(graph.findProjectSuperseded("o1", "ORION", ["AWS Lambda"])).rejects.toThrow(/project scope/i);
+    expect(calls).toHaveLength(2);
+  });
+
+  test("project supersession lookup fails closed when the RPC fails", async () => {
+    const graph = createKnowledgeGraph(makeFakeSupabase().client);
+    await expect(graph.findProjectSuperseded("o1", "orion", ["AWS Lambda"])).rejects.toThrow(/findProjectSuperseded failed/);
+  });
+
   test("ensureEntity throws (FAIL-LOUD) when the select errors", async () => {
     const { client } = makeFakeSupabase({}, { selectError: new Set(["knowledge_entities"]) });
     const g = createKnowledgeGraph(client);
