@@ -44,12 +44,23 @@ interface Call {
   headers: Record<string, string>;
   method: string;
 }
-function fakeStripe(opts: { errorAt?: string; existingCustomer?: string; existingPendingItem?: boolean; existingPendingAmount?: number; pendingPages?: unknown[] } = {}): {
+function fakeStripe(
+  opts: {
+    errorAt?: string;
+    existingCustomer?: string;
+    existingPendingItem?: boolean;
+    existingPendingAmount?: number;
+    pendingPages?: unknown[];
+    draftAmount?: number;
+    finalAmount?: number;
+  } = {},
+): {
   doFetch: StripeFetch;
   calls: Call[];
 } {
   const calls: Call[] = [];
   let pendingPage = 0;
+  let createdAmount = 0;
   const doFetch: StripeFetch = (url, init) => {
     calls.push({ url, body: init.body, headers: init.headers, method: init.method });
     if (opts.errorAt !== undefined && url.includes(opts.errorAt)) {
@@ -57,7 +68,7 @@ function fakeStripe(opts: { errorAt?: string; existingCustomer?: string; existin
     }
     let json: unknown = {};
     if (url.includes("/v1/customers/search")) json = { data: opts.existingCustomer !== undefined ? [{ id: opts.existingCustomer }] : [] };
-    else if (url.endsWith("/finalize")) json = { id: "in_1", status: "open" };
+    else if (url.endsWith("/finalize")) json = { id: "in_1", status: "open", amount_due: opts.finalAmount ?? createdAmount, total: opts.finalAmount ?? createdAmount, currency: "usd" };
     else if (url.includes("/v1/customers")) json = { id: "cus_1" };
     // GET = the pending-item idempotency pre-check (>24h double-charge guard); POST = create the item.
     else if (url.includes("/v1/invoiceitems") && init.method === "GET")
@@ -68,7 +79,10 @@ function fakeStripe(opts: { errorAt?: string; existingCustomer?: string; existin
           : [],
       };
     else if (url.includes("/v1/invoiceitems")) json = { id: "ii_1" };
-    else if (url.includes("/v1/invoices")) json = { id: "in_1", status: "draft" };
+    else if (url.includes("/v1/invoices")) {
+      createdAmount = new URLSearchParams(init.body).get("pending_invoice_items_behavior") === "include" ? (opts.draftAmount ?? 6304) : 0;
+      json = { id: "in_1", status: "draft", amount_due: createdAmount, total: createdAmount, currency: "usd" };
+    }
     return Promise.resolve({ status: 200, json: () => Promise.resolve(json) });
   };
   return { doFetch, calls };
@@ -96,6 +110,7 @@ describe("sendStripeInvoice", () => {
     expect(item.get("customer")).toBe("cus_1");
     expect(item.get("metadata[period_start]")).toBe("2026-04"); // period+org metadata enables the >24h idempotency lookup
     expect(item.get("metadata[org_id]")).toBe("o1");
+    expect(new URLSearchParams(calls[4]!.body).get("pending_invoice_items_behavior")).toBe("include");
     expect(receipt).toEqual({ id: "in_1", status: "open", amountUsd: 63.04 });
   });
 
@@ -142,7 +157,7 @@ describe("sendStripeInvoice", () => {
     expect(paths(calls)).toEqual(["/v1/customers/search", "/v1/invoiceitems", "/v1/invoices", "/v1/invoices/in_1/finalize"]);
   });
 
-  test("finds a matching pending item after the first 100 and does not create another", async () => {
+  test("scans a second pending page but refuses to sweep unrelated items", async () => {
     const first = Array.from({ length: 100 }, (_, i) => ({ id: `ii_${i}`, metadata: { org_id: "other" } }));
     const match = { id: "ii_existing", amount: 6304, currency: "usd", metadata: { org_id: "o1", period_start: "2026-04", period_end: "(now)" } };
     const { doFetch, calls } = fakeStripe({
@@ -152,11 +167,11 @@ describe("sendStripeInvoice", () => {
         { has_more: false, data: [match] },
       ],
     });
-    await sendStripeInvoice({ secretKey: "sk_test_x", doFetch }, INVOICE);
+    await expect(sendStripeInvoice({ secretKey: "sk_test_x", doFetch }, INVOICE)).rejects.toThrow(/another pending invoice item/i);
     const gets = calls.filter((call) => call.url.includes("/v1/invoiceitems") && call.method === "GET");
     expect(gets).toHaveLength(2);
     expect(new URL(gets[1]!.url).searchParams.get("starting_after")).toBe("ii_99");
-    expect(calls.filter((call) => call.url.includes("/v1/invoiceitems") && call.method === "POST")).toHaveLength(0);
+    expect(calls.filter((call) => call.method === "POST")).toHaveLength(0);
   });
 
   test("refuses an incomplete pending-item page before creating Stripe state", async () => {
@@ -197,6 +212,24 @@ describe("sendStripeInvoice", () => {
     const { doFetch, calls } = fakeStripe({ existingCustomer: "cus_existing", pendingPages: [{ has_more: false, data: [pending] }] });
     await expect(sendStripeInvoice({ secretKey: "sk_test_x", doFetch }, INVOICE)).rejects.toThrow(/pending invoice item.*currency/i);
     expect(calls.filter((call) => call.method === "POST")).toHaveLength(0);
+  });
+
+  test("does not sweep another period's pending item into the invoice", async () => {
+    const unrelated = { id: "ii_other", amount: 2500, currency: "usd", metadata: { org_id: "o1", period_start: "2026-03", period_end: "2026-04" } };
+    const { doFetch, calls } = fakeStripe({ existingCustomer: "cus_existing", pendingPages: [{ has_more: false, data: [unrelated] }] });
+    await expect(sendStripeInvoice({ secretKey: "sk_test_x", doFetch }, INVOICE)).rejects.toThrow(/other pending invoice item/i);
+    expect(calls.filter((call) => call.url.includes("/v1/invoices") && call.method === "POST")).toHaveLength(0);
+  });
+
+  test("refuses an empty draft invoice before finalization", async () => {
+    const { doFetch, calls } = fakeStripe({ draftAmount: 0 });
+    await expect(sendStripeInvoice({ secretKey: "sk_test_x", doFetch }, INVOICE)).rejects.toThrow(/draft invoice amount/i);
+    expect(paths(calls)).not.toContain("/v1/invoices/in_1/finalize");
+  });
+
+  test("refuses a finalized invoice whose amount changed", async () => {
+    const { doFetch } = fakeStripe({ finalAmount: 0 });
+    await expect(sendStripeInvoice({ secretKey: "sk_test_x", doFetch }, INVOICE)).rejects.toThrow(/finalized invoice amount/i);
   });
 
   test("empty key → throws (gated)", async () => {

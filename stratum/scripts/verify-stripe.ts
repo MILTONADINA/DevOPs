@@ -3,15 +3,15 @@
  *
  * Every external integration in this repo has a one-command verifier (verify-tier2, verify-billing,
  * verify-encoder, smoke:live, smoke:judge); this is Stripe's. Given a TEST key it exercises the REAL
- * send flow against Stripe test mode (customer → invoiceitem → invoice → finalize) and round-trips
+ * invoice-finalization flow against Stripe test mode (customer → invoiceitem → invoice → finalize) and round-trips
  * the inbound-webhook signature + routing locally — so the moment a `sk_test_` key arrives, the whole
- * Stripe gate is checkable with `npm run verify-stripe`.
+ * Stripe request gate is checkable with `npm run verify-stripe`; email delivery and payment remain separate gates.
  *
  *   STRIPE_SECRET_KEY=sk_test_… npm run verify-stripe
  *
  * Honesty contract (stratum CLAUDE.md): never fabricates a PASS. No key → gated-skip (exit 0). A LIVE
  * key is REFUSED (test mode first — no real charges). The REAL inbound receipt still needs the deployed
- * /stripe/webhook registered in the Stripe Dashboard with its whsec; this proves send + verification logic.
+ * /stripe/webhook registered in the Stripe Dashboard with its whsec; this proves finalization + verification logic.
  */
 
 import "dotenv/config";
@@ -33,7 +33,7 @@ function out(s: string): void {
 
 export async function main(nowMs: number = Date.now()): Promise<number> {
   const key = process.env["STRIPE_SECRET_KEY"];
-  out("Stripe TEST-MODE verification (real send + local webhook-signature round-trip)");
+  out("Stripe TEST-MODE verification (real invoice finalization + local webhook-signature round-trip)");
   out("=".repeat(64));
 
   const mode = classifyStripeKey(key);
@@ -65,7 +65,7 @@ export async function main(nowMs: number = Date.now()): Promise<number> {
     lineItems: [],
   };
 
-  out("\n[1/2] Sending a $1.00 test invoice via the real Stripe API (customer → invoiceitem → invoice → finalize)…");
+  out("\n[1/2] Finalizing a $1.00 test invoice via the real Stripe API (customer → invoiceitem → invoice → finalize)…");
   const receipt = await createStripeInvoiceSink({ secretKey: key as string }).send(invoice);
   out(`  ✓ Stripe accepted it: invoice ${receipt.id}, status "${receipt.status}", $${receipt.amountUsd.toFixed(2)}`);
 
@@ -81,7 +81,7 @@ export async function main(nowMs: number = Date.now()): Promise<number> {
   }
   out(`  ✓ signed invoice.paid → paid action for org ${action.orgId} ($${(action.amountCents / 100).toFixed(2)})`);
 
-  out("\nPASS — Stripe send works in test mode AND the webhook verification logic round-trips.");
+  out("\nPASS — Stripe invoice finalization works in test mode AND the webhook verification logic round-trips.");
   out("To complete a REAL paid invoice: deploy /stripe/webhook, register it in the Stripe Dashboard, set");
   out("its whsec as STRIPE_WEBHOOK_SECRET, send a design partner the invoice, and watch invoice.paid arrive.");
   return 0;
