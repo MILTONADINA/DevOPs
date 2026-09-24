@@ -1,6 +1,6 @@
 import { afterEach, expect, test, vi } from "vitest";
 import type { FastifyInstance } from "fastify";
-import type { MessagesDeps } from "../../src/proxy/forward";
+import type { MessageMemoryEvent, MessagesDeps } from "../../src/proxy/forward";
 
 vi.unmock("fastify");
 vi.unmock("@fastify/cors");
@@ -79,8 +79,30 @@ test.each([false, true])("commercial memory uses the verified conversation and a
   expect(response.statusCode).toBe(200);
   expect(response.headers["x-cq-conversation-id"]).toBe(conversationId);
   expect(memory).toHaveBeenCalledExactlyOnceWith({ orgId: "trusted-org", projectScopeId: "trusted-org/orion",
-    conversationId, keyId: "key-bound", model: "local/check",
+    conversationId, keyId: "key-bound", exchangeId: expect.any(String), model: "local/check",
     turns: [{ role: "user", content: "latest question" }, { role: "assistant", content: "assistant answer" }] });
+});
+
+test.each([false, true])("commercial memory and shadow share one server exchange per success (stream=%s)", async (stream) => {
+  const { messages } = deps();
+  const memoryEvents: MessageMemoryEvent[] = [];
+  const shadowEvents: Parameters<NonNullable<MessagesDeps["observeConversation"]>>[0][] = [];
+  messages.resolveConversation = async () => "c68f130e-c584-43fa-aefe-7b2e54aa34a8";
+  messages.recordMemory = async (event) => { memoryEvents.push(event); };
+  messages.observeConversation = async (event) => { shadowEvents.push(event); };
+  app = buildProxy({ cors: false, rateLimit: false, auth: boundAuth, messages });
+  for (let i = 0; i < 2; i++) {
+    const response = await app.inject({ method: "POST", url: "/v1/messages?source_exchange_id=forged",
+      headers: { authorization: "Bearer bound", "x-cq-exchange-id": "forged" },
+      payload: { ...payload, stream, source_exchange_id: "forged" } });
+    expect(response.statusCode).toBe(200);
+  }
+  expect(memoryEvents).toHaveLength(2);
+  expect(shadowEvents).toHaveLength(2);
+  const ids = memoryEvents.map((event) => event.exchangeId);
+  expect(ids[0]).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+  expect(ids[1]).not.toBe(ids[0]);
+  expect(shadowEvents.map((event) => event.exchangeId)).toEqual(ids);
 });
 
 test("an SSE error after partial assistant text does not create a memory write", async () => {
@@ -93,6 +115,22 @@ test("an SSE error after partial assistant text does not create a memory write",
   const response = await app.inject({ method: "POST", url: "/v1/messages", headers: { authorization: "Bearer good" }, payload: { ...payload, stream: true } });
   expect(response.statusCode).toBe(200);
   expect(memory).not.toHaveBeenCalled();
+});
+
+test("an unfinished SSE response does not produce exchange provenance", async () => {
+  const { messages, memory } = deps();
+  messages.resolveConversation = async () => "c68f130e-c584-43fa-aefe-7b2e54aa34a8";
+  const observe = vi.fn(async () => undefined);
+  messages.observeConversation = observe;
+  messages.forwardStream = async () => ({ status: 200, stream: (async function* () {
+    yield 'event: message_start\ndata: {"type":"message_start","message":{"role":"assistant","content":[],"usage":{"input_tokens":2}}}\n\n';
+    yield 'event: content_block_start\ndata: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":"partial"}}\n\n';
+  })() });
+  app = buildProxy({ cors: false, rateLimit: false, auth, messages });
+  const response = await app.inject({ method: "POST", url: "/v1/messages", headers: { authorization: "Bearer good" }, payload: { ...payload, stream: true } });
+  expect(response.statusCode).toBe(200);
+  expect(memory).not.toHaveBeenCalled();
+  expect(observe).not.toHaveBeenCalled();
 });
 
 test("graceful close waits for an in-flight memory write", async () => {

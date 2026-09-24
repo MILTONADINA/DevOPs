@@ -35,7 +35,7 @@ const model = createServer(async (request, response) => {
     id: "local-check", object: "chat.completion", created: 1, model: "check",
     choices: [{ index: 0, message: { role: "assistant", content: JSON.stringify([
       { fact_type: "FunctionChange", old_name: "oldLocal", new_name: "newLocal", change_type: "renamed", confidence: 0.9,
-        org_id: randomUUID(), session_id: randomUUID(), is_suppressed: true },
+        org_id: randomUUID(), session_id: randomUUID(), source_exchange_id: randomUUID(), is_suppressed: true },
     ]) }, finish_reason: "stop" }],
     usage: { prompt_tokens: 10, completion_tokens: 10, total_tokens: 20 },
   }));
@@ -65,6 +65,10 @@ try {
     CQ_MEMORY_EXTRACT_MODEL: "local/check", CQ_LOCAL_BASE_URL: `http://127.0.0.1:${address.port}/v1` },
     { cors: false, rateLimit: false, messages },
     (clientUrl, clientKey) => createClient(clientUrl, clientKey, { auth: { persistSession: false } }));
+  const recorder = options.messages?.recordMemory;
+  if (!recorder || !options.messages) throw new Error("commercial recorder was not wired");
+  let exchangeId: string | undefined;
+  options.messages.recordMemory = async (event) => { exchangeId = event.exchangeId; await recorder(event); };
   app = buildProxy(options);
   const answer = await app.inject({ method: "POST", url: "/v1/messages", headers: { authorization: `Bearer ${rawKey}` },
     payload: { model: "local/check", messages: [{ role: "user", content: "older question" },
@@ -78,8 +82,10 @@ try {
     throw new Error("request did not use one trusted conversation session");
   }
   sessionId = sessions[0].id;
-  const facts = checked(await db.from("function_changes").select("id,org_id,session_id,is_suppressed,old_name").eq("org_id", org), "read memory fact");
-  if (facts.length !== 1 || facts[0].session_id !== sessionId || facts[0].old_name !== "oldLocal" || facts[0].is_suppressed || modelCalls !== 1) {
+  const facts = checked(await db.from("function_changes").select("id,org_id,session_id,source_exchange_id,is_suppressed,old_name").eq("org_id", org), "read memory fact");
+  if (facts.length !== 1 || facts[0].session_id !== sessionId || facts[0].source_exchange_id !== exchangeId ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(exchangeId ?? "") ||
+      facts[0].old_name !== "oldLocal" || facts[0].is_suppressed || modelCalls !== 1) {
     throw new Error("typed fact was not stored under the trusted session");
   }
   let extracted = false;
@@ -101,8 +107,22 @@ try {
   const memory = await readApp.inject({ method: "GET", url: "/v1/memory/facts", headers });
   const visible = await readApp.inject({ method: "GET", url: "/v1/sessions", headers });
   if (memory.statusCode !== 200 || memory.json().facts?.[0]?.id !== facts[0].id ||
+      memory.json().facts?.[0]?.source_exchange_id !== undefined ||
       visible.statusCode !== 200 || visible.json().sessions?.length !== 0) {
     throw new Error("memory fact visibility or explicit-session isolation failed");
+  }
+  const legacySessionId = randomUUID();
+  checked(await db.from("sessions").insert({ id: legacySessionId, org_id: org, kind: "memory", model: "local/check", ended_at: new Date().toISOString() }), "insert legacy session");
+  const legacyFactId = randomUUID();
+  const legacyFact = { id: legacyFactId, org_id: org, session_id: legacySessionId, confidence: 0.9,
+    old_name: "legacy", change_type: "renamed" };
+  checked(await db.from("function_changes").insert(legacyFact), "insert legacy fact");
+  const legacy = checked(await db.from("function_changes").select("source_exchange_id").eq("id", legacyFactId).single(), "read legacy fact");
+  if (legacy.source_exchange_id !== null) throw new Error("legacy fact acquired exchange provenance");
+  if (!(await db.from("function_changes").insert({ ...legacyFact, id: randomUUID(), source_exchange_id: randomUUID() })).error ||
+      !(await db.from("function_changes").update({ source_exchange_id: randomUUID() }).eq("id", facts[0].id)).error ||
+      !(await db.from("function_changes").update({ session_id: legacySessionId }).eq("id", facts[0].id)).error) {
+    throw new Error("database accepted forged or rewritten exchange provenance");
   }
   process.stdout.write("local conversation fact provenance and identity rejection passed\n");
 } catch (error) {

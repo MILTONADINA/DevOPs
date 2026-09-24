@@ -6,6 +6,7 @@ export interface ShadowInput {
   orgId: string;
   keyId: string;
   projectScopeId?: string;
+  exchangeId?: string;
   query: string;
   assistant: string;
 }
@@ -65,8 +66,8 @@ export function createShadowObserver(
         // Keep the current exchange and cap prior context without retaining unbounded raw turns.
         if (current.manager.hot.size() + 2 > maxTurns) current.manager = createContextManager(encoder);
         const timestampMs = now();
-        await current.manager.ingest({ role: "user", content: query, timestampMs, scopeId });
-        await current.manager.ingest({ role: "assistant", content: assistant, timestampMs, scopeId });
+        await current.manager.ingest({ role: "user", content: query, timestampMs, scopeId, ...(input.exchangeId ? { exchangeId: input.exchangeId } : {}) });
+        await current.manager.ingest({ role: "assistant", content: assistant, timestampMs, scopeId, ...(input.exchangeId ? { exchangeId: input.exchangeId } : {}) });
       });
     current.chain = work;
     await work;

@@ -29,7 +29,15 @@ function textContent(value: unknown): string {
     .join("\n");
 }
 
-function recordMemorySafe(deps: MessagesDeps, request: FastifyRequest, body: MessagesBody, response: unknown, conversationId: string | null, pending: Set<Promise<void>>): void {
+function recordMemorySafe(
+  deps: MessagesDeps,
+  request: FastifyRequest,
+  body: MessagesBody,
+  response: unknown,
+  conversationId: string | null,
+  exchangeId: string | null,
+  pending: Set<Promise<void>>,
+): void {
   const orgId = request.orgId;
   if (!deps.recordMemory || !orgId) return;
   const lastUser = [...body.messages].reverse().find((message) => message.role === "user");
@@ -41,6 +49,7 @@ function recordMemorySafe(deps: MessagesDeps, request: FastifyRequest, body: Mes
       orgId,
       ...(request.projectScopeId ? { projectScopeId: request.projectScopeId } : {}),
       ...(conversationId && request.apiKeyId ? { conversationId, keyId: request.apiKeyId } : {}),
+      ...(exchangeId ? { exchangeId } : {}),
       model: body.model,
       turns: [
         { role: "user", content: userText },
@@ -85,7 +94,7 @@ async function resolveConversation(deps: MessagesDeps, request: FastifyRequest, 
   }
 }
 
-function observeSafe(deps: MessagesDeps, request: FastifyRequest, body: MessagesBody, response: unknown, conversationId: string | null, pending: Set<Promise<void>>): void {
+function observeSafe(deps: MessagesDeps, request: FastifyRequest, body: MessagesBody, response: unknown, conversationId: string | null, exchangeId: string | null, pending: Set<Promise<void>>): void {
   if (!conversationId || !deps.observeConversation || !request.orgId || !request.apiKeyId) return;
   const user = [...body.messages].reverse().find((message) => message.role === "user");
   const query = textContent(user?.content);
@@ -97,6 +106,7 @@ function observeSafe(deps: MessagesDeps, request: FastifyRequest, body: Messages
       orgId: request.orgId,
       keyId: request.apiKeyId,
       ...(request.projectScopeId ? { projectScopeId: request.projectScopeId } : {}),
+      ...(exchangeId ? { exchangeId } : {}),
       query,
       assistant,
     });
@@ -272,7 +282,7 @@ async function handleStreaming(body: MessagesBody, request: FastifyRequest, repl
         // regardless, so reading the already-open socket to completion is the correct billing behavior;
         // we just stop WRITING to the departed client.
         const events = parser.push(chunk);
-        if (deps.usageOutbox && events.some((event) => event.event === "message_stop")) sawStop = true;
+        if (events.some((event) => event.event === "message_stop")) sawStop = true;
         if (!out.destroyed) {
           if (deps.usageOutbox && sawStop) {
             heldBytes += Buffer.byteLength(chunk);
@@ -302,7 +312,7 @@ async function handleStreaming(body: MessagesBody, request: FastifyRequest, repl
       // flush() in the FINALLY (not the try) so a partial event buffered when the stream ERRORED
       // mid-chunk — e.g. a split `message_delta` carrying output_tokens — is still recovered for billing.
       const trailingEvents = parser.flush();
-      if (deps.usageOutbox && trailingEvents.some((event) => event.event === "message_stop")) sawStop = true;
+      if (trailingEvents.some((event) => event.event === "message_stop")) sawStop = true;
       acc.push(trailingEvents);
       // Capture the accumulated turn (redaction + FAIL-CLOSED inside the store).
       // Done BEFORE out.end() so the artifact is written before the response
@@ -344,9 +354,10 @@ async function handleStreaming(body: MessagesBody, request: FastifyRequest, repl
         if (pendingChunk !== undefined && sawStop) out.write(pendingChunk);
         if (sawStop) for (const chunk of heldCompletion) out.write(chunk);
       }
-      if (usageRecorded && !streamFailed && streamError === undefined) {
-        recordMemorySafe(deps, request, body, message, conversationId, pending);
-        observeSafe(deps, request, body, message, conversationId, pending);
+      if (usageRecorded && sawStop && !streamFailed && streamError === undefined) {
+        const exchangeId = conversationId ? randomUUID() : null;
+        recordMemorySafe(deps, request, body, message, conversationId, exchangeId, pending);
+        observeSafe(deps, request, body, message, conversationId, exchangeId, pending);
       }
       out.end();
     }
@@ -447,8 +458,9 @@ export function makeMessagesRoute(deps: MessagesDeps): FastifyPluginCallback {
       if (!recordUsageSafe(deps, request, body.model, billedInput, outputTokensOf(forwarded.data), pendingWrites)) {
         return reply.status(503).send({ type: "error", error: { type: "billing_unavailable", message: "usage journal unavailable" } });
       }
-      recordMemorySafe(deps, request, body, forwarded.data, conversationId, pendingWrites);
-      observeSafe(deps, request, body, forwarded.data, conversationId, pendingWrites);
+      const exchangeId = conversationId ? randomUUID() : null;
+      recordMemorySafe(deps, request, body, forwarded.data, conversationId, exchangeId, pendingWrites);
+      observeSafe(deps, request, body, forwarded.data, conversationId, exchangeId, pendingWrites);
 
       // nosemgrep: javascript.express.security.audit.xss.direct-response-write.direct-response-write -- FALSE POSITIVE: transparent JSON proxy. Forwards the upstream Anthropic response (Fastify sends it as application/json) to the Claude Code CLI client; never HTML rendered in a browser, so no XSS surface. The "user input" is the upstream provider's own JSON, not attacker markup.
       return reply.send(forwarded.data);

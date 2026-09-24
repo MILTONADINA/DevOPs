@@ -46,7 +46,7 @@ export const TABLE_FACT_TYPES: Record<string, FactType> = Object.fromEntries((Ob
  *  - org_id: a write-time trusted FK, not a fact field.
  *  - promoted_to_t3: Tier-3 promotion bookkeeping, set by the promoter.
  */
-const NON_FACT_COLUMNS = ["org_id", "project_scope", "promoted_to_t3"] as const;
+const NON_FACT_COLUMNS = ["org_id", "project_scope", "source_exchange_id", "promoted_to_t3"] as const;
 
 /**
  * Trusted, server-resolved foreign keys the caller supplies at persist time.
@@ -59,6 +59,8 @@ export interface PersistContext {
   sessionId: string;
   /** Authenticated project slug; NULL for unbound sessions. */
   projectScope?: string | null;
+  /** Server-minted commercial exchange ID; absent for legacy facts. */
+  exchangeId?: string;
 }
 
 /** Outcome of a {@link WarmMemory.persist} call. */
@@ -172,12 +174,13 @@ export function factToRow(fact: AnyFact, ctx: PersistContext): { table: string; 
   for (const [k, v] of Object.entries(fact)) {
     // `fact_type` is the discriminator, not a column. session_id is replaced by
     // the trusted FK below; never trust the fact's own org/session.
-    if (k === "fact_type" || k === "session_id" || k === "org_id" || k === "project_scope") continue;
+    if (k === "fact_type" || k === "session_id" || k === "org_id" || k === "project_scope" || k === "source_exchange_id") continue;
     if (v !== undefined) row[k] = v;
   }
   row["session_id"] = ctx.sessionId; // trusted FK (overrides the fact's logical id)
   row["org_id"] = ctx.orgId; // trusted FK (facts carry none)
   if (ctx.projectScope !== undefined) row["project_scope"] = ctx.projectScope;
+  if (ctx.exchangeId !== undefined) row["source_exchange_id"] = ctx.exchangeId;
   return { table, row };
 }
 

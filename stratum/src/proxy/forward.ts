@@ -66,6 +66,8 @@ export interface MessageMemoryEvent {
   /** Server-verified conversation and authenticating key, when available. */
   conversationId?: string;
   keyId?: string;
+  /** Server-minted ID of the completed exchange that produced these facts. */
+  exchangeId?: string;
   model: string;
   turns: { role: "user" | "assistant"; content: string }[];
 }
@@ -94,7 +96,7 @@ export interface MessagesDeps {
   /** Commercial identity resolved from authenticated key bindings before forwarding. */
   resolveConversation?: (input: { orgId: string; keyId: string; projectScopeId?: string; model: string; requestedId?: string }) => Promise<string>;
   /** Optional local observer; never changes forwarding or billing. */
-  observeConversation?: (input: { conversationId: string; orgId: string; keyId: string; projectScopeId?: string; query: string; assistant: string }) => Promise<void>;
+  observeConversation?: (input: { conversationId: string; orgId: string; keyId: string; projectScopeId?: string; exchangeId?: string; query: string; assistant: string }) => Promise<void>;
 }
 
 /**
