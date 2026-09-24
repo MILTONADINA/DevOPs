@@ -125,7 +125,7 @@ async function checkTokenBudget(deps: MessagesDeps, request: FastifyRequest, inp
  * + fail-open: invoked AFTER a successful forward so it never adds latency to or fails the proxied
  * response. No-op unless an authenticated org + a recorder exist and the count is > 0.
  */
-function recordUsageSafe(deps: MessagesDeps, request: FastifyRequest, model: string, inputTokens: number, outputTokens: number): void {
+function recordUsageSafe(deps: MessagesDeps, request: FastifyRequest, model: string, inputTokens: number, outputTokens: number, pending: Set<Promise<void>>): void {
   const orgId = request.orgId;
   if (deps.recordUsage === undefined || typeof orgId !== "string" || orgId === "") return;
   if (!(inputTokens > 0)) {
@@ -135,9 +135,14 @@ function recordUsageSafe(deps: MessagesDeps, request: FastifyRequest, model: str
     request.log?.warn?.({ orgId, model }, "usage record skipped: input_tokens<=0 (no count from upstream OR pre-flight)");
     return;
   }
-  void deps.recordUsage({ orgId, ...(request.projectScopeId ? { projectScopeId: request.projectScopeId } : {}), model, inputTokens, outputTokens }).catch((e: unknown) => {
+  try {
+    const task = deps.recordUsage({ orgId, ...(request.projectScopeId ? { projectScopeId: request.projectScopeId } : {}), model, inputTokens, outputTokens });
+    pending.add(task);
+    void task.catch((e: unknown) => request.log?.error?.({ err: (e as Error).message }, "usage record failed (non-blocking)"))
+      .finally(() => pending.delete(task));
+  } catch (e) {
     request.log?.error?.({ err: (e as Error).message }, "usage record failed (non-blocking)");
-  });
+  }
 }
 
 /**
@@ -231,7 +236,7 @@ async function handleStreaming(body: MessagesBody, request: FastifyRequest, repl
         },
         deps.telemetry,
       );
-      recordUsageSafe(deps, request, body.model, billedInput, outputTokensOf(message));
+      recordUsageSafe(deps, request, body.model, billedInput, outputTokensOf(message), pending);
       if (!streamFailed && streamError === undefined) recordMemorySafe(deps, request, body, message, pending);
       out.end();
     }
@@ -248,8 +253,8 @@ async function handleStreaming(body: MessagesBody, request: FastifyRequest, repl
  */
 export function makeMessagesRoute(deps: MessagesDeps): FastifyPluginCallback {
   return function messagesPlugin(app: FastifyInstance, _opts, done): void {
-    const pendingMemory = new Set<Promise<void>>();
-    app.addHook("onClose", async () => { await Promise.allSettled([...pendingMemory]); });
+    const pendingWrites = new Set<Promise<void>>();
+    app.addHook("onClose", async () => { await Promise.allSettled([...pendingWrites]); });
     app.post("/v1/messages", async (request, reply) => {
       const start = Date.now();
       const body = request.body as MessagesBody;
@@ -265,7 +270,7 @@ export function makeMessagesRoute(deps: MessagesDeps): FastifyPluginCallback {
       // header), forward as a stream + tee/accumulate/capture.
       const accept = request.headers["accept"];
       if (isStreamingRequest(body, typeof accept === "string" ? accept : undefined)) {
-        return handleStreaming(body, request, reply, deps, start, pendingMemory);
+        return handleStreaming(body, request, reply, deps, start, pendingWrites);
       }
 
       // Exact token count (best-effort; method is flagged honestly downstream).
@@ -324,8 +329,8 @@ export function makeMessagesRoute(deps: MessagesDeps): FastifyPluginCallback {
         },
         deps.telemetry,
       );
-      recordUsageSafe(deps, request, body.model, billedInput, outputTokensOf(forwarded.data));
-      recordMemorySafe(deps, request, body, forwarded.data, pendingMemory);
+      recordUsageSafe(deps, request, body.model, billedInput, outputTokensOf(forwarded.data), pendingWrites);
+      recordMemorySafe(deps, request, body, forwarded.data, pendingWrites);
 
       // nosemgrep: javascript.express.security.audit.xss.direct-response-write.direct-response-write -- FALSE POSITIVE: transparent JSON proxy. Forwards the upstream Anthropic response (Fastify sends it as application/json) to the Claude Code CLI client; never HTML rendered in a browser, so no XSS surface. The "user input" is the upstream provider's own JSON, not attacker markup.
       return reply.send(forwarded.data);
