@@ -35,11 +35,24 @@ export interface SessionStats {
   feeUsd: number;
 }
 
+export interface SessionErasureInventory {
+  scope: string;
+  org_id: string;
+  session_id: string;
+  counts: Record<string, number>;
+  graph_ownership: string;
+  external_copies: string;
+  backups: string;
+  in_memory: string;
+}
+
 export interface SessionsDeps {
   listSessions: (orgId: string, limit: number, projectScope?: string | null) => Promise<SessionSummary[]>;
   getSession: (orgId: string, id: string, projectScope?: string | null) => Promise<SessionSummary | null>;
   /** Token stats for a session, or null if the session is not in this org. */
   getSessionStats: (orgId: string, id: string, projectScope?: string | null) => Promise<SessionStats | null>;
+  /** Read-only local database inventory; never executes erasure. */
+  inspectErasure: (orgId: string, id: string) => Promise<SessionErasureInventory | null>;
   /** End a session (set ended_at); returns the updated session, or null if not in this org. */
   endSession: (orgId: string, id: string, projectScope?: string | null) => Promise<SessionSummary | null>;
   /** The org's plan (drives the concurrent-session cap), or null if the org is unknown. */
@@ -132,6 +145,28 @@ export function makeSessionsRoute(deps: SessionsDeps): FastifyPluginCallback {
       const stats = await deps.getSessionStats(orgId, (req.params as { id: string }).id, authenticatedProjectScope(req));
       if (stats === null) return err(reply, 404, "session not found for this org");
       return stats;
+    });
+
+    app.get("/v1/sessions/:id/erasure-preflight", async (req, reply) => {
+      // Inventory includes organization-wide graph and financial counts. A project-bound key
+      // must not inspect them, and personal mode has no authenticated organization identity.
+      if (req.authEnforced !== true || !req.orgId || req.projectScopeId !== undefined) {
+        return err(reply, 403, "organization-level API key required");
+      }
+      const id = (req.params as { id: string }).id;
+      if ((await deps.getSession(req.orgId, id)) === null) return err(reply, 404, "session not found for this org");
+      const inventory = await deps.inspectErasure(req.orgId, id);
+      if (inventory === null) return err(reply, 404, "session not found for this org");
+      const reasons: string[] = [];
+      if ((inventory.counts["billing_records"] ?? 0) > 0) reasons.push("billing_retention_undecided");
+      if (inventory.graph_ownership === "ambiguous") reasons.push("graph_ownership_ambiguous");
+      if ([inventory.external_copies, inventory.backups, inventory.in_memory].some((value) => value !== "inventoried")) reasons.push("stores_not_inventoried");
+      reasons.push("erasure_execution_unavailable");
+      return {
+        status: reasons.includes("billing_retention_undecided") ? "blocked_billing_retention" : "blocked_incomplete_inventory",
+        reasons,
+        inventory,
+      };
     });
 
     // DELETE /v1/sessions/:id — end a session (set ended_at); the session.ended trigger (WEBHOOKS.md).
@@ -248,6 +283,23 @@ export function createSupabaseSessionsDeps(client: SupabaseClient): SessionsDeps
           ),
         ),
       };
+    },
+    async inspectErasure(orgId, id) {
+      const { data, error } = await client.rpc("inspect_session_erasure", { p_org_id: orgId, p_session_id: id });
+      if (error) throw new Error(`inspectErasure failed: ${error.message}`);
+      if (data === null) return null;
+      const inventory = data as unknown as SessionErasureInventory;
+      if (
+        inventory.org_id !== orgId ||
+        inventory.session_id !== id ||
+        inventory.scope !== "local_database_only" ||
+        !inventory.counts ||
+        typeof inventory.counts["billing_records"] !== "number" ||
+        typeof inventory.graph_ownership !== "string"
+      ) {
+        throw new Error("inspectErasure returned invalid scoped inventory");
+      }
+      return inventory;
     },
   };
 }

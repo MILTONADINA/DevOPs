@@ -41,6 +41,16 @@ its original ID and timestamp. It SHALL replace links recreated by File/fact
 insert triggers with the backed-up rows, so the recovered inventory and source
 view reflect the original snapshot.
 
+### REQ-1c — Read-only customer preflight
+
+WHEN an organization-level authenticated key requests an explicit session's
+erasure preflight, THE API SHALL return the scoped database inventory and a
+blocked status with distinct billing-retention, ambiguous-graph, and
+uninventoried-store reasons as applicable. It SHALL return 404 for a foreign,
+missing, or internal usage session and deny project-bound keys. It SHALL NOT
+delete data or claim erasure is ready while external copies, backups, or RAM
+remain uninventoried.
+
 ## REQ-2 — Ledger invariant and retention decision
 
 WHILE billing records remain append-only and signed over their original
@@ -78,7 +88,8 @@ remaining rows. A small fixture alone SHALL NOT satisfy that gate.
 - The current schema fails REQ-2 for a billed session: append-only billing
   rows reference the session and organization; deleting either is blocked.
 - The live local foreign-key inventory and existing ledger fixture establish
-  this blocker. No erasure endpoint or one-year performance result is claimed.
+  this blocker. The read-only erasure preflight reports it to organization-level
+  keys; no deletion endpoint or one-year performance result is claimed.
 - The local inventory now reports linked graph rows and provenance uncertainty;
   disposable two-session promotion and backup/restore checks cover recorded
   links. A clean-target recovery check preserves File-to-fact source link IDs
