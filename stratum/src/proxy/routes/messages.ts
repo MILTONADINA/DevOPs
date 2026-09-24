@@ -128,12 +128,12 @@ async function checkTokenBudget(deps: MessagesDeps, request: FastifyRequest, inp
 function recordUsageSafe(deps: MessagesDeps, request: FastifyRequest, model: string, inputTokens: number, outputTokens: number, pending: Set<Promise<void>>): boolean {
   const orgId = request.orgId;
   if ((deps.recordUsage === undefined && deps.usageOutbox === undefined) || typeof orgId !== "string" || orgId === "") return true;
-  if (!(inputTokens > 0)) {
+  if (!Number.isFinite(inputTokens) || inputTokens <= 0) {
     // The billing_records `original_tokens > 0` CHECK would reject a 0-token record. Callers now pass the
     // UPSTREAM-confirmed input count (present on every 2xx), so reaching here means both that and the
-    // pre-flight count were unavailable — a genuine invoice hole. WARN (don't drop silently) so it's visible.
+    // pre-flight count were unavailable. Durable commercial mode fails the response; legacy callers warn.
     request.log?.warn?.({ orgId, model }, "usage record skipped: input_tokens<=0 (no count from upstream OR pre-flight)");
-    return true;
+    return deps.usageOutbox === undefined;
   }
   try {
     const event = { orgId, ...(request.projectScopeId ? { projectScopeId: request.projectScopeId } : {}), eventId: randomUUID(), occurredAt: new Date().toISOString(), model, inputTokens, outputTokens };
