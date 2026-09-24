@@ -17,6 +17,7 @@ environment variables or credentials.
 
 WHEN root setup runs, THE SYSTEM SHALL use only process environment and the
 local Compose credential handoff. It SHALL NOT read or write a `.env` file.
+The Compose invocation SHALL disable its default `.env` file lookup.
 It SHALL state that provider-backed message traffic requires a configured
 provider and SHALL NOT claim the cold-clone, cross-platform, or real-data
 recovery release gates are met from a single-machine smoke check.
@@ -49,6 +50,17 @@ SHALL retry that startup at most twice after short delays; other startup
 faults SHALL fail immediately. Diagnostics SHALL classify the rate limit
 without exposing raw Docker stderr.
 
+## REQ-6 — Isolated checkout verification on one host
+
+WHEN a trusted operator supplies both `DEVOPS_LOCAL_INSTANCE` and
+`DEVOPS_LOCAL_PORT` to root setup, THE SYSTEM SHALL use a separate Compose
+project, container names, data volume, and IPv4 loopback gateway port for
+that checkout. It SHALL smoke-test that instance's actual API. The default
+instance SHALL keep the existing names and port 54321. IF either override is
+missing, malformed, or would select the default port, THEN setup SHALL fail
+before starting Docker. Stopping an isolated instance SHALL leave the default
+instance running.
+
 ## Acceptance criteria
 
 - **AC-1:** root `npm run setup -- --help` documents supported systems and
@@ -65,3 +77,6 @@ without exposing raw Docker stderr.
 - **AC-6:** the Linux CI job passes the complete `npm run setup` path on its
   clean runner, records elapsed seconds below 300, and runs Compose teardown
   even if setup fails.
+- **AC-7:** a project-local fresh clone with a distinct instance/port completes
+  setup and teardown while the original stack remains running; its database
+  volume is distinct. Invalid override pairs fail before Docker starts.

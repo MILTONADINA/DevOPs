@@ -7,18 +7,32 @@ import { join } from "node:path";
 type Binding = { HostIp?: string; HostPort?: string };
 type Ports = Record<string, Binding[] | null>;
 const services = ["db", "rest", "gateway"] as const;
-const names = { db: "devops-stratum-local-db", rest: "devops-stratum-local-rest", gateway: "devops-stratum-local-gateway" };
+export function resolveLocalStackConfig(env: NodeJS.ProcessEnv): { project: string; names: Record<(typeof services)[number], string>; port: string } {
+  const instance = env.DEVOPS_LOCAL_INSTANCE;
+  const port = env.DEVOPS_LOCAL_PORT;
+  if (instance === undefined && port === undefined) {
+    return { project: "devops-stratum-compose", names: { db: "devops-stratum-local-db", rest: "devops-stratum-local-rest", gateway: "devops-stratum-local-gateway" }, port: "54321" };
+  }
+  if (!instance || !/^[a-z][a-z0-9-]{0,19}$/.test(instance) || instance === "local" || !port || !/^[1-9]\d{3,4}$/.test(port) || Number(port) < 1024 || Number(port) > 65535 || port === "54321") {
+    throw new Error("set a safe DEVOPS_LOCAL_INSTANCE and a distinct DEVOPS_LOCAL_PORT (1024-65535) together");
+  }
+  const prefix = `devops-stratum-isolated-${instance}`;
+  return { project: prefix, names: { db: `${prefix}-db`, rest: `${prefix}-rest`, gateway: `${prefix}-gateway` }, port };
+}
+
+const localStack = resolveLocalStackConfig(process.env);
+const names = localStack.names;
 const file = "supabase/docker-compose.local.yml";
-const composeArgs = ["compose", "-f", file, "-p", "devops-stratum-compose"];
+const composeArgs = ["compose", "-f", file, "-p", localStack.project];
 const projectRoot = realpathSync(join(process.cwd(), ".."));
 
 /** Reject any published DB/REST port and any API bind besides exact IPv4 loopback. */
-export function assertLocalPorts(ports: Record<(typeof services)[number], Ports>): void {
+export function assertLocalPorts(ports: Record<(typeof services)[number], Ports>, expectedPort = "54321"): void {
   for (const service of services) {
     const bindings = Object.values(ports[service]).flatMap((value) => value ?? []);
     if (service !== "gateway" && bindings.length > 0) throw new Error(`${service} must not publish a host port`);
-    if (service === "gateway" && (bindings.length !== 1 || bindings[0]?.HostIp !== "127.0.0.1" || bindings[0]?.HostPort !== "54321")) {
-      throw new Error("gateway must publish only 127.0.0.1:54321");
+    if (service === "gateway" && (bindings.length !== 1 || bindings[0]?.HostIp !== "127.0.0.1" || bindings[0]?.HostPort !== expectedPort)) {
+      throw new Error(`gateway must publish only 127.0.0.1:${expectedPort}`);
     }
   }
 }
@@ -48,7 +62,9 @@ export function dockerFailureDetail(stderr: unknown): string {
 }
 
 function compose(args: string[], env: NodeJS.ProcessEnv, input?: string): string {
-  return docker([...composeArgs, ...args], { ...env, COMPOSE_PARALLEL_LIMIT: "1" }, input);
+  const composeEnv: NodeJS.ProcessEnv = { ...env, COMPOSE_PARALLEL_LIMIT: "1", COMPOSE_DISABLE_ENV_FILE: "1" };
+  delete composeEnv.COMPOSE_ENV_FILES;
+  return docker([...composeArgs, ...args], composeEnv, input);
 }
 
 export async function retryRateLimited(action: () => void, wait: (ms: number) => Promise<void> = (ms) => new Promise((resolve) => setTimeout(resolve, ms))): Promise<void> {
@@ -70,7 +86,7 @@ async function composeUp(args: string[], env: NodeJS.ProcessEnv): Promise<void> 
 }
 
 function stackEnv(secret: string): NodeJS.ProcessEnv {
-  return { ...process.env, DEVOPS_LOCAL_JWT_SECRET: secret };
+  return { ...process.env, DEVOPS_LOCAL_JWT_SECRET: secret, DEVOPS_LOCAL_DB_NAME: names.db, DEVOPS_LOCAL_REST_NAME: names.rest, DEVOPS_LOCAL_GATEWAY_NAME: names.gateway, DEVOPS_LOCAL_PORT: localStack.port };
 }
 
 function inspectPorts(env: NodeJS.ProcessEnv): void {
@@ -78,7 +94,7 @@ function inspectPorts(env: NodeJS.ProcessEnv): void {
   for (const service of services) {
     ports[service] = JSON.parse(docker(["inspect", "--format", "{{json .NetworkSettings.Ports}}", names[service]], env)) as Ports;
   }
-  assertLocalPorts(ports);
+  assertLocalPorts(ports, localStack.port);
 }
 
 function containerStates(env: NodeJS.ProcessEnv): string {
@@ -128,9 +144,9 @@ async function start(): Promise<void> {
     stage = "loopback port inspection";
     inspectPorts(env);
     stage = "local API health check";
-    const response = await fetch("http://127.0.0.1:54321/rest/v1/", { headers: { Authorization: `Bearer ${serviceJwt(secret, Math.floor(Date.now() / 1000) + 3600)}` }, signal: AbortSignal.timeout(5000) });
+    const response = await fetch(`http://127.0.0.1:${localStack.port}/rest/v1/`, { headers: { Authorization: `Bearer ${serviceJwt(secret, Math.floor(Date.now() / 1000) + 3600)}` }, signal: AbortSignal.timeout(5000) });
     if (!response.ok) throw new Error(`local API returned HTTP ${response.status}`);
-    process.stdout.write(`Local Supabase API ready on 127.0.0.1:54321; ${applied} migration(s) applied.\n`);
+    process.stdout.write(`Local Supabase API ready on 127.0.0.1:${localStack.port}; ${applied} migration(s) applied.\n`);
   } catch (error) {
     const states = containerStates(env);
     try { compose(["down"], env); } catch { /* preserve startup error */ }
@@ -140,7 +156,7 @@ async function start(): Promise<void> {
 
 function withEnv(argv: string[]): number {
   if (argv.length === 0) throw new Error("usage: npm run db:with-env -- <command> [args...]");
-  const env = { ...process.env, SUPABASE_URL: "http://127.0.0.1:54321", SUPABASE_SERVICE_KEY: serviceJwt(currentSecret(), Math.floor(Date.now() / 1000) + 86_400), DEVOPS_STRATUM_PROJECT_ROOT: projectRoot };
+  const env = { ...process.env, SUPABASE_URL: `http://127.0.0.1:${localStack.port}`, SUPABASE_SERVICE_KEY: serviceJwt(currentSecret(), Math.floor(Date.now() / 1000) + 86_400), DEVOPS_STRATUM_PROJECT_ROOT: projectRoot };
   const child = spawnSync(argv[0]!, argv.slice(1), { cwd: process.cwd(), env, stdio: "inherit" });
   if (child.error) throw child.error;
   return child.status ?? 1;
