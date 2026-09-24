@@ -36,6 +36,12 @@ describe("Tier-2 table routing", () => {
 });
 
 describe("factToRow (write projection)", () => {
+  test("forces stored project scope from trusted context", () => {
+    const forged = { ...td, project_scope: "vega" } as AnyFact;
+    const { row } = factToRow(forged, { ...ctx, projectScope: "orion" });
+    expect(row["project_scope"]).toBe("orion");
+  });
+
   test("drops the fact_type discriminator (not a column)", () => {
     const { row } = factToRow(td, ctx);
     expect(row["fact_type"]).toBeUndefined();
@@ -60,6 +66,12 @@ describe("factToRow (write projection)", () => {
 });
 
 describe("rowToFact (read projection)", () => {
+  test("strips stored project scope from typed facts", () => {
+    const row = { ...factToRow(td, ctx).row, project_scope: "orion" };
+    expect(rowToFact("tech_decisions", row)).not.toBeNull();
+    expect((rowToFact("tech_decisions", row) as Record<string, unknown>)["project_scope"]).toBeUndefined();
+  });
+
   test("reattaches fact_type, strips org_id + promoted_to_t3, validates", () => {
     const dbRow = { id: base.id, created_at: base.created_at, session_id: "real-session-uuid", org_id: "org-uuid", promoted_to_t3: false, confidence: 0.95, is_verified: false, is_suppressed: false, decision_text: "d", domain: "db", rationale: null, supersedes_id: null };
     const fact = rowToFact("tech_decisions", dbRow);
@@ -149,6 +161,15 @@ describe("createWarmMemory.persist (fake client)", () => {
 
 describe("createWarmMemory.queryRecent (fake client)", () => {
   const rowOf = (overrides: Record<string, unknown>) => ({ id: "11111111-1111-1111-1111-111111111111", created_at: "2026-05-29T00:00:00Z", org_id: "org-uuid", session_id: "s1", confidence: 0.8, is_verified: false, is_suppressed: false, promoted_to_t3: false, ...overrides });
+
+  test("filters project before limiting facts within a table", async () => {
+    const { client } = makeFakeSupabase({ todos: [
+      rowOf({ id: "other", created_at: "2026-05-30T00:00:00Z", project_scope: "vega", description: "other project", status: "open" }),
+      rowOf({ id: "mine", project_scope: "orion", description: "mine", status: "open" }),
+    ] });
+    const facts = await createWarmMemory(client).queryRecent("org-uuid", { limit: 1, projectScope: "orion" });
+    expect(facts.map((fact) => fact.id)).toEqual(["mine"]);
+  });
 
   test("does not recall suppressed facts", async () => {
     const { client } = makeFakeSupabase({ tech_decisions: [

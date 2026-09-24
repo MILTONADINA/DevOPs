@@ -46,7 +46,7 @@ export const TABLE_FACT_TYPES: Record<string, FactType> = Object.fromEntries((Ob
  *  - org_id: a write-time trusted FK, not a fact field.
  *  - promoted_to_t3: Tier-3 promotion bookkeeping, set by the promoter.
  */
-const NON_FACT_COLUMNS = ["org_id", "promoted_to_t3"] as const;
+const NON_FACT_COLUMNS = ["org_id", "project_scope", "promoted_to_t3"] as const;
 
 /**
  * Trusted, server-resolved foreign keys the caller supplies at persist time.
@@ -57,6 +57,8 @@ export interface PersistContext {
   orgId: string;
   /** Real sessions(id) UUID — the DB session row these facts belong to. */
   sessionId: string;
+  /** Authenticated project slug; NULL for unbound sessions. */
+  projectScope?: string | null;
 }
 
 /** Outcome of a {@link WarmMemory.persist} call. */
@@ -75,6 +77,8 @@ export interface QueryRecentOptions {
   limit?: number;
   /** Restrict to a single session (else all of the org's recent facts). */
   sessionId?: string;
+  /** Undefined keeps internal org-wide behavior; NULL selects legacy unbound facts. */
+  projectScope?: string | null;
 }
 
 /** Options for {@link WarmMemory.queryUnpromoted}. */
@@ -168,11 +172,12 @@ export function factToRow(fact: AnyFact, ctx: PersistContext): { table: string; 
   for (const [k, v] of Object.entries(fact)) {
     // `fact_type` is the discriminator, not a column. session_id is replaced by
     // the trusted FK below; never trust the fact's own org/session.
-    if (k === "fact_type" || k === "session_id" || k === "org_id") continue;
+    if (k === "fact_type" || k === "session_id" || k === "org_id" || k === "project_scope") continue;
     if (v !== undefined) row[k] = v;
   }
   row["session_id"] = ctx.sessionId; // trusted FK (overrides the fact's logical id)
   row["org_id"] = ctx.orgId; // trusted FK (facts carry none)
+  if (ctx.projectScope !== undefined) row["project_scope"] = ctx.projectScope;
   return { table, row };
 }
 
@@ -244,6 +249,8 @@ export function createWarmMemory(client: SupabaseClient): WarmMemory {
         tables.map(async (table) => {
           let q = client.from(table).select("*").eq("org_id", orgId).eq("is_suppressed", false);
           if (opts.sessionId !== undefined) q = q.eq("session_id", opts.sessionId);
+          if (opts.projectScope === null) q = q.is("project_scope", null);
+          else if (opts.projectScope !== undefined) q = q.eq("project_scope", opts.projectScope);
           const { data, error } = await q.order("created_at", { ascending: false }).limit(limit);
           return { table, data, error };
         }),
