@@ -88,18 +88,49 @@ export function validateBackup(obj: unknown): BackupFile {
     }
   }
   const decisions = b.tables["tech_decisions"] ?? [];
-  const decisionIds = new Set<string>();
+  const decisionById = new Map<string, Record<string, unknown>>();
   for (const row of decisions) {
-    const id = (row as { id?: unknown } | null)?.id;
+    const decision = row as Record<string, unknown> | null;
+    const id = decision?.["id"];
     if (typeof id !== "string" || id === "") throw new Error("backup decision ID missing");
-    if (decisionIds.has(id)) throw new Error("backup duplicate decision ID");
-    decisionIds.add(id);
+    if (decisionById.has(id)) throw new Error("backup duplicate decision ID");
+    decisionById.set(id, decision!);
   }
+  const supersededIds = new Set<string>();
   for (const row of decisions) {
-    const reference = (row as { supersedes_id?: unknown } | null)?.supersedes_id;
-    if (reference == null) continue;
+    const decision = row as {
+      supersedes_id?: unknown;
+      supersession_reviewer?: unknown;
+      supersession_evidence?: unknown;
+      supersession_reviewed_at?: unknown;
+    } | null;
+    const reference = decision?.supersedes_id;
+    if (reference == null) {
+      if (decision?.supersession_reviewer != null || decision?.supersession_evidence != null || decision?.supersession_reviewed_at != null) {
+        throw new Error("backup review metadata without supersedes reference");
+      }
+      continue;
+    }
     if (typeof reference !== "string" || reference === "") throw new Error("backup supersedes reference invalid");
-    if (!decisionIds.has(reference)) throw new Error("backup supersedes reference missing from decisions");
+    const older = decisionById.get(reference);
+    if (!older) throw new Error("backup supersedes reference missing from decisions");
+    if (supersededIds.has(reference)) throw new Error("backup duplicate successor for superseded decision");
+    supersededIds.add(reference);
+    const newer = row as Record<string, unknown>;
+    if (newer["project_scope"] !== older["project_scope"]) throw new Error("backup supersedes project mismatch");
+    const newerTime = Date.parse(String(newer["created_at"]));
+    const olderTime = Date.parse(String(older["created_at"]));
+    if (!Number.isFinite(newerTime) || !Number.isFinite(olderTime) || newerTime <= olderTime ||
+        newer["is_suppressed"] === true || older["is_suppressed"] === true) {
+      throw new Error("backup supersedes reference requires active newer decision");
+    }
+    if (
+      typeof decision?.supersession_reviewer !== "string" || decision.supersession_reviewer.trim().length < 3 ||
+      typeof decision.supersession_evidence !== "string" || decision.supersession_evidence.trim().length < 20 ||
+      typeof decision.supersession_reviewed_at !== "string" || !Number.isFinite(Date.parse(decision.supersession_reviewed_at))
+    ) {
+      throw new Error("backup supersession review evidence, reviewer, or time invalid");
+    }
   }
   const sessionIds = new Set<string>();
   const keyIds = new Set((b.tables["api_keys"] ?? []).map((row) => (row as { id?: unknown } | null)?.id));
@@ -143,17 +174,38 @@ export function restorePlan(backup: BackupFile): { table: string; rows: unknown[
     if (Array.isArray(rows) && rows.length > 0)
       plan.push({
         table,
-        rows: table === "tech_decisions" && hasDecisionReferences ? rows.map((row) => ({ ...(row as Record<string, unknown>), supersedes_id: null })) : stripGeneratedCols(table, rows),
+        rows: table === "tech_decisions" && hasDecisionReferences
+          ? rows.map((row) => {
+            const decision = row as Record<string, unknown>;
+            return decision["supersedes_id"]
+              ? { ...decision, supersedes_id: null, supersession_reviewer: null, supersession_evidence: null, supersession_reviewed_at: null }
+              : decision;
+          })
+          : stripGeneratedCols(table, rows),
       });
   }
   return plan;
 }
 
+interface ReviewedSupersession {
+  id: string;
+  supersedes_id: string;
+  supersession_reviewer: string;
+  supersession_evidence: string;
+  supersession_reviewed_at: string;
+}
+
 /** References patched after every decision ID has been inserted. */
-export function decisionSupersessionUpdates(backup: BackupFile): { id: string; supersedes_id: string }[] {
+export function decisionSupersessionUpdates(backup: BackupFile): ReviewedSupersession[] {
   return (backup.tables["tech_decisions"] ?? []).flatMap((row) => {
-    const decision = row as { id: string; supersedes_id?: string | null };
-    return decision.supersedes_id ? [{ id: decision.id, supersedes_id: decision.supersedes_id }] : [];
+    const decision = row as ReviewedSupersession & { supersedes_id?: string | null };
+    return decision.supersedes_id ? [{
+      id: decision.id,
+      supersedes_id: decision.supersedes_id,
+      supersession_reviewer: decision.supersession_reviewer,
+      supersession_evidence: decision.supersession_evidence,
+      supersession_reviewed_at: decision.supersession_reviewed_at,
+    }] : [];
   });
 }
 
@@ -212,7 +264,12 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
     inserted += rows.length;
     if (table === "tech_decisions") {
       for (const reference of decisionSupersessionUpdates(backup)) {
-        const restored = await client.from("tech_decisions").update({ supersedes_id: reference.supersedes_id }).eq("org_id", backup.orgId).eq("id", reference.id).select("id");
+        const restored = await client.from("tech_decisions").update({
+          supersedes_id: reference.supersedes_id,
+          supersession_reviewer: reference.supersession_reviewer,
+          supersession_evidence: reference.supersession_evidence,
+          supersession_reviewed_at: reference.supersession_reviewed_at,
+        }).eq("org_id", backup.orgId).eq("id", reference.id).select("id");
         if (restored.error || restored.data?.length !== 1) throw new Error(`restore decision supersession failed: ${restored.error?.message ?? "decision missing"}`);
       }
     }
