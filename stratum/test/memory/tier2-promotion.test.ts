@@ -81,6 +81,15 @@ describe("Tier-2 promotion lifecycle", () => {
 });
 
 describe("getFactsByRefs (content-free vector-hit → typed-fact resolution)", () => {
+  test("filters references by project scope", async () => {
+    const { client } = makeFakeSupabase({ tech_decisions: [
+      td({ id: "orion", org_id: "o1", project_scope: "orion", decision_text: "mine" }),
+      td({ id: "vega", org_id: "o1", project_scope: "vega", decision_text: "foreign" }),
+    ] });
+    const map = await createWarmMemory(client).getFactsByRefs("o1", ["orion", "vega"], "orion");
+    expect([...map.keys()]).toEqual(["orion"]);
+  });
+
   const todoRow = (o: Record<string, unknown>) => ({ created_at: "2026-05-01T00:00:00Z", org_id: "o1", session_id: "s1", confidence: 0.8, is_verified: false, is_suppressed: false, promoted_to_t3: false, status: "open", ...o });
 
   test("does not resolve a suppressed vector hit into context", async () => {

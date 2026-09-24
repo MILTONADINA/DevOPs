@@ -57,6 +57,8 @@ export interface VectorStore {
    * @throws {Error} on a dimension mismatch or a DB error.
    */
   search(orgId: string, queryEmbedding: number[], k?: number): Promise<VectorMatch[]>;
+  /** Rank only active facts from one project (NULL means legacy unbound). */
+  searchProjectFacts(orgId: string, projectScope: string | null, queryEmbedding: number[], k?: number): Promise<VectorMatch[]>;
 }
 
 /** pgvector text literal form: `[v1,v2,…]` (the form verified live via MCP). */
@@ -108,6 +110,23 @@ export function createVectorStore(client: SupabaseClient): VectorStore {
         match_count: k,
       });
       if (error) throw new Error(`vector search failed: ${error.message}`);
+      return ((data ?? []) as { id: string; source_type: string; source_ref: string | null; similarity: number }[]).map((r) => ({
+        id: r.id,
+        sourceType: r.source_type,
+        sourceRef: r.source_ref,
+        similarity: r.similarity,
+      }));
+    },
+
+    async searchProjectFacts(orgId: string, projectScope: string | null, queryEmbedding: number[], k = 10): Promise<VectorMatch[]> {
+      assertDim(queryEmbedding);
+      const { data, error } = await client.rpc("match_project_fact_vectors", {
+        query_embedding: toVectorLiteral(queryEmbedding),
+        match_org: orgId,
+        match_project_scope: projectScope,
+        match_count: k,
+      });
+      if (error) throw new Error(`project fact vector search failed: ${error.message}`);
       return ((data ?? []) as { id: string; source_type: string; source_ref: string | null; similarity: number }[]).map((r) => ({
         id: r.id,
         sourceType: r.source_type,
