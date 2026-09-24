@@ -19,6 +19,10 @@ roles SHALL not execute the lookup.
 
 ## REQ-2 — Measure selected-turn supersession
 
+**Metric correction:** `specs/pruner/fresh-exchange-supersession.md` supersedes
+the turn-count metric below. An exchange-level fact cannot prove that both
+dialogue turns contain only that fact.
+
 WHEN shadow selection returns turns with trusted exchange IDs, THE OBSERVER
 SHALL resolve their function entities using REQ-1, query the existing
 project-bound and provenance-complete graph supersession relation, and measure

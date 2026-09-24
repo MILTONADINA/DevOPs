@@ -27,9 +27,9 @@ BEGIN
     (org_id, orion_session, 'orion', new_exchange, 0.9, 'oldFn', 'newFn', 'renamed', false),
     (org_id, orion_session, 'orion', ambiguous_exchange, 0.9, 'oneFn', NULL, 'deprecated', false),
     (org_id, orion_session, 'orion', ambiguous_exchange, 0.9, 'twoFn', NULL, 'deprecated', false),
-    (org_id, orion_session, 'orion', suppressed_exchange, 0.9, 'hiddenFn', NULL, 'deprecated', true),
-    (org_id, other_session, 'orion', new_exchange, 0.9, 'otherSessionFn', NULL, 'deprecated', false),
-    (org_id, vega_session, 'vega', old_exchange, 0.9, 'vegaFn', NULL, 'deprecated', false),
+    (org_id, orion_session, 'orion', suppressed_exchange, 0.9, 'hiddenFn', 'hiddenNew', 'renamed', true),
+    (org_id, other_session, 'orion', new_exchange, 0.9, 'otherSessionFn', 'otherNew', 'renamed', false),
+    (org_id, vega_session, 'vega', old_exchange, 0.9, 'vegaFn', 'vegaNew', 'renamed', false),
     (org_id, memory_session, 'orion', NULL, 0.9, 'legacyFn', NULL, 'deprecated', false);
   SELECT array_agg(entity_name ORDER BY entity_name) INTO names
     FROM public.find_exchange_function_entities(org_id, orion_session, 'orion',
@@ -39,11 +39,22 @@ BEGIN
   END IF;
   SELECT array_agg(entity_name) INTO names
     FROM public.find_exchange_function_entities(org_id, vega_session, 'vega', ARRAY[old_exchange]);
-  IF names IS DISTINCT FROM ARRAY['vegaFn']::text[] THEN RAISE EXCEPTION 'Vega exchange mapping crossed project'; END IF;
+  IF names IS DISTINCT FROM ARRAY['vegaNew']::text[] THEN RAISE EXCEPTION 'Vega exchange mapping crossed project'; END IF;
   IF EXISTS (SELECT 1 FROM public.find_exchange_function_entities(org_id, orion_session, 'vega', ARRAY[old_exchange]))
     OR EXISTS (SELECT 1 FROM public.find_exchange_function_entities(org_id, memory_session, 'orion', ARRAY[old_exchange]))
     OR EXISTS (SELECT 1 FROM public.find_exchange_function_entities(other_org, orion_session, 'orion', ARRAY[old_exchange])) THEN
     RAISE EXCEPTION 'wrong project, session kind, or organization resolved';
+  END IF;
+  IF (SELECT array_agg(superseded || '>' || superseded_by)
+      FROM public.find_fresh_exchange_function_superseded(org_id, orion_session, 'orion',
+        ARRAY[old_exchange, new_exchange, ambiguous_exchange, suppressed_exchange]))
+      IS DISTINCT FROM ARRAY['oldFn>newFn']::text[] THEN
+    RAISE EXCEPTION 'fresh rename relation leaked or disappeared';
+  END IF;
+  IF EXISTS (SELECT 1 FROM public.find_fresh_exchange_function_superseded(org_id, orion_session, 'orion', ARRAY[old_exchange]))
+    OR EXISTS (SELECT 1 FROM public.find_fresh_exchange_function_superseded(org_id, orion_session, 'vega', ARRAY[new_exchange]))
+    OR EXISTS (SELECT 1 FROM public.find_fresh_exchange_function_superseded(other_org, orion_session, 'orion', ARRAY[new_exchange])) THEN
+    RAISE EXCEPTION 'fresh relation used an unselected exchange or foreign binding';
   END IF;
   INSERT INTO public.knowledge_entities(id, org_id, session_id, kind, name, project_scope, scope_verified, provenance_complete) VALUES
     (decision_old, org_id, orion_session, 'Decision', 'oldFn', 'orion', true, true),
@@ -83,6 +94,11 @@ BEGIN
     OR has_function_privilege('authenticated', 'public.find_project_function_superseded(uuid,text,text[])', 'EXECUTE')
     OR NOT has_function_privilege('service_role', 'public.find_project_function_superseded(uuid,text,text[])', 'EXECUTE') THEN
     RAISE EXCEPTION 'function supersession lookup grants are wrong';
+  END IF;
+  IF has_function_privilege('anon', 'public.find_fresh_exchange_function_superseded(uuid,uuid,text,uuid[])', 'EXECUTE')
+    OR has_function_privilege('authenticated', 'public.find_fresh_exchange_function_superseded(uuid,uuid,text,uuid[])', 'EXECUTE')
+    OR NOT has_function_privilege('service_role', 'public.find_fresh_exchange_function_superseded(uuid,uuid,text,uuid[])', 'EXECUTE') THEN
+    RAISE EXCEPTION 'fresh function supersession lookup grants are wrong';
   END IF;
 END;
 $$;

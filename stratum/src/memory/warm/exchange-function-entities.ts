@@ -27,3 +27,19 @@ export function createProjectFunctionSupersessionLookup(client: SupabaseClient) 
     return ((data ?? []) as { superseded: string; superseded_by: string }[]).map((row) => ({ superseded: row.superseded, supersededBy: row.superseded_by }));
   };
 }
+
+/** Active rename relations from the selected exchanges, before Tier-3 promotion. */
+export function createFreshFunctionSupersessionLookup(client: SupabaseClient) {
+  return async (orgId: string, sessionId: string, projectScope: string | null, exchangeIds: string[]): Promise<{ superseded: string; supersededBy: string }[]> => {
+    if (projectScope !== null && !validProjectScope(projectScope)) throw new Error("invalid project scope for fresh function supersession lookup");
+    if (exchangeIds.length === 0) return [];
+    const { data, error } = await client.rpc("find_fresh_exchange_function_superseded", {
+      match_org: orgId,
+      match_session: sessionId,
+      match_project_scope: projectScope,
+      exchange_ids: exchangeIds,
+    });
+    if (error) throw new Error(`find_fresh_exchange_function_superseded failed: ${error.message}`);
+    return ((data ?? []) as { superseded: string; superseded_by: string }[]).map((row) => ({ superseded: row.superseded, supersededBy: row.superseded_by }));
+  };
+}

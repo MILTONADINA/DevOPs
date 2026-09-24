@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { createExchangeFunctionLookup, createProjectFunctionSupersessionLookup } from "../../src/memory/warm/exchange-function-entities";
+import { createExchangeFunctionLookup, createFreshFunctionSupersessionLookup, createProjectFunctionSupersessionLookup } from "../../src/memory/warm/exchange-function-entities";
 import { makeFakeSupabase } from "./fake-supabase";
 
 describe("trusted exchange function lookup", () => {
@@ -46,5 +46,25 @@ describe("trusted exchange function lookup", () => {
     expect(calls).toEqual([{ match_org: "org", match_project_scope: "orion", names: ["oldFn", "newFn"] }]);
     expect(await lookup("org", null, [])).toEqual([]);
     await expect(lookup("org", "ORION", ["oldFn"])).rejects.toThrow(/project scope/i);
+  });
+
+  test("binds fresh rename lookup to the selected conversation exchanges", async () => {
+    const calls: Record<string, unknown>[] = [];
+    const { client } = makeFakeSupabase(
+      {},
+      {},
+      {
+        find_fresh_exchange_function_superseded: (args) => {
+          calls.push(args);
+          return [{ superseded: "oldFn", superseded_by: "newFn" }];
+        },
+      },
+    );
+    const lookup = createFreshFunctionSupersessionLookup(client);
+    expect(await lookup("org", "session", "orion", ["old", "new"])).toEqual([{ superseded: "oldFn", supersededBy: "newFn" }]);
+    expect(calls).toEqual([{ match_org: "org", match_session: "session", match_project_scope: "orion", exchange_ids: ["old", "new"] }]);
+    expect(await lookup("org", "session", null, [])).toEqual([]);
+    await expect(lookup("org", "session", "ORION", ["new"])).rejects.toThrow(/project scope/i);
+    await expect(createFreshFunctionSupersessionLookup(makeFakeSupabase().client)("org", "session", "orion", ["new"])).rejects.toThrow(/find_fresh_exchange_function_superseded/);
   });
 });
