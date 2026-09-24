@@ -64,6 +64,7 @@
     "db:verify-proxy-memory": "tsx scripts/local-compose.ts with-env tsx test/integration/local-proxy-memory.ts",
     "db:verify-project-scope": "tsx scripts/local-compose.ts with-env tsx test/integration/local-project-key-scope.ts",
     "db:verify-project-warm-facts": "tsx scripts/local-compose.ts with-env tsx test/integration/local-project-warm-facts.ts",
+    "db:verify-project-audit-reads": "tsx scripts/local-compose.ts with-env tsx test/integration/local-project-audit-reads.ts",
     "db:verify-message-memory": "tsx scripts/local-compose.ts with-env tsx test/integration/local-message-memory.ts",
     "db:verify-message-audit": "tsx scripts/local-compose.ts with-env tsx test/integration/local-message-audit.ts",
     "db:verify-request-survival": "tsx scripts/local-compose.ts with-env tsx test/integration/local-request-survival.ts",
