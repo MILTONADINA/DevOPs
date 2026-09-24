@@ -38,6 +38,8 @@ export interface IngestTurn {
   content: string;
   /** Unix ms timestamp. */
   timestamp: number;
+  /** Trusted server-minted exchange identity; adjacent matching turns share extraction context. */
+  exchangeId?: string;
 }
 
 /** What recall returns: the live hot window + durable warm facts. */
@@ -103,7 +105,7 @@ export interface MemoryManagerDeps {
 export function createMemoryManager(deps: MemoryManagerDeps): MemoryManager {
   // Evicted turns are buffered by the (synchronous) onEvict hook, then drained
   // asynchronously (extract + persist) after each ingest / on flush.
-  const evictedBuffer: { role: string; content: string }[] = [];
+  const evictedBuffer: { role: string; content: string; exchangeId?: string }[] = [];
   // Facts that were extracted but whose persist FAILED on a prior drain. They are re-persisted with
   // their ORIGINAL minted ids, so the upsert-on-id retry is genuinely idempotent. Re-queuing the raw
   // TURNS instead (and re-extracting) would mint BRAND-NEW ids → duplicate facts for every table that
@@ -112,7 +114,7 @@ export function createMemoryManager(deps: MemoryManagerDeps): MemoryManager {
   const hot = createHotMemory({
     ...(deps.hotOptions ?? {}),
     onEvict: (t: HotTurn) => {
-      evictedBuffer.push({ role: t.role, content: typeof t.content === "string" ? t.content : JSON.stringify(t.content) });
+      evictedBuffer.push({ role: t.role, content: typeof t.content === "string" ? t.content : JSON.stringify(t.content), ...(t.exchangeId ? { exchangeId: t.exchangeId } : {}) });
     },
   });
 
@@ -132,9 +134,17 @@ export function createMemoryManager(deps: MemoryManagerDeps): MemoryManager {
 
     if (evictedBuffer.length === 0) return;
     const turns = evictedBuffer.splice(0, evictedBuffer.length); // take the batch
-    let facts: AnyFact[];
+    const groups: { role: string; content: string }[][] = [];
+    let lastExchangeId: string | undefined;
+    for (const turn of turns) {
+      const content = { role: turn.role, content: turn.content };
+      if (turn.exchangeId && turn.exchangeId === lastExchangeId) groups[groups.length - 1]!.push(content);
+      else groups.push([content]);
+      lastExchangeId = turn.exchangeId;
+    }
+    const facts: AnyFact[] = [];
     try {
-      facts = await deps.extractor.extract({ session_id: deps.context.sessionId, turns });
+      for (const group of groups) facts.push(...(await deps.extractor.extract({ session_id: deps.context.sessionId, turns: group })));
     } catch (err) {
       evictedBuffer.unshift(...turns); // extraction failed → re-queue turns (NO ids minted yet, safe)
       throw err;
@@ -153,7 +163,7 @@ export function createMemoryManager(deps: MemoryManagerDeps): MemoryManager {
   return {
     hot,
     async ingest(turn: IngestTurn): Promise<void> {
-      hot.add({ timestamp: turn.timestamp, role: turn.role, content: turn.content });
+      hot.add({ timestamp: turn.timestamp, role: turn.role, content: turn.content, ...(turn.exchangeId ? { exchangeId: turn.exchangeId } : {}) });
       await drain();
     },
     async flush(): Promise<void> {
