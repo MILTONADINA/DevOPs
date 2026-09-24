@@ -137,6 +137,7 @@ describe("shadow observer", () => {
           calls.push([org, project, names]);
           return [{ superseded: "oldFn", supersededBy: "newFn" }];
         },
+        findFreshSuperseded: async () => [],
       },
     });
     const event = { conversationId: ID, orgId: "org", keyId: "key", projectScopeId: "org/orion", query: "q", assistant: "a" };
@@ -144,8 +145,35 @@ describe("shadow observer", () => {
     await observe({ ...event, exchangeId: "new-exchange" });
     await observe({ ...event, exchangeId: "ambiguous-exchange" });
     expect(calls).toContainEqual(["org", ID, "orion", ["old-exchange", "new-exchange"]]);
-    expect(metrics[2]?.supersededSelectedCount).toBe(2);
+    expect(metrics[2]?.candidateSupersededExchangeCount).toBe(1);
     expect(JSON.stringify(metrics)).not.toContain("oldFn");
     expect(JSON.stringify(metrics)).not.toContain("newFn");
+  });
+
+  test("counts a fresh rename before graph promotion without treating both turns as deletable", async () => {
+    const metrics: ShadowMetric[] = [];
+    const observe = createShadowObserver(encoder, (metric) => metrics.push(metric), {
+      supersession: {
+        resolveEntities: async () =>
+          new Map([
+            ["old-exchange", "oldFn"],
+            ["new-exchange", "newFn"],
+          ]),
+        findFunctionSuperseded: async () => [],
+        findFreshSuperseded: async (_org, _session, _project, exchanges) => {
+          if (exchanges.includes("new-exchange")) {
+            expect(exchanges).toEqual(["old-exchange", "new-exchange"]);
+            return [{ superseded: "oldFn", supersededBy: "newFn" }];
+          }
+          return [];
+        },
+      },
+    });
+    const event = { conversationId: ID, orgId: "org", keyId: "key", query: "q", assistant: "a" };
+    await observe({ ...event, exchangeId: "old-exchange" });
+    await observe({ ...event, exchangeId: "new-exchange" });
+    await observe({ ...event, exchangeId: "third-exchange" });
+    expect(metrics[2]?.selectedCount).toBe(4);
+    expect(metrics[2]?.candidateSupersededExchangeCount).toBe(1);
   });
 });

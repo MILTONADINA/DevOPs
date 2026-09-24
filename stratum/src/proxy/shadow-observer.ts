@@ -21,12 +21,14 @@ export interface ShadowMetric {
   candidateCount: number;
   selectedCount: number;
   prunedCount: number;
-  supersededSelectedCount: number;
+  /** Candidate exchanges only; a fact does not prove that a whole turn is deletable. */
+  candidateSupersededExchangeCount: number;
 }
 
 export interface ShadowSupersessionDeps {
   resolveEntities: (orgId: string, sessionId: string, projectScope: string | null, exchangeIds: string[]) => Promise<Map<string, string>>;
   findFunctionSuperseded: (orgId: string, projectScope: string | null, names: string[]) => Promise<{ superseded: string; supersededBy: string }[]>;
+  findFreshSuperseded: (orgId: string, sessionId: string, projectScope: string | null, exchangeIds: string[]) => Promise<{ superseded: string; supersededBy: string }[]>;
 }
 
 /** In-memory, bounded observer. Each trusted conversation has its own history. */
@@ -62,21 +64,25 @@ export function createShadowObserver(
         const query = input.query.slice(0, 1200);
         const assistant = input.assistant.slice(0, 1200);
         const { decision, selectedTurns } = await current.manager.select(query, now(), scopeId);
-        let supersededSelectedCount = 0;
+        let candidateSupersededExchangeCount = 0;
         if (options.supersession) {
           const projectScope = input.projectScopeId === undefined ? null : input.projectScopeId.startsWith(`${input.orgId}/`) ? input.projectScopeId.slice(input.orgId.length + 1) : "";
           if (projectScope !== null && !validProjectScope(projectScope)) throw new Error("invalid shadow project binding");
           const exchangeIds = [...new Set(selectedTurns.map((turn) => turn.exchangeId).filter((id): id is string => id !== undefined))];
           if (exchangeIds.length > 0) {
             const entities = await options.supersession.resolveEntities(input.orgId, input.conversationId, projectScope, exchangeIds);
-            const selected = selectedTurns.map((turn, index) => {
-              const entity = turn.exchangeId ? entities.get(turn.exchangeId) : undefined;
-              return entity === undefined ? { index } : { index, entity };
+            const selectedExchanges = exchangeIds.flatMap((exchangeId) => {
+              const entity = entities.get(exchangeId);
+              return entity === undefined ? [] : [{ exchangeId, entity }];
             });
-            const names = [...new Set(selected.map((turn) => turn.entity).filter((name): name is string => name !== undefined))];
+            const names = [...new Set(selectedExchanges.map((exchange) => exchange.entity))];
             if (names.length > 0) {
-              const pairs = await options.supersession.findFunctionSuperseded(input.orgId, projectScope, names);
-              supersededSelectedCount = selected.length - suppressSuperseded(selected, pairs).length;
+              const [graphPairs, freshPairs] = await Promise.all([
+                options.supersession.findFunctionSuperseded(input.orgId, projectScope, names),
+                options.supersession.findFreshSuperseded(input.orgId, input.conversationId, projectScope, exchangeIds),
+              ]);
+              const selected = selectedExchanges.map((exchange, index) => ({ index, entity: exchange.entity }));
+              candidateSupersededExchangeCount = selected.length - suppressSuperseded(selected, [...graphPairs, ...freshPairs]).length;
             }
           }
         }
@@ -88,7 +94,7 @@ export function createShadowObserver(
           candidateCount: (decision.candidateIndices ?? []).length,
           selectedCount: decision.selectedIndices.length,
           prunedCount: decision.prunedIndices.length,
-          supersededSelectedCount,
+          candidateSupersededExchangeCount,
         });
         // Keep the current exchange and cap prior context without retaining unbounded raw turns.
         if (current.manager.hot.size() + 2 > maxTurns) current.manager = createContextManager(encoder);
