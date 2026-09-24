@@ -14,8 +14,11 @@ attestation nonce is GCM additional authenticated data as
 decryption failure. The nonce is an opaque challenge, not proof that the client
 verified an enclave. The client must validate AWS attestation and PCRs and wrap
 the session key to the attested enclave public key before sending anything.
-Those steps and enclave decryption are separate release gates. This module
-exports no decrypt operation and is not wired to the proxy.
+An offline RSA-OAEP-SHA-256 wrapping primitive now exists under
+`specs/tee/session-key-wrap.md`; it does not verify attestation. Verified
+attestation, enclave unwrapping/decryption, and independent review remain
+release gates. This module exports no decrypt operation and is not wired to
+the proxy.
 
 The earlier gateway sketch returned a plaintext API request to the parent,
 contradicting the enclave isolation claim. Integration must keep provider TLS

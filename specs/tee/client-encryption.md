@@ -2,7 +2,7 @@
 
 **Scope:** `plan.md` §6a and `stratum/docs/SECURITY.md` key hierarchy. This
 primitive remains disconnected from request forwarding until verified enclave
-attestation, key wrapping, and decryption are implemented and reviewed.
+attestation, matching key unwrapping, and decryption are implemented and reviewed.
 
 ## REQ-1 — Derive an isolated session key
 

@@ -1,10 +1,10 @@
 # SECURITY.md — ZK-Context and TEE Architecture
 
 **Status:** This is the target v0.7 architecture, not a current production
-guarantee. The offline client encryption primitive is implemented, but the
-proxy still supports plaintext requests. Enclave attestation, key wrapping,
-enclave decryption, and independent review are release gates before encrypted
-request forwarding can be enabled.
+guarantee. Offline client encryption and RSA-OAEP key wrapping primitives are
+implemented, but the proxy still supports plaintext requests. Verified enclave
+attestation, matching key unwrapping, enclave decryption, and independent review
+are release gates before encrypted request forwarding can be enabled.
 
 ## Security Philosophy
 
@@ -54,7 +54,9 @@ The offline client primitive uses HKDF-SHA256 with the fixed versioned salt
 message has a fresh 96-bit IV and authenticates
 `cq-attestation-nonce-v1:<nonce>` as additional data. The nonce does not prove
 attestation by itself; the client must verify AWS attestation and expected PCRs
-before sending a key or encrypted payload (ADR-0022).
+before sending a key or encrypted payload (ADR-0022). The offline wrapper
+accepts only DER SPKI RSA keys of at least 3072 bits and uses RSA-OAEP-SHA-256
+with `cq-sek-wrap-v1:<nonce>` as its label. It does not authenticate the key.
 
 **AES-256-GCM:** Authenticated encryption — provides both confidentiality and integrity. The authentication tag ensures that even if the ciphertext is tampered with in transit, decryption will fail.
 
