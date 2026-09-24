@@ -22,15 +22,38 @@ that its file exists. There is no supported automatic database reset command.
 
 ## Review a decision replacement
 
-When a newer TechDecision genuinely replaces an older one, record the exact
-decision UUIDs, operator identity, and concrete evidence through the local
-service-role RPC `review_tech_decision_supersession(match_org,
-match_project_scope, newer_id, older_id, reviewer, evidence)`. Both decisions
+When a newer TechDecision genuinely replaces an older one, collect both exact
+decision UUIDs and preview the pair with the local operator command:
+
+```sh
+npm run db:with-env -- npm run review:decision -- \
+  --org-id 'organization-uuid' --project-scope 'project-slug' \
+  --older-id 'old-decision-uuid' --newer-id 'new-decision-uuid'
+```
+
+Use `--unbound` in place of `--project-scope` for an explicitly unbound pair.
+The preview performs no write. Both decisions
 must be active in the same organization and project, and the newer one must
 have a later creation time. A shared domain or similar wording is insufficient
-evidence. The link and its review metadata cannot be edited after creation.
-Use the local service JWT from `npm run db:with-env` when calling the RPC;
-never put that JWT in a project file. Backups retain the original review record.
+evidence. After independently checking the replacement, supply a reviewer and
+at least 20 characters of concrete evidence on standard input, then add
+`--apply` to that command. The CLI does not echo the evidence or service JWT.
+For example, enter the evidence at a shell prompt and pipe it without putting
+its text in the command history:
+
+```sh
+IFS= read -r review_evidence
+printf '%s\n' "$review_evidence" | npm run db:with-env -- npm run review:decision -- \
+  --org-id 'organization-uuid' --project-scope 'project-slug' \
+  --older-id 'old-decision-uuid' --newer-id 'new-decision-uuid' \
+  --reviewer 'operator-name' --apply
+unset review_evidence
+```
+
+It calls `review_tech_decision_supersession` once and verifies the recorded
+link. The link and review metadata cannot be edited after creation. Backups
+retain the original review record. Never put the local service JWT in a
+project file.
 
 ## Back up one organization
 

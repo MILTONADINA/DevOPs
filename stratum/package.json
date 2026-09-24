@@ -46,6 +46,7 @@
     "audit:conflicts": "tsx scripts/audit-conflicts.ts",
     "backup": "tsx scripts/backup-org.ts",
     "restore": "tsx scripts/restore-org.ts",
+    "review:decision": "tsx scripts/review-decision.ts",
     "invoice": "tsx scripts/invoice.ts",
     "verify-billing": "tsx scripts/verify-billing.ts",
     "verify-stripe": "tsx scripts/verify-stripe.ts",
