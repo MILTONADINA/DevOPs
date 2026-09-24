@@ -28,6 +28,7 @@ import { scoreLongMemContexts } from "../evals/harness/longmemeval-scoring";
 import { gateScenario } from "../evals/harness/compare";
 import { evaluateSuite, renderReport } from "../evals/harness/report";
 import { DEFAULT_THRESHOLDS, type MetricScores, type ScenarioResult } from "../evals/harness/types";
+import { planFullLongMemEval } from "../evals/harness/published-coverage";
 import { loadLongMemEval, sampleLongMemQuestions, renderLongMemTurns, type LongMemQuestion } from "../evals/harness/longmemeval";
 
 function envInt(name: string, def: number): number {
@@ -58,7 +59,7 @@ function fmt(n: number): string {
 interface QOutcome {
   q: LongMemQuestion;
   reductionPct: number;
-  evidenceSurvival: number;
+  evidenceSurvival: number | undefined;
   pruned: MetricScores;
   baseline: MetricScores;
   prunedStd: MetricScores;
@@ -69,6 +70,7 @@ export async function main(): Promise<number> {
   const out = (s: string): void => {
     process.stdout.write(`${s}\n`);
   };
+  const full = process.env["EVAL_FULL_PUBLISHED"] === "1";
   const dir = join(process.cwd(), "evals", "datasets", "longmemeval");
   const haystack = join(dir, "longmemeval_s.json");
   const oracle = join(dir, "longmemeval_oracle.json");
@@ -82,22 +84,29 @@ export async function main(): Promise<number> {
     out("Refusing to emit fabricated scores. Exiting 1.");
     return 1;
   }
+  if (full && file !== haystack) {
+    out("Full LongMemEval requires the 500-question haystack, not the evidence-only oracle.");
+    return 1;
+  }
   const isOracle = file === oracle;
 
-  const nQ = envInt("LONGMEMEVAL_QUESTIONS", 8);
-  const lambdas = envFloatList("LONGMEMEVAL_LAMBDAS", [DEFAULT_KADANEDIAL.lambda]);
+  const nQ = full ? 500 : envInt("LONGMEMEVAL_QUESTIONS", 8);
+  const lambdas = full ? [DEFAULT_KADANEDIAL.lambda] : envFloatList("LONGMEMEVAL_LAMBDAS", [DEFAULT_KADANEDIAL.lambda]);
   const gateLambda = lambdas[0]!;
-  const horizonFrac = envFloat("LONGMEMEVAL_DECAY_HORIZON_FRAC", 0);
+  const horizonFrac = full ? 0 : envFloat("LONGMEMEVAL_DECAY_HORIZON_FRAC", 0);
   const repeats = envInt("LONGMEMEVAL_REPEATS", 1);
   const typesEnv = process.env["LONGMEMEVAL_TYPES"];
-  const types = typesEnv ? typesEnv.split(",").map((s) => s.trim()).filter(Boolean) : undefined;
+  const types = full ? undefined : typesEnv ? typesEnv.split(",").map((s) => s.trim()).filter(Boolean) : undefined;
 
-  const questions = sampleLongMemQuestions(loadLongMemEval(file), types ? { maxQuestions: nQ, types } : { maxQuestions: nQ });
+  const loaded = loadLongMemEval(file);
+  const coverage = full ? planFullLongMemEval(loaded) : undefined;
+  const questions = coverage?.questions ?? sampleLongMemQuestions(loaded, types ? { maxQuestions: nQ, types } : { maxQuestions: nQ });
   const callBudget = questions.length * 4 * repeats; // R × baseline and pruned answer+judge cycles
 
   out(`CQ Eval Suite — Tier-A LongMemEval (real ONNX encoder + ${provider.label} judge${provider.exploratory ? "; EXPLORATORY local-model result" : ""})`);
   out("=".repeat(68));
   out(`Source: ${isOracle ? "oracle (evidence-only — degenerate for pruning)" : "haystack longmemeval_s.json"}   Questions: ${questions.length}${types ? ` (types ${types.join(",")})` : ""}`);
+  if (coverage) out(`Full coverage: selected ${coverage.selected}/500; evidence-labeled ${coverage.labeled}; unlabeled ${coverage.unlabeled}.`);
   out(
     `GATE λ = ${gateLambda} (${horizonFrac > 0 ? `half-life ${((horizonFrac * -1) / Math.log2(gateLambda)).toFixed(2)}×span` : `half-life ${halfLifeHours(gateLambda).toFixed(1)}h`})   Decay: ${horizonFrac > 0 ? `SCALE-INVARIANT ${horizonFrac}×span (ADR-0015)` : "absolute per-hour"}`,
   );
@@ -117,7 +126,7 @@ export async function main(): Promise<number> {
 
   const outcomes: QOutcome[] = [];
   for (const q of questions) {
-    if (q.evidenceIndices.length === 0 || q.turns.length < 2) continue;
+    if (q.turns.length < 2) continue;
     const turnVecs = await encoder.encode(q.turns.map((t) => t.text));
     const [queryVec] = await encoder.encode([q.query]);
     if (!queryVec) continue;
@@ -134,14 +143,14 @@ export async function main(): Promise<number> {
     const selSet = new Set(sel);
     const prunedText = renderLongMemTurns(q.turns, sel);
     const reductionPct = fullText.length ? Math.round((1 - prunedText.length / fullText.length) * 100) : 0;
-    const evidenceSurvival = q.evidenceIndices.filter((i) => selSet.has(i)).length / q.evidenceIndices.length;
+    const evidenceSurvival = q.evidenceIndices.length ? q.evidenceIndices.filter((i) => selSet.has(i)).length / q.evidenceIndices.length : undefined;
 
     const scores = await scoreLongMemContexts(q.query, fullText, prunedText, answerer, judge, repeats);
     const { mean: pruned, std: prunedStd } = scores.pruned;
     const { mean: baseline, std: baselineStd } = scores.baseline;
     outcomes.push({ q, reductionPct, evidenceSurvival, pruned, baseline, prunedStd, baselineStd });
     out(
-      `  [${q.questionType.padEnd(26)}] kept ${sel.length}/${q.turns.length} (-${reductionPct}%)  evid ${(evidenceSurvival * 100).toFixed(0)}%  ` +
+        `  [${q.questionType.padEnd(26)}] kept ${sel.length}/${q.turns.length} (-${reductionPct}%)  evid ${evidenceSurvival === undefined ? "unlabeled" : `${(evidenceSurvival * 100).toFixed(0)}%`}  ` +
         `faith ${fmt(pruned.faithfulness)}/${fmt(baseline.faithfulness)}  relev ${fmt(pruned.answerRelevancy)}/${fmt(baseline.answerRelevancy)}`,
     );
   }
@@ -150,13 +159,18 @@ export async function main(): Promise<number> {
     out("No questions evaluated. Exiting 1 (no scored Tier-A outcomes).");
     return 1;
   }
+  if (coverage) out(`Full coverage scored: ${outcomes.length}/${coverage.selected}; evidence-labeled ${coverage.labeled}; unlabeled ${coverage.unlabeled}.`);
+  if (full && outcomes.length !== questions.length) {
+    out(`Full LongMemEval incomplete: scored ${outcomes.length}/${questions.length} selected questions.`);
+    return 1;
+  }
 
   const scenarioResults: ScenarioResult[] = outcomes.map((o, i) => ({
     tier: "A",
     name: `${o.q.questionType}#${i}`,
     pruned: o.pruned,
     baseline: o.baseline,
-    evidenceSurvival: o.evidenceSurvival,
+    ...(o.evidenceSurvival === undefined ? {} : { evidenceSurvival: o.evidenceSurvival }),
   }));
   const scenarios = scenarioResults.map((r) => gateScenario(r, DEFAULT_THRESHOLDS));
   const suite = { scenarios, golden: [] };
@@ -168,16 +182,17 @@ export async function main(): Promise<number> {
   out("Aggregate (gate config):");
   out(`  Faithfulness    pruned ${fmt(mean(outcomes.map((o) => o.pruned.faithfulness)))}  baseline ${fmt(mean(outcomes.map((o) => o.baseline.faithfulness)))}`);
   out(`  AnswerRelevancy pruned ${fmt(mean(outcomes.map((o) => o.pruned.answerRelevancy)))}  baseline ${fmt(mean(outcomes.map((o) => o.baseline.answerRelevancy)))}`);
-  out(`  Evidence survival ${(mean(outcomes.map((o) => o.evidenceSurvival)) * 100).toFixed(1)}%   mean context reduction ${Math.round(mean(outcomes.map((o) => o.reductionPct)))}%`);
+  const labeledSurvival = outcomes.map((o) => o.evidenceSurvival).filter((value): value is number => value !== undefined);
+  out(`  Evidence survival ${labeledSurvival.length ? `${(mean(labeledSurvival) * 100).toFixed(1)}%` : "unavailable"} (${labeledSurvival.length}/${outcomes.length} labeled)   mean context reduction ${Math.round(mean(outcomes.map((o) => o.reductionPct)))}%`);
   if (repeats > 1) {
     out(`  Judge noise (R=${repeats}, mean per-scenario std): faith pruned ${fmt(mean(outcomes.map((o) => o.prunedStd.faithfulness)))} / baseline ${fmt(mean(outcomes.map((o) => o.baselineStd.faithfulness)))}, relev pruned ${fmt(mean(outcomes.map((o) => o.prunedStd.answerRelevancy)))} / baseline ${fmt(mean(outcomes.map((o) => o.baselineStd.answerRelevancy)))}`);
   }
   out(`  Scenarios passing the COMPLETE gate: ${scenarios.filter((s) => s.passed).length}/${scenarios.length}`);
   out("");
-  out(`${provider.exploratory ? "EXPLORATORY " : ""}${verdict.passed ? "PASS" : "FAIL"} — Tier-A LongMemEval ${provider.exploratory ? "local-model check" : "gate"} (sampled).`);
+  out(`${provider.exploratory ? "EXPLORATORY " : ""}${verdict.passed ? "PASS" : "FAIL"} — Tier-A LongMemEval ${provider.exploratory ? "local-model check" : "gate"} (${full ? "full" : "sampled"}).`);
   if (provider.exploratory) out("Local-model results do not satisfy the documented Claude Haiku release gate; published benchmark coverage remains open.");
   if (isOracle) out("NOTE: oracle is evidence-only (little to prune) — run on longmemeval_s.json for the real pruning signal.");
-  return verdict.passed ? 0 : 1;
+  return verdict.passed && (!full || !provider.exploratory) ? 0 : 1;
 }
 
 const entryPath = process.argv[1] ?? "";

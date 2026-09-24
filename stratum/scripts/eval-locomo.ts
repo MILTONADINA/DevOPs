@@ -35,6 +35,7 @@ import { summarizeScores } from "../evals/harness/aggregate";
 import { gateScenario } from "../evals/harness/compare";
 import { evaluateSuite, renderReport } from "../evals/harness/report";
 import { DEFAULT_THRESHOLDS, type MetricScores, type ScenarioResult } from "../evals/harness/types";
+import { planFullLocomo } from "../evals/harness/published-coverage";
 import {
   loadLocomo,
   sampleQuestions,
@@ -81,7 +82,7 @@ interface LambdaOutcome {
   prunedText: string;
   reductionPct: number;
   /** evidence turns that survived pruning / total resolved evidence turns. */
-  evidenceSurvival: number;
+  evidenceSurvival: number | undefined;
   /** Mean pruned scores over the R repeats (the noise-damped point estimate). */
   pruned: MetricScores;
   /** Per-metric sample std of the pruned scores across the R repeats (judge noise; PB-42). */
@@ -141,7 +142,7 @@ export async function runQuestion(
     const prunedText = renderTurns(conv.turns, sel);
     const reductionPct = fullText.length ? Math.round((1 - prunedText.length / fullText.length) * 100) : 0;
     const survived = ev.indices.filter((i) => selSet.has(i)).length;
-    const evidenceSurvival = ev.indices.length ? survived / ev.indices.length : 1;
+    const evidenceSurvival = ev.indices.length > 0 && ev.unresolved.length === 0 ? survived / ev.indices.length : undefined;
 
     const sig = sel.join(",");
     let summary = cache.get(sig);
@@ -172,26 +173,30 @@ export async function main(): Promise<number> {
     return 1;
   }
 
-  const nConv = envInt("LOCOMO_CONVERSATIONS", 2);
-  const nQ = envInt("LOCOMO_QUESTIONS", 6);
-  const cats = envIntList("LOCOMO_CATEGORIES", [1, 2, 3, 4]);
-  const lambdas = envFloatList("LOCOMO_LAMBDAS", [DEFAULT_KADANEDIAL.lambda]);
+  const full = process.env["EVAL_FULL_PUBLISHED"] === "1";
+  const nConv = full ? 10 : envInt("LOCOMO_CONVERSATIONS", 2);
+  const nQ = full ? Number.MAX_SAFE_INTEGER : envInt("LOCOMO_QUESTIONS", 6);
+  const cats = full ? [1, 2, 3, 4] : envIntList("LOCOMO_CATEGORIES", [1, 2, 3, 4]);
+  const lambdas = full ? [DEFAULT_KADANEDIAL.lambda] : envFloatList("LOCOMO_LAMBDAS", [DEFAULT_KADANEDIAL.lambda]);
   const gateLambda = lambdas[0]!;
   // ADR-0015 scale-invariant decay: when >0, decayHorizonSeconds = frac × the
   // conversation's own span (per-hour absolute decay otherwise). 0 = unset.
-  const horizonFrac = envFloat("LOCOMO_DECAY_HORIZON_FRAC", 0);
+  const horizonFrac = full ? 0 : envFloat("LOCOMO_DECAY_HORIZON_FRAC", 0);
   // PB-42 noise damping: score each scenario R times + average (judge/answerer are
   // stochastic; ADR-0015 saw baseline relevancy swing 0–1 at R=1). R=1 ⇒ single shot.
   const repeats = envInt("LOCOMO_REPEATS", 1);
 
-  const conversations = loadLocomo(file).slice(0, nConv);
-  const plan = conversations.map((c) => ({ c, qs: sampleQuestions(c, { maxQuestions: nQ, categories: cats }) }));
+  const loaded = loadLocomo(file);
+  const coverage = full ? planFullLocomo(loaded) : undefined;
+  const conversations = full ? loaded : loaded.slice(0, nConv);
+  const plan = coverage?.plan ?? conversations.map((c) => ({ c, qs: sampleQuestions(c, { maxQuestions: nQ, categories: cats }) }));
   const totalQ = plan.reduce((a, p) => a + p.qs.length, 0);
   const callBudget = totalQ * repeats * (2 + 2 * lambdas.length); // ×R repeats (PB-42); baseline + per-λ each (answer+judge)
 
   out(`CQ Eval Suite — Tier-A LoCoMo (real ONNX encoder + ${provider.label} judge${provider.exploratory ? "; EXPLORATORY local-model result" : ""})`);
   out("=".repeat(64));
-  out(`Conversations: ${conversations.length}/10   Questions/conv: ${nQ} (cats ${cats.join(",")})   Sampled questions: ${totalQ}`);
+  out(full ? `Conversations: ${conversations.length}/10   Selected questions: ${totalQ} (cats ${cats.join(",")})` : `Conversations: ${conversations.length}/10   Questions/conv: ${nQ} (cats ${cats.join(",")})   Sampled questions: ${totalQ}`);
+  if (coverage) out(`Full coverage: selected ${coverage.selected}/1540; evidence-labeled ${coverage.labeled}; unlabeled ${coverage.unlabeled}.`);
   out(
     `λ characterized: [${lambdas.join(", ")}]   GATE λ = ${gateLambda} (${horizonFrac > 0 ? `half-life ${((horizonFrac * -1) / Math.log2(gateLambda)).toFixed(2)}×span` : `half-life ${halfLifeHours(gateLambda).toFixed(1)}h`})`,
   );
@@ -230,7 +235,7 @@ export async function main(): Promise<number> {
       const gl = o.byLambda[0]!;
       out(
         `    [cat${o.category} s${o.earliestSession}] kept ${gl.selectedIndices.length}/${o.fullTurns} (-${gl.reductionPct}%)  ` +
-          `evid ${(gl.evidenceSurvival * 100).toFixed(0)}%  faith ${fmt(gl.pruned.faithfulness)}/${fmt(o.baseline.faithfulness)}  ` +
+          `evid ${gl.evidenceSurvival === undefined ? "unlabeled" : `${(gl.evidenceSurvival * 100).toFixed(0)}%`}  faith ${fmt(gl.pruned.faithfulness)}/${fmt(o.baseline.faithfulness)}  ` +
           `relev ${fmt(gl.pruned.answerRelevancy)}/${fmt(o.baseline.answerRelevancy)}  — ${o.query.slice(0, 50)}`,
       );
     }
@@ -240,6 +245,11 @@ export async function main(): Promise<number> {
     out("No questions evaluated. Exiting 1 (no scored Tier-A outcomes).");
     return 1;
   }
+  if (coverage) out(`Full coverage scored: ${outcomes.length}/${coverage.selected}; evidence-labeled ${coverage.labeled}; unlabeled ${coverage.unlabeled}.`);
+  if (full && outcomes.length !== totalQ) {
+    out(`Full LoCoMo incomplete: scored ${outcomes.length}/${totalQ} selected questions.`);
+    return 1;
+  }
 
   // --- Gate on the FIRST λ (the documented shipping config). ---
   const scenarioResults: ScenarioResult[] = outcomes.map((o, i) => ({
@@ -247,7 +257,7 @@ export async function main(): Promise<number> {
     name: `${o.conv}#${i}`,
     pruned: o.byLambda[0]!.pruned,
     baseline: o.baseline,
-    evidenceSurvival: o.byLambda[0]!.evidenceSurvival, // PB-39 co-gate (ADR-0016)
+    ...(o.byLambda[0]!.evidenceSurvival === undefined ? {} : { evidenceSurvival: o.byLambda[0]!.evidenceSurvival }), // PB-39 co-gate (ADR-0016)
   }));
   const scenarios = scenarioResults.map((r) => gateScenario(r, DEFAULT_THRESHOLDS));
   const suite = { scenarios, golden: [] };
@@ -266,7 +276,8 @@ export async function main(): Promise<number> {
   out("Aggregate (gate λ):");
   out(`  Faithfulness    pruned ${fmt(meanFaithP)}  baseline ${fmt(meanFaithB)}  degradation ${fmt(meanFaithB - meanFaithP)}`);
   out(`  AnswerRelevancy pruned ${fmt(meanRelP)}  baseline ${fmt(meanRelB)}  degradation ${fmt(meanRelB - meanRelP)}`);
-  out(`  Evidence survival ${(mean(gate.map((g) => g.evidenceSurvival)) * 100).toFixed(1)}%   mean context reduction ${Math.round(mean(gate.map((g) => g.reductionPct)))}%`);
+  const labeledSurvival = gate.map((g) => g.evidenceSurvival).filter((value): value is number => value !== undefined);
+  out(`  Evidence survival ${labeledSurvival.length ? `${(mean(labeledSurvival) * 100).toFixed(1)}%` : "unavailable"} (${labeledSurvival.length}/${gate.length} labeled)   mean context reduction ${Math.round(mean(gate.map((g) => g.reductionPct)))}%`);
   out(`  Scenarios within threshold: ${scenarios.filter((s) => s.passed).length}/${scenarios.length}`);
   // Judge noise (PB-42): mean per-scenario sample std across the R repeats. A wide std at
   // the ship gate means the averaged mean is not yet trustworthy → raise LOCOMO_REPEATS.
@@ -286,10 +297,11 @@ export async function main(): Promise<number> {
     out("λ sweep (evidence survival / context reduction / mean degradation) — characterization, NOT auto-tuning:");
     lambdas.forEach((lambda, li) => {
       const col = outcomes.map((o) => o.byLambda[li]!);
+      const labeled = col.map((c) => c.evidenceSurvival).filter((value): value is number => value !== undefined);
       const fDeg = mean(outcomes.map((o, k) => o.baseline.faithfulness - col[k]!.pruned.faithfulness));
       const rDeg = mean(outcomes.map((o, k) => o.baseline.answerRelevancy - col[k]!.pruned.answerRelevancy));
       out(
-        `  λ=${lambda} (½-life ${halfLifeHours(lambda).toFixed(0)}h):  evid ${(mean(col.map((c) => c.evidenceSurvival)) * 100).toFixed(0)}%  ` +
+        `  λ=${lambda} (½-life ${halfLifeHours(lambda).toFixed(0)}h):  evid ${labeled.length ? `${(mean(labeled) * 100).toFixed(0)}%` : "unavailable"}  ` +
           `reduction ${Math.round(mean(col.map((c) => c.reductionPct)))}%  ΔFaith ${fmt(fDeg)}  ΔRelev ${fmt(rDeg)}`,
       );
     });
@@ -304,7 +316,7 @@ export async function main(): Promise<number> {
         "Remediation is calibration (a horizon-aware / near-1 λ for long-term memory) or supersession (ADR-0011), validated by re-running this gate — NOT tuning to gold (forbidden over-fitting).",
     );
   }
-  return verdict.passed ? 0 : 1;
+  return verdict.passed && (!full || !provider.exploratory) ? 0 : 1;
 }
 
 const entryPath = process.argv[1] ?? "";

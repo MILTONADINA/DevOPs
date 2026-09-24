@@ -7,9 +7,8 @@
  * so they are fully testable with deterministic fakes; the deterministic gate
  * they feed (compare/golden/report) needs neither judge nor datasets.
  *
- * The CLI entry runs the offline Tier-C gate before judged Tier-B. It exits
- * nonzero when any required gate is missing or red. Full Tier-A orchestration
- * is still open, so the default command cannot report release readiness.
+ * The CLI entry runs Tier-C, judged Tier-B, then both full published Tier-A
+ * gates. It exits nonzero when any required gate is missing or red.
  *
  * Usage:
  *   npm run test:eval                        # full suite
@@ -114,7 +113,7 @@ async function datasetsPresent(datasetsDir: string): Promise<boolean> {
  * CLI entry (`npm run test:eval`). Runs the real Tier-B accuracy suite when the
  * dataset + a judged provider are present. Tier-C always runs first; absent
  * inputs and failing gates exit nonzero. `--fast` covers Tier-B and Tier-C;
- * default full mode stays red until Tier-A is integrated.
+ * default full mode also requires both published Tier-A gates.
  *
  * @param argv - CLI args (only --fast is supported).
  * @returns process exit code.
@@ -166,11 +165,46 @@ export async function main(argv: string[] = [], runTierC: () => Promise<number> 
       }
       const encoder = createOnnxEncoder({ cacheDir: join(process.cwd(), "models") });
       const { suite, verdict } = await runDevSuite(scenarios, encoder, createClaudeAnswerer(provider.completion), createLlmJudge(provider.completion), EVAL_NOW_SECONDS);
+      if (suite.scenarios.length === 0) {
+        out("Tier-B produced zero scored scenarios; refusing a vacuous full-suite pass.");
+        return 1;
+      }
       out(renderReport(suite, verdict));
       out(`\n${verdict.passed ? "PASS" : "FAIL"} — ${suite.scenarios.filter((s) => s.passed).length}/${suite.scenarios.length} Tier-B scenarios; Tier-C passed.`);
-      if (!argv.includes("--fast")) out("Full eval remains incomplete: published Tier-A judged benchmarks are not orchestrated by test:eval.");
       if (provider.exploratory) out("Local-model judgment is exploratory and does not satisfy the Claude release gate.");
-      return verdict.passed && argv.includes("--fast") && !provider.exploratory ? 0 : 1;
+      if (!verdict.passed) return 1;
+      if (argv.includes("--fast")) return provider.exploratory ? 1 : 0;
+
+      const priorFull = process.env["EVAL_FULL_PUBLISHED"];
+      process.env["EVAL_FULL_PUBLISHED"] = "1";
+      let gate = "LoCoMo";
+      try {
+        const { main: runLocomo } = await import("../../scripts/eval-locomo");
+        const locomoCode = await runLocomo();
+        if (locomoCode !== 0) {
+          out("Full eval failed: LoCoMo Tier-A gate did not pass.");
+          return 1;
+        }
+        gate = "LongMemEval";
+        const { main: runLongMemEval } = await import("../../scripts/eval-longmemeval");
+        const longMemCode = await runLongMemEval();
+        if (longMemCode !== 0) {
+          out("Full eval failed: LongMemEval Tier-A gate did not pass.");
+          return 1;
+        }
+      } catch (error) {
+        out(`${gate} Tier-A gate errored: ${error instanceof Error ? error.message : String(error)}`);
+        return 1;
+      } finally {
+        if (priorFull === undefined) delete process.env["EVAL_FULL_PUBLISHED"];
+        else process.env["EVAL_FULL_PUBLISHED"] = priorFull;
+      }
+      if (provider.exploratory) {
+        out("Exploratory full eval completed; release gate remains open.");
+        return 1;
+      }
+      out("Full eval: Tier-C, Tier-B, LoCoMo, and LongMemEval passed.");
+      return 0;
     } catch (e) {
       out(`eval run errored: ${(e as Error).message}`);
       return 1;
