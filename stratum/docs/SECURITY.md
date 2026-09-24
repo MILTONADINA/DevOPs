@@ -1,5 +1,11 @@
 # SECURITY.md — ZK-Context and TEE Architecture
 
+**Status:** This is the target v0.7 architecture, not a current production
+guarantee. The offline client encryption primitive is implemented, but the
+proxy still supports plaintext requests. Enclave attestation, key wrapping,
+enclave decryption, and independent review are release gates before encrypted
+request forwarding can be enabled.
+
 ## Security Philosophy
 
 CQ's core security promise is: **raw customer context never transits the network in plaintext, and CQ operators cannot read it even in principle.**
@@ -42,6 +48,13 @@ Encrypted context spans → sent to CQ Proxy
 **Master Key:** Stored on the client device only. Derived from the customer's credentials using Argon2id. CQ never sees this key.
 
 **Session Encryption Key:** Derived per-session from the master key using HKDF. A new SEK is derived for each Claude Code session. Compromise of one session's SEK does not affect other sessions.
+
+The offline client primitive uses HKDF-SHA256 with the fixed versioned salt
+`cq-zk-context-hkdf-v1` and info `cq-session-<session-id>`. Each AES-256-GCM
+message has a fresh 96-bit IV and authenticates
+`cq-attestation-nonce-v1:<nonce>` as additional data. The nonce does not prove
+attestation by itself; the client must verify AWS attestation and expected PCRs
+before sending a key or encrypted payload (ADR-0022).
 
 **AES-256-GCM:** Authenticated encryption — provides both confidentiality and integrity. The authentication tag ensures that even if the ciphertext is tampered with in transit, decryption will fail.
 
@@ -102,8 +115,8 @@ Client                          CQ Proxy                    Nitro Enclave
   │                                │                     [Decrypt SEK]
   │                                │                     [Decrypt context]
   │                                │                     [Forward to API]
-  │                                │◀─── plaintext API request ───│
-  │                                │──── forward to Anthropic API ▶
+  │                                │◀── opaque TLS frames ────────│
+  │                                │──── relay TLS frames ────────▶ Anthropic API
 ```
 
 ### PCR Measurements
@@ -124,7 +137,7 @@ The enclave runs a minimal Go application (chosen for small binary size and fast
 
 ```go
 // Pseudocode — actual implementation in rust/enclave/
-func handleRequest(req EncryptedPayload) (APIRequest, error) {
+func handleRequest(req EncryptedPayload) (EncryptedResponse, error) {
     // 1. Verify the attestation is for this enclave
     if !verifyAttestation(req.AttestationNonce) {
         return nil, ErrInvalidAttestation
@@ -142,14 +155,22 @@ func handleRequest(req EncryptedPayload) (APIRequest, error) {
         return nil, ErrContextDecryption
     }
 
-    // 4. Build the Anthropic API request
+    // 4. Build the Anthropic API request inside the enclave
     apiReq := buildAPIRequest(plaintext, req.SessionMetadata)
 
-    // 5. Return — plaintext stays in enclave memory only
-    // It is never written to disk, logged, or sent to the parent instance
-    return apiReq, nil
+    // 5. Terminate provider TLS inside the enclave via an opaque vsock relay.
+    // The parent sees only TLS frames, never apiReq or TLS session keys.
+    providerResp := sendProviderRequestOverEnclaveTLS(apiReq)
+    return encryptResponseForClient(providerResp, sek), nil
 }
 ```
+
+Nitro enclaves have no external network interface; a vsock relay on the parent
+provides transport. The enclave must validate the provider certificate and
+hold the TLS session keys itself, then encrypt the provider response for the
+client before returning it to the parent. This is an integration requirement,
+not an implemented feature. Returning a plaintext request or response to the
+parent would break the stated trust boundary.
 
 The enclave has no logging. Errors are returned as typed error codes only — no error messages that could leak context fragments.
 
