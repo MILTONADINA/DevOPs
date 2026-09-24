@@ -1,23 +1,22 @@
 /**
- * Client-Side Encryption — AES-256-GCM (Phase 4 / v0.7.x hook-points).
+ * Client-side encryption primitive — AES-256-GCM (Phase 4 / v0.7.x).
  *
  * Phase 4+: encrypts pruned context spans client-side before transmission to
  * the CQ proxy; the proxy only ever decrypts inside the AWS Nitro TEE boundary
  * (docs/SECURITY.md). Session key derived via HKDF-SHA256 from the customer's
  * master key.
  *
- * STATUS — INTERFACE STUB ONLY (plan §3b: "document the interface; don't
- * implement yet"). This is a typed forward-declaration so v0.4.x pruner code
- * has stable Phase-4 hook-points. The functions THROW (not return fake data):
- * shipping placeholder crypto that silently "works" would be a critical
- * security defect. Real implementation requires an ADR + security review and is
- * gated on the v0.7.x ZK-Context/TEE work (AWS Nitro hardware).
+ * Offline primitive only. No request path calls it. Enclave attestation, key
+ * wrapping, and enclave decryption remain separate release gates; a nonce
+ * string alone does not prove attestation. See ADR-0022.
  *
  * SECURITY (binding when implemented, per stratum CLAUDE.md + docs/SECURITY.md):
  *   - AES-256-GCM only; per-session key via HKDF-SHA256 from the master key.
- *   - The TEE attestation document MUST be verified before any decryption.
+ *   - The caller MUST verify TEE attestation before transmitting a key or payload.
  *   - Never log decrypted context outside the TEE boundary.
  */
+
+import { createCipheriv, hkdfSync, randomBytes } from "node:crypto";
 
 /** Encrypted payload shape (mirrors src/types/proxy.ts EncryptedPayload). */
 export interface EncryptedPayload {
@@ -31,32 +30,43 @@ export interface EncryptedPayload {
   attestation_nonce: string;
 }
 
-const NOT_IMPLEMENTED =
-  "client-side encryption is a Phase 4 (v0.7.x) hook-point — interface only, " +
-  "not implemented. Requires an ADR + security review + AWS Nitro TEE. " +
-  "See docs/SECURITY.md. Refusing to return placeholder crypto.";
+const HKDF_SALT = Buffer.from("cq-zk-context-hkdf-v1", "utf8");
+const AAD_PREFIX = "cq-attestation-nonce-v1:";
 
 /**
  * Derive a per-session AES-256 key from the customer master key via HKDF-SHA256.
  *
- * @param _masterKey - the customer's master key bytes.
- * @param _sessionId - the session id used as HKDF info/salt context.
+ * @param masterKey - the customer's 32-byte master key, held only on the client.
+ * @param sessionId - the unique session id used as HKDF info context.
  * @returns the derived 256-bit session key.
- * @throws ALWAYS — Phase 4 interface stub (see file header).
+ * @throws on invalid key or session identity.
  */
-export function deriveSessionKey(_masterKey: Uint8Array, _sessionId: string): Promise<Uint8Array> {
-  return Promise.reject(new Error(NOT_IMPLEMENTED));
+export async function deriveSessionKey(masterKey: Uint8Array, sessionId: string): Promise<Uint8Array> {
+  if (masterKey.length !== 32) throw new Error("client encryption requires a 32-byte master key");
+  if (sessionId.trim() === "") throw new Error("client encryption requires a nonempty session ID");
+  return new Uint8Array(hkdfSync("sha256", masterKey, HKDF_SALT, Buffer.from(`cq-session-${sessionId}`, "utf8"), 32));
 }
 
 /**
  * Encrypt pruned context spans for transmission (AES-256-GCM).
  *
- * @param _plaintext - the serialized pruned context.
- * @param _sessionKey - the HKDF-derived session key.
- * @param _attestationNonce - nonce from the verified TEE attestation.
+ * @param plaintext - the serialized pruned context.
+ * @param sessionKey - the HKDF-derived 32-byte session key.
+ * @param attestationNonce - opaque nonce from a separately verified TEE attestation.
  * @returns the {@link EncryptedPayload}.
- * @throws ALWAYS — Phase 4 interface stub (see file header).
+ * @throws on invalid key or nonce.
  */
-export function encryptSpans(_plaintext: string, _sessionKey: Uint8Array, _attestationNonce: string): Promise<EncryptedPayload> {
-  return Promise.reject(new Error(NOT_IMPLEMENTED));
+export async function encryptSpans(plaintext: string, sessionKey: Uint8Array, attestationNonce: string): Promise<EncryptedPayload> {
+  if (sessionKey.length !== 32) throw new Error("client encryption requires a 32-byte session key");
+  if (attestationNonce.trim() === "") throw new Error("client encryption requires a nonempty attestation nonce");
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", sessionKey, iv, { authTagLength: 16 });
+  cipher.setAAD(Buffer.from(`${AAD_PREFIX}${attestationNonce}`, "utf8"));
+  const ciphertext = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
+  return {
+    iv: Buffer.from(iv).toString("base64"),
+    ciphertext: ciphertext.toString("base64"),
+    auth_tag: Buffer.from(cipher.getAuthTag()).toString("base64"),
+    attestation_nonce: attestationNonce,
+  };
 }
