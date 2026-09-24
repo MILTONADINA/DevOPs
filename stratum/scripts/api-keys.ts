@@ -9,7 +9,6 @@
  *   npm run api-keys -- --org-id <uuid> --revoke <key-id>
  */
 
-import "dotenv/config";
 import { createClient } from "@supabase/supabase-js";
 
 interface Args {
@@ -35,6 +34,7 @@ interface KeyRow {
   created_at: string;
   last_used: string | null;
   is_active: boolean;
+  project_scope: string | null;
 }
 
 export async function main(argv: string[] = process.argv.slice(2)): Promise<number> {
@@ -65,7 +65,7 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
   }
 
   // --list (never selects key_hash).
-  const { data, error } = await client.from("api_keys").select("id, name, created_at, last_used, is_active").eq("org_id", args.orgId).order("created_at", { ascending: false });
+  const { data, error } = await client.from("api_keys").select("id, name, created_at, last_used, is_active, project_scope").eq("org_id", args.orgId).order("created_at", { ascending: false });
   if (error) throw new Error(`list failed: ${error.message}`);
   const rows = (data ?? []) as KeyRow[];
   out(`API keys for org ${args.orgId}`);
@@ -75,7 +75,9 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
     return 0;
   }
   for (const r of rows) {
-    out(`  ${r.is_active ? "●" : "○"} ${r.id}  ${r.name}  (created ${r.created_at}${r.last_used ? `, last used ${r.last_used}` : ""})${r.is_active ? "" : "  [revoked]"}`);
+    out(
+      `  ${r.is_active ? "●" : "○"} ${r.id}  ${r.name}  [project ${r.project_scope ?? "unbound"}]  (created ${r.created_at}${r.last_used ? `, last used ${r.last_used}` : ""})${r.is_active ? "" : "  [revoked]"}`,
+    );
   }
   return 0;
 }

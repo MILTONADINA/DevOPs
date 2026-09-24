@@ -60,6 +60,8 @@ export interface TokenCountResult {
 /** The trusted organization and final text turn handed to local memory extraction. */
 export interface MessageMemoryEvent {
   orgId: string;
+  /** Authenticated organization/project binding; never supplied by the request body. */
+  projectScopeId?: string;
   model: string;
   turns: { role: "user" | "assistant"; content: string }[];
 }

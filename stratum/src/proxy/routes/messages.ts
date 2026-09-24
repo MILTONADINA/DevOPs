@@ -34,7 +34,7 @@ function recordMemorySafe(deps: MessagesDeps, request: FastifyRequest, body: Mes
   const assistantText = textContent((response as { content?: unknown } | null)?.content);
   if (!userText || !assistantText) return;
   try {
-    const task = deps.recordMemory({ orgId, model: body.model,
+    const task = deps.recordMemory({ orgId, ...(request.projectScopeId ? { projectScopeId: request.projectScopeId } : {}), model: body.model,
       turns: [{ role: "user", content: userText }, { role: "assistant", content: assistantText }] });
     pending.add(task);
     void task.catch((error: unknown) => logger.error({ err: (error as Error).message }, "memory write failed (non-blocking)"))
