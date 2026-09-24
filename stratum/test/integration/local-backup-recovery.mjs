@@ -25,6 +25,7 @@ const edge = randomUUID();
 const filePath = `src/local-recovery-${org}.ts`;
 const backupPath = join(process.cwd(), "backups", `local-check-${org}.backup.json`);
 const incompleteBackupPath = join(process.cwd(), "backups", `local-check-${org}-incomplete.backup.json`);
+const foreignBackupPath = join(process.cwd(), "backups", `local-check-${org}-foreign.backup.json`);
 const emptyLinkBackupPath = join(process.cwd(), "backups", `local-check-${org}-empty-links.backup.json`);
 const overridePath = join(process.cwd(), "backups", `local-check-${org}.config.txt`);
 
@@ -114,6 +115,15 @@ try {
   }
   const stillPresent = checked(await db.from("organizations").select("id").eq("id", org).single(), "check incomplete restore made no write");
   if (stillPresent.id !== org || omitted.length !== 1) throw new Error("incomplete restore changed its source organization");
+  writeFileSync(foreignBackupPath, JSON.stringify({ ...backup, tables: {
+    ...backup.tables, audit_statuses: backup.tables.audit_statuses.map((row) => ({ ...row, org_id: randomUUID() })),
+  } }));
+  const foreignRestore = spawnSync(resolve("node_modules/.bin/tsx"), [resolve("scripts/restore-org.ts"), "--file", foreignBackupPath], {
+    cwd: process.cwd(), env: process.env, encoding: "utf8", timeout: 30_000,
+  });
+  if (foreignRestore.error || foreignRestore.status !== 1 || !foreignRestore.stdout.includes("backup table audit_statuses organization mismatch")) {
+    throw new Error(`foreign organization backup was not rejected before restore: ${foreignRestore.error?.message ?? foreignRestore.stdout}`);
+  }
 
   await clearRows();
   const missing = checked(await db.from("organizations").select("id").eq("id", org), "check deleted org");
@@ -145,6 +155,6 @@ try {
   failure = error;
 } finally {
   try { await clearRows(); } catch (error) { if (!failure) failure = error; }
-  for (const path of [backupPath, incompleteBackupPath, emptyLinkBackupPath, overridePath]) if (existsSync(path)) rmSync(path);
+  for (const path of [backupPath, incompleteBackupPath, foreignBackupPath, emptyLinkBackupPath, overridePath]) if (existsSync(path)) rmSync(path);
 }
 if (failure) throw failure;
