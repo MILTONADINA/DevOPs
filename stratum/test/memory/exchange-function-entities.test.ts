@@ -1,5 +1,10 @@
 import { describe, expect, test } from "vitest";
-import { createExchangeFunctionLookup, createFreshFunctionSupersessionLookup, createProjectFunctionSupersessionLookup } from "../../src/memory/warm/exchange-function-entities";
+import {
+  createExchangeFunctionLookup,
+  createFactExchangeCoverageLookup,
+  createFreshFunctionSupersessionLookup,
+  createProjectFunctionSupersessionLookup,
+} from "../../src/memory/warm/exchange-function-entities";
 import { makeFakeSupabase } from "./fake-supabase";
 
 describe("trusted exchange function lookup", () => {
@@ -27,6 +32,34 @@ describe("trusted exchange function lookup", () => {
   test("fails closed on database errors", async () => {
     const lookup = createExchangeFunctionLookup(makeFakeSupabase().client);
     await expect(lookup("org", "session", "orion", ["e1"])).rejects.toThrow(/find_exchange_function_entities/);
+  });
+
+  test("counts active facts per exact conversation exchange and rejects invalid scope", async () => {
+    const calls: Record<string, unknown>[] = [];
+    const { client } = makeFakeSupabase(
+      {},
+      {},
+      {
+        find_active_fact_exchanges: (args) => {
+          calls.push(args);
+          return [
+            { exchange_id: "old", fact_count: 2 },
+            { exchange_id: "new", fact_count: 1 },
+          ];
+        },
+      },
+    );
+    const lookup = createFactExchangeCoverageLookup(client);
+    expect(await lookup("org", "session", "orion", ["old", "new"])).toEqual(
+      new Map([
+        ["old", 2],
+        ["new", 1],
+      ]),
+    );
+    expect(calls).toEqual([{ match_org: "org", match_session: "session", match_project_scope: "orion", exchange_ids: ["old", "new"] }]);
+    expect(await lookup("org", "session", null, [])).toEqual(new Map());
+    await expect(lookup("org", "session", "ORION", ["old"])).rejects.toThrow(/project scope/i);
+    await expect(createFactExchangeCoverageLookup(makeFakeSupabase().client)("org", "session", "orion", ["old"])).rejects.toThrow(/find_active_fact_exchanges/);
   });
 
   test("uses the function-kind project relation for names with graph collisions", async () => {

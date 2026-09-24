@@ -39,7 +39,12 @@ import { createSupabaseMessageMemoryRecorder } from "./message-memory";
 import { createSupabaseConversationResolver } from "./conversation";
 import { createShadowObserver } from "./shadow-observer";
 import { createOnnxEncoder } from "../pruner/encoder";
-import { createExchangeFunctionLookup, createFreshFunctionSupersessionLookup, createProjectFunctionSupersessionLookup } from "../memory/warm/exchange-function-entities";
+import {
+  createExchangeFunctionLookup,
+  createFactExchangeCoverageLookup,
+  createFreshFunctionSupersessionLookup,
+  createProjectFunctionSupersessionLookup,
+} from "../memory/warm/exchange-function-entities";
 
 export interface StartEnv {
   CQ_COMMERCIAL?: string | undefined;
@@ -168,6 +173,7 @@ export function buildStartOptions(env: StartEnv, base: BuildProxyOptions, makeCl
             logger.info(metric, "shadow conversation selection");
           },
           {
+            factCoverage: createFactExchangeCoverageLookup(client),
             supersession: {
               resolveEntities: createExchangeFunctionLookup(client),
               findFunctionSuperseded: createProjectFunctionSupersessionLookup(client),
