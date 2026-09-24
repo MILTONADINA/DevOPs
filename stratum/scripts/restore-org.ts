@@ -16,7 +16,7 @@
 
 import { readFileSync } from "node:fs";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import type { BackupFile } from "./backup-org";
+import { ORG_SCOPED_TABLES, type BackupFile } from "./backup-org";
 
 /** Insert order: every parent table before its children (FK-safe). */
 export const RESTORE_ORDER = [
@@ -68,12 +68,19 @@ export function validateBackup(obj: unknown): BackupFile {
   if (typeof obj !== "object" || obj === null) throw new Error("backup is not an object");
   const b = obj as Partial<BackupFile>;
   if (typeof b.orgId !== "string" || b.orgId === "") throw new Error("backup.orgId missing");
-  if (typeof b.tables !== "object" || b.tables === null) throw new Error("backup.tables missing");
+  if (typeof b.tables !== "object" || b.tables === null || Array.isArray(b.tables)) throw new Error("backup.tables missing");
   const orgRows = b.tables["organizations"];
   if (!Array.isArray(orgRows) || orgRows.length === 0) throw new Error("backup has no organizations row");
   if (orgRows.length !== 1 || (orgRows[0] as { id?: unknown } | null)?.id !== b.orgId) throw new Error("backup organization ID mismatch");
+  const expected = new Set<string>(["organizations", ...ORG_SCOPED_TABLES, "pruning_logs"]);
+  for (const table of expected) {
+    if (!Array.isArray(b.tables[table])) throw new Error(`backup table ${table} missing or not an array`);
+  }
+  for (const table of Object.keys(b.tables)) {
+    if (!expected.has(table)) throw new Error(`backup table ${table} is not supported by restore`);
+  }
   const sourceLinks = b.tables["source_fact_links"];
-  if (sourceLinks !== undefined && (!Array.isArray(sourceLinks) || sourceLinks.some((row) => (row as { org_id?: unknown } | null)?.org_id !== b.orgId))) {
+  if (sourceLinks?.some((row) => (row as { org_id?: unknown } | null)?.org_id !== b.orgId)) {
     throw new Error("backup source link organization mismatch");
   }
   return b as BackupFile;

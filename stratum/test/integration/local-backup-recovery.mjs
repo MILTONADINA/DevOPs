@@ -24,6 +24,7 @@ const fileEntity = randomUUID();
 const edge = randomUUID();
 const filePath = `src/local-recovery-${org}.ts`;
 const backupPath = join(process.cwd(), "backups", `local-check-${org}.backup.json`);
+const incompleteBackupPath = join(process.cwd(), "backups", `local-check-${org}-incomplete.backup.json`);
 const emptyLinkBackupPath = join(process.cwd(), "backups", `local-check-${org}-empty-links.backup.json`);
 const overridePath = join(process.cwd(), "backups", `local-check-${org}.config.txt`);
 
@@ -103,6 +104,17 @@ try {
     throw new Error(`backup omitted an expected scoped row: ${JSON.stringify(Object.fromEntries(Object.entries(backup.tables).map(([name, rows]) => [name, rows.length])))}`);
   }
 
+  const { audit_statuses: omitted, ...incompleteTables } = backup.tables;
+  writeFileSync(incompleteBackupPath, JSON.stringify({ ...backup, tables: incompleteTables }));
+  const invalidRestore = spawnSync(resolve("node_modules/.bin/tsx"), [resolve("scripts/restore-org.ts"), "--file", incompleteBackupPath], {
+    cwd: process.cwd(), env: process.env, encoding: "utf8", timeout: 30_000,
+  });
+  if (invalidRestore.error || invalidRestore.status !== 1 || !invalidRestore.stdout.includes("backup table audit_statuses missing")) {
+    throw new Error(`incomplete backup was not rejected before restore: ${invalidRestore.error?.message ?? invalidRestore.stdout}`);
+  }
+  const stillPresent = checked(await db.from("organizations").select("id").eq("id", org).single(), "check incomplete restore made no write");
+  if (stillPresent.id !== org || omitted.length !== 1) throw new Error("incomplete restore changed its source organization");
+
   await clearRows();
   const missing = checked(await db.from("organizations").select("id").eq("id", org), "check deleted org");
   if (missing.length !== 0) throw new Error("source organization remains before restore");
@@ -133,6 +145,6 @@ try {
   failure = error;
 } finally {
   try { await clearRows(); } catch (error) { if (!failure) failure = error; }
-  for (const path of [backupPath, emptyLinkBackupPath, overridePath]) if (existsSync(path)) rmSync(path);
+  for (const path of [backupPath, incompleteBackupPath, emptyLinkBackupPath, overridePath]) if (existsSync(path)) rmSync(path);
 }
 if (failure) throw failure;
