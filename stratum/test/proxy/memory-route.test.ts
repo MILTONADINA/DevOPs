@@ -23,12 +23,12 @@ function fakeDeps(): { deps: MemoryDeps; captured: Record<string, unknown> } {
       captured["suppress"] = { orgId, id, table, ...(projectScope !== undefined ? { projectScope } : {}) };
       return Promise.resolve(id === "exists");
     },
-    listConflicts: (orgId, limit) => {
-      captured["conflicts"] = { orgId, limit };
+    listConflicts: (orgId, limit, projectScope) => {
+      captured["conflicts"] = { orgId, limit, ...(projectScope !== undefined ? { projectScope } : {}) };
       return Promise.resolve([CONFLICT]);
     },
-    listAuditStatuses: (orgId, limit) => {
-      captured["statuses"] = { orgId, limit };
+    listAuditStatuses: (orgId, limit, projectScope) => {
+      captured["statuses"] = { orgId, limit, ...(projectScope !== undefined ? { projectScope } : {}) };
       return Promise.resolve([STATUS]);
     },
     listGraph: (orgId, limit) => {
@@ -211,6 +211,28 @@ describe("GET /v1/memory/facts", () => {
 });
 
 describe("GET /v1/memory/audit-statuses", () => {
+  test("binds audit reads to the authenticated project and isolates unbound keys", async () => {
+    const { deps, captured } = fakeDeps();
+    const app = buildProxy({ rateLimit: false, cors: false, auth: { resolve: (key) => Promise.resolve(
+      key === "bound" ? { orgId: "o9", keyId: "k1", projectScopeId: "o9/orion" } :
+      key === "legacy" ? { orgId: "o9", keyId: "k2" } : null,
+    ) }, memory: deps });
+    for (const [key, scope] of [["bound", "orion"], ["legacy", null]] as const) {
+      const headers = { authorization: `Bearer ${key}`, "x-project-scope": "vega" };
+      expect((await app.inject({ method: "GET", url: "/v1/memory/conflicts?org-id=other&project-scope=vega&limit=2", headers })).statusCode).toBe(200);
+      expect(captured["conflicts"]).toEqual({ orgId: "o9", limit: 2, projectScope: scope });
+      expect((await app.inject({ method: "GET", url: "/v1/memory/audit-statuses?org-id=other&project-scope=vega&limit=2", headers })).statusCode).toBe(200);
+      expect(captured["statuses"]).toEqual({ orgId: "o9", limit: 2, projectScope: scope });
+    }
+    await app.close();
+    const personal = buildProxy({ rateLimit: false, cors: false, memory: deps });
+    expect((await personal.inject({ method: "GET", url: "/v1/memory/conflicts?org-id=o9" })).statusCode).toBe(200);
+    expect(captured["conflicts"]).toEqual({ orgId: "o9", limit: 50 });
+    expect((await personal.inject({ method: "GET", url: "/v1/memory/audit-statuses?org-id=o9" })).statusCode).toBe(200);
+    expect(captured["statuses"]).toEqual({ orgId: "o9", limit: 50 });
+    await personal.close();
+  });
+
   test("lists persisted outcomes within the authenticated organization", async () => {
     const { deps, captured } = fakeDeps();
     const app = buildProxy({ rateLimit: false, cors: false, auth: { resolve: (r) => Promise.resolve(r === "k" ? { orgId: "o9", keyId: "i" } : null) }, memory: deps });
@@ -218,7 +240,7 @@ describe("GET /v1/memory/audit-statuses", () => {
     const res = await app.inject({ method: "GET", url: "/v1/memory/audit-statuses?org-id=other&limit=3", headers: { authorization: "Bearer k" } });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({ statuses: [STATUS] });
-    expect(captured["statuses"]).toEqual({ orgId: "o9", limit: 3 });
+    expect(captured["statuses"]).toEqual({ orgId: "o9", limit: 3, projectScope: null });
     await app.close();
   });
 });

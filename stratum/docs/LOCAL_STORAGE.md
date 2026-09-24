@@ -105,7 +105,10 @@ Run `npm run db:verify-project-warm-facts` to check project-scoped memory
 sessions, typed facts, and the fact read/suppress API against the local database.
 Bound keys see only their own project's structured facts; unbound keys see only
 legacy unbound facts. The database rejects a fact whose project differs from
-its session. Graph, audit-status, and other organization-wide APIs are not yet
+its session. Run `npm run db:verify-project-audit-reads` to verify that
+commercial conflict and audit-status reads follow their referenced facts'
+project scope before result limits, exclude orphaned audit rows, and ignore
+client-supplied scope. Graph and other organization-wide APIs are not yet
 project-isolated. This does not enable pruning.
 
 Run `npm run db:verify-message-memory` to check a successful authenticated

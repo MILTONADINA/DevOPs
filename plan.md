@@ -161,8 +161,9 @@ and real-use gates remain open; the runners now fail nonzero without a provider.
   multi-fact evidence is lost and stale alternatives survive. The fixture's
   original text, ages, and golden anchors are unchanged. Commercial requests
   now derive a trusted project scope from a bound API key. Memory sessions and
-  structured facts persist it, and the fact API filters reads and suppression;
-  graph and other org-wide APIs remain unscoped. The pruner is still out of
+  structured facts persist it, and the fact, conflict, and audit-status APIs
+  filter reads by authenticated scope. Graph and other org-wide APIs remain
+  unscoped. The pruner is still out of
   the request path and unbound keys supply no project scope. Zero
   Tier-C failures remains a v0.4 ship gate.
 - [ ] **`npm run test:eval` wires** all three tiers into one command. CI runs Tier C on every PR; Tier A weekly; Tier B on Phase 2-touching PRs.
