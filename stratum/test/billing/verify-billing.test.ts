@@ -44,6 +44,10 @@ describe("rowToInput", () => {
       "pl1",
     );
   });
+  test("carries a usage event ID into the verifier's signing inputs", () => {
+    const row = { id: "r1", session_id: "s1", org_id: "o1", original_tokens: 1, quarantined_tokens: 1, api_price_per_token: 1, pruning_log_id: null, usage_event_id: "00000000-0000-4000-8000-000000000123", signed_hash: "h" };
+    expect(rowToInput(row).usageEventId).toBe(row.usage_event_id);
+  });
 });
 
 describe("paged signature verification", () => {

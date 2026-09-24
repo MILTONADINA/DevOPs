@@ -44,7 +44,7 @@ describe("commercial usage persistence on /v1/messages", () => {
     await app.ready();
     const res = await post();
     expect(res.statusCode).toBe(200);
-    expect(calls).toEqual([{ orgId: "org-7", model: "claude-sonnet-4-6", inputTokens: 8000, outputTokens: 42 }]);
+    expect(calls).toMatchObject([{ orgId: "org-7", model: "claude-sonnet-4-6", inputTokens: 8000, outputTokens: 42 }]);
   });
 
   test("normal request records only the authenticated project despite client scope fields", async () => {
@@ -53,7 +53,18 @@ describe("commercial usage persistence on /v1/messages", () => {
     await app.ready();
     const res = await app.inject({ method: "POST", url: "/v1/messages?project-scope=vega", headers: { authorization: "Bearer bound", "x-project-scope": "vega" }, payload: { ...BODY, project_scope: "vega" } });
     expect(res.statusCode).toBe(200);
-    expect(calls).toEqual([{ orgId: "org-7", projectScopeId: "org-7/orion", model: "claude-sonnet-4-6", inputTokens: 8000, outputTokens: 42 }]);
+    expect(calls).toMatchObject([{ orgId: "org-7", projectScopeId: "org-7/orion", model: "claude-sonnet-4-6", inputTokens: 8000, outputTokens: 42 }]);
+  });
+
+  test("normal request assigns a server UUID instead of a client event ID", async () => {
+    const calls: UsageEvent[] = [];
+    app = buildProxy({ cors: false, rateLimit: false, auth: AUTH, messages: deps({ recordUsage: async (e) => void calls.push(e) }) });
+    await app.ready();
+    const clientId = "00000000-0000-4000-8000-000000000001";
+    expect((await app.inject({ method: "POST", url: `/v1/messages?usage-event-id=${clientId}`, headers: { authorization: "Bearer k1", "x-usage-event-id": clientId }, payload: { ...BODY, usage_event_id: clientId } })).statusCode).toBe(200);
+    expect(calls[0]?.eventId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
+    expect(calls[0]?.eventId).not.toBe(clientId);
+    expect(calls[0]?.occurredAt).toMatch(/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/);
   });
 
   test("does NOT record on an upstream 4xx", async () => {
@@ -124,7 +135,7 @@ describe("commercial usage persistence on /v1/messages", () => {
     expect(res.statusCode).toBe(200);
     // recordUsageSafe runs in the stream's finally (before out.end()), so by the time inject resolves
     // the response stream has completed and usage was recorded with the accumulated output tokens.
-    expect(calls).toEqual([{ orgId: "org-7", model: "claude-sonnet-4-6", inputTokens: 5, outputTokens: 4 }]);
+    expect(calls).toMatchObject([{ orgId: "org-7", model: "claude-sonnet-4-6", inputTokens: 5, outputTokens: 4 }]);
   });
 
   test("streaming request records the authenticated project", async () => {
@@ -141,7 +152,8 @@ describe("commercial usage persistence on /v1/messages", () => {
     } });
     await app.ready();
     expect((await post({ ...BODY, stream: true, project_scope: "vega" }, "bound")).statusCode).toBe(200);
-    expect(calls).toEqual([{ orgId: "org-7", projectScopeId: "org-7/orion", model: "claude-sonnet-4-6", inputTokens: 5, outputTokens: 4 }]);
+    expect(calls).toMatchObject([{ orgId: "org-7", projectScopeId: "org-7/orion", model: "claude-sonnet-4-6", inputTokens: 5, outputTokens: 4 }]);
+    expect(calls[0]?.eventId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
   });
 
   test("streaming response completes before its usage write while close drains it", async () => {
