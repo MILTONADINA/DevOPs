@@ -14,6 +14,10 @@ test("org backup includes both graph session provenance tables", () => {
   expect(ORG_SCOPED_TABLES).toContain("knowledge_edge_sessions");
 });
 
+test("org backup includes File-to-fact source links", () => {
+  expect(ORG_SCOPED_TABLES).toContain("source_fact_links");
+});
+
 describe("parseArgs", () => {
   test("defaults: no org, no out, not pretty", () => {
     expect(parseArgs([])).toEqual({ pretty: false });

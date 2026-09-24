@@ -36,6 +36,7 @@ export const RESTORE_ORDER = [
   "knowledge_edges",
   "knowledge_entity_sessions",
   "knowledge_edge_sessions",
+  "source_fact_links",
   "memory_vectors",
   "audit_conflicts",
   "audit_statuses",
@@ -70,6 +71,11 @@ export function validateBackup(obj: unknown): BackupFile {
   if (typeof b.tables !== "object" || b.tables === null) throw new Error("backup.tables missing");
   const orgRows = b.tables["organizations"];
   if (!Array.isArray(orgRows) || orgRows.length === 0) throw new Error("backup has no organizations row");
+  if (orgRows.length !== 1 || (orgRows[0] as { id?: unknown } | null)?.id !== b.orgId) throw new Error("backup organization ID mismatch");
+  const sourceLinks = b.tables["source_fact_links"];
+  if (sourceLinks !== undefined && (!Array.isArray(sourceLinks) || sourceLinks.some((row) => (row as { org_id?: unknown } | null)?.org_id !== b.orgId))) {
+    throw new Error("backup source link organization mismatch");
+  }
   return b as BackupFile;
 }
 
@@ -134,12 +140,23 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
 
   let inserted = 0;
   for (const { table, rows } of plan) {
+    if (table === "source_fact_links") {
+      // Fact/File INSERT triggers may have recreated these links with fresh IDs.
+      // Replace only this clean target org's generated links with the exact
+      // backed-up rows, including their original IDs and timestamps.
+      const cleared = await client.from(table).delete().eq("org_id", backup.orgId);
+      if (cleared.error) throw new Error(`restore ${table} preparation failed: ${cleared.error.message}`);
+    }
     // Inserting graph parents recreates their first session links via DB triggers.
     // Keep those links and add any later-session links from the backup.
     const conflict = table === "knowledge_entity_sessions" ? "org_id,entity_id,session_id" : table === "knowledge_edge_sessions" ? "org_id,edge_id,session_id" : undefined;
     const { error } = conflict ? await client.from(table).upsert(rows, { onConflict: conflict, ignoreDuplicates: true }) : await client.from(table).insert(rows);
     if (error) throw new Error(`restore ${table} failed after ${inserted} row(s): ${error.message} (restore into a CLEAN target; a collision means the org still exists)`);
     inserted += rows.length;
+  }
+  if (Array.isArray(backup.tables["source_fact_links"]) && backup.tables["source_fact_links"].length === 0) {
+    const cleared = await client.from("source_fact_links").delete().eq("org_id", backup.orgId);
+    if (cleared.error) throw new Error(`restore empty source_fact_links failed: ${cleared.error.message}`);
   }
   out(`Restored ${inserted} row(s) across ${plan.length} tables for org ${backup.orgId}.`);
   return 0;

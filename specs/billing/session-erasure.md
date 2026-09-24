@@ -33,6 +33,14 @@ shared and exclusive graph ownership without deleting any row.
 An organization backup and restore SHALL preserve all recorded session links
 so a recovered inventory cannot misclassify a shared graph row.
 
+### REQ-1b — Source-link recovery fidelity
+
+WHEN an organization with indexed File-to-fact links is backed up and restored
+to a clean target, THE SYSTEM SHALL export every scoped source link and restore
+its original ID and timestamp. It SHALL replace links recreated by File/fact
+insert triggers with the backed-up rows, so the recovered inventory and source
+view reflect the original snapshot.
+
 ## REQ-2 — Ledger invariant and retention decision
 
 WHILE billing records remain append-only and signed over their original
@@ -73,5 +81,6 @@ remaining rows. A small fixture alone SHALL NOT satisfy that gate.
   this blocker. No erasure endpoint or one-year performance result is claimed.
 - The local inventory now reports linked graph rows and provenance uncertainty;
   disposable two-session promotion and backup/restore checks cover recorded
-  links. Untagged legacy graph, RAM, external copies and backup deletion remain
-  unresolved.
+  links. A clean-target recovery check preserves File-to-fact source link IDs
+  and an explicitly empty link snapshot. Untagged legacy graph, RAM, external
+  copies and backup deletion remain unresolved.
