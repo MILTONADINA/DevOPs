@@ -7,31 +7,27 @@
  * so they are fully testable with deterministic fakes; the deterministic gate
  * they feed (compare/golden/report) needs neither judge nor datasets.
  *
- * The CLI entry (`main`, invoked by `npm run test:eval`) is GATED: the real
- * datasets (LoCoMo/MT-Bench+/SCM4LLMs + the §2b-derived developer set), the
- * Answerer/Judge implementation, and the ONNX encoder do not exist yet. Rather
- * than fabricate a PASS, it prints exactly what is missing and exits 0 (a
- * documented not-configured state, mirroring the CI red-team bootstrap-skip) —
- * it NEVER prints fake scores.
+ * The CLI entry runs the offline Tier-C gate before judged Tier-B. It exits
+ * nonzero when any required gate is missing or red. Full Tier-A orchestration
+ * is still open, so the default command cannot report release readiness.
  *
  * Usage:
  *   npm run test:eval                        # full suite
  *   npm run test:eval -- --fast              # Tier B + C only
- *   npm run test:eval -- --suite kadanedial  # algorithm-specific
- *   npm run test:eval -- --compare-lambda 0.97 0.90
  */
 
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 
 import type { Answerer, Judge } from "./metrics";
-import { judgeConfigured, createClaudeAnswerer, createLlmJudge } from "./metrics";
+import { selectEvalProvider, createClaudeAnswerer, createLlmJudge } from "./metrics";
 import { gateScenario } from "./compare";
 import { checkGoldenQuery } from "./golden";
 import { evaluateSuite, renderReport, type SuiteResult, type SuiteVerdict } from "./report";
 import { DEFAULT_THRESHOLDS, type GoldenQuery, type MetricThresholds, type ScenarioResult, type Tier } from "./types";
 import { loadDevScenarios } from "./dataset";
 import { createOnnxEncoder } from "../../src/pruner/encoder";
+import { main as runTierCMain } from "../../scripts/eval-tierc";
 
 // Fixed reference time so the Tier-B dataset's ageHours map deterministically.
 const EVAL_NOW_SECONDS = 1_700_000_000;
@@ -116,27 +112,45 @@ async function datasetsPresent(datasetsDir: string): Promise<boolean> {
 
 /**
  * CLI entry (`npm run test:eval`). Runs the real Tier-B accuracy suite when the
- * dataset + an API key are present; otherwise prints exactly what is missing and
- * exits 0 (gated-skip, never a fake PASS). Returns 1 if the real suite fails.
+ * dataset + a judged provider are present. Tier-C always runs first; absent
+ * inputs and failing gates exit nonzero. `--fast` covers Tier-B and Tier-C;
+ * default full mode stays red until Tier-A is integrated.
  *
- * @param argv - CLI args (flags acknowledged).
- * @returns process exit code (real-run: verdict.passed ? 0 : 1; gated: 0).
+ * @param argv - CLI args (only --fast is supported).
+ * @returns process exit code.
  */
-export async function main(argv: string[] = []): Promise<number> {
+export async function main(argv: string[] = [], runTierC: () => Promise<number> = runTierCMain): Promise<number> {
   // process.cwd() (not __dirname — undefined under the ESM runtime): `npm run
   // test:eval` always executes from the package root.
   const datasetsDir = join(process.cwd(), "evals", "datasets");
   const tierbFile = join(datasetsDir, "developer", "tier-b.jsonl");
   const haveData = await datasetsPresent(datasetsDir);
-  const haveJudge = judgeConfigured();
   const flags = argv.length ? ` (flags: ${argv.join(" ")})` : "";
 
   const out = (s: string): void => {
     process.stdout.write(`${s}\n`);
   };
 
-  if (haveData && haveJudge) {
-    out(`CQ Eval Suite — Tier-B (real ONNX encoder + Claude Haiku judge)${flags}`);
+  if (argv.length > 0 && !(argv.length === 1 && argv[0] === "--fast")) {
+    out(`Unsupported eval flags: ${argv.join(" ")}. Only --fast is implemented.`);
+    return 1;
+  }
+
+  const tierCCode = await runTierC();
+  if (tierCCode !== 0) {
+    out("Tier-C critical golden gate failed; judged evaluation was not run.");
+    return 1;
+  }
+  let provider: ReturnType<typeof selectEvalProvider>;
+  try {
+    provider = selectEvalProvider();
+  } catch (error) {
+    out(`eval provider error: ${error instanceof Error ? error.message : String(error)}`);
+    return 1;
+  }
+
+  if (haveData && provider) {
+    out(`CQ Eval Suite — Tier-B (real ONNX encoder + ${provider.label} judge${provider.exploratory ? "; exploratory local-model result" : ""})${flags}`);
     out("=".repeat(60));
     try {
       // Dynamic import breaks the static runner↔dev-suite cycle (dev-suite
@@ -151,25 +165,25 @@ export async function main(argv: string[] = []): Promise<number> {
         return 1;
       }
       const encoder = createOnnxEncoder({ cacheDir: join(process.cwd(), "models") });
-      const { suite, verdict } = await runDevSuite(scenarios, encoder, createClaudeAnswerer(), createLlmJudge(), EVAL_NOW_SECONDS);
+      const { suite, verdict } = await runDevSuite(scenarios, encoder, createClaudeAnswerer(provider.completion), createLlmJudge(provider.completion), EVAL_NOW_SECONDS);
       out(renderReport(suite, verdict));
-      out(`\n${verdict.passed ? "PASS" : "FAIL"} — ${suite.scenarios.filter((s) => s.passed).length}/${suite.scenarios.length} scenarios. (Tier-B dev set; published Tier-A benchmarks still required before shipping pruning.)`);
-      return verdict.passed ? 0 : 1;
+      out(`\n${verdict.passed ? "PASS" : "FAIL"} — ${suite.scenarios.filter((s) => s.passed).length}/${suite.scenarios.length} Tier-B scenarios; Tier-C passed.`);
+      if (!argv.includes("--fast")) out("Full eval remains incomplete: published Tier-A judged benchmarks are not orchestrated by test:eval.");
+      if (provider.exploratory) out("Local-model judgment is exploratory and does not satisfy the Claude release gate.");
+      return verdict.passed && argv.includes("--fast") && !provider.exploratory ? 0 : 1;
     } catch (e) {
       out(`eval run errored: ${(e as Error).message}`);
       return 1;
     }
   }
 
-  // Gated-skip: an input is genuinely missing. Honest probes (no hardcoded NO).
+  // A missing judged input is a failed gate, not a successful skip.
   out("CQ Eval Suite — GATED (an input is missing; not run)");
   out("====================================================");
   out(`  Tier-B dataset:  ${haveData ? "yes" : "NO  (evals/datasets/developer/tier-b.jsonl)"}`);
-  out(`  judge API key:   ${haveJudge ? "yes" : "NO  (set ANTHROPIC_API_KEY)"}`);
-  out("The gate engine + LLM judge + dataset loader + ONNX encoder are all");
-  out("implemented + unit-tested (npm test). Supply the missing input above to run");
-  out(`the real Tier-B accuracy eval. Refusing to emit fabricated scores. Exiting 0.`);
-  return 0;
+  out(`  judged provider: ${provider ? provider.label : "NO (set EVAL_ANTHROPIC_API_KEY or explicit local eval settings)"}`);
+  out("Tier-C ran, but Tier-B judged evaluation cannot run. Exiting 1.");
+  return 1;
 }
 
 // Run only when executed directly (not when imported by tests). Uses argv[1]

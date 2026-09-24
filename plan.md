@@ -153,7 +153,11 @@ and real-use gates remain open; the runners now fail nonzero without a provider.
 - [ ] **Tier A baseline run** (~3h). Full-context (no prune) baseline. Save as `stratum/evals/results/tier-a-baseline.json`.
 - [ ] **Tier A pruner run** (~3h). With pruner enabled. Save as `stratum/evals/results/tier-a-pruner.json`. Verify Faithfulness >0.90 + Answer Relevancy >0.88 vs baseline.
 - [ ] **Tier B scenarios** (~12h). ≥4 developer workload scenarios derived from your real Phase 0 corpus: e.g., long debugging session, refactor across 5 files, multi-day project resume, deep stack-trace analysis.
-- [ ] **Tier C golden queries** (~8h). ≥30 critical queries that must NEVER regress (e.g., "what version of vitest are we using" if facts say 2.1.0 must return 2.1.0). Encoded as input/expected-substring pairs.
+- [x] **Tier C golden queries**. A 50-case synthetic developer-workload
+  corpus with required and forbidden anchors runs through the real cached
+  encoder and pruner without a judge. The current default is RED at 20/50:
+  project-scope anchors leak and dormant facts disappear. Zero Tier-C failures
+  remains a v0.4 ship gate.
 - [ ] **`npm run test:eval` wires** all three tiers into one command. CI runs Tier C on every PR; Tier A weekly; Tier B on Phase 2-touching PRs.
 
 ### 3d. Pruner integration into proxy

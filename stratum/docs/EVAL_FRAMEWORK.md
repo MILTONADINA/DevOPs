@@ -109,43 +109,37 @@ Developer-specific sessions that test the scenarios CQ is actually built for. Th
 
 ### Tier C — Golden Query Set
 
-A hand-curated set of 50 (query, expected_answer) pairs derived from Tier B scenarios. These test specific facts that must survive pruning.
+A project-local JSONL corpus of 50 synthetic developer-workload cases covers
+stale updates, project scope, dormant facts, multi-fact answers, negation, and
+exact values. Each critical query checks the context selected by the real
+cached ONNX encoder and KadaneDial pruner. The cases have required and
+forbidden anchors, so keeping everything and dropping everything both fail.
+This corpus does not replace published Tier-A judged evaluation.
 
 Format:
-```json
-{
-  "id": "gc-001",
-  "scenario": "function_deprecation",
-  "turn_of_fact": 12,
-  "query_turn": 50,
-  "query": "Which function should I use to fetch a user from the database?",
-  "expected_contains": ["fetchUser"],
-  "expected_not_contains": ["getUser"],
-  "critical": true
-}
+```jsonl
+{"id":"tc-stale-api-route","scenario":"stale_update","query":"Which API version handles new requests?","golden":{"contains":["api-v2"],"notContains":["api-v1"],"critical":true},"turns":[{"text":"New requests use api-v1.","ageHours":96},{"text":"The icon layout was reviewed for the dashboard.","ageHours":20},{"text":"New requests use api-v2.","ageHours":4},{"text":"The changelog typography was adjusted.","ageHours":1}]}
 ```
 
-Critical queries (marked `"critical": true`) must pass with 100% accuracy. Any pruning configuration that fails a critical query is rejected, regardless of aggregate scores.
+Critical queries must pass with 100% accuracy. The documented default
+λ=0.97, gainShift=0, θ=1 scored **20/50** locally; this gate is RED. Nine
+project-scope cases leaked a foreign anchor and several dormant facts were
+dropped. Run `npm run eval:tierc` for the offline gate and inspect every
+missing/leaked anchor before changing pruning behavior.
 
 ---
 
 ## Running the Eval Suite
 
 ```bash
-# Full suite (runs all tiers, ~15 minutes)
+# Full suite entry point: currently returns nonzero until Tier-A is integrated
 npm run test:eval
 
-# Fast suite (Tier B + Tier C only, ~4 minutes)
+# Fast suite: Tier C then judged Tier B; currently returns nonzero on red Tier C
 npm run test:eval -- --fast
 
-# Specific scenario
-npm run test:eval -- --scenario function_deprecation
-
-# KadaneDial-specific (tests algorithm parameters)
-npm run test:eval -- --suite kadanedial
-
-# Compare two lambda values
-npm run test:eval -- --compare-lambda 0.97 0.90
+# Offline critical-query gate (no judge or API key)
+npm run eval:tierc
 ```
 
 ### Output Format
