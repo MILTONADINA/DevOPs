@@ -96,3 +96,47 @@ test("LongMemEval exits nonzero when every selected question is too short to sco
   expect(await runLongMemEval()).toBe(1);
   expect(fetch).not.toHaveBeenCalled();
 });
+
+test("full LoCoMo refuses a partial corpus before model calls", async () => {
+  const path = await fixturePath("locomo", "locomo10.json");
+  realFs.writeFileSync(
+    path,
+    JSON.stringify([
+      {
+        sample_id: "conv-inline",
+        conversation: {
+          speaker_a: "A",
+          speaker_b: "B",
+          session_1_date_time: "1:00 pm on 8 May, 2023",
+          session_1: [{ speaker: "A", dia_id: "D1:1", text: "The answer is Pixel." }],
+        },
+        qa: [{ question: "What is the answer?", answer: "Pixel", evidence: ["D1:1"], category: 4 }],
+      },
+    ]),
+  );
+  vi.stubEnv("EVAL_FULL_PUBLISHED", "1");
+  const fetch = vi.spyOn(globalThis, "fetch");
+  await expect(runLocomo()).rejects.toThrow(/10 conversations/);
+  expect(fetch).not.toHaveBeenCalled();
+});
+
+test("full LongMemEval refuses a partial haystack before model calls", async () => {
+  const path = await fixturePath("longmemeval", "longmemeval_s.json");
+  realFs.writeFileSync(
+    path,
+    JSON.stringify([
+      {
+        question_id: "q-inline",
+        question_type: "single-session-user",
+        question: "What was the answer?",
+        answer: "Pixel",
+        haystack_dates: ["2023/04/10 (Mon) 17:50"],
+        haystack_sessions: [[{ role: "user", content: "The answer is Pixel.", has_answer: true }]],
+      },
+    ]),
+  );
+  vi.stubEnv("EVAL_FULL_PUBLISHED", "1");
+  const fetch = vi.spyOn(globalThis, "fetch");
+  await expect(runLongMemEval()).rejects.toThrow(/500 questions/);
+  expect(fetch).not.toHaveBeenCalled();
+});
