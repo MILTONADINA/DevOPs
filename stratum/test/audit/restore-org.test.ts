@@ -78,6 +78,12 @@ describe("validateBackup", () => {
     expect(() => validateBackup({ ...valid, tables: { ...valid.tables, pruning_logs: [{ id: "p2", session_id: "s2" }] } })).toThrow(/pruning_logs/);
     expect(() => validateBackup({ ...valid, tables: { ...valid.tables, sessions: [{ org_id: "o1" }], pruning_logs: [{ id: "p2" }] } })).toThrow(/session/);
   });
+  test("rejects a conversation whose authenticating key is missing before restore", () => {
+    const conversation = { id: "c1", org_id: "o1", kind: "conversation", conversation_key_id: "k1", project_scope: "orion" };
+    const valid = { ...ok, tables: { ...ok.tables, api_keys: [{ id: "k1", org_id: "o1" }], sessions: [conversation] } };
+    expect(validateBackup(valid)).toBe(valid);
+    expect(() => validateBackup({ ...valid, tables: { ...valid.tables, api_keys: [] } })).toThrow(/conversation.*key/i);
+  });
 });
 
 describe("stripGeneratedCols", () => {
@@ -128,6 +134,7 @@ describe("restorePlan", () => {
     expect(RESTORE_ORDER.indexOf("knowledge_entities")).toBeLessThan(RESTORE_ORDER.indexOf("source_fact_links"));
     expect(RESTORE_ORDER.indexOf("function_changes")).toBeLessThan(RESTORE_ORDER.indexOf("source_fact_links"));
     expect(RESTORE_ORDER.indexOf("sessions")).toBeLessThan(RESTORE_ORDER.indexOf("audit_conflicts"));
+    expect(RESTORE_ORDER.indexOf("api_keys")).toBeLessThan(RESTORE_ORDER.indexOf("sessions"));
     expect(RESTORE_ORDER.indexOf("function_changes")).toBeLessThan(RESTORE_ORDER.indexOf("audit_statuses"));
     expect(RESTORE_ORDER.indexOf("audit_conflicts")).toBeLessThan(RESTORE_ORDER.indexOf("audit_statuses"));
   });
