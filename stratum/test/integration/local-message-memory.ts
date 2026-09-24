@@ -6,6 +6,7 @@ import { buildProxy } from "../../src/proxy/app";
 import { hashApiKey } from "../../src/proxy/auth";
 import { createCaptureStore } from "../../src/proxy/capture";
 import { buildStartOptions } from "../../src/proxy/index";
+import { createSupabaseMessageMemoryRecorder } from "../../src/proxy/message-memory";
 
 const url = process.env["SUPABASE_URL"];
 const key = process.env["SUPABASE_SERVICE_KEY"];
@@ -71,14 +72,27 @@ try {
   if (answer.statusCode !== 200) throw new Error(`message request returned ${answer.statusCode}`);
   await app.close();
   app = undefined;
-  const sessions = checked(await db.from("sessions").select("id,org_id,kind").eq("org_id", org), "read memory session");
-  if (sessions.length !== 1 || sessions[0].kind !== "memory" || sessions[0].org_id !== org || sessions[0].id === "not-db-session") {
-    throw new Error("request did not create one trusted memory session");
+  const sessions = checked(await db.from("sessions").select("id,org_id,kind").eq("org_id", org), "read conversation session");
+  if (sessions.length !== 1 || sessions[0].kind !== "conversation" || sessions[0].org_id !== org ||
+      sessions[0].id !== answer.headers["x-cq-conversation-id"] || sessions[0].id === "not-db-session") {
+    throw new Error("request did not use one trusted conversation session");
   }
   sessionId = sessions[0].id;
   const facts = checked(await db.from("function_changes").select("id,org_id,session_id,is_suppressed,old_name").eq("org_id", org), "read memory fact");
   if (facts.length !== 1 || facts[0].session_id !== sessionId || facts[0].old_name !== "oldLocal" || facts[0].is_suppressed || modelCalls !== 1) {
     throw new Error("typed fact was not stored under the trusted session");
+  }
+  let extracted = false;
+  const rejectForeign = createSupabaseMessageMemoryRecorder(db, { extract: async () => { extracted = true; return []; } });
+  const keys = checked(await db.from("api_keys").select("id").eq("org_id", org), "read authenticated key");
+  if (keys.length !== 1) throw new Error("expected one authenticated key");
+  for (const identity of [{ keyId: randomUUID() }, { projectScopeId: `${org}/vega`, keyId: keys[0].id }]) {
+    let rejected = false;
+    try {
+      await rejectForeign({ orgId: org, conversationId: sessionId, ...identity, model: "local/check",
+        turns: [{ role: "user", content: "forged" }] });
+    } catch { rejected = true; }
+    if (!rejected || extracted) throw new Error("foreign conversation identity reached extraction");
   }
   readApp = buildProxy(buildStartOptions({ CQ_COMMERCIAL: "true", SUPABASE_URL: url, SUPABASE_SERVICE_KEY: key },
     { cors: false, rateLimit: false },
@@ -90,7 +104,7 @@ try {
       visible.statusCode !== 200 || visible.json().sessions?.length !== 0) {
     throw new Error("memory fact visibility or explicit-session isolation failed");
   }
-  process.stdout.write("local message memory session and fact persistence passed\n");
+  process.stdout.write("local conversation fact provenance and identity rejection passed\n");
 } catch (error) {
   failure = error;
 } finally {
@@ -98,8 +112,8 @@ try {
   try { await readApp?.close(); } catch (error) { if (!failure) failure = error; }
   try {
     checked(await db.from("function_changes").delete().eq("org_id", org), "delete facts");
-    checked(await db.from("api_keys").delete().eq("org_id", org), "delete key");
     checked(await db.from("sessions").delete().eq("org_id", org), "delete sessions");
+    checked(await db.from("api_keys").delete().eq("org_id", org), "delete key");
     checked(await db.from("organizations").delete().eq("id", org), "delete org");
   } catch (error) { if (!failure) failure = error; }
   model.close();

@@ -6,19 +6,28 @@ import { indexRepository } from "../audit/git-indexer";
 import { auditFacts, persistAuditResults } from "../audit/audit-engine";
 import type { MessageMemoryEvent } from "./forward";
 import { validProjectScope } from "./auth";
+import { createSupabaseConversationResolver } from "./conversation";
 
-/** Persist an authenticated request's extracted facts under a fresh DB session. */
+/** Persist extracted facts under a verified conversation or a fresh legacy memory session. */
 export function createSupabaseMessageMemoryRecorder(client: SupabaseClient, extractor: FactExtractor, auditRepoRoot?: string): (event: MessageMemoryEvent) => Promise<void> {
   const warm = createWarmMemory(client);
-  return async ({ orgId, projectScopeId, model, turns }) => {
+  const resolveConversation = createSupabaseConversationResolver(client);
+  return async ({ orgId, projectScopeId, conversationId, keyId, model, turns }) => {
     const projectScope = projectScopeId === undefined ? null : projectScopeId.slice(orgId.length + 1);
     if (projectScopeId !== undefined && (!projectScopeId.startsWith(`${orgId}/`) || !validProjectScope(projectScope))) {
       throw new Error("invalid authenticated project scope for memory event");
     }
-    const { data, error } = await client.from("sessions").insert({ org_id: orgId, project_scope: projectScope, model, kind: "memory", ended_at: new Date().toISOString() }).select("id").limit(1);
-    if (error) throw new Error(`memory session insert failed: ${error.message}`);
-    const sessionId = (data as { id: string }[] | null)?.[0]?.id;
-    if (!sessionId) throw new Error("memory session insert returned no id");
+    if (Boolean(conversationId) !== Boolean(keyId)) throw new Error("incomplete authenticated conversation identity for memory event");
+    let sessionId: string;
+    if (conversationId && keyId) {
+      sessionId = await resolveConversation({ orgId, keyId, ...(projectScopeId ? { projectScopeId } : {}), model, requestedId: conversationId });
+    } else {
+      const { data, error } = await client.from("sessions").insert({ org_id: orgId, project_scope: projectScope, model, kind: "memory", ended_at: new Date().toISOString() }).select("id").limit(1);
+      if (error) throw new Error(`memory session insert failed: ${error.message}`);
+      const inserted = (data as { id: string }[] | null)?.[0]?.id;
+      if (!inserted) throw new Error("memory session insert returned no id");
+      sessionId = inserted;
+    }
     const facts = await extractor.extract({ session_id: sessionId, turns });
     if (facts.length === 0) return;
     // Compute audit outcomes before any fact is visible. A failed index leaves

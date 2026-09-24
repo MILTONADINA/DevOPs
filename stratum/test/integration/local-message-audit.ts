@@ -94,7 +94,7 @@ try {
   const todos = checked(await db.from("todos").select("id,is_suppressed").eq("org_id", org), "read todo");
   const statuses = checked(await db.from("audit_statuses").select("fact_id,status,evidence_commit").eq("org_id", org), "read status");
   const alerts = checked(await db.from("audit_conflicts").select("fact_id,conflict_commit").eq("org_id", org), "read alert");
-  if (sessions.length !== 1 || sessions[0].kind !== "memory" || facts.length !== 1 ||
+  if (sessions.length !== 1 || sessions[0].kind !== "conversation" || sessions[0].id !== answer.headers["x-cq-conversation-id"] || facts.length !== 1 ||
       facts[0].session_id !== sessions[0].id || !facts[0].is_suppressed || facts[0].commit_hash !== null ||
       todos.length !== 1 || todos[0].is_suppressed ||
       statuses.length !== 2 || !statuses.some((row) => row.fact_id === facts[0].id && row.status === "CONFLICT") ||
@@ -140,7 +140,7 @@ try {
   try { await readApp?.close(); } catch (error) { if (!failure) failure = error; }
   for (const [table, column, value] of [["audit_statuses", "org_id", org], ["audit_conflicts", "org_id", org],
     ["function_changes", "org_id", org], ["todos", "org_id", org],
-    ["api_keys", "org_id", org], ["sessions", "org_id", org], ["organizations", "id", org]]) {
+    ["sessions", "org_id", org], ["api_keys", "org_id", org], ["organizations", "id", org]]) {
     try { checked(await db.from(table!).delete().eq(column!, value!), `delete ${table}`); }
     catch (error) { if (!failure) failure = error; }
   }

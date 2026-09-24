@@ -57,7 +57,7 @@ try {
   const contentValid = variableCase
     ? facts[0]?.var_name === "JWT_TTL_MINUTES" && facts[0]?.old_value === "60" && facts[0]?.new_value === "15"
     : facts[0]?.decision_text?.includes("RS256") && facts[0]?.decision_text?.toLowerCase().includes("jwt");
-  if (sessions.length !== 1 || sessions[0].kind !== "memory" || facts.length !== 1 ||
+  if (sessions.length !== 1 || sessions[0].kind !== "conversation" || sessions[0].id !== response.headers["x-cq-conversation-id"] || facts.length !== 1 ||
       facts[0].session_id !== sessions[0].id || facts[0].is_suppressed || !contentValid) {
     throw new Error(`real model extraction yielded ${sessions.length} sessions and ${facts.length} valid ${table} facts`);
   }
@@ -78,8 +78,8 @@ try {
 } finally {
   try { await app?.close(); } catch (error) { if (!failure) failure = error; }
   for (const [table, column] of [["function_changes", "org_id"], ["tech_decisions", "org_id"],
-    ["policy_updates", "org_id"], ["todos", "org_id"], ["variable_changes", "org_id"], ["api_keys", "org_id"],
-    ["sessions", "org_id"], ["organizations", "id"]]) {
+    ["policy_updates", "org_id"], ["todos", "org_id"], ["variable_changes", "org_id"], ["sessions", "org_id"],
+    ["api_keys", "org_id"], ["organizations", "id"]]) {
     try { checked(await db.from(table!).delete().eq(column!, org), `delete ${table}`); }
     catch (error) { if (!failure) failure = error; }
   }
