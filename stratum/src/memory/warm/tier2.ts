@@ -35,6 +35,7 @@ export const FACT_TABLES: Record<FactType, string> = {
   PolicyUpdate: "policy_updates",
   Todo: "todos",
   VariableChange: "variable_changes",
+  OperationalReference: "operational_references",
 };
 
 /** Reverse of {@link FACT_TABLES}: table name → fact_type (for reads). */

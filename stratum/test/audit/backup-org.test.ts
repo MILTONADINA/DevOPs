@@ -36,6 +36,10 @@ test("org backup includes File-to-fact source links", () => {
   expect(ORG_SCOPED_TABLES).toContain("source_fact_links");
 });
 
+test("org backup includes operational references", () => {
+  expect(ORG_SCOPED_TABLES).toContain("operational_references");
+});
+
 describe("parseArgs", () => {
   test("defaults: no org, no out, not pretty", () => {
     expect(parseArgs([])).toEqual({ pretty: false });
