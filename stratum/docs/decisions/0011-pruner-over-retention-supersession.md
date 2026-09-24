@@ -109,3 +109,11 @@ negative-gain case it *does* address.
 - **LLM-judged supersession at prune time** — rejected for the hot path: too slow
   / costly to run per turn (the extractor already does structured extraction
   off-path; supersession belongs in Tier-3, not the pruner's inner loop).
+
+## 2026-09-24 project-bound lookup
+
+`find_project_superseded` now limits commercial shadow lookup to one verified
+project and session-attributed edge and endpoints. The legacy
+`find_superseded` function remains for personal mode. No turn-to-entity
+provenance bridge or request-path suppression is active; Tier-C and judged
+Tier-A release gates remain open.

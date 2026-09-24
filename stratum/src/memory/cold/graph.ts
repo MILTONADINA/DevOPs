@@ -17,6 +17,7 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { validProjectScope } from "../../proxy/auth";
 
 /** Knowledge-graph node kinds (CLAUDE.md node types + Project). */
 export type EntityKind = "Function" | "Commit" | "Decision" | "Developer" | "Policy" | "Project" | "File";
@@ -95,14 +96,16 @@ export interface KnowledgeGraph {
    */
   addEdge(input: AddEdgeInput): Promise<string>;
   /**
-   * ADR-0011 supersession lookup: of `entityNames`, which have an outgoing
-   * SUPERSEDES edge, and to what.
+   * Legacy organization-wide supersession lookup for personal mode only.
+   * Commercial callers must use findProjectSuperseded.
    * @param orgId - the owning organization.
    * @param entityNames - entity names present in the current context.
    * @returns the supersessions among those names (empty if none).
    * @throws {Error} if the query fails.
    */
   findSuperseded(orgId: string, entityNames: string[]): Promise<Supersession[]>;
+  /** Commercial shadow lookup: exact verified project and complete source provenance only. */
+  findProjectSuperseded(orgId: string, projectScope: string | null, entityNames: string[]): Promise<Supersession[]>;
   /**
    * All edges touching an entity (powers /understand-codebase).
    * @param orgId - the owning organization.
@@ -226,6 +229,17 @@ export function createKnowledgeGraph(client: SupabaseClient): KnowledgeGraph {
       return ((data ?? []) as { superseded: string; superseded_by: string }[]).map((r) => ({
         superseded: r.superseded,
         supersededBy: r.superseded_by,
+      }));
+    },
+
+    async findProjectSuperseded(orgId: string, projectScope: string | null, entityNames: string[]): Promise<Supersession[]> {
+      if (projectScope !== null && !validProjectScope(projectScope)) throw new Error("invalid project scope for supersession lookup");
+      if (entityNames.length === 0) return [];
+      const { data, error } = await client.rpc("find_project_superseded", { match_org: orgId, match_project_scope: projectScope, names: entityNames });
+      if (error) throw new Error(`findProjectSuperseded failed: ${error.message}`);
+      return ((data ?? []) as { superseded: string; superseded_by: string }[]).map((row) => ({
+        superseded: row.superseded,
+        supersededBy: row.superseded_by,
       }));
     },
 
