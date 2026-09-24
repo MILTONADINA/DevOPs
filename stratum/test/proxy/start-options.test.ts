@@ -2,6 +2,10 @@
 // index.ts does NOT boot a server (the entry guard only starts when run as the entry).
 
 import { describe, test, expect, vi } from "vitest";
+vi.unmock("node:fs");
+vi.unmock("fs");
+import { mkdtempSync, rmSync } from "node:fs";
+import { join } from "node:path";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { BuildProxyOptions } from "../../src/proxy/app";
 import { commercialEnabled, buildStartOptions, resolveListenHost, type ClientFactory } from "../../src/proxy/index";
@@ -31,6 +35,17 @@ describe("resolveListenHost", () => {
 });
 
 describe("buildStartOptions", () => {
+  test("commercial billing wires a project-local outbox and rejects ephemeral Vercel runtime", async () => {
+    const dir = mkdtempSync(join(process.cwd(), "data", "usage-start-test-"));
+    const env = { CQ_COMMERCIAL: "true", SUPABASE_URL: "u", SUPABASE_SERVICE_KEY: "k", CQ_BILLING_SIGNING_SECRET: "test-secret", CQ_USAGE_OUTBOX_DIR: dir };
+    try {
+      const opts = buildStartOptions(env, { messages: {} as NonNullable<BuildProxyOptions["messages"]> }, (() => fakeClient) as ClientFactory);
+      expect(opts.messages?.usageOutbox?.enqueue).toBeTypeOf("function");
+      expect(opts.messages?.recordUsage).toBeUndefined();
+      await opts.messages?.usageOutbox?.close();
+      expect(() => buildStartOptions({ ...env, VERCEL: "1" }, { messages: {} as NonNullable<BuildProxyOptions["messages"]> }, (() => fakeClient) as ClientFactory)).toThrow(/persistent|serverless|Vercel/i);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
   test("local memory extraction is explicitly configured and rejects a non-loopback endpoint", () => {
     const messages = {} as NonNullable<BuildProxyOptions["messages"]>;
     const env = { CQ_COMMERCIAL: "true", SUPABASE_URL: "u", SUPABASE_SERVICE_KEY: "k",

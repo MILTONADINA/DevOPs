@@ -18,7 +18,7 @@ afterEach(async () => {
   if (app) { await app.close(); app = undefined; }
 });
 
-function deps(over: { forward?: MessagesDeps["forward"]; countTokens?: MessagesDeps["countTokens"]; recordUsage?: MessagesDeps["recordUsage"] } = {}): MessagesDeps {
+function deps(over: { forward?: MessagesDeps["forward"]; countTokens?: MessagesDeps["countTokens"]; recordUsage?: MessagesDeps["recordUsage"]; usageOutbox?: MessagesDeps["usageOutbox"] } = {}): MessagesDeps {
   const fs = { writeFileSync: () => undefined } as unknown as Parameters<typeof captureMod.createCaptureStore>[0]["fs"];
   return {
     apiKey: "sk-ant-test",
@@ -27,6 +27,7 @@ function deps(over: { forward?: MessagesDeps["forward"]; countTokens?: MessagesD
     countTokens: over.countTokens ?? (async (): Promise<TokenCountResult> => ({ input_tokens: 8000, token_count_method: "exact", message_breakdown: [] })),
     capture: captureMod.createCaptureStore({ sessionId: "s", outputFile: "/tmp/s.json", fs }),
     ...(over.recordUsage ? { recordUsage: over.recordUsage } : {}),
+    ...(over.usageOutbox ? { usageOutbox: over.usageOutbox } : {}),
   };
 }
 
@@ -38,6 +39,38 @@ function post(body: unknown = BODY, key = "k1") {
 }
 
 describe("commercial usage persistence on /v1/messages", () => {
+  test("journals normal usage before completing a successful response", async () => {
+    const calls: UsageEvent[] = [];
+    app = buildProxy({ cors: false, rateLimit: false, auth: AUTH, messages: deps({ usageOutbox: { enqueue: (event) => { calls.push(event); }, close: async () => undefined } }) });
+    await app.ready();
+    expect((await post()).statusCode).toBe(200);
+    expect(calls).toMatchObject([{ orgId: "org-7", inputTokens: 8000, outputTokens: 42 }]);
+  });
+
+  test("fails a normal response when its durable usage journal cannot commit", async () => {
+    app = buildProxy({ cors: false, rateLimit: false, auth: AUTH, messages: deps({ usageOutbox: { enqueue: () => { throw new Error("disk full"); }, close: async () => undefined } }) });
+    await app.ready();
+    const res = await post();
+    expect(res.statusCode).toBe(503);
+    expect(res.json()).toMatchObject({ error: { type: "billing_unavailable" } });
+  });
+
+  test("withholds streaming completion when its durable journal cannot commit", async () => {
+    async function* chunks(): AsyncGenerator<string> {
+      yield 'event: message_start\ndata: {"type":"message_start","message":{"id":"m","role":"assistant","usage":{"input_tokens":5,"output_tokens":1}}}\n\n';
+      yield 'event: message_delta\ndata: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":4}}\n\n';
+      yield 'event: message_st';
+      yield 'op\ndata: {"type":"message_stop"}';
+    }
+    app = buildProxy({ cors: false, rateLimit: false, auth: AUTH, messages: {
+      ...deps({ usageOutbox: { enqueue: () => { throw new Error("disk full"); }, close: async () => undefined } }),
+      forwardStream: async () => ({ status: 200, stream: chunks() }),
+    } });
+    await app.ready();
+    const res = await post({ ...BODY, stream: true });
+    expect(res.body).toContain('"type":"billing_unavailable"');
+    expect(res.body).not.toContain('event: message_stop');
+  });
   test("records usage after a successful forward (org + measured tokens)", async () => {
     const calls: UsageEvent[] = [];
     app = buildProxy({ cors: false, rateLimit: false, auth: AUTH, messages: deps({ recordUsage: async (e) => void calls.push(e) }) });
