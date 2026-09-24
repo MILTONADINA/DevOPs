@@ -177,6 +177,19 @@ describe("fact extractor (injected fake completion — no real model)", () => {
     expect(p).toContain("deprecate getUser");
   });
 
+  test("prompt distinguishes current same-subject decisions from unrelated UI work", () => {
+    const p = extractionPrompt({ session_id: "s", turns: [
+      { role: "user", content: "New models use MongoDB." },
+      { role: "user", content: "The dashboard icon layout was reviewed." },
+      { role: "user", content: "New models use PostgreSQL." },
+    ] });
+    expect(p).toMatch(/later turn.*same named subject/i);
+    expect(p).toMatch(/latest current decision/i);
+    expect(p).toMatch(/only.*named code function or method/i);
+    expect(p).toMatch(/not FunctionChange/i);
+    expect(p).toMatch(/do not invent a reviewed supersession link/i);
+  });
+
   test("FENCES untrusted turns + strips forged fence tokens (prompt-injection defense)", () => {
     // A turn that tries to forge a closing fence + inject an instruction must NOT break out of the
     // CONVERSATION data section — the fence token is stripped and a security directive is present.
