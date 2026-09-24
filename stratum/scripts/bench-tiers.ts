@@ -11,13 +11,13 @@
  *
  *   npm run bench:tiers
  *
- * Tier-1 + pruner are LOCAL (always run; the pruner warms the ONNX model first —
- * first run downloads ~23MB to the gitignored models/). Tier-2/3 need
- * SUPABASE_URL + SUPABASE_SERVICE_KEY (skip cleanly without them); they seed a
- * throwaway org, measure, and delete it. NO Anthropic API.
+ * Tier-1 + pruner are LOCAL. Tier-2/3 require explicit SUPABASE_URL and
+ * SUPABASE_SERVICE_KEY; all tiers must be measured for a passing result.
+ * The benchmark owns a fresh disposable organization and removes it afterward.
+ * NO Anthropic API.
  */
 
-import "dotenv/config";
+import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { createClient } from "@supabase/supabase-js";
 import { createHotMemory, type HotTurn } from "../src/memory/hot/tier1";
@@ -25,7 +25,6 @@ import { createOnnxEncoder, EMBEDDING_DIM } from "../src/pruner/encoder";
 import { prune, type HistoryEmbedding } from "../src/pruner/pruner";
 import { DEFAULT_KADANEDIAL } from "../src/pruner/kadanedial";
 import { createWarmMemory } from "../src/memory/warm/tier2";
-import { createSessionStore } from "../src/memory/warm/sessions";
 import { createKnowledgeGraph } from "../src/memory/cold/graph";
 import { createVectorStore } from "../src/memory/cold/vectors";
 import { summarize, type LatencySummary } from "../src/lib/latency-stats";
@@ -89,8 +88,14 @@ export async function main(): Promise<number> {
     process.stdout.write(`${s}\n`);
   };
   const rows: Row[] = [];
+  const url = process.env["SUPABASE_URL"];
+  const key = process.env["SUPABASE_SERVICE_KEY"];
+  if (!url || !key) {
+    process.stderr.write("bench-tiers requires SUPABASE_URL and SUPABASE_SERVICE_KEY; no tiers measured.\n");
+    return 1;
+  }
 
-  out("Tier-latency benchmark (v0.5.x — targets per docs/MONITORING.md + GLOSSARY.md)");
+  out("Tier-latency benchmark (development measurement; deployment gate remains open)");
   out("=".repeat(76));
 
   // ── Tier-1 hot recall (RAM) — always ──────────────────────────────────────
@@ -133,19 +138,30 @@ export async function main(): Promise<number> {
     rows.push({ label: "Pruner: encode + prune combined", summary: combined, target: { metric: "p99", maxMs: 20 }, passed: gate(combined, { metric: "p99", maxMs: 20 }) });
   }
 
-  // ── Tier-2 / Tier-3 — gated on Supabase creds ─────────────────────────────
-  const url = process.env["SUPABASE_URL"];
-  const key = process.env["SUPABASE_SERVICE_KEY"];
-  if (url && key) {
+  // ── Tier-2 / Tier-3 — explicit database binding ───────────────────────────
+  {
     const client = createClient(url, key);
-    const sessions = createSessionStore(client);
     const warm = createWarmMemory(client);
     const graph = createKnowledgeGraph(client);
     const vectors = createVectorStore(client);
-    let orgId = "";
+    const orgId = randomUUID();
+    const sessionId = randomUUID();
+    let created = false;
+    let benchmarkError: unknown;
     try {
-      orgId = await sessions.ensureOrg("Bench Tiers Org");
+      const inserted = await client.from("organizations").insert({ id: orgId, name: `Bench Tiers Org ${orgId}` });
+      if (inserted.error) throw new Error(`benchmark organization insert failed: ${inserted.error.message}`);
+      created = true;
       out(`→ seeding a throwaway org (${orgId.slice(0, 8)}…) for Tier-2/3 latency…`);
+      const session = await client.from("sessions").insert({ id: sessionId, org_id: orgId, model: "benchmark", kind: "memory" });
+      if (session.error) throw new Error(`benchmark session insert failed: ${session.error.message}`);
+      const warmFacts = await client
+        .from("operational_references")
+        .insert(Array.from({ length: 100 }, (_, i) => ({ org_id: orgId, session_id: sessionId, confidence: 0.9, subject: `benchmark reference ${i}`, reference: `benchmark-${i}` })));
+      if (warmFacts.error) throw new Error(`benchmark warm fact insert failed: ${warmFacts.error.message}`);
+      const warmResult = await warm.queryRecent(orgId, { limit: 20 });
+      if (warmResult.length !== 20) throw new Error(`benchmark warm query returned ${warmResult.length} facts, expected 20`);
+      out("→ warm query returned 20 facts from 100 seeded references.");
       // Seed Tier-3: entities + an edge + 50 vectors (so queries do real work).
       // addEdge takes entity IDs (from_entity/to_entity are UUID FKs), not names —
       // capture the ids ensureEntity returns (as promoteFactsToGraph does).
@@ -172,15 +188,21 @@ export async function main(): Promise<number> {
       });
       const t3vs = summarize(t3v);
       rows.push({ label: "Tier-3 vector search (pgvector, live Supabase)", summary: t3vs, target: { metric: "p95", maxMs: 200 }, passed: gate(t3vs, { metric: "p95", maxMs: 200 }) });
-    } finally {
-      if (orgId) {
-        for (const t of ["memory_vectors", "knowledge_edges", "knowledge_entities"]) await client.from(t).delete().eq("org_id", orgId);
-        await client.from("organizations").delete().eq("id", orgId);
-        out("→ cleaned up the throwaway org.");
-      }
+    } catch (error) {
+      benchmarkError = error;
     }
-  } else {
-    out("→ Tier-2/3 SKIPPED (set SUPABASE_URL + SUPABASE_SERVICE_KEY to benchmark them live).");
+    const cleanupErrors: string[] = [];
+    if (created) {
+      for (const table of ["memory_vectors", "knowledge_edges", "knowledge_entities", "operational_references", "sessions"]) {
+        const deleted = await client.from(table).delete().eq("org_id", orgId);
+        if (deleted.error) cleanupErrors.push(`${table}: ${deleted.error.message}`);
+      }
+      const deleted = await client.from("organizations").delete().eq("id", orgId).select("id");
+      if (deleted.error || deleted.data?.length !== 1) cleanupErrors.push(`organizations: ${deleted.error?.message ?? "row missing"}`);
+      if (cleanupErrors.length === 0) out("→ cleaned up the throwaway org.");
+    }
+    if (cleanupErrors.length > 0) throw new Error(`benchmark cleanup failed: ${cleanupErrors.join("; ")}${benchmarkError ? `; original error: ${String(benchmarkError)}` : ""}`);
+    if (benchmarkError) throw benchmarkError;
   }
 
   // ── Report ────────────────────────────────────────────────────────────────
