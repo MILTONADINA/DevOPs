@@ -39,6 +39,7 @@ import { createSupabaseMessageMemoryRecorder } from "./message-memory";
 import { createSupabaseConversationResolver } from "./conversation";
 import { createShadowObserver } from "./shadow-observer";
 import { createOnnxEncoder } from "../pruner/encoder";
+import { createExchangeFunctionLookup, createProjectFunctionSupersessionLookup } from "../memory/warm/exchange-function-entities";
 
 export interface StartEnv {
   CQ_COMMERCIAL?: string | undefined;
@@ -161,9 +162,18 @@ export function buildStartOptions(env: StartEnv, base: BuildProxyOptions, makeCl
       base.messages.resolveConversation = createSupabaseConversationResolver(client);
       if (env.CQ_SHADOW_OBSERVE === "true" || env.CQ_SHADOW_OBSERVE === "1") {
         const encoder = createOnnxEncoder({ cacheDir: path.join(process.cwd(), "models"), localOnly: true });
-        base.messages.observeConversation = createShadowObserver(encoder, (metric) => {
-          logger.info(metric, "shadow conversation selection");
-        });
+        base.messages.observeConversation = createShadowObserver(
+          encoder,
+          (metric) => {
+            logger.info(metric, "shadow conversation selection");
+          },
+          {
+            supersession: {
+              resolveEntities: createExchangeFunctionLookup(client),
+              findFunctionSuperseded: createProjectFunctionSupersessionLookup(client),
+            },
+          },
+        );
       }
       // Reuse the already-wired exact token counter for /v1/tokens/count.
       opts.tokens = { countTokens: base.messages.countTokens };
