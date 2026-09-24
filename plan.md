@@ -404,6 +404,10 @@ Anthropic's reasoning-based security scanner (GA Feb 2026) reads code "the way a
   close the separate erasure or release gates.
 - [ ] **`stratum/src/billing/calculator.ts`** (~5h). Per-record + monthly aggregate calculations. `0.20 × (original - quarantined) × price` formula (placeholder; not active until Stripe).
 - [ ] **`stratum/src/billing/invoice.ts` stub** (~3h). Interface only; no Stripe yet. Implementable when v1.0.x customer arrives.
+- [ ] **Complete invoice read gate**. The invoice, CSV, and developer
+  summary paths now page the exact scoped billing count; the CLI fails when
+  explicit database credentials are absent. A capped 1,001-row fixture
+  verifies full reads. Real partner invoice and payment remain open.
 - [ ] **GDPR erasure endpoint** (~5h). The current immutable billing records
   have organization/session foreign keys, so in-place session-ID replacement
   is impossible. Design a separate retention/identity boundary, establish the
