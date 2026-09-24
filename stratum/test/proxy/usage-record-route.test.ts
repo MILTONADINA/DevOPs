@@ -55,6 +55,34 @@ describe("commercial usage persistence on /v1/messages", () => {
     expect(res.json()).toMatchObject({ error: { type: "billing_unavailable" } });
   });
 
+  test("fails a commercial normal response with no measurable input tokens", async () => {
+    const calls: UsageEvent[] = [];
+    app = buildProxy({ cors: false, rateLimit: false, auth: AUTH, messages: deps({
+      countTokens: async () => ({ input_tokens: 0, token_count_method: "estimated", message_breakdown: [] }),
+      usageOutbox: { enqueue: (event) => { calls.push(event); }, close: async () => undefined },
+    }) });
+    await app.ready();
+    expect((await post()).statusCode).toBe(503);
+    expect(calls).toHaveLength(0);
+  });
+
+  test("withholds streaming completion when input tokens cannot be measured", async () => {
+    const calls: UsageEvent[] = [];
+    async function* chunks(): AsyncGenerator<string> {
+      yield 'event: message_start\ndata: {"type":"message_start","message":{"id":"m","role":"assistant","usage":{"output_tokens":1}}}\n\n';
+      yield 'event: message_stop\ndata: {"type":"message_stop"}\n\n';
+    }
+    app = buildProxy({ cors: false, rateLimit: false, auth: AUTH, messages: {
+      ...deps({ countTokens: async () => ({ input_tokens: 0, token_count_method: "estimated", message_breakdown: [] }), usageOutbox: { enqueue: (event) => { calls.push(event); }, close: async () => undefined } }),
+      forwardStream: async () => ({ status: 200, stream: chunks() }),
+    } });
+    await app.ready();
+    const response = await post({ ...BODY, stream: true });
+    expect(response.body).toContain('"type":"billing_unavailable"');
+    expect(response.body).not.toContain('event: message_stop');
+    expect(calls).toHaveLength(0);
+  });
+
   test("withholds streaming completion when its durable journal cannot commit", async () => {
     async function* chunks(): AsyncGenerator<string> {
       yield 'event: message_start\ndata: {"type":"message_start","message":{"id":"m","role":"assistant","usage":{"input_tokens":5,"output_tokens":1}}}\n\n';

@@ -8,7 +8,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { BuildProxyOptions } from "../../src/proxy/app";
-import { commercialEnabled, buildStartOptions, resolveListenHost, type ClientFactory } from "../../src/proxy/index";
+import { commercialEnabled, buildStartOptions, resolveListenHost, assertCommercialStartup, type ClientFactory } from "../../src/proxy/index";
 
 const base = { messages: {} as never, dashboard: { readSessions: () => [] } } as unknown as BuildProxyOptions;
 const fakeClient = {} as unknown as SupabaseClient;
@@ -21,6 +21,17 @@ describe("commercialEnabled", () => {
     expect(commercialEnabled({ CQ_COMMERCIAL: "1", SUPABASE_URL: "u", SUPABASE_SERVICE_KEY: "k" })).toBe(true);
     expect(commercialEnabled({ CQ_COMMERCIAL: "false", SUPABASE_URL: "u", SUPABASE_SERVICE_KEY: "k" })).toBe(false);
     expect(commercialEnabled({ CQ_COMMERCIAL: "true", SUPABASE_URL: "u", SUPABASE_SERVICE_KEY: "" })).toBe(false); // empty key
+  });
+});
+
+describe("assertCommercialStartup", () => {
+  test("requires database credentials and signing secret only for commercial runtime", () => {
+    expect(() => assertCommercialStartup({})).not.toThrow();
+    expect(() => assertCommercialStartup({ CQ_COMMERCIAL: "true" })).toThrow(/database|Supabase/i);
+    expect(() => assertCommercialStartup({ CQ_COMMERCIAL: "true", SUPABASE_URL: "u", SUPABASE_SERVICE_KEY: "k" })).toThrow(/signing secret/i);
+    expect(() => assertCommercialStartup({ CQ_COMMERCIAL: "true", SUPABASE_URL: "u", SUPABASE_SERVICE_KEY: "k", CQ_BILLING_SIGNING_SECRET: "   " })).toThrow(/signing secret/i);
+    expect(() => assertCommercialStartup({ CQ_COMMERCIAL: "true", SUPABASE_URL: "u", SUPABASE_SERVICE_KEY: "k", CQ_BILLING_SIGNING_SECRET: "s" })).not.toThrow();
+    expect(() => assertCommercialStartup({ CQ_COMMERCIAL: "true", SUPABASE_URL: "u", SUPABASE_SERVICE_KEY: "k", CQ_BILLING_SIGNING_SECRET: "s", VERCEL: "1" })).toThrow(/ephemeral|Vercel/i);
   });
 });
 
