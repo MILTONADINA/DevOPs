@@ -63,6 +63,21 @@ BEGIN
   IF names IS DISTINCT FROM ARRAY['newFn', 'oldFn', 'suppressedOtherFn']::text[] THEN
     RAISE EXCEPTION 'Orion exchange mapping leaked mixed or duplicate facts: %', names;
   END IF;
+  IF (SELECT count(*) FROM public.find_active_fact_exchanges(org_id, orion_session, 'orion',
+        ARRAY[old_exchange, new_exchange, ambiguous_exchange, suppressed_exchange,
+          mixed_exchange, duplicate_exchange, suppressed_other_exchange,
+          policy_exchange, todo_exchange, variable_exchange])) <> 9
+    OR (SELECT sum(fact_count) FROM public.find_active_fact_exchanges(org_id, orion_session, 'orion',
+        ARRAY[old_exchange, new_exchange, ambiguous_exchange, suppressed_exchange,
+          mixed_exchange, duplicate_exchange, suppressed_other_exchange,
+          policy_exchange, todo_exchange, variable_exchange])) <> 15 THEN
+    RAISE EXCEPTION 'fact coverage omitted a typed table, counted suppression, or crossed binding';
+  END IF;
+  IF EXISTS (SELECT 1 FROM public.find_active_fact_exchanges(org_id, orion_session, 'vega', ARRAY[old_exchange]))
+    OR EXISTS (SELECT 1 FROM public.find_active_fact_exchanges(other_org, orion_session, 'orion', ARRAY[old_exchange]))
+    OR EXISTS (SELECT 1 FROM public.find_active_fact_exchanges(org_id, memory_session, 'orion', ARRAY[old_exchange])) THEN
+    RAISE EXCEPTION 'fact coverage crossed project, organization, or session kind';
+  END IF;
   SELECT array_agg(entity_name) INTO names
     FROM public.find_exchange_function_entities(org_id, vega_session, 'vega', ARRAY[old_exchange]);
   IF names IS DISTINCT FROM ARRAY['vegaNew']::text[] THEN RAISE EXCEPTION 'Vega exchange mapping crossed project'; END IF;
@@ -115,6 +130,11 @@ BEGIN
     OR has_function_privilege('authenticated', 'public.find_exchange_function_entities(uuid,uuid,text,uuid[])', 'EXECUTE')
     OR NOT has_function_privilege('service_role', 'public.find_exchange_function_entities(uuid,uuid,text,uuid[])', 'EXECUTE') THEN
     RAISE EXCEPTION 'exchange lookup grants are wrong';
+  END IF;
+  IF has_function_privilege('anon', 'public.find_active_fact_exchanges(uuid,uuid,text,uuid[])', 'EXECUTE')
+    OR has_function_privilege('authenticated', 'public.find_active_fact_exchanges(uuid,uuid,text,uuid[])', 'EXECUTE')
+    OR NOT has_function_privilege('service_role', 'public.find_active_fact_exchanges(uuid,uuid,text,uuid[])', 'EXECUTE') THEN
+    RAISE EXCEPTION 'fact coverage lookup grants are wrong';
   END IF;
   IF has_function_privilege('anon', 'public.find_project_function_superseded(uuid,text,text[])', 'EXECUTE')
     OR has_function_privilege('authenticated', 'public.find_project_function_superseded(uuid,text,text[])', 'EXECUTE')

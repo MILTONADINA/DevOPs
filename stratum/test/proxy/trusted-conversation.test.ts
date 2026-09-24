@@ -153,6 +153,7 @@ describe("shadow observer", () => {
   test("counts a fresh rename before graph promotion without treating both turns as deletable", async () => {
     const metrics: ShadowMetric[] = [];
     const observe = createShadowObserver(encoder, (metric) => metrics.push(metric), {
+      now: () => 100_000_000,
       supersession: {
         resolveEntities: async () =>
           new Map([
@@ -181,10 +182,14 @@ describe("shadow observer", () => {
     const resolvedCalls: string[][] = [];
     const freshCalls: string[][] = [];
     const observe = createShadowObserver(encoder, () => undefined, {
+      now: () => 100_000_000,
       supersession: {
         resolveEntities: async (_org, _session, _project, exchanges) => {
           resolvedCalls.push(exchanges);
-          return new Map([["old", "oldFn"], ["new", "newFn"]]);
+          return new Map([
+            ["old", "oldFn"],
+            ["new", "newFn"],
+          ]);
         },
         findFunctionSuperseded: async () => [],
         findFreshSuperseded: async (_org, _session, _project, exchanges) => {
@@ -197,5 +202,30 @@ describe("shadow observer", () => {
     for (const exchangeId of ["old", "new", "mixed", "current"]) await observe({ ...event, exchangeId });
     expect(resolvedCalls.at(-1)).toEqual(["old", "new", "mixed"]);
     expect(freshCalls.at(-1)).toEqual(["old", "new"]);
+  });
+
+  test("counts fact-bearing exchanges dropped by shadow selection once per exchange", async () => {
+    const metrics: ShadowMetric[] = [];
+    const calls: string[][] = [];
+    const factEncoder: BiEncoder = {
+      dimension: 2,
+      encode: async (texts) => texts.map((value) => (value === "old" ? Float32Array.from([0, 1]) : Float32Array.from([1, 0]))),
+    };
+    const observe = createShadowObserver(factEncoder, (metric) => metrics.push(metric), {
+      now: () => 100_000_000,
+      factCoverage: async (_org, _session, _project, exchanges) => {
+        calls.push(exchanges);
+        return new Map([
+          ["old-exchange", 2],
+          ["new-exchange", 1],
+        ]);
+      },
+    });
+    const event = { conversationId: ID, orgId: "org", keyId: "key", projectScopeId: "org/orion" };
+    await observe({ ...event, exchangeId: "old-exchange", query: "old", assistant: "old" });
+    await observe({ ...event, exchangeId: "new-exchange", query: "new", assistant: "new" });
+    await observe({ ...event, exchangeId: "current", query: "target", assistant: "pending" });
+    expect(calls.at(-1)).toEqual(["old-exchange", "new-exchange"]);
+    expect(metrics.at(-1)?.factCoverage).toEqual({ activeExchangeCount: 2, selectedExchangeCount: 1, droppedExchangeCount: 1 });
   });
 });
