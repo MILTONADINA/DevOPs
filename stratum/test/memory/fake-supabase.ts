@@ -118,6 +118,10 @@ export function makeFakeSupabase(
         eqFilters[col] = val;
         return builder;
       },
+      is(col: string, val: null) {
+        eqFilters[col] = val;
+        return builder;
+      },
       lt(col: string, val: unknown) {
         ltFilters[col] = val;
         return builder;
@@ -151,6 +155,10 @@ export function makeFakeSupabase(
     };
     const builder = {
       eq(col: string, val: unknown) {
+        filters[col] = val;
+        return builder;
+      },
+      is(col: string, val: null) {
         filters[col] = val;
         return builder;
       },

@@ -95,6 +95,13 @@ authenticated organization plus the stored slug; client headers and query
 parameters cannot change it. Existing keys without `--project-scope` remain
 unbound and cannot supply a scoped pruning decision. Pruning remains disabled.
 
+Run `npm run db:verify-project-warm-facts` to check project-scoped memory
+sessions, typed facts, and the fact read/suppress API against the local database.
+Bound keys see only their own project's structured facts; unbound keys see only
+legacy unbound facts. The database rejects a fact whose project differs from
+its session. Graph, audit-status, and other organization-wide APIs are not yet
+project-isolated. This does not enable pruning.
+
 Run `npm run db:verify-message-memory` to check a successful authenticated
 `/v1/messages` request through a loopback fake extraction model. It verifies
 one automatically created memory session and one validated fact under the

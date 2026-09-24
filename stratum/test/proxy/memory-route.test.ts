@@ -15,12 +15,12 @@ const STATUS: AuditStatusSummary = { fact_table: "function_changes", fact_id: "f
 function fakeDeps(): { deps: MemoryDeps; captured: Record<string, unknown> } {
   const captured: Record<string, unknown> = {};
   const deps: MemoryDeps = {
-    listFacts: (orgId, limit) => {
-      captured["facts"] = { orgId, limit };
+    listFacts: (orgId, limit, projectScope) => {
+      captured["facts"] = { orgId, limit, ...(projectScope !== undefined ? { projectScope } : {}) };
       return Promise.resolve([FACT]);
     },
-    suppressFact: (orgId, id, table) => {
-      captured["suppress"] = { orgId, id, table };
+    suppressFact: (orgId, id, table, projectScope) => {
+      captured["suppress"] = { orgId, id, table, ...(projectScope !== undefined ? { projectScope } : {}) };
       return Promise.resolve(id === "exists");
     },
     listConflicts: (orgId, limit) => {
@@ -172,6 +172,25 @@ describe("GET /v1/memory/graph/related-facts", () => {
 });
 
 describe("GET /v1/memory/facts", () => {
+  test("binds fact reads and suppression to the authenticated project, ignoring client scope", async () => {
+    const { deps, captured } = fakeDeps();
+    const app = buildProxy({ rateLimit: false, cors: false, auth: { resolve: (key) => Promise.resolve(
+      key === "bound" ? { orgId: "o9", keyId: "k1", projectScopeId: "o9/orion" } :
+      key === "legacy" ? { orgId: "o9", keyId: "k2" } : null,
+    ) }, memory: deps });
+    const bound = { authorization: "Bearer bound", "x-project-scope": "vega" };
+    expect((await app.inject({ method: "GET", url: "/v1/memory/facts?org-id=other&project-scope=vega", headers: bound })).statusCode).toBe(200);
+    expect(captured["facts"]).toEqual({ orgId: "o9", limit: 50, projectScope: "orion" });
+    expect((await app.inject({ method: "DELETE", url: "/v1/memory/facts/exists?table=todos&project-scope=vega", headers: bound })).statusCode).toBe(200);
+    expect(captured["suppress"]).toEqual({ orgId: "o9", id: "exists", table: "todos", projectScope: "orion" });
+    const legacy = { authorization: "Bearer legacy" };
+    expect((await app.inject({ method: "GET", url: "/v1/memory/facts?project-scope=orion", headers: legacy })).statusCode).toBe(200);
+    expect(captured["facts"]).toEqual({ orgId: "o9", limit: 50, projectScope: null });
+    expect((await app.inject({ method: "DELETE", url: "/v1/memory/facts/exists?table=todos", headers: legacy })).statusCode).toBe(200);
+    expect(captured["suppress"]).toEqual({ orgId: "o9", id: "exists", table: "todos", projectScope: null });
+    await app.close();
+  });
+
   test("returns the org's facts and honors ?limit", async () => {
     const { deps, captured } = fakeDeps();
     const app = buildProxy({ rateLimit: false, cors: false, memory: deps });
