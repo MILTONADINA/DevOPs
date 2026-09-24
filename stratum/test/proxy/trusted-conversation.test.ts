@@ -257,6 +257,11 @@ describe("shadow observer", () => {
           ["new-exchange", 1],
         ]);
       },
+      queryFactCandidates: async () =>
+        new Map([
+          ["old-exchange", 2],
+          ["new-exchange", 1],
+        ]),
     });
     const event = { conversationId: ID, orgId: "org", keyId: "key", projectScopeId: "org/orion" };
     await observe({ ...event, exchangeId: "old-exchange", query: "old", assistant: "old" });
@@ -271,12 +276,22 @@ describe("shadow observer", () => {
       selectedFactCount: 1,
       droppedFactCount: 2,
     });
+    expect(metrics.at(-1)?.queryFactRescue).toEqual({
+      matchedFactCount: 3,
+      rescuedExchangeCount: 1,
+      rescuedFactCount: 2,
+      addedTurnCount: 2,
+      candidateSelectedCount: 4,
+    });
+    expect(JSON.stringify(metrics.at(-1))).not.toContain("old-exchange");
+    expect(JSON.stringify(metrics.at(-1))).not.toContain("target");
   });
 
   test("marks coverage unavailable while a failed memory exchange remains hot", async () => {
     const metrics: ShadowMetric[] = [];
     const observe = createShadowObserver(encoder, (metric) => metrics.push(metric), {
       factCoverage: async () => new Map(),
+      queryFactCandidates: async () => new Map([["failed", 1]]),
     });
     const event = { conversationId: ID, orgId: "org", keyId: "one", query: "private query", assistant: "private answer" };
     await observe({ ...event, exchangeId: "failed", memoryReady: Promise.resolve(false) });
@@ -284,6 +299,7 @@ describe("shadow observer", () => {
     expect(metrics[1]?.candidateCount).toBe(2);
     expect(metrics[1]?.provenanceIncompleteExchangeCount).toBe(1);
     expect(metrics[1]?.factCoverage).toBeUndefined();
+    expect(metrics[1]?.queryFactRescue).toBeUndefined();
     expect(JSON.stringify(metrics)).not.toContain("private");
   });
 
