@@ -3,7 +3,7 @@
 import { readFileSync, realpathSync } from "node:fs";
 import { join } from "node:path";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { createWarmMemory } from "../src/memory/warm/tier2";
+import { createWarmMemory, rowToFact } from "../src/memory/warm/tier2";
 import { createVectorStore } from "../src/memory/cold/vectors";
 import { factToText } from "../src/memory/promote";
 import { cosineSimilarity, createOnnxEncoder, type BiEncoder } from "../src/pruner/encoder";
@@ -14,6 +14,7 @@ const ORG_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const RECENT_LIMIT = 3;
 const SEMANTIC_LIMIT = 3;
 const WARM_CANDIDATE_LIMIT = 200;
+const LEXICAL_CANDIDATE_LIMIT = 20;
 
 export interface SessionContextOptions {
   projectRoot: string;
@@ -106,7 +107,28 @@ export async function retrieveSessionContext(opts: SessionContextOptions, deps: 
       }
       if (deps.encodeMany) {
         try {
-          const candidates = eligible;
+          const candidates = [...eligible];
+          try {
+            const { data, error } = await client.rpc("search_project_warm_facts", {
+              match_org: opts.orgId, match_project_scope: projectScope,
+              search_text: opts.task.slice(0, 1200), result_limit: LEXICAL_CANDIDATE_LIMIT,
+            });
+            if (error) throw error;
+            const seen = new Set(candidates.map((fact) => fact.id));
+            if (Array.isArray(data)) for (const entry of data.slice(0, LEXICAL_CANDIDATE_LIMIT)) {
+              if (!entry || typeof entry !== "object" || typeof entry.fact_table !== "string" ||
+                  !entry.fact || typeof entry.fact !== "object" || Array.isArray(entry.fact)) continue;
+              const row = entry.fact as Record<string, unknown>;
+              if (row["org_id"] !== opts.orgId || row["project_scope"] !== projectScope) continue;
+              const fact = rowToFact(entry.fact_table, row);
+              if (fact && !seen.has(fact.id) && !superseded.has(fact.id)) {
+                candidates.push(fact);
+                seen.add(fact.id);
+              }
+            }
+          } catch {
+            /* the bounded recent warm candidates remain usable */
+          }
           if (candidates.length > 0) {
             const embeddings = await deps.encodeMany(candidates.map(factToText));
             if (embeddings.length !== candidates.length) throw new Error("incomplete warm fact embeddings");

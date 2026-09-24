@@ -60,6 +60,11 @@ try {
       ]),
     "insert facts",
   );
+  checked(
+    await db.from("tech_decisions").insert(Array.from({ length: 201 }, (_, i) =>
+      fact(randomUUID(), session, "orion", `Unrelated fixture note ${i}.`, 23))),
+    "insert newer noise beyond warm candidate window",
+  );
 
   const options = {
     projectRoot: root,

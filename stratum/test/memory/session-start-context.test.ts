@@ -91,6 +91,67 @@ describe("session-start memory bridge", () => {
     expect(result.semanticStatus).toBe("complete");
   });
 
+  test("adds an older scoped lexical fact beyond the newest 200 without trusting returned rows", async () => {
+    const row = (id: string, project_scope = "orion", is_suppressed = false) => ({
+      id, org_id: ORG, project_scope, is_suppressed, created_at: "2026-09-01T00:00:00Z",
+      session_id: "s", confidence: 0.9, is_verified: false, promoted_to_t3: false,
+      decision_text: id, domain: "operations",
+    });
+    const old = row("graph-dashboard-route");
+    const newest = Array.from({ length: 200 }, (_, i) => ({
+      ...row(`noise-${i}`), created_at: "2026-09-23T00:00:00Z",
+    }));
+    let lexicalCalls = 0;
+    const { client } = makeFakeSupabase({ tech_decisions: [old, ...newest] }, {}, {
+      match_project_fact_vectors: () => [],
+      search_project_warm_facts: (args) => {
+        lexicalCalls++;
+        expect(args).toEqual({ match_org: ORG, match_project_scope: "orion", search_text: "graph dashboard route", result_limit: 20 });
+        return [
+          { fact_table: "tech_decisions", fact: old },
+          { fact_table: "tech_decisions", fact: old },
+          { fact_table: "tech_decisions", fact: row("foreign", "vega") },
+          { fact_table: "tech_decisions", fact: row("suppressed", "orion", true) },
+          { fact_table: "tech_decisions", fact: { ...row("wrong-org"), org_id: OTHER } },
+          { fact_table: "tech_decisions", fact: { ...row("bad"), decision_text: null } },
+        ];
+      },
+    });
+    const output = await retrieveSessionContext({ ...base, projectScope: "orion", task: "graph dashboard route" }, {
+      makeClient: () => client,
+      encode: async () => [1, ...new Array(383).fill(0)],
+      encodeMany: async (texts) => texts.map((text) => text.includes("graph-dashboard-route")
+        ? [1, ...new Array(383).fill(0)] : [0, 1, ...new Array(382).fill(0)]),
+    });
+    const parsed = JSON.parse(output as string) as { recentFacts: { id: string }[]; relevantFacts: { id: string }[] };
+    expect(lexicalCalls).toBe(1);
+    expect(parsed.recentFacts.map((fact) => fact.id)).not.toContain(old.id);
+    expect(parsed.relevantFacts.map((fact) => fact.id).filter((id) => id === old.id)).toEqual([old.id]);
+    const exposed = [...parsed.recentFacts, ...parsed.relevantFacts].map((fact) => fact.id);
+    for (const id of ["foreign", "suppressed", "wrong-org", "bad"]) expect(exposed).not.toContain(id);
+  });
+
+  test("keeps recent warm ranking when lexical lookup fails", async () => {
+    let lexicalCalls = 0;
+    const { client } = makeFakeSupabase({ tech_decisions: [{
+      id: "recent", org_id: ORG, project_scope: "orion", is_suppressed: false,
+      created_at: "2026-09-23T00:00:00Z", session_id: "s", confidence: 0.9,
+      is_verified: false, promoted_to_t3: false, decision_text: "recovery runbook", domain: "operations",
+    }] }, {}, {
+      match_project_fact_vectors: () => [],
+      search_project_warm_facts: () => { lexicalCalls++; throw new Error("lexical unavailable"); },
+    });
+    const output = await retrieveSessionContext({ ...base, projectScope: "orion" }, {
+      makeClient: () => client,
+      encode: async () => [1, ...new Array(383).fill(0)],
+      encodeMany: async () => [[1, ...new Array(383).fill(0)]],
+    });
+    const parsed = JSON.parse(output as string) as { recentFacts: { id: string }[]; relevantFacts: { id: string }[] };
+    expect(lexicalCalls).toBe(1);
+    expect(parsed.recentFacts.map((fact) => fact.id)).toEqual(["recent"]);
+    expect(parsed.relevantFacts.map((fact) => fact.id)).toEqual(["recent"]);
+  });
+
   test("keeps ranked warm facts when promoted-vector search fails", async () => {
     const { client } = makeFakeSupabase(
       {
