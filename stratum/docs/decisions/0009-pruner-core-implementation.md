@@ -94,3 +94,10 @@ with the un-verifiable parts (real embeddings, eval) clearly gated.
 **"Correct" the spec pseudocode in `ALGORITHM.md` instead of in code.** Deferred:
 the spec is a published artifact referenced by other docs; changing it is a
 separate documentation decision. The code fix is needed now and is recorded here.
+
+## 2026-09-24 observation update
+
+The commercial proxy may now call the context manager for opt-in, local
+per-conversation shadow observation (`specs/proxy/trusted-conversation-shadow.md`).
+This updates decision 6's original "wired nowhere" statement. The quality
+gate still forbids applying its pruning decision to forwarded model input.

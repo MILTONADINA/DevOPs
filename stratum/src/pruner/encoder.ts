@@ -55,6 +55,8 @@ export interface OnnxEncoderOptions {
   cacheDir?: string;
   /** Quantization: "q8" = INT8 (default, per docs), "fp32" = full precision. */
   dtype?: "q8" | "fp32";
+  /** Refuse remote model fetches (for request-path shadow observation). */
+  localOnly?: boolean;
 }
 
 /** Minimal shape of the transformers.js feature-extraction output we use. */
@@ -91,9 +93,10 @@ export function createOnnxEncoder(opts: OnnxEncoderOptions = {}): BiEncoder {
         // encode actually happens (never during unit tests that inject vectors).
         const tf = (await import("@huggingface/transformers")) as unknown as {
           pipeline: (task: string, model: string, opts: { dtype: string }) => Promise<Extractor>;
-          env: { cacheDir?: string };
+          env: { cacheDir?: string; allowRemoteModels?: boolean };
         };
         if (opts.cacheDir) tf.env.cacheDir = opts.cacheDir;
+        if (opts.localOnly) tf.env.allowRemoteModels = false;
         return tf.pipeline("feature-extraction", modelId, { dtype });
       })();
     }

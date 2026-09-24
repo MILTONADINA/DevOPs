@@ -89,6 +89,16 @@ Their requests now flow through `/v1/messages`: authenticated (CQ key → org), 
 (on the server's `ANTHROPIC_API_KEY`), measured (exact SDK token counts), rate/budget-limited per their
 plan, and **persisted** — each request appends a signed `billing_record` (their usage).
 
+Commercial responses include `x-cq-conversation-id`. A client that wants later
+requests observed in the same shadow context sends that ID as the
+`x-cq-conversation-id` request header. The server creates an ID when the header
+is absent; a malformed ID or one belonging to another key or project is
+rejected before forwarding. Standard SDK clients that do not echo this header
+start a fresh observed conversation for each request. Set
+`CQ_SHADOW_OBSERVE=true` only when the local ONNX model cache is installed;
+observation logs numeric selection counts and never changes model input or
+billing. Pruning remains disabled until its quality gate passes.
+
 ## 4. Confirm their usage is visible
 
 - **API (authenticated with the CQ key — the reliable path):** `GET /v1/billing/invoice`, `GET /v1/billing/summary`, `GET /v1/sessions`.
