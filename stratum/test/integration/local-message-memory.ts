@@ -26,8 +26,14 @@ const model = createServer(async (request, response) => {
   }
   let body = "";
   for await (const chunk of request) body += chunk;
-  const prompt = JSON.stringify(JSON.parse(body));
+  const sent = JSON.parse(body);
+  const prompt = JSON.stringify(sent);
   if (!prompt.includes("latest question") || !prompt.includes("assistant answer") || prompt.includes("older question")) {
+    response.writeHead(400).end();
+    return;
+  }
+  if (sent.temperature !== 0 || sent.max_tokens !== 1024 ||
+      sent.chat_template_kwargs?.enable_thinking !== false || sent.chat_template_kwargs?.preserve_thinking !== false) {
     response.writeHead(400).end();
     return;
   }
