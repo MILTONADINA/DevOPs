@@ -38,7 +38,8 @@ gates, and one-week real-use quality pass.
 
 ## REQ-4 — Keep operator guidance current
 
-WHEN full-suite orchestration is merged, THE v0.4 plan and evaluation guide
+WHEN full-suite orchestration is merged, THE v0.4 plan, evaluation guide, and
+launch-readiness checkpoint
 SHALL describe default `test:eval` as invoking both complete published gates
 after Tier-C and Tier-B. They SHALL distinguish implemented orchestration from
 an actual passing judged run, and SHALL continue to name the red Tier-C gate,
