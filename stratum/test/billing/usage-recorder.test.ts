@@ -41,7 +41,7 @@ describe("createSupabaseUsageRecorder", () => {
 
     const session = inserts.find((i) => i.table === "sessions");
     const billing = inserts.find((i) => i.table === "billing_records");
-    expect(session?.row).toEqual({ org_id: "org-1", model: "claude-sonnet-4-6", kind: "usage" }); // PB-46: a usage bucket, not an explicit session
+    expect(session?.row).toEqual({ org_id: "org-1", project_scope: null, model: "claude-sonnet-4-6", kind: "usage" }); // PB-46: a usage bucket, not an explicit session
     expect(billing?.row).toMatchObject({ org_id: "org-1", session_id: "sess-1", original_tokens: 8000, quarantined_tokens: 8000, api_price_per_token: 0.000003 });
 
     // The signed_hash verifies against the immutable inputs (tamper-proof, like every billing row).
@@ -84,6 +84,25 @@ describe("createSupabaseUsageRecorder", () => {
     expect(inserts.filter((i) => i.table === "sessions")).toHaveLength(2);
   });
 
+  test("same model/day uses separate immutable usage buckets by authenticated project", async () => {
+    const { client, inserts } = fakeClient();
+    const rec = createSupabaseUsageRecorder({ client, signingSecret: SECRET, now: () => NOW });
+    for (const projectScopeId of ["org-1/orion", "org-1/vega", "org-1/orion", undefined]) {
+      await rec.recordUsage({ orgId: "org-1", ...(projectScopeId ? { projectScopeId } : {}), model: "claude-opus-4-8", inputTokens: 1000, outputTokens: 10 });
+    }
+    expect(inserts.filter((i) => i.table === "sessions").map((i) => i.row["project_scope"])).toEqual(["orion", "vega", null]);
+    expect(inserts.filter((i) => i.table === "billing_records").map((i) => i.row["session_id"])).toEqual(["sess-1", "sess-2", "sess-1", "sess-3"]);
+  });
+
+  test("rejects an invalid or cross-organization project before any database write", async () => {
+    const { client, inserts } = fakeClient();
+    const rec = createSupabaseUsageRecorder({ client, signingSecret: SECRET, now: () => NOW });
+    for (const projectScopeId of ["org-2/orion", "org-1/../vega", "org-1/", "orion"]) {
+      await expect(rec.recordUsage({ orgId: "org-1", projectScopeId, model: "claude-opus-4-8", inputTokens: 1000, outputTokens: 10 })).rejects.toThrow(/project scope/);
+    }
+    expect(inserts).toHaveLength(0);
+  });
+
   test("no-op when inputTokens <= 0 (billing_records CHECK original_tokens > 0)", async () => {
     const { client, inserts } = fakeClient();
     const rec = createSupabaseUsageRecorder({ client, signingSecret: SECRET, now: () => NOW });
@@ -103,7 +122,7 @@ describe("createSupabaseUsageRecorder", () => {
             insert: () => ({ select: () => ({ limit: () => Promise.resolve({ data: null, error: { code: "23505", message: "duplicate key value violates unique constraint" } }) }) }),
             // SELECT-or-re-read path → the winner's bucket id (chainable eq/gte/lt → limit)
             select: () => {
-              const q = { eq: () => q, gte: () => q, lt: () => q, limit: () => Promise.resolve({ data: [{ id: "winner-bucket" }], error: null }) };
+              const q = { eq: () => q, is: () => q, gte: () => q, lt: () => q, limit: () => Promise.resolve({ data: [{ id: "winner-bucket" }], error: null }) };
               return q;
             },
           };
@@ -119,5 +138,32 @@ describe("createSupabaseUsageRecorder", () => {
     const rec = createSupabaseUsageRecorder({ client, signingSecret: SECRET, now: () => NOW });
     await rec.recordUsage({ orgId: "org-1", model: "claude-opus-4-8", inputTokens: 1000, outputTokens: 10 });
     expect(billingRow?.["session_id"]).toBe("winner-bucket"); // billed against the converged bucket, not a dup
+  });
+
+  test("cross-instance conflict re-read filters by the exact project", async () => {
+    const filters: Array<[string, unknown]> = [];
+    const client = {
+      from(table: string) {
+        if (table === "sessions") return {
+          insert: () => ({ select: () => ({ limit: () => Promise.resolve({ data: null, error: { code: "23505", message: "duplicate bucket" } }) }) }),
+          select: () => {
+            const q = {
+              eq: (column: string, value: unknown) => { filters.push([column, value]); return q; },
+              is: (column: string, value: unknown) => { filters.push([column, value]); return q; },
+              gte: () => q,
+              lt: () => q,
+              limit: () => Promise.resolve({ data: [{ id: "winner" }], error: null }),
+            };
+            return q;
+          },
+        };
+        return { insert: () => ({ select: () => ({ limit: () => Promise.resolve({ data: [{ id: "record" }], error: null }) }) }) };
+      },
+    } as unknown as SupabaseClient;
+    const rec = createSupabaseUsageRecorder({ client, signingSecret: SECRET, now: () => NOW });
+    await rec.recordUsage({ orgId: "org-1", projectScopeId: "org-1/orion", model: "claude-opus-4-8", inputTokens: 1000, outputTokens: 10 });
+    expect(filters).toContainEqual(["project_scope", "orion"]);
+    await rec.recordUsage({ orgId: "org-1", model: "claude-opus-4-8", inputTokens: 1000, outputTokens: 10 });
+    expect(filters).toContainEqual(["project_scope", null]);
   });
 });
