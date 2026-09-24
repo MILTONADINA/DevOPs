@@ -152,6 +152,8 @@ scores do not replace the Claude gate. The **survival** sweeps are FREE
 |---|---|---|
 | `npm run eval:locomo:survival` | **FREE** | LoCoMo evidence-survival sweep (local ONNX only): absolute-λ vs scale-invariant decay, all conversations. |
 | `npm run eval:longmemeval:survival` | **FREE** | Same, on LongMemEval (the 2nd long-horizon benchmark). |
+| `npm run eval:tierc` | **FREE** | Real cached ONNX encoder + KadaneDial over 50 synthetic critical golden queries; returns nonzero for any missing or leaked anchor. Current default result: 20/50, RED. |
+| `npm run test:eval -- --fast` | **NEEDS CREDITS** | Runs Tier-C first, then judged Tier-B only if Tier-C passes. Missing provider or red gate exits nonzero; local judgment stays exploratory. |
 | `npm run eval:locomo` | **NEEDS CREDITS** | Judged LoCoMo Tier-A gate (real encoder + Claude judge): faithfulness/relevancy + evidence co-gate. Env: `LOCOMO_CONVERSATIONS`, `LOCOMO_QUESTIONS`, `LOCOMO_LAMBDAS`, `LOCOMO_DECAY_HORIZON_FRAC` (scale-invariant decay, ADR-0015), `LOCOMO_REPEATS` (R samples/scenario, averaged — judge-noise damping, PB-42; default 1; cost scales ×R). |
 | `npm run eval:longmemeval` | **NEEDS CREDITS** | Judged LongMemEval Tier-A gate. Env: `LONGMEMEVAL_QUESTIONS`, `LONGMEMEVAL_LAMBDAS`, `LONGMEMEVAL_DECAY_HORIZON_FRAC`, `LONGMEMEVAL_REPEATS` (R averaged samples/context; default 1, cost scales ×R). |
 | `npm run eval:tierb` | **NEEDS CREDITS** | Judged dev-set (Tier-B) accuracy gate. |
@@ -163,6 +165,8 @@ run, set `EVAL_LOCAL_BASE_URL=http://127.0.0.1:1234/v1` and
 runner prints the model and labels the result exploratory. Missing provider or
 dataset exits nonzero. All judged runs are sampled, print an upper-bound
 model-call count, and never fabricate a score.
+The default `npm run test:eval` stays nonzero until Tier-A is wired into that
+entry point. Flags other than `--fast` are rejected rather than ignored.
 
 A bounded local Qwen LoCoMo comparison (one published question, one judge
 sample) found the default per-hour λ=0.97 dropped all gold evidence (39/419

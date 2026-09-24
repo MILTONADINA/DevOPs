@@ -84,7 +84,9 @@
 - [ ] Build the eval harness (`evals/harness/runner.ts`)
 - [ ] Port or download the Tier A benchmark datasets (LoCoMo, MT-Bench+, SCM4LLMs)
 - [ ] Create the Tier B developer workload scenarios (at least 4)
-- [ ] Create the Tier C golden query set (at least 30 queries)
+- [x] Create the Tier C golden query set (50 synthetic critical cases); the
+  default λ=0.97 run currently fails 30 cases, so the zero-failure gate below
+  remains open.
 - [ ] Run evals against full-context baseline — confirm thresholds are met
 - [ ] Integrate pruner into the Phase 1 proxy (now it prunes before forwarding)
 - [ ] Update the dashboard to show: original tokens, pruned tokens, delta, $ saved
