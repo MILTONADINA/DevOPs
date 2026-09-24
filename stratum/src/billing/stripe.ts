@@ -98,6 +98,8 @@ async function findOrCreateCustomer(cfg: StripeConfig, orgId: string): Promise<s
  */
 async function hasPendingInvoiceItem(cfg: StripeConfig, customerId: string, orgId: string, periodStart: string, periodEnd: string, amountCents: number): Promise<boolean> {
   let cursor: string | undefined;
+  let foundMatch = false;
+  let foundOther = false;
   const seen = new Set<string>();
   for (let page = 0; page < 100; page++) {
     const path = `/v1/invoiceitems?customer=${encodeURIComponent(customerId)}&pending=true&limit=100${cursor ? `&starting_after=${encodeURIComponent(cursor)}` : ""}`;
@@ -116,16 +118,28 @@ async function hasPendingInvoiceItem(cfg: StripeConfig, customerId: string, orgI
         if (pending.amount !== amountCents || pending.currency !== "usd") {
           throw new Error("Stripe pending invoice item amount or currency differs from current invoice");
         }
-        return true;
+        if (foundMatch) throw new Error("Stripe found multiple pending invoice items for the same period");
+        foundMatch = true;
+      } else {
+        foundOther = true;
       }
     }
-    if (!res["has_more"]) return false;
+    if (!res["has_more"]) {
+      if (foundOther) throw new Error("Stripe found another pending invoice item on this customer");
+      return foundMatch;
+    }
     const next = (data.at(-1) as { id?: unknown } | undefined)?.id;
     if (typeof next !== "string" || next === "" || seen.has(next)) throw new Error("Stripe pending invoice items returned an invalid cursor");
     seen.add(next);
     cursor = next;
   }
   throw new Error("Stripe pending invoice items scan exceeded 100 pages");
+}
+
+function assertInvoiceAmount(invoice: Record<string, unknown>, expectedCents: number, phase: "draft" | "finalized"): void {
+  if (invoice["currency"] !== "usd" || invoice["total"] !== expectedCents || invoice["amount_due"] !== expectedCents) {
+    throw new Error(`Stripe ${phase} invoice amount or currency differs from the current invoice`);
+  }
 }
 
 /**
@@ -174,9 +188,26 @@ export async function sendStripeInvoice(cfg: StripeConfig, invoice: Invoice): Pr
     );
   }
 
-  const created = await stripePost(cfg, "/v1/invoices", { customer: customerId, "metadata[org_id]": invoice.orgId, collection_method: "send_invoice", days_until_due: 15 }, `${idem}|invoice`);
+  const amountCents = usdToCents(invoice.amountDueUsd);
+  const created = await stripePost(
+    cfg,
+    "/v1/invoices",
+    {
+      customer: customerId,
+      "metadata[org_id]": invoice.orgId,
+      "metadata[period_start]": invoice.periodStart,
+      "metadata[period_end]": invoice.periodEnd,
+      collection_method: "send_invoice",
+      days_until_due: 15,
+      pending_invoice_items_behavior: "include",
+    },
+    `${idem}|invoice`,
+  );
+  assertInvoiceAmount(created, amountCents, "draft");
   const invoiceId = String(created["id"]);
 
   const finalized = await stripePost(cfg, `/v1/invoices/${invoiceId}/finalize`, {}, `${idem}|finalize`);
-  return { id: invoiceId, status: String(finalized["status"] ?? "open"), amountUsd: invoice.amountDueUsd };
+  assertInvoiceAmount(finalized, amountCents, "finalized");
+  if (finalized["status"] !== "open" && finalized["status"] !== "paid") throw new Error("Stripe finalized invoice returned an invalid status");
+  return { id: invoiceId, status: finalized["status"], amountUsd: invoice.amountDueUsd };
 }
