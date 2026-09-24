@@ -9,16 +9,29 @@ export interface DeepEvalJudge extends Judge {
   close(): Promise<void>;
 }
 
-export function createDeepEvalJudge(apiKey = process.env["EVAL_ANTHROPIC_API_KEY"] || process.env["ANTHROPIC_API_KEY"]): DeepEvalJudge {
+export function createDeepEvalJudge(apiKey = process.env["EVAL_ANTHROPIC_API_KEY"] || process.env["ANTHROPIC_API_KEY"], timeoutMs = 600_000): DeepEvalJudge {
   if (!apiKey) throw new Error("DeepEval release judge requires EVAL_ANTHROPIC_API_KEY or ANTHROPIC_API_KEY");
   const python = join(process.cwd(), ".venv", "bin", "python");
   const script = join(process.cwd(), "evals", "harness", "deepeval_worker.py");
   let child: ChildProcessWithoutNullStreams | undefined;
   let closed = false;
   let workerDone = false;
-  const pending: Array<{ resolve: (scores: MetricScores) => void; reject: (error: Error) => void }> = [];
+  const pending: Array<{ resolve: (scores: MetricScores) => void; reject: (error: Error) => void; timer?: NodeJS.Timeout }> = [];
   const fail = (error: Error): void => {
-    while (pending.length) pending.shift()!.reject(error);
+    while (pending.length) {
+      const next = pending.shift()!;
+      if (next.timer) clearTimeout(next.timer);
+      next.reject(error);
+    }
+  };
+  const armHead = (): void => {
+    const head = pending[0];
+    if (!head || head.timer) return;
+    head.timer = setTimeout(() => {
+      closed = true;
+      fail(new Error(`DeepEval worker timed out after ${timeoutMs} ms`));
+      child?.kill("SIGKILL");
+    }, timeoutMs);
   };
   const start = (): ChildProcessWithoutNullStreams => {
     if (child) return child;
@@ -31,14 +44,19 @@ export function createDeepEvalJudge(apiKey = process.env["EVAL_ANTHROPIC_API_KEY
     processHandle.stderr.on("data", () => {
       /* Protocol errors come through stdout or process exit. */
     });
-    processHandle.on("error", (error) => fail(new Error(`DeepEval worker failed: ${error.message}`)));
+    processHandle.on("error", (error) => {
+      closed = true;
+      fail(new Error(`DeepEval worker failed: ${error.message}`));
+    });
     processHandle.on("close", (code) => {
       workerDone = true;
+      closed = true;
       fail(new Error(`DeepEval worker exited with code ${code}`));
     });
     createInterface({ input: processHandle.stdout }).on("line", (line) => {
       const next = pending.shift();
       if (!next) return;
+      if (next.timer) clearTimeout(next.timer);
       try {
         const reply: unknown = JSON.parse(line);
         const value = reply as { ok?: unknown; scores?: Partial<MetricScores>; error?: unknown };
@@ -51,6 +69,7 @@ export function createDeepEvalJudge(apiKey = process.env["EVAL_ANTHROPIC_API_KEY
       } catch (error) {
         next.reject(error instanceof Error ? error : new Error(String(error)));
       }
+      armHead();
     });
     return processHandle;
   };
@@ -60,6 +79,7 @@ export function createDeepEvalJudge(apiKey = process.env["EVAL_ANTHROPIC_API_KEY
       const worker = start();
       return new Promise((resolve, reject) => {
         pending.push({ resolve, reject });
+        armHead();
         worker.stdin.write(`${JSON.stringify(input)}\n`, (error) => {
           if (error) fail(new Error(`DeepEval worker write failed: ${error.message}`));
         });
@@ -70,9 +90,13 @@ export function createDeepEvalJudge(apiKey = process.env["EVAL_ANTHROPIC_API_KEY
       if (!child) return;
       const worker = child;
       if (workerDone || worker.exitCode !== null || worker.signalCode !== null) return;
+      if (pending.length) {
+        fail(new Error("DeepEval judge closed with pending scores"));
+        worker.kill("SIGKILL");
+      }
       await new Promise<void>((resolve) => {
         worker.once("close", () => resolve());
-        worker.stdin.end();
+        if (!worker.killed) worker.stdin.end();
       });
     },
   };
