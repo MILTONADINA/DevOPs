@@ -19,6 +19,10 @@ WHEN shadow selection contains exchange-bound turns, THE OBSERVER SHALL count
 distinct selected exchanges whose unambiguous function entity is superseded by
 an entity from another selected exchange. It SHALL obtain fresh relations
 under REQ-1 and may also count the verified project graph relation. It SHALL
+request fresh relations only for selected exchanges that resolved to one
+eligible function entity; unresolved or mixed-fact exchanges SHALL NOT supply
+a relation to another candidate.
+It SHALL
 report only numeric counts and trusted IDs. It SHALL NOT treat the candidate
 count as authorization to drop either dialogue turn, alter forwarding, or
 enable pruning. Ambiguous exchanges and failures SHALL fail closed for the
