@@ -106,12 +106,12 @@ export const OPENAPI_SPEC = {
     },
     "/v1/sessions": {
       get: {
-        summary: "List the org's sessions",
+        summary: "List explicit sessions in the authenticated project (org-wide in personal mode)",
         parameters: [ORG_ID_QUERY, { name: "limit", in: "query", schema: { type: "integer" } }],
         responses: { "200": { description: "Sessions" }, "400": ERROR_RESPONSE },
       },
       post: {
-        summary: "Start a session (enforces the plan's concurrent-session cap)",
+        summary: "Start a project-bound session (enforces the org's concurrent-session cap)",
         parameters: [ORG_ID_QUERY],
         responses: { "201": { description: "Created session" }, "400": ERROR_RESPONSE, "404": ERROR_RESPONSE, "429": ERROR_RESPONSE },
       },
