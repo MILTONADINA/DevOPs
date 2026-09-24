@@ -24,6 +24,13 @@ WHEN an operator runs `npm run setup` from `stratum/`, THE SYSTEM SHALL invoke
 the same root local setup workflow. No setup entry SHALL load dotenv or create
 a `.env` file from a template.
 
+## REQ-4 — Checkout-local analyzer entry
+
+WHEN an operator runs `npm run analyze` from this checkout without setting
+`DEVOPS_ROOT`, THE SYSTEM SHALL execute the analyzer shipped in this checkout
+and refresh `.workflow/profile.yml`. The npm entry SHALL work even when a
+local copy has lost the executable bit on the shell script.
+
 ## Acceptance criteria
 
 - **AC-1:** root `npm run setup -- --help` documents supported systems and
@@ -35,3 +42,5 @@ a `.env` file from a template.
   access; setup output identifies the remaining provider requirement.
 - **AC-4:** both package setup commands resolve to the root local workflow,
   and the old dotenv-writing Stratum setup script is absent.
+- **AC-5:** `npm run analyze` exits zero without `DEVOPS_ROOT` and writes a
+  current profile from this checkout.
