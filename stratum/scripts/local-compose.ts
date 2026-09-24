@@ -41,7 +41,7 @@ function docker(args: string[], env: NodeJS.ProcessEnv, input?: string): string 
 }
 
 function compose(args: string[], env: NodeJS.ProcessEnv, input?: string): string {
-  return docker([...composeArgs, ...args], env, input);
+  return docker([...composeArgs, ...args], { ...env, COMPOSE_PARALLEL_LIMIT: "1" }, input);
 }
 
 function stackEnv(secret: string): NodeJS.ProcessEnv {

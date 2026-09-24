@@ -41,7 +41,9 @@ fresh Linux checkout with no preinstalled Stratum dependencies or existing
 project Compose volume. It SHALL measure the setup command's elapsed time,
 require the real proxy/database smoke to succeed in under five minutes, and
 stop the disposable Compose stack after the check. It SHALL use no hosted
-Supabase project or provider credential.
+Supabase project or provider credential. WHEN pulling the three public ECR
+images, Compose SHALL limit concurrent engine calls to one so anonymous
+registry pulls do not race against the one-pull-per-second quota.
 
 ## Acceptance criteria
 
