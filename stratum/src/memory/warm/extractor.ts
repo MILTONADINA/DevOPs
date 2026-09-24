@@ -132,7 +132,7 @@ export function parseExtractedFacts(raw: string, ctx: { session_id: string; comm
   // types (id/created_at/session_id/commit_hash/developer_id are BaseFact;
   // supersedes_id is TechDecision; assigned_to is Todo — both developer/decision
   // FKs). Resolution of FKs is a trusted server-side step, never model output.
-  const SYSTEM_FIELDS = ["id", "created_at", "session_id", "commit_hash", "developer_id", "supersedes_id", "assigned_to", "is_verified", "is_suppressed"];
+  const SYSTEM_FIELDS = ["id", "created_at", "session_id", "source_exchange_id", "commit_hash", "developer_id", "supersedes_id", "assigned_to", "is_verified", "is_suppressed"];
   const out: AnyFact[] = [];
   for (const candidate of parsed) {
     if (typeof candidate !== "object" || candidate === null) continue;

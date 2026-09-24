@@ -15,6 +15,7 @@ const db = createClient(url, serviceKey, { auth: { persistSession: false } });
 const orgId = randomUUID();
 const keyId = randomUUID();
 const conversationId = randomUUID();
+const exchangeId = randomUUID();
 const newerDecisionId = "00000000-0000-4000-8000-000000000101";
 const olderDecisionId = "00000000-0000-4000-8000-000000000102";
 const rawKey = `cq_test_${randomUUID()}`;
@@ -53,7 +54,16 @@ try {
     (
       await db
         .from("tech_decisions")
-        .insert({ id: olderDecisionId, org_id: orgId, session_id: conversationId, project_scope: "orion", decision_text: "Use old signing", domain: "auth", confidence: 0.9 })
+        .insert({
+          id: olderDecisionId,
+          org_id: orgId,
+          session_id: conversationId,
+          project_scope: "orion",
+          source_exchange_id: exchangeId,
+          decision_text: "Use old signing",
+          domain: "auth",
+          confidence: 0.9,
+        })
     ).error,
     "insert older decision",
   );
@@ -64,6 +74,7 @@ try {
         org_id: orgId,
         session_id: conversationId,
         project_scope: "orion",
+        source_exchange_id: exchangeId,
         decision_text: "Use new signing",
         domain: "auth",
         confidence: 0.9,
@@ -96,14 +107,16 @@ try {
   if (!auth || auth.orgId !== orgId || auth.keyId !== keyId || auth.projectScopeId !== `${orgId}/orion`) throw new Error("restored key binding differs");
   const continued = await createSupabaseConversationResolver(db)({ orgId: auth.orgId, keyId: auth.keyId, projectScopeId: auth.projectScopeId, model: "local/check", requestedId: conversationId });
   if (continued !== conversationId) throw new Error("restored conversation cannot continue");
-  const decisions = await db.from("tech_decisions").select("id,session_id,supersedes_id").eq("org_id", orgId).order("id");
+  const decisions = await db.from("tech_decisions").select("id,session_id,supersedes_id,source_exchange_id").eq("org_id", orgId).order("id");
   checked(decisions.error, "read restored decisions");
   if (
     decisions.data?.length !== 2 ||
     decisions.data[0]?.id !== newerDecisionId ||
     decisions.data[0]?.session_id !== conversationId ||
+    decisions.data[0]?.source_exchange_id !== exchangeId ||
     decisions.data[0]?.supersedes_id !== olderDecisionId ||
     decisions.data[1]?.id !== olderDecisionId ||
+    decisions.data[1]?.source_exchange_id !== exchangeId ||
     decisions.data[1]?.supersedes_id !== newerDecisionId
   ) {
     throw new Error("restored decision supersession differs from backup");

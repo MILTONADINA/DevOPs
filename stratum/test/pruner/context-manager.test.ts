@@ -18,6 +18,13 @@ const fakeEncoder: BiEncoder = {
 const NOW = 1_700_000_000_000; // ms
 
 describe("ShadowContextManager (encoder + Tier-1 + pruner integration)", () => {
+  test("selected hot turns retain their trusted exchange identity", async () => {
+    const cm = createContextManager(fakeEncoder, { hot: createHotMemory({ now: () => NOW }) });
+    await cm.ingest({ role: "user", content: "We chose Supabase for the database.", timestampMs: NOW - 1000, exchangeId: "c68f130e-c584-43fa-aefe-7b2e54aa34a8" });
+    const { selectedTurns } = await cm.select("Which database?", NOW);
+    expect(selectedTurns).toHaveLength(1);
+    expect(selectedTurns[0]?.exchangeId).toBe("c68f130e-c584-43fa-aefe-7b2e54aa34a8");
+  });
   test("ingest stores turns + embeddings; select prunes to the relevant turn", async () => {
     const cm = createContextManager(fakeEncoder, { hot: createHotMemory({ now: () => NOW }) });
     await cm.ingest({ role: "user", content: "We chose Supabase for the database.", timestampMs: NOW - 3000 });

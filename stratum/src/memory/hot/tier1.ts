@@ -24,6 +24,8 @@ export interface HotTurn {
   embedding?: Float32Array;
   /** Trusted project binding for scoped pruning. */
   scopeId?: string;
+  /** Trusted commercial exchange that produced this turn. */
+  exchangeId?: string;
 }
 
 export interface Tier1Options {

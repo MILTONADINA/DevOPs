@@ -27,6 +27,8 @@ export interface IncomingTurn {
   timestampMs: number;
   /** Trusted caller-supplied project binding. */
   scopeId?: string;
+  /** Trusted exchange provenance for later selected-turn decisions. */
+  exchangeId?: string;
 }
 
 /** Per-call dial overrides (λ / g / θ); `nowSeconds` is supplied by select(). */
@@ -86,7 +88,14 @@ export function createContextManager(encoder: BiEncoder, opts: ContextManagerOpt
     hot,
     async ingest(turn: IncomingTurn): Promise<void> {
       const [embedding] = await encoder.encode([turn.content]);
-      hot.add({ timestamp: turn.timestampMs, role: turn.role, content: turn.content, ...(embedding ? { embedding } : {}), ...(turn.scopeId ? { scopeId: turn.scopeId } : {}) });
+      hot.add({
+        timestamp: turn.timestampMs,
+        role: turn.role,
+        content: turn.content,
+        ...(embedding ? { embedding } : {}),
+        ...(turn.scopeId ? { scopeId: turn.scopeId } : {}),
+        ...(turn.exchangeId ? { exchangeId: turn.exchangeId } : {}),
+      });
     },
     async select(query: string, nowMs: number, queryScopeId?: string): Promise<{ decision: PruneDecision; selectedTurns: HotTurn[] }> {
       const [queryVec] = await encoder.encode([query]);
