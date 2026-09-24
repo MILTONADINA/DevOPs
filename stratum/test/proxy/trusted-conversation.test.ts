@@ -263,7 +263,14 @@ describe("shadow observer", () => {
     await observe({ ...event, exchangeId: "new-exchange", query: "new", assistant: "new" });
     await observe({ ...event, exchangeId: "current", query: "target", assistant: "pending" });
     expect(calls.at(-1)).toEqual(["old-exchange", "new-exchange"]);
-    expect(metrics.at(-1)?.factCoverage).toEqual({ activeExchangeCount: 2, selectedExchangeCount: 1, droppedExchangeCount: 1 });
+    expect(metrics.at(-1)?.factCoverage).toEqual({
+      activeExchangeCount: 2,
+      selectedExchangeCount: 1,
+      droppedExchangeCount: 1,
+      activeFactCount: 3,
+      selectedFactCount: 1,
+      droppedFactCount: 2,
+    });
   });
 
   test("marks coverage unavailable while a failed memory exchange remains hot", async () => {
@@ -292,6 +299,13 @@ describe("shadow observer", () => {
     await observe({ ...event, exchangeId: "later", memoryReady: Promise.resolve(true) });
     expect(metrics[1]?.provenanceIncompleteExchangeCount).toBe(1);
     expect(metrics[2]?.provenanceIncompleteExchangeCount).toBeUndefined();
-    expect(metrics[2]?.factCoverage).toEqual({ activeExchangeCount: 0, selectedExchangeCount: 0, droppedExchangeCount: 0 });
+    expect(metrics[2]?.factCoverage).toEqual({
+      activeExchangeCount: 0,
+      selectedExchangeCount: 0,
+      droppedExchangeCount: 0,
+      activeFactCount: 0,
+      selectedFactCount: 0,
+      droppedFactCount: 0,
+    });
   });
 });

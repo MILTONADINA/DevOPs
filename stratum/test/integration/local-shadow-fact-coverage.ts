@@ -43,10 +43,11 @@ try {
     "insert second old fact",
   );
   checked(
-    await db
-      .from("operational_references")
-      .insert({ org_id: org, session_id: session, project_scope: "orion", source_exchange_id: newExchange, confidence: 0.9, subject: "new command", reference: "verify-new" }),
-    "insert second new fact",
+    await db.from("operational_references").insert([
+      { org_id: org, session_id: session, project_scope: "orion", source_exchange_id: oldExchange, confidence: 0.9, subject: "old command", reference: "verify-old" },
+      { org_id: org, session_id: session, project_scope: "orion", source_exchange_id: newExchange, confidence: 0.9, subject: "new command", reference: "verify-new" },
+    ]),
+    "insert operational references",
   );
   const { data: coverageRows, error: coverageError } = await db.rpc("find_active_fact_exchanges", {
     match_org: org,
@@ -55,6 +56,7 @@ try {
     exchange_ids: [oldExchange, newExchange],
   });
   checked({ error: coverageError }, "read active fact exchange counts");
+  assert(coverageRows?.find((row: { exchange_id: string }) => row.exchange_id === oldExchange)?.fact_count === 3, "old exchange did not report all active fact rows");
   assert(coverageRows?.find((row: { exchange_id: string }) => row.exchange_id === newExchange)?.fact_count === 2, "operational reference did not count as a fact in its exchange");
   const { data: candidates, error: candidateError } = await db.rpc("find_exchange_function_entities", {
     match_org: org,
@@ -77,7 +79,8 @@ try {
   await observe({ ...event, exchangeId: randomUUID(), query: "target", assistant: "pending" });
   const coverage = metrics.at(-1)?.factCoverage;
   assert(coverage?.activeExchangeCount === 2 && coverage.selectedExchangeCount === 1 && coverage.droppedExchangeCount === 1, `unexpected live shadow fact coverage: ${JSON.stringify(coverage)}`);
-  process.stdout.write("local scoped fact coverage RPC and shadow selection passed\n");
+  assert(coverage.activeFactCount === 5 && coverage.selectedFactCount === 2 && coverage.droppedFactCount === 3, `unexpected fact-row coverage: ${JSON.stringify(coverage)}`);
+  process.stdout.write("local scoped exchange and fact-row coverage passed\n");
 } catch (error) {
   failure = error;
 } finally {
