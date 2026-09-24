@@ -82,17 +82,22 @@ function currentSecret(): string {
 async function start(): Promise<void> {
   const secret = Buffer.from(randomBytes(32)).toString("hex");
   const env = stackEnv(secret);
+  let stage = "database container startup";
   try {
     compose(["up", "-d", "--wait", "--wait-timeout", "90", "db"], env);
+    stage = "database migration";
     const applied = migrate(env);
+    stage = "REST and gateway startup";
     compose(["up", "-d", "--wait", "--wait-timeout", "90", "rest", "gateway"], env);
+    stage = "loopback port inspection";
     inspectPorts(env);
+    stage = "local API health check";
     const response = await fetch("http://127.0.0.1:54321/rest/v1/", { headers: { Authorization: `Bearer ${serviceJwt(secret, Math.floor(Date.now() / 1000) + 3600)}` }, signal: AbortSignal.timeout(5000) });
     if (!response.ok) throw new Error(`local API returned HTTP ${response.status}`);
     process.stdout.write(`Local Supabase API ready on 127.0.0.1:54321; ${applied} migration(s) applied.\n`);
   } catch (error) {
     try { compose(["down"], env); } catch { /* preserve startup error */ }
-    throw error;
+    throw new Error(`local stack ${stage} failed: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 

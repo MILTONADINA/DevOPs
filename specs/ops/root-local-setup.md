@@ -8,7 +8,9 @@ WHEN an operator runs `npm run setup` from the repository root on macOS,
 Linux, or WSL2, THE SYSTEM SHALL check Node and Docker Compose prerequisites,
 install Stratum dependencies when missing, start the loopback-only local stack,
 and smoke-test the proxy listener and local database health. It SHALL exit
-nonzero with an actionable error if a prerequisite or smoke check fails.
+nonzero with an actionable error if a prerequisite or smoke check fails. A
+local Compose startup failure SHALL identify the failing stage without
+printing Docker environment variables or credentials.
 
 ## REQ-2 — Secret boundary and honest readiness
 
