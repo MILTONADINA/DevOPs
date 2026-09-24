@@ -39,7 +39,7 @@ export interface ExtractorOptions {
   mintId?: () => string;
 }
 
-const FACT_TYPES: FactType[] = ["FunctionChange", "TechDecision", "PolicyUpdate", "Todo", "VariableChange"];
+const FACT_TYPES: FactType[] = ["FunctionChange", "TechDecision", "PolicyUpdate", "Todo", "VariableChange", "OperationalReference"];
 
 /**
  * Build the extraction prompt: durable STRUCTURED facts only, never prose
@@ -66,7 +66,9 @@ export function extractionPrompt(input: ExtractInput): string {
     `{old_name, new_name?, change_type:${CHANGE_TYPES.join("|")}, file_path?, language?}; ` +
     "TechDecision: {decision_text, domain, rationale?}; PolicyUpdate: {policy_name, old_value?, " +
     `new_value, policy_type:${POLICY_TYPES.join("|")}}; Todo: {description, status:${TODO_STATUSES.join("|")}}; ` +
-    "VariableChange: {var_name, old_value?, new_value, context?}. " +
+    "VariableChange: {var_name, old_value?, new_value, context?}; " +
+    "OperationalReference: {subject, reference} for a concrete command, route, path, tag, address, table, variable name, branch, or schedule value. " +
+    "Copy the reference exactly from the conversation; do not invent or normalize it. " +
     "Use FunctionChange only for an explicitly named code function or method that was renamed, deprecated, or had a signature change. " +
     "UI layout, typography, and completed tasks are not FunctionChange. " +
     "For TechDecision facts, when a later turn directly states a different value for the same named subject, " +
@@ -115,7 +117,7 @@ function extractJsonArray(raw: string): string | null {
  * @param ctx - session id + commit hash + system clock/id minters.
  * @returns the validated facts (possibly empty).
  */
-export function parseExtractedFacts(raw: string, ctx: { session_id: string; commit_hash?: string; now: () => string; mintId: () => string }): AnyFact[] {
+export function parseExtractedFacts(raw: string, ctx: { session_id: string; commit_hash?: string; sourceTurns?: string[]; now: () => string; mintId: () => string }): AnyFact[] {
   const arr = extractJsonArray(raw);
   if (!arr) return [];
   let parsed: unknown;
@@ -143,6 +145,7 @@ export function parseExtractedFacts(raw: string, ctx: { session_id: string; comm
     if (typeof candidate !== "object" || candidate === null) continue;
     const content: Record<string, unknown> = { ...(candidate as Record<string, unknown>) };
     for (const k of SYSTEM_FIELDS) delete content[k];
+    if (content.fact_type === "OperationalReference" && (typeof content.reference !== "string" || !ctx.sourceTurns?.some((turn) => turn.includes(content.reference as string)))) continue;
     if (content.fact_type === "VariableChange" || content.fact_type === "PolicyUpdate") {
       for (const key of ["old_value", "new_value"]) {
         const value = content[key];
@@ -189,6 +192,7 @@ export function createFactExtractor(completion: FactCompletion, opts: ExtractorO
       return parseExtractedFacts(raw, {
         session_id: input.session_id,
         ...(input.commit_hash !== undefined ? { commit_hash: input.commit_hash } : {}),
+        sourceTurns: input.turns.map((turn) => turn.content),
         now,
         mintId,
       });

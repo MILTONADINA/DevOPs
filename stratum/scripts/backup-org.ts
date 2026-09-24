@@ -30,6 +30,7 @@ export const ORG_SCOPED_TABLES = [
   "policy_updates",
   "todos",
   "variable_changes",
+  "operational_references",
   "knowledge_entities",
   "knowledge_edges",
   "knowledge_entity_sessions",

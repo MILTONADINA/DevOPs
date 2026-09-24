@@ -61,6 +61,7 @@ describe("validateBackup", () => {
     expect(() => validateBackup({ ...ok, tables: { ...ok.tables, source_fact_links: [{ id: "l1", org_id: "o2" }] } })).toThrow(/source link organization/);
   });
   test("rejects missing, malformed, and unsupported tables before planning a restore", () => {
+    expect(() => validateBackup({ ...ok, tables: { ...ok.tables, operational_references: undefined } })).toThrow(/predates operational_references/);
     expect(() => validateBackup({ ...ok, tables: { ...ok.tables, audit_statuses: undefined } })).toThrow(/audit_statuses/);
     expect(() => validateBackup({ ...ok, tables: { ...ok.tables, pruning_logs: undefined } })).toThrow(/pruning_logs/);
     expect(() => validateBackup({ ...ok, tables: { ...ok.tables, sessions: {} } })).toThrow(/sessions/);
