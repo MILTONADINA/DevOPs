@@ -3,7 +3,7 @@
 
 import { describe, test, expect } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { claimAndFinalizeInvoice, createSupabaseInvoiceLedger, reconcileClaimedInvoice, type InvoiceLedger } from "../../src/billing/invoice-ledger";
+import { claimAndFinalizeInvoice, createSupabaseInvoiceLedger, reconcileClaimedInvoice, inspectClaimedInvoice, type InvoiceLedger } from "../../src/billing/invoice-ledger";
 import type { Invoice } from "../../src/types/billing";
 
 interface FakeOpts {
@@ -165,6 +165,24 @@ const INVOICE: Invoice = {
   effectivenessPct: 50,
   lineItems: [],
 };
+
+test("inspection requires a held claim before provider access", async () => {
+  const { client } = fakeClient();
+  let providerCalled = false;
+  await expect(
+    inspectClaimedInvoice(
+      createSupabaseInvoiceLedger(client),
+      async () => {
+        providerCalled = true;
+        return {};
+      },
+      "org1",
+      "2026-05-01",
+      "2026-06-01",
+    ),
+  ).rejects.toThrow(/existing period claim/);
+  expect(providerCalled).toBe(false);
+});
 
 describe("claimAndFinalizeInvoice", () => {
   test("only the winner of a durable period claim can call Stripe", async () => {

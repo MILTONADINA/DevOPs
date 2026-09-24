@@ -8,7 +8,7 @@
  * (a sk_test_ key; sk_live_ is refused until verified) and exits 2 if finalization is unavailable — the
  * engine still ran. NO Anthropic; gated only on Supabase creds (+ a Stripe key for --send).
  *
- *   npm run invoice -- --org-id <uuid> [--since <iso> --until <iso>] [--csv <path>] [--send | --reconcile <in_id>]
+ *   npm run invoice -- --org-id <uuid> [--since <iso> --until <iso>] [--csv <path>] [--send | --reconcile <in_id> | --inspect-claim]
  */
 
 import { writeFileSync } from "node:fs";
@@ -16,8 +16,8 @@ import { createClient } from "@supabase/supabase-js";
 import { generateInvoice, toAuditCsv, renderInvoice } from "../src/billing/invoice";
 import { createSupabaseBillingDeps } from "../src/proxy/routes/billing";
 import { createStripeInvoiceSink, defaultStripeFetch } from "../src/billing/stripe-sink";
-import { verifyStripeInvoiceForReconciliation } from "../src/billing/stripe";
-import { claimAndFinalizeInvoice, createSupabaseInvoiceLedger, reconcileClaimedInvoice } from "../src/billing/invoice-ledger";
+import { inspectClaimedStripeInvoice, verifyStripeInvoiceForReconciliation } from "../src/billing/stripe";
+import { claimAndFinalizeInvoice, createSupabaseInvoiceLedger, inspectClaimedInvoice, reconcileClaimedInvoice } from "../src/billing/invoice-ledger";
 
 interface Args {
   orgId?: string;
@@ -26,12 +26,13 @@ interface Args {
   csv?: string;
   send: boolean;
   reconcile?: string;
+  inspectClaim: boolean;
   /** Legacy flag; rejected for sends because it bypasses the local dedup guard. */
   force: boolean;
 }
 
 export function parseArgs(argv: string[]): Args {
-  const out: Args = { send: false, force: false };
+  const out: Args = { send: false, force: false, inspectClaim: false };
   for (let i = 0; i < argv.length; i++) {
     const tok = argv[i] ?? "";
     const val = (): string => argv[++i] ?? "";
@@ -54,6 +55,9 @@ export function parseArgs(argv: string[]): Args {
       case "--reconcile":
         out.reconcile = val();
         break;
+      case "--inspect-claim":
+        out.inspectClaim = true;
+        break;
       case "--force":
         out.force = true;
         break;
@@ -70,27 +74,31 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
   };
   const args = parseArgs(argv);
   if (args.orgId === undefined || args.orgId === "") {
-    out("usage: npm run invoice -- --org-id <uuid> [--since <iso> --until <iso>] [--csv <path>] [--send | --reconcile <in_id>]");
+    out("usage: npm run invoice -- --org-id <uuid> [--since <iso> --until <iso>] [--csv <path>] [--send | --reconcile <in_id> | --inspect-claim]");
     return 1;
   }
 
-  if (args.send || args.reconcile !== undefined) {
+  if (args.send || args.reconcile !== undefined || args.inspectClaim) {
+    if (args.inspectClaim && (args.send || args.reconcile !== undefined || args.csv !== undefined)) {
+      out("--inspect-claim cannot be combined with --send, --reconcile, or --csv.");
+      return 2;
+    }
     if (args.reconcile !== undefined && (args.send || args.reconcile === "")) {
       out("--reconcile requires an invoice ID and cannot be combined with --send.");
       return 2;
     }
     if (args.force) {
-      out("Invoice finalization and reconciliation refuse --force: reconcile the prior Stripe invoice and local claim before any re-issue.");
+      out("Invoice finalization, reconciliation, and inspection refuse --force.");
       return 2;
     }
     const start = Date.parse(args.since ?? "");
     const end = Date.parse(args.until ?? "");
     if (!args.since || !args.until || !Number.isFinite(start) || !Number.isFinite(end) || start >= end) {
-      out("Invoice finalization or reconciliation requires valid increasing --since and --until period bounds.");
+      out("Invoice finalization, reconciliation, or inspection requires valid increasing --since and --until period bounds.");
       return 2;
     }
     if (!process.env["STRIPE_SECRET_KEY"]?.startsWith("sk_test_")) {
-      out("Invoice finalization or reconciliation requires a Stripe test-mode key.");
+      out("Invoice finalization, reconciliation, or inspection requires a Stripe test-mode key.");
       return 2;
     }
   }
@@ -119,6 +127,26 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
   if (args.csv !== undefined) {
     writeFileSync(args.csv, toAuditCsv(records, invoice), "utf8");
     out(`\nAudit trail (${records.length} record(s)) → ${args.csv}`);
+  }
+
+  if (args.inspectClaim) {
+    try {
+      const result = await inspectClaimedInvoice(
+        createSupabaseInvoiceLedger(client),
+        () => inspectClaimedStripeInvoice({ secretKey: process.env["STRIPE_SECRET_KEY"]!, doFetch: defaultStripeFetch }, invoice),
+        args.orgId,
+        args.since!,
+        args.until!,
+      );
+      if (result.invoiceId) out(`Matching Stripe invoice ${result.invoiceId} (${result.status}); verify and use --reconcile ${result.invoiceId} if open or paid.`);
+      if (result.pendingItemId) out(`Matching pending Stripe invoice item ${result.pendingItemId}; manual review required.`);
+      if (!result.invoiceId && !result.pendingItemId) out("No matching Stripe result found. Search is eventually consistent; absence is inconclusive.");
+      out("Period claim retained; --send remains blocked.");
+      return 0;
+    } catch (error) {
+      out(`--inspect-claim refused: ${error instanceof Error ? error.message : String(error)}; period claim retained.`);
+      return 2;
+    }
   }
 
   if (args.reconcile !== undefined) {

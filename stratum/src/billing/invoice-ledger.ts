@@ -162,3 +162,9 @@ export async function reconcileClaimedInvoice(
   });
   return verified;
 }
+
+/** Never inspect the provider for an unclaimed period or alter the durable claim. */
+export async function inspectClaimedInvoice<T>(ledger: InvoiceLedger, inspect: () => Promise<T>, orgId: string, periodStart: string, periodEnd: string): Promise<T> {
+  if (!(await ledger.hasClaim(orgId, periodStart, periodEnd))) throw new Error("invoice inspection requires an existing period claim");
+  return inspect();
+}
