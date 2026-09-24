@@ -4,7 +4,7 @@
 
 import { describe, test, expect } from "vitest";
 import type { Invoice } from "../../src/types/billing";
-import { usdToCents, encodeForm, sendStripeInvoice, verifyStripeInvoiceForReconciliation, type StripeFetch } from "../../src/billing/stripe";
+import { usdToCents, encodeForm, sendStripeInvoice, verifyStripeInvoiceForReconciliation, inspectClaimedStripeInvoice, type StripeFetch } from "../../src/billing/stripe";
 
 describe("usdToCents", () => {
   test("converts dollars to integer cents (the mischarge-risk conversion)", () => {
@@ -69,7 +69,7 @@ function fakeStripe(
       return Promise.resolve({ status: 402, json: () => Promise.resolve({ error: { message: "card_declined" } }) });
     }
     let json: unknown = {};
-    if (url.includes("/v1/customers/search")) json = { data: opts.existingCustomer !== undefined ? [{ id: opts.existingCustomer }] : [] };
+    if (url.includes("/v1/customers/search")) json = { has_more: false, data: opts.existingCustomer !== undefined ? [{ id: opts.existingCustomer }] : [] };
     else if (url.endsWith("/finalize")) json = { id: url.split("/").at(-2), status: "open", amount_due: opts.finalAmount ?? createdAmount, total: opts.finalAmount ?? createdAmount, currency: "usd" };
     else if (url.includes("/v1/customers")) json = { id: "cus_1" };
     // GET = the pending-item idempotency pre-check (>24h double-charge guard); POST = create the item.
@@ -93,6 +93,65 @@ function fakeStripe(
 
 /** The path (no query) of each call, in order. */
 const paths = (calls: Call[]): string[] => calls.map((c) => c.url.replace("https://api.stripe.com", "").split("?")[0]!);
+
+describe("inspectClaimedStripeInvoice", () => {
+  test("reads a later customer page and reports an exact invoice without a POST", async () => {
+    const calls: Call[] = [];
+    const doFetch: StripeFetch = async (url, init) => {
+      calls.push({ url, ...init });
+      if (url.includes("/customers/search"))
+        return {
+          status: 200,
+          json: async () => (new URL(url).searchParams.has("page") ? { has_more: false, data: [{ id: "cus_later" }] } : { has_more: true, next_page: "next", data: [{ id: "cus_first" }] }),
+        };
+      if (url.includes("/invoices?"))
+        return {
+          status: 200,
+          json: async () => ({
+            has_more: false,
+            data: url.includes("cus_later")
+              ? [{ id: "in_found", status: "open", total: 6304, amount_due: 6304, currency: "usd", metadata: { org_id: "o1", period_start: "2026-04", period_end: "(now)" } }]
+              : [],
+          }),
+        };
+      return { status: 200, json: async () => ({ has_more: false, data: [] }) };
+    };
+    expect(await inspectClaimedStripeInvoice({ secretKey: "sk_test_x", doFetch }, INVOICE)).toEqual({ invoiceId: "in_found", status: "open", pendingItemId: undefined });
+    expect(calls.every((call) => call.method === "GET")).toBe(true);
+    expect(calls.some((call) => call.url.includes("page=next"))).toBe(true);
+  });
+
+  test("empty search is inconclusive and makes no Stripe write", async () => {
+    const { doFetch, calls } = fakeStripe();
+    expect(await inspectClaimedStripeInvoice({ secretKey: "sk_test_x", doFetch }, INVOICE)).toEqual({ invoiceId: undefined, status: undefined, pendingItemId: undefined });
+    expect(calls.every((call) => call.method === "GET")).toBe(true);
+  });
+
+  test("reports a pending matching item while ignoring an unrelated item", async () => {
+    const { doFetch, calls } = fakeStripe({
+      existingCustomer: "cus_existing",
+      pendingPages: [
+        {
+          has_more: false,
+          data: [
+            { id: "ii_other", metadata: { org_id: "other" } },
+            { id: "ii_match", amount: 6304, currency: "usd", metadata: { org_id: "o1", period_start: "2026-04", period_end: "(now)" } },
+          ],
+        },
+      ],
+    });
+    expect(await inspectClaimedStripeInvoice({ secretKey: "sk_test_x", doFetch }, INVOICE)).toEqual({ invoiceId: undefined, status: undefined, pendingItemId: "ii_match" });
+    expect(calls.every((call) => call.method === "GET")).toBe(true);
+  });
+
+  test("refuses malformed customer pagination rather than claiming a complete lookup", async () => {
+    const doFetch: StripeFetch = async (url) => ({
+      status: 200,
+      json: async () => (url.includes("/customers/search") ? { has_more: true, data: [{ id: "cus_one" }] } : { has_more: false, data: [] }),
+    });
+    await expect(inspectClaimedStripeInvoice({ secretKey: "sk_test_x", doFetch }, INVOICE)).rejects.toThrow(/customer search.*cursor/);
+  });
+});
 
 describe("sendStripeInvoice", () => {
   const billedInvoice = (id: string, status: string, amount = 6304) => ({
