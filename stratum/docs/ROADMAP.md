@@ -200,7 +200,8 @@ release measurement remain open. See root `plan.md` §4 for the current gate.
 ### Tasks
 
 - [ ] Implement `BillingRecord` writes with HMAC-SHA256 signing
-- [ ] Make billing table append-only (Postgres trigger prevents UPDATE/DELETE)
+- [x] Make billing table append-only (local PostgreSQL trigger proof rejects
+  UPDATE, UPSERT, DELETE, and TRUNCATE inside a rolled-back transaction)
 - [ ] Implement monthly invoice generation
 - [ ] Build the CFO dashboard:
   - Monthly spend: original vs. quarantined
@@ -209,7 +210,9 @@ release measurement remain open. See root `plan.md` §4 for the current gate.
   - Export to CSV/PDF
 - [ ] Implement Stripe integration for payment
 - [ ] Implement per-org pricing tiers (Starter, Growth, Enterprise)
-- [ ] GDPR erasure endpoint that anonymizes billing records (keeps financial record, removes PII)
+- [ ] GDPR erasure endpoint and retention design. The current immutable
+  billing row references organization/session IDs and cannot rewrite them in
+  place; no compliant erasure timing proof exists.
 
 ### Acceptance Criteria
 

@@ -50,6 +50,9 @@ Billing records are **HMAC-signed** (src/billing/recorder.ts: `recordBilling` si
 immutable inputs with `CQ_BILLING_SIGNING_SECRET`; the generated columns are DB-derived). `npm run
 verify-billing -- --org-id <uuid>` recomputes every record's signature and flags any tampering —
 the dispute-proof check ("we provably cannot retroactively modify the data"). **FREE**, read-only.
+It uses only explicit process environment settings and exits nonzero when
+`SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, or `CQ_BILLING_SIGNING_SECRET` is missing;
+an unset verifier is not a passing integrity check.
 
 The proxy also exposes the **CFO billing API** when `buildProxy({ billing })` is supplied:
 `GET /v1/billing/invoice` (the computed Invoice JSON) and `GET /v1/billing/audit.csv` (the
