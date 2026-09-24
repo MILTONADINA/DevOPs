@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { createWarmMemory } from "../src/memory/warm/tier2";
 import { createVectorStore } from "../src/memory/cold/vectors";
+import { factToText } from "../src/memory/promote";
 import { cosineSimilarity, createOnnxEncoder, type BiEncoder } from "../src/pruner/encoder";
 import type { AnyFact } from "../src/types/facts";
 import { validProjectScope } from "../src/proxy/auth";
@@ -60,31 +61,27 @@ function bounded(fact: AnyFact): Record<string, unknown> {
   return Object.fromEntries(Object.entries(fact).map(([key, value]) => [key, typeof value === "string" ? value.slice(0, 300) : value]));
 }
 
-function factSearchText(fact: AnyFact): string {
-  switch (fact.fact_type) {
-    case "FunctionChange":
-      return [fact.old_name, fact.new_name, fact.change_type, fact.file_path, fact.language].filter(Boolean).join(" ").slice(0, 1200);
-    case "TechDecision":
-      return [fact.decision_text, fact.domain, fact.rationale].filter(Boolean).join(" ").slice(0, 1200);
-    case "PolicyUpdate":
-      return [fact.policy_name, fact.new_value, fact.policy_type].filter(Boolean).join(" ").slice(0, 1200);
-    case "Todo":
-      return [fact.description, fact.status].filter(Boolean).join(" ").slice(0, 1200);
-    case "VariableChange":
-      return [fact.var_name, fact.new_value, fact.context].filter(Boolean).join(" ").slice(0, 1200);
-  }
-}
-
 /** A null result means the binding was invalid; no client or encoder was touched. */
 export async function retrieveSessionContext(opts: SessionContextOptions, deps: SessionContextDeps): Promise<string | null> {
   if (!isAllowed(opts)) return null;
   const client = deps.makeClient(opts.supabaseUrl, opts.serviceKey);
   const warm = createWarmMemory(client);
   const projectScope = opts.projectScope ?? null;
-  const recentFacts = (await warm.queryRecent(opts.orgId, { limit: RECENT_LIMIT, projectScope })).filter((f) => !f.is_suppressed).slice(0, RECENT_LIMIT);
+  const activeCandidates = await warm.queryRecent(opts.orgId, { limit: WARM_CANDIDATE_LIMIT, projectScope });
+  const decisions = new Map(activeCandidates.filter((fact) => fact.fact_type === "TechDecision").map((fact) => [fact.id, fact]));
+  const superseded = new Set<string>();
+  for (const fact of decisions.values()) {
+    const old = fact.supersedes_id ? decisions.get(fact.supersedes_id) : undefined;
+    if (!old || fact.id === old.id) continue;
+    const newerAt = Date.parse(fact.created_at);
+    const oldAt = Date.parse(old.created_at);
+    if (Number.isFinite(newerAt) && Number.isFinite(oldAt) && newerAt > oldAt) superseded.add(old.id);
+  }
+  const eligible = activeCandidates.filter((fact) => !superseded.has(fact.id));
+  const recentFacts = eligible.slice(0, RECENT_LIMIT);
   const ranked = new Map<string, { fact: AnyFact; similarity: number }>();
   const add = (fact: AnyFact, similarity: number): void => {
-    if (!Number.isFinite(similarity)) return;
+    if (!Number.isFinite(similarity) || superseded.has(fact.id)) return;
     const prior = ranked.get(fact.id);
     if (!prior || similarity > prior.similarity) ranked.set(fact.id, { fact, similarity });
   };
@@ -109,9 +106,9 @@ export async function retrieveSessionContext(opts: SessionContextOptions, deps: 
       }
       if (deps.encodeMany) {
         try {
-          const candidates = await warm.queryRecent(opts.orgId, { limit: WARM_CANDIDATE_LIMIT, projectScope });
+          const candidates = eligible;
           if (candidates.length > 0) {
-            const embeddings = await deps.encodeMany(candidates.map(factSearchText));
+            const embeddings = await deps.encodeMany(candidates.map(factToText));
             if (embeddings.length !== candidates.length) throw new Error("incomplete warm fact embeddings");
             const queryVector = Float32Array.from(queryEmbedding);
             const scored: Array<{ fact: AnyFact; similarity: number }> = [];

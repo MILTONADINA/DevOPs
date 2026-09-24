@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { makeFakeSupabase } from "./fake-supabase";
+import { factToText } from "../../src/memory/promote";
 import { retrieveSessionContext, taskFromBaton, type SessionContextOptions } from "../../scripts/session-start-context";
 
 const ORG = "11111111-1111-1111-1111-111111111111";
@@ -175,7 +176,53 @@ describe("session-start memory bridge", () => {
     ) as { relevantFacts: { id: string }[]; semanticStatus: string };
     expect(complete.relevantFacts.map((fact) => fact.id)).toEqual(["shared"]);
     expect(complete.semanticStatus).toBe("complete");
-    expect(encoded).toEqual([["recovery runbook operations"]]);
+    expect(encoded).toEqual([[factToText({
+      id: "shared", fact_type: "TechDecision", created_at: "2026-09-20T00:00:00Z", session_id: "s",
+      confidence: 0.9, is_verified: true, is_suppressed: false, decision_text: "recovery runbook", domain: "operations",
+    })]]);
+  });
+
+  test("omits a stale decision from recent and relevant facts only when an active newer bound decision links it", async () => {
+    const row = (id: string, day: number, supersedes_id?: string) => ({
+      id, org_id: ORG, project_scope: "orion", is_suppressed: false,
+      created_at: `2026-09-${day}T00:00:00Z`, session_id: "s", confidence: 0.9,
+      is_verified: true, promoted_to_t3: true, decision_text: id, domain: "runtime",
+      ...(supersedes_id ? { supersedes_id } : {}),
+    });
+    const { client } = makeFakeSupabase({ tech_decisions: [row("old", 23), row("new", 24, "old"), row("other", 22), row("other-2", 21)] }, {}, {
+      match_project_fact_vectors: () => [
+        { id: "v1", source_type: "fact", source_ref: "old", similarity: 0.99 },
+        { id: "v2", source_type: "fact", source_ref: "new", similarity: 0.8 },
+      ],
+    });
+    const output = await retrieveSessionContext({ ...base, projectScope: "orion" }, {
+      makeClient: () => client, encode: async () => new Array(384).fill(0),
+    });
+    const result = JSON.parse(output as string) as { recentFacts: { id: string }[]; relevantFacts: { id: string }[] };
+    expect(result.recentFacts.map((fact) => fact.id)).toEqual(["new", "other", "other-2"]);
+    expect(result.relevantFacts.map((fact) => fact.id)).toEqual(["new"]);
+  });
+
+  test("keeps decisions when links are foreign, suppressed, backdated, or absent", async () => {
+    const row = (id: string, project_scope: string, day: number, supersedes_id?: string, is_suppressed = false) => ({
+      id, org_id: ORG, project_scope, is_suppressed,
+      created_at: `2026-09-${day}T00:00:00Z`, session_id: "s", confidence: 0.9,
+      is_verified: true, promoted_to_t3: true, decision_text: id, domain: "runtime",
+      ...(supersedes_id ? { supersedes_id } : {}),
+    });
+    const { client } = makeFakeSupabase({ tech_decisions: [
+      row("old", "orion", 20), row("unlinked", "orion", 23),
+      row("foreign-new", "vega", 24, "old"), row("suppressed-new", "orion", 25, "old", true),
+      row("backdated-new", "orion", 19, "old"), row("self", "orion", 18, "self"),
+    ] }, {}, { match_project_fact_vectors: () => [{ id: "v", source_type: "fact", source_ref: "old", similarity: 0.9 }] });
+    const output = await retrieveSessionContext({ ...base, projectScope: "orion" }, {
+      makeClient: () => client, encode: async () => new Array(384).fill(0),
+    });
+    const result = JSON.parse(output as string) as { recentFacts: { id: string }[]; relevantFacts: { id: string }[] };
+    expect(result.recentFacts.map((fact) => fact.id)).toContain("old");
+    expect(result.relevantFacts.map((fact) => fact.id)).toContain("old");
+    expect(output).not.toContain("foreign-new");
+    expect(output).not.toContain("suppressed-new");
   });
 
   test("allows only the exact allowlisted local API origin", async () => {
