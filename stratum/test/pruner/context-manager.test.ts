@@ -88,4 +88,17 @@ describe("ShadowContextManager (encoder + Tier-1 + pruner integration)", () => {
     expect(selectedTurns.map((turn) => turn.content)).toEqual(["Orion database Supabase"]);
     expect(decision.prunedIndices).toEqual([0, 2]);
   });
+
+  test("foreign project timestamps do not stretch a scoped decay horizon", async () => {
+    const cm = createContextManager(fakeEncoder, {
+      hot: createHotMemory({ windowMs: 12 * 3_600_000, now: () => NOW }),
+      decayHorizonFraction: 0.5,
+    });
+    await cm.ingest({ role: "user", content: "Vega database", timestampMs: NOW - 10 * 3_600_000, scopeId: "vega" });
+    await cm.ingest({ role: "user", content: "Orion database first", timestampMs: NOW - 10 * 60_000, scopeId: "orion" });
+    await cm.ingest({ role: "user", content: "Orion database second", timestampMs: NOW, scopeId: "orion" });
+    const { decision } = await cm.select("database?", NOW, "orion");
+    expect(decision.candidateIndices).toEqual([1, 2]);
+    expect(decision.params.decayHorizonSeconds).toBe(300);
+  });
 });
