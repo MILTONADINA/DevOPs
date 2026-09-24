@@ -31,6 +31,8 @@ export interface UsageEvent {
   eventId?: string;
   /** Server-recorded UTC time; keeps replay in the original daily bucket. */
   occurredAt?: string;
+  /** Price captured before the successful response; replay must not reprice it. */
+  apiPricePerToken?: number;
   model: string;
   inputTokens: number;
   outputTokens: number;
@@ -44,6 +46,8 @@ export interface UsageRecorderOptions {
   now?: () => number;
   /** Per-input-token price resolver. Default {@link pricePerInputTokenUsd}. */
   priceFn?: (model: string) => number;
+  /** Abort a stalled local database attempt so shutdown can leave the event queued. */
+  queryTimeoutMs?: number;
 }
 
 export interface UsageRecorder {
@@ -66,7 +70,7 @@ export function createSupabaseUsageRecorder(opts: UsageRecorderOptions): UsageRe
   const now = opts.now ?? ((): number => Date.now());
   const price = opts.priceFn ?? ((m: string): number => pricePerInputTokenUsd(m));
 
-  function ensureSession(orgId: string, model: string, projectScope: string | null, occurredAt?: string): Promise<string> {
+  function ensureSession(orgId: string, model: string, projectScope: string | null, occurredAt?: string, signal?: AbortSignal): Promise<string> {
     const day = new Date(occurredAt ?? now()).toISOString().slice(0, 10); // UTC date bucket
     // Evict prior-day entries: the key embeds the UTC day, so any entry whose middle segment != today is
     // stale (its bucket is permanently resolved in the DB) and unreachable. Without this the Map grows one
@@ -88,7 +92,9 @@ export function createSupabaseUsageRecorder(opts: UsageRecorderOptions): UsageRe
       // each miss their own cache and would insert DUPLICATE daily buckets, fragmenting a day's billing
       // across many session ids. Try the insert; on a unique-violation (23505) another instance won the
       // race, so re-read its bucket — all instances then converge on the one row.
-      const ins = await opts.client.from("sessions").insert({ org_id: orgId, project_scope: projectScope, model, kind: "usage", ...(occurredAt !== undefined ? { created_at: occurredAt } : {}) }).select("id").limit(1);
+      let insert = opts.client.from("sessions").insert({ org_id: orgId, project_scope: projectScope, model, kind: "usage", ...(occurredAt !== undefined ? { created_at: occurredAt } : {}) }).select("id").limit(1);
+      if (signal) insert = insert.abortSignal(signal);
+      const ins = await insert;
       if (!ins.error) {
         const id = ((ins.data ?? [])[0] as { id: string } | undefined)?.id;
         if (id === undefined || id === "") throw new Error("ensureSession returned no id");
@@ -100,7 +106,9 @@ export function createSupabaseUsageRecorder(opts: UsageRecorderOptions): UsageRe
       const nextDay = new Date(Date.parse(startOfDay) + 86_400_000).toISOString().slice(0, 10) + "T00:00:00.000Z";
       let query = opts.client.from("sessions").select("id").eq("org_id", orgId).eq("model", model).eq("kind", "usage").gte("created_at", startOfDay).lt("created_at", nextDay);
       query = projectScope === null ? query.is("project_scope", null) : query.eq("project_scope", projectScope);
-      const sel = await query.limit(1);
+      let lookup = query.limit(1);
+      if (signal) lookup = lookup.abortSignal(signal);
+      const sel = await lookup;
       if (sel.error) throw new Error(`ensureSession conflict re-read failed: ${sel.error.message}`);
       const id = ((sel.data ?? [])[0] as { id: string } | undefined)?.id;
       if (id === undefined || id === "") throw new Error("ensureSession: unique conflict but no existing bucket found");
@@ -119,16 +127,18 @@ export function createSupabaseUsageRecorder(opts: UsageRecorderOptions): UsageRe
         throw new Error("invalid authenticated project scope");
       }
       if (event.occurredAt !== undefined && new Date(event.occurredAt).toISOString() !== event.occurredAt) throw new Error("invalid usage occurrence time");
-      const sessionId = await ensureSession(event.orgId, event.model, projectScope, event.occurredAt);
+      if (event.apiPricePerToken !== undefined && (!Number.isFinite(event.apiPricePerToken) || event.apiPricePerToken <= 0)) throw new Error("invalid pinned usage price");
+      const signal = opts.queryTimeoutMs === undefined ? undefined : AbortSignal.timeout(opts.queryTimeoutMs);
+      const sessionId = await ensureSession(event.orgId, event.model, projectScope, event.occurredAt, signal);
       await recordBilling(
-        { client: opts.client, secret: opts.signingSecret },
+        { client: opts.client, secret: opts.signingSecret, ...(signal ? { signal } : {}) },
         {
           orgId: event.orgId,
           ...(event.eventId !== undefined ? { usageEventId: event.eventId } : {}),
           sessionId,
           originalTokens: event.inputTokens,
           quarantinedTokens: event.inputTokens, // no pruning yet ⇒ 0 savings (honest usage record)
-          apiPricePerToken: price(event.model),
+          apiPricePerToken: event.apiPricePerToken ?? price(event.model),
         },
       );
     },

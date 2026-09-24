@@ -30,6 +30,7 @@ import { createSupabaseSessionsDeps } from "./routes/sessions";
 import { createSupabaseWebhookDeps } from "./routes/webhooks";
 import { createSupabaseStripeWebhookDeps } from "./routes/stripe-webhook";
 import { createSupabaseUsageRecorder } from "../billing/usage-recorder";
+import { createLocalUsageOutbox } from "../billing/durable-usage-outbox";
 import { createTokenBudget } from "./token-budget";
 import { createSupabaseHealthCheck } from "./routes/health";
 import { createFactExtractor } from "../memory/warm/extractor";
@@ -44,6 +45,8 @@ export interface StartEnv {
   STRIPE_WEBHOOK_SECRET?: string | undefined;
   /** Dedicated billing-record signing secret. When set in commercial mode, the request path persists usage. */
   CQ_BILLING_SIGNING_SECRET?: string | undefined;
+  CQ_USAGE_OUTBOX_DIR?: string | undefined;
+  VERCEL?: string | undefined;
   /** Local model used only for structured fact extraction. */
   CQ_MEMORY_EXTRACT_MODEL?: string | undefined;
   CQ_LOCAL_BASE_URL?: string | undefined;
@@ -101,7 +104,7 @@ export type ClientFactory = (url: string, key: string) => SupabaseClient;
 /**
  * Assemble buildProxy options from env: always the base (messages + dashboard); in COMMERCIAL mode,
  * additionally the multi-tenant auth gate (protecting /v1/*) + the config/memory/billing/sessions
- * APIs over Supabase. Pure + testable — inject a fake client factory; never constructs a client off-mode.
+ * APIs over Supabase. Billing mode opens a private local outbox; inject a fake client in tests.
  *
  * @param env - the relevant environment.
  * @param base - the always-on options (messages, dashboard).
@@ -150,7 +153,13 @@ export function buildStartOptions(env: StartEnv, base: BuildProxyOptions, makeCl
       // Persist each request's usage to Supabase (signed billing_record) so a partner sees their
       // activity + the invoice has a basis. Needs the dedicated billing-signing secret.
       if (typeof env.CQ_BILLING_SIGNING_SECRET === "string" && env.CQ_BILLING_SIGNING_SECRET !== "") {
-        base.messages.recordUsage = createSupabaseUsageRecorder({ client, signingSecret: env.CQ_BILLING_SIGNING_SECRET }).recordUsage;
+        if (env.VERCEL && env.VERCEL !== "0") throw new Error("commercial billing requires persistent storage; Vercel serverless storage is ephemeral");
+        const recorder = createSupabaseUsageRecorder({ client, signingSecret: env.CQ_BILLING_SIGNING_SECRET, queryTimeoutMs: 15_000 });
+        base.messages.usageOutbox = createLocalUsageOutbox({
+          dir: env.CQ_USAGE_OUTBOX_DIR ?? path.join(process.cwd(), "data", "usage-outbox"),
+          recordUsage: recorder.recordUsage,
+          onError: (error, eventId) => logger.error({ err: error.message, eventId }, "usage outbox replay failed"),
+        });
       }
       if (env.CQ_MEMORY_EXTRACT_MODEL) {
         if (!env.CQ_MEMORY_EXTRACT_MODEL.startsWith("local/") || env.CQ_MEMORY_EXTRACT_MODEL.length <= 6) {
@@ -193,6 +202,8 @@ export async function start(): Promise<void> {
     SUPABASE_SERVICE_KEY: process.env["SUPABASE_SERVICE_KEY"],
     STRIPE_WEBHOOK_SECRET: process.env["STRIPE_WEBHOOK_SECRET"],
     CQ_BILLING_SIGNING_SECRET: process.env["CQ_BILLING_SIGNING_SECRET"],
+    CQ_USAGE_OUTBOX_DIR: process.env["CQ_USAGE_OUTBOX_DIR"],
+    VERCEL: process.env["VERCEL"],
     CQ_MEMORY_EXTRACT_MODEL: process.env["CQ_MEMORY_EXTRACT_MODEL"],
     CQ_LOCAL_BASE_URL: process.env["CQ_LOCAL_BASE_URL"],
     CQ_LOCAL_API_KEY: process.env["CQ_LOCAL_API_KEY"],

@@ -8,11 +8,11 @@ only steps that need an external account are flagged **[needs: …]**.
 The business side (finding/qualifying/running a partner) is in `DESIGN_PARTNER.md`. This doc is the
 technical "how", current as of the v1.0.0 commercial build.
 
-> **⚡ LIVE NOW (Session 21):** the proxy is deployed to **Vercel production** and publicly reachable at
-> **`https://stratum-miltons-projects-42574343.vercel.app`** — commercial mode, real Supabase, all env set
-> incl. usage persistence. Verified: `/health` 200, `/v1/*` 401 without a key, the auth-bypass fix holds.
-> So **Step 1 (deploy) is DONE for the Vercel path** — skip to Step 2 (mint the partner's key). The only
-> remaining external inputs are a Stripe `sk_test_` key (Step 5) and a paying partner.
+> **Current deployment boundary (2026-09-24):** the paid Supabase project is
+> retired. Local PostgreSQL runs through the project-local Compose stack.
+> Commercial billing requires a persistent project-local usage outbox; the old
+> Vercel deployment and its ephemeral `/tmp` storage cannot satisfy that gate.
+> A public design-partner deployment and payment remain unverified.
 
 ---
 
@@ -31,32 +31,29 @@ no handing over the Anthropic key — is the documented scale path in ADR-0018, 
 
 ---
 
-## 1. Deploy the proxy  [needs: a single-instance container host]
+## 1. Start the local commercial proxy  [needs: a persistent host]
 
-The proxy + the public Stripe webhook need a public URL. Build the container (context is the DevOps
-**parent** — see `Dockerfile`) and run it on a single-instance host (Fly.io / Render / Railway / a VM /
-Cloud Run — **single instance**, since the rate/budget limiters are in-memory):
+Run the local Compose database and proxy from `stratum/`. The proxy creates
+`data/usage-outbox/` with private permissions and replays pending billing events
+on startup and every ten seconds. Keep this directory on persistent storage;
+back it up alongside the database. A failed disk journal returns an explicit
+message error instead of acknowledging unrecorded usage.
 
 ```bash
-docker build -f stratum/Dockerfile -t stratum-proxy .
-
-docker run -p 4080:4080 -e HOST=0.0.0.0 -e CQ_COMMERCIAL=true \
-  -e SUPABASE_URL=…            -e SUPABASE_SERVICE_KEY=… \
-  -e ANTHROPIC_API_KEY=…       `# the PARTNER'S Anthropic key (ADR-0018)` \
-  -e CQ_BILLING_SIGNING_SECRET=…  `# enables signed usage persistence` \
-  -e STRIPE_SECRET_KEY=sk_test_…  -e STRIPE_WEBHOOK_SECRET=whsec_… \
-  stratum-proxy
+cd stratum
+npm run db:start
+# Supply provider credentials and CQ_BILLING_SIGNING_SECRET in the operator environment.
+CQ_COMMERCIAL=true npm run db:with-env -- npm run dev
 ```
 
-Apply the schema once (`npx supabase db push`, or the migrations are already applied to the project).
-Confirm liveness: `curl https://<host>/health` → `{"status":"ok",...}` (and `dependencies.database` in
-commercial mode). The machine-readable contract is at `GET /openapi.json`; a browsable reference at
-`GET /docs`.
+`db:start` applies the committed migrations. Confirm liveness at
+`http://127.0.0.1:4080/health`; commercial mode also checks the database.
+The machine-readable contract is at `GET /openapi.json`.
 
-**Alternative host — Vercel serverless:** a deploy adapter + runbook is at `docs/VERCEL_DEPLOY.md` (the
-function is esbuild-bundled, locally boot-verified). Note the ≈300s function cap bounds the *streaming*
-`/v1/messages` path — the non-streaming invoice/billing/webhook path this runbook depends on is unaffected;
-the container above (no cap) is the better fit if long-stream truncation matters.
+For an external partner, provision a persistent host, a private database, and
+a durable volume for the outbox before exposing the proxy. The earlier Vercel
+instructions in `docs/VERCEL_DEPLOY.md` are archived because its ephemeral
+filesystem cannot recover usage after instance loss.
 
 ## 2. Create the partner's org + API key
 

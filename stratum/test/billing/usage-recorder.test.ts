@@ -71,6 +71,41 @@ describe("createSupabaseUsageRecorder", () => {
     expect(inserts.find((i) => i.table === "sessions")?.row["created_at"]).toBe(occurredAt);
   });
 
+  test("uses the price pinned by the outbox instead of a later model price", async () => {
+    const { client, inserts } = fakeClient();
+    const rec = createSupabaseUsageRecorder({ client, signingSecret: SECRET, priceFn: () => 9 });
+    await rec.recordUsage({ orgId: "org-1", eventId: "00000000-0000-4000-8000-000000000123", occurredAt: new Date(NOW).toISOString(), apiPricePerToken: 0.000003, model: "claude-sonnet-4-6", inputTokens: 8000, outputTokens: 500 });
+    expect(inserts.find((i) => i.table === "billing_records")?.row["api_price_per_token"]).toBe(0.000003);
+  });
+
+  test("bounds the session and ledger requests with one per-event abort signal", async () => {
+    const signals: AbortSignal[] = [];
+    const client = {
+      from(table: string) {
+        return { insert: () => ({ select: () => ({ limit: () => ({ abortSignal: (signal: AbortSignal) => {
+          signals.push(signal);
+          return Promise.resolve({ data: [{ id: table === "sessions" ? "sess-1" : "rec-1" }], error: null });
+        } }) }) }) };
+      },
+    } as unknown as SupabaseClient;
+    const rec = createSupabaseUsageRecorder({ client, signingSecret: SECRET, queryTimeoutMs: 1_000 });
+    await rec.recordUsage({ orgId: "org-1", model: "claude-sonnet-4-6", inputTokens: 8000, outputTokens: 500 });
+    expect(signals).toHaveLength(2);
+    expect(signals[0]).toBe(signals[1]);
+  });
+
+  test("a stalled database attempt aborts so the outbox can retry later", async () => {
+    const client = {
+      from() {
+        return { insert: () => ({ select: () => ({ limit: () => ({ abortSignal: (signal: AbortSignal) => new Promise((resolve) => {
+          signal.addEventListener("abort", () => resolve({ data: null, error: { message: "aborted" } }), { once: true });
+        }) }) }) }) };
+      },
+    } as unknown as SupabaseClient;
+    const rec = createSupabaseUsageRecorder({ client, signingSecret: SECRET, queryTimeoutMs: 20 });
+    await expect(rec.recordUsage({ orgId: "org-1", model: "claude-sonnet-4-6", inputTokens: 8000, outputTokens: 500 })).rejects.toThrow(/aborted/);
+  });
+
   test("reuses one session per (org, day, model) — N requests ⇒ 1 session insert, N billing rows", async () => {
     const { client, inserts } = fakeClient();
     const rec = createSupabaseUsageRecorder({ client, signingSecret: SECRET, now: () => NOW });

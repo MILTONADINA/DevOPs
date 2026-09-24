@@ -81,6 +81,8 @@ export interface RecorderDeps {
   client: SupabaseClient;
   /** The dedicated billing-signing secret. */
   secret: string;
+  /** Per-event timeout shared with the usage session request. */
+  signal?: AbortSignal;
 }
 
 /**
@@ -107,10 +109,14 @@ export async function recordBilling(deps: RecorderDeps, input: BillingInput): Pr
     ...(input.usageEventId !== undefined ? { usage_event_id: input.usageEventId } : {}),
     signed_hash: signed,
   };
-  const { data, error } = await deps.client.from("billing_records").insert(row).select("id").limit(1);
+  let insert = deps.client.from("billing_records").insert(row).select("id").limit(1);
+  if (deps.signal) insert = insert.abortSignal(deps.signal);
+  const { data, error } = await insert;
   if (error) {
     if ((error as { code?: string }).code !== "23505" || input.usageEventId === undefined) throw new Error(`recordBilling failed: ${error.message}`);
-    const existing = await deps.client.from("billing_records").select("id,org_id,signed_hash").eq("usage_event_id", input.usageEventId).limit(1);
+    let lookup = deps.client.from("billing_records").select("id,org_id,signed_hash").eq("usage_event_id", input.usageEventId).limit(1);
+    if (deps.signal) lookup = lookup.abortSignal(deps.signal);
+    const existing = await lookup;
     if (existing.error) throw new Error(`recordBilling replay lookup failed: ${existing.error.message}`);
     const prior = (existing.data ?? [])[0] as { id: string; org_id: string; signed_hash: string } | undefined;
     if (!prior || prior.org_id !== input.orgId || prior.signed_hash !== signed) throw new Error("billing usage event replay mismatch");

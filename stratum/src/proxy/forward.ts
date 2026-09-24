@@ -18,6 +18,7 @@ import type { StreamForwardResult } from "./stream-forward";
 import type { TelemetrySink } from "./telemetry";
 import type { TokenBudget } from "./token-budget";
 import type { UsageEvent } from "../billing/usage-recorder";
+import type { UsageOutbox } from "../billing/durable-usage-outbox";
 import type Anthropic from "@anthropic-ai/sdk";
 
 /** Anthropic-compatible request body the proxy forwards. */
@@ -79,11 +80,12 @@ export interface MessagesDeps {
   /** Optional per-org token-budget limiter (commercial mode); checked before forwarding. */
   tokenBudget?: TokenBudget;
   /**
-   * Optional commercial usage persistence (writes a signed billing_record per request to Supabase so a
-   * design partner sees their usage + the invoice has a basis). Best-effort + fail-open — never blocks
-   * or fails a proxied response. Only meaningful with an authenticated org (req.orgId).
+   * Legacy asynchronous usage recorder for injected callers. Production commercial mode instead
+   * uses usageOutbox so acknowledged responses survive process restarts.
    */
   recordUsage?: (event: UsageEvent) => Promise<void>;
+  /** Synchronously fsynced local billing journal; production commercial usage uses this boundary. */
+  usageOutbox?: Pick<UsageOutbox, "enqueue" | "close">;
   /** Optional commercial local fact extraction after a successful upstream response. */
   recordMemory?: (event: MessageMemoryEvent) => Promise<void>;
 }

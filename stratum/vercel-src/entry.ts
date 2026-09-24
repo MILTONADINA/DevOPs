@@ -13,9 +13,8 @@
  * SUPABASE_SERVICE_KEY; CQ_BILLING_SIGNING_SECRET for usage persistence; STRIPE_WEBHOOK_SECRET for the
  * inbound paid webhook; CQ_CAPTURE_DIR=/tmp (serverless filesystems are read-only except /tmp).
  *
- * CAVEAT: the STREAMING /v1/messages path is bounded by Vercel's function time limit (≈300s) — fine for
- * typical turns, but a very long agentic stream can be cut off. The NON-streaming billing / invoice /
- * Stripe-webhook path (what the v1.0.0 "invoice sent + paid" acceptance needs) is unaffected.
+ * Commercial billing now requires a persistent local outbox. This serverless entry fails startup when
+ * billing signing is configured because /tmp is ephemeral and cannot recover acknowledged usage.
  */
 
 import type { IncomingMessage, ServerResponse } from "node:http";
@@ -31,6 +30,7 @@ const env: StartEnv = {
   SUPABASE_SERVICE_KEY: process.env["SUPABASE_SERVICE_KEY"],
   STRIPE_WEBHOOK_SECRET: process.env["STRIPE_WEBHOOK_SECRET"],
   CQ_BILLING_SIGNING_SECRET: process.env["CQ_BILLING_SIGNING_SECRET"],
+  VERCEL: process.env["VERCEL"] ?? "1",
 };
 
 // The capture store + dashboard read this dir; on a serverless host only /tmp is writable.
