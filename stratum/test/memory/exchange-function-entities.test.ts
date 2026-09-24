@@ -5,9 +5,59 @@ import {
   createFreshFunctionSupersessionLookup,
   createProjectFunctionSupersessionLookup,
 } from "../../src/memory/warm/exchange-function-entities";
+import { createQueryFactCandidateLookup } from "../../src/memory/warm/query-fact-exchanges";
 import { makeFakeSupabase } from "./fake-supabase";
 
 describe("trusted exchange function lookup", () => {
+  test("bounds query matches to current facts from exact trusted exchanges", async () => {
+    const calls: Record<string, unknown>[] = [];
+    const valid = (id: string, exchange: string) => ({
+      fact_table: "operational_references",
+      lexical_score: 0.5,
+      fact: { id, org_id: "org", session_id: "session", project_scope: "orion", source_exchange_id: exchange, is_suppressed: false },
+    });
+    const { client } = makeFakeSupabase(
+      {},
+      {},
+      {
+        search_project_warm_facts: (args) => {
+          calls.push(args);
+          return [
+            valid("fact-1", "old"),
+            valid("fact-1", "old"),
+            valid("fact-2", "new"),
+            { ...valid("foreign", "old"), fact: { ...valid("foreign", "old").fact, session_id: "other" } },
+            { ...valid("suppressed", "old"), fact: { ...valid("suppressed", "old").fact, is_suppressed: true } },
+            valid("unexpected", "not-requested"),
+            { ...valid("negative", "old"), lexical_score: -1 },
+            { ...valid("wrong-table", "old"), fact_table: "secrets" },
+          ];
+        },
+      },
+    );
+    const lookup = createQueryFactCandidateLookup(client);
+    expect(await lookup("org", "session", "orion", ["old", "new"], "Which runbook?")).toEqual(
+      new Map([
+        ["old", 1],
+        ["new", 1],
+      ]),
+    );
+    expect(calls).toEqual([{ match_org: "org", match_project_scope: "orion", search_text: "Which runbook?", result_limit: 20 }]);
+    await expect(lookup("org", "session", "ORION", ["old"], "runbook")).rejects.toThrow(/project scope/i);
+    await expect(lookup("org", "session", "orion", Array(129).fill("old"), "runbook")).rejects.toThrow(/bound/i);
+    expect(calls).toHaveLength(1);
+  });
+
+  test("ignores results beyond the bounded lexical page", async () => {
+    const rows = Array.from({ length: 21 }, (_, index) => ({
+      fact_table: "tech_decisions",
+      lexical_score: 0.5,
+      fact: { id: `fact-${index}`, org_id: "org", session_id: "session", project_scope: "orion", source_exchange_id: "old", is_suppressed: false },
+    }));
+    const { client } = makeFakeSupabase({}, {}, { search_project_warm_facts: () => rows });
+    expect(await createQueryFactCandidateLookup(client)("org", "session", "orion", ["old"], "database")).toEqual(new Map([["old", 20]]));
+  });
+
   test("binds organization, conversation, project and selected exchange IDs", async () => {
     const calls: Record<string, unknown>[] = [];
     const { client } = makeFakeSupabase(

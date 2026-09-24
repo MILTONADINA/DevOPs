@@ -35,6 +35,14 @@ export interface ShadowMetric {
     selectedFactCount: number;
     droppedFactCount: number;
   };
+  /** Proposed bounded lexical rescue; counts only and never changes forwarding. */
+  queryFactRescue?: {
+    matchedFactCount: number;
+    rescuedExchangeCount: number;
+    rescuedFactCount: number;
+    addedTurnCount: number;
+    candidateSelectedCount: number;
+  };
   /** Hot exchanges with failed memory writes; fact coverage is omitted while positive. */
   provenanceIncompleteExchangeCount?: number;
 }
@@ -55,6 +63,7 @@ export function createShadowObserver(
     maxTurns?: number;
     supersession?: ShadowSupersessionDeps;
     factCoverage?: (orgId: string, sessionId: string, projectScope: string | null, exchangeIds: string[]) => Promise<Map<string, number>>;
+    queryFactCandidates?: (orgId: string, sessionId: string, projectScope: string | null, exchangeIds: string[], query: string) => Promise<Map<string, number>>;
   } = {},
 ): (input: ShadowInput) => Promise<void> {
   const now = options.now ?? Date.now;
@@ -92,7 +101,8 @@ export function createShadowObserver(
         for (const failed of current.failedExchanges) if (!liveIds.has(failed)) current.failedExchanges.delete(failed);
         const incompleteExchangeCount = current.failedExchanges.size;
         const projectScope = input.projectScopeId === undefined ? null : input.projectScopeId.startsWith(`${input.orgId}/`) ? input.projectScopeId.slice(input.orgId.length + 1) : "";
-        if ((options.supersession || options.factCoverage) && projectScope !== null && !validProjectScope(projectScope)) throw new Error("invalid shadow project binding");
+        if ((options.supersession || options.factCoverage || options.queryFactCandidates) && projectScope !== null && !validProjectScope(projectScope))
+          throw new Error("invalid shadow project binding");
         let factCoverage: ShadowMetric["factCoverage"];
         if (options.factCoverage && incompleteExchangeCount === 0) {
           const exchangeIds = [...new Set(current.manager.hot.recent().flatMap((turn) => (turn.scopeId === scopeId && turn.exchangeId ? [turn.exchangeId] : [])))];
@@ -109,6 +119,22 @@ export function createShadowObserver(
             activeFactCount,
             selectedFactCount,
             droppedFactCount: activeFactCount - selectedFactCount,
+          };
+        }
+        let queryFactRescue: ShadowMetric["queryFactRescue"];
+        if (options.queryFactCandidates && incompleteExchangeCount === 0) {
+          const liveTurns = current.manager.hot.recent().filter((turn) => turn.scopeId === scopeId);
+          const exchangeIds = [...new Set(liveTurns.flatMap((turn) => (turn.exchangeId ? [turn.exchangeId] : [])))];
+          const selectedIds = new Set(selectedTurns.flatMap((turn) => (turn.exchangeId ? [turn.exchangeId] : [])));
+          const matches = exchangeIds.length ? await options.queryFactCandidates(input.orgId, input.conversationId, projectScope, exchangeIds, query) : new Map<string, number>();
+          const rescuedIds = new Set(exchangeIds.filter((id) => !selectedIds.has(id) && matches.has(id)));
+          const addedTurnCount = liveTurns.filter((turn) => turn.exchangeId && rescuedIds.has(turn.exchangeId)).length;
+          queryFactRescue = {
+            matchedFactCount: exchangeIds.reduce((sum, id) => sum + (matches.get(id) ?? 0), 0),
+            rescuedExchangeCount: rescuedIds.size,
+            rescuedFactCount: [...rescuedIds].reduce((sum, id) => sum + matches.get(id)!, 0),
+            addedTurnCount,
+            candidateSelectedCount: decision.selectedIndices.length + addedTurnCount,
           };
         }
         let candidateSupersededExchangeCount = 0;
@@ -146,6 +172,7 @@ export function createShadowObserver(
           prunedCount: decision.prunedIndices.length,
           candidateSupersededExchangeCount,
           ...(factCoverage ? { factCoverage } : {}),
+          ...(queryFactRescue ? { queryFactRescue } : {}),
           ...(incompleteExchangeCount > 0 ? { provenanceIncompleteExchangeCount: incompleteExchangeCount } : {}),
         });
         // Keep the current exchange and cap prior context without retaining unbounded raw turns.

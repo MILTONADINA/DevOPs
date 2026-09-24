@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 import type { BiEncoder } from "../../src/pruner/encoder";
 import { createFactExchangeCoverageLookup } from "../../src/memory/warm/exchange-function-entities";
+import { createQueryFactCandidateLookup } from "../../src/memory/warm/query-fact-exchanges";
 import { createShadowObserver, type ShadowMetric } from "../../src/proxy/shadow-observer";
 
 const url = process.env["SUPABASE_URL"];
@@ -72,15 +73,21 @@ try {
   const observe = createShadowObserver(encoder, (metric) => metrics.push(metric), {
     now: () => 100_000_000,
     factCoverage: createFactExchangeCoverageLookup(db),
+    queryFactCandidates: createQueryFactCandidateLookup(db),
   });
   const event = { conversationId: session, orgId: org, keyId: apiKey, projectScopeId: `${org}/orion` };
   await observe({ ...event, exchangeId: oldExchange, query: "old", assistant: "old" });
   await observe({ ...event, exchangeId: newExchange, query: "new", assistant: "new" });
-  await observe({ ...event, exchangeId: randomUUID(), query: "target", assistant: "pending" });
+  await observe({ ...event, exchangeId: randomUUID(), query: "old command", assistant: "pending" });
   const coverage = metrics.at(-1)?.factCoverage;
   assert(coverage?.activeExchangeCount === 2 && coverage.selectedExchangeCount === 1 && coverage.droppedExchangeCount === 1, `unexpected live shadow fact coverage: ${JSON.stringify(coverage)}`);
   assert(coverage.activeFactCount === 5 && coverage.selectedFactCount === 2 && coverage.droppedFactCount === 3, `unexpected fact-row coverage: ${JSON.stringify(coverage)}`);
-  process.stdout.write("local scoped exchange and fact-row coverage passed\n");
+  const rescue = metrics.at(-1)?.queryFactRescue;
+  assert(
+    rescue?.rescuedExchangeCount === 1 && rescue.rescuedFactCount >= 1 && rescue.addedTurnCount === 2 && rescue.candidateSelectedCount === 4,
+    `query candidate failed to rescue the matching old exchange: ${JSON.stringify(rescue)}`,
+  );
+  process.stdout.write("local scoped exchange, fact-row, and query-rescue coverage passed\n");
 } catch (error) {
   failure = error;
 } finally {
