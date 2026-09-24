@@ -257,6 +257,7 @@ export function makeBillingRoute(deps: BillingDeps): FastifyPluginCallback {
     });
 
     app.get("/v1/billing/invoice", async (req, reply) => {
+      if (req.authEnforced === true && req.projectScopeId !== undefined) return err(reply, 403, "permission_error", "organization-level key required");
       const orgId = resolveOrg(req);
       if (orgId === undefined) return err(reply, 400, "request_error", "org id required (authenticate, or pass ?org-id)");
       const plan = await deps.getOrgPlan(orgId);
@@ -268,6 +269,7 @@ export function makeBillingRoute(deps: BillingDeps): FastifyPluginCallback {
     });
 
     app.get("/v1/billing/audit.csv", async (req, reply) => {
+      if (req.authEnforced === true && req.projectScopeId !== undefined) return err(reply, 403, "permission_error", "organization-level key required");
       const orgId = resolveOrg(req);
       if (orgId === undefined) return err(reply, 400, "request_error", "org id required (authenticate, or pass ?org-id)");
       const plan = await deps.getOrgPlan(orgId);
@@ -286,6 +288,7 @@ export function makeBillingRoute(deps: BillingDeps): FastifyPluginCallback {
     // GET /v1/billing/summary — the monthly summary (docs/API_REFERENCE.md). `?month=YYYY-MM`
     // (default: all time / the given since-until). by_developer is deferred (needs the sessions join).
     app.get("/v1/billing/summary", async (req, reply) => {
+      if (req.authEnforced === true && req.projectScopeId !== undefined) return err(reply, 403, "permission_error", "organization-level key required");
       const orgId = resolveOrg(req);
       if (orgId === undefined) return err(reply, 400, "request_error", "org id required (authenticate, or pass ?org-id)");
       const plan = await deps.getOrgPlan(orgId);
@@ -319,6 +322,7 @@ export function makeBillingRoute(deps: BillingDeps): FastifyPluginCallback {
 
     // GET /v1/billing/records — paginated raw records for programmatic CFO audit.
     app.get("/v1/billing/records", async (req, reply) => {
+      if (req.authEnforced === true && req.projectScopeId !== undefined) return err(reply, 403, "permission_error", "organization-level key required");
       const orgId = resolveOrg(req);
       if (orgId === undefined) return err(reply, 400, "request_error", "org id required (authenticate, or pass ?org-id)");
       const limit = Math.min(500, Math.max(1, intParam(req, "limit", 50)));
@@ -336,6 +340,7 @@ export function makeBillingRoute(deps: BillingDeps): FastifyPluginCallback {
     // GET /v1/billing/invoices — the invoice lifecycle (sent → paid/failed), surfacing what the
     // Stripe webhook records (so "did the design partner pay?" is answerable via the API, not just SQL).
     app.get("/v1/billing/invoices", async (req, reply) => {
+      if (req.authEnforced === true && req.projectScopeId !== undefined) return err(reply, 403, "permission_error", "organization-level key required");
       const orgId = resolveOrg(req);
       if (orgId === undefined) return err(reply, 400, "request_error", "org id required (authenticate, or pass ?org-id)");
       const plan = await deps.getOrgPlan(orgId);
