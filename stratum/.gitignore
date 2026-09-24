@@ -46,6 +46,7 @@ models/
 # Raw captured sessions (may contain sensitive content)
 data/sessions/
 data/design-partner/
+data/usage-outbox/
 
 # Logs
 *.log

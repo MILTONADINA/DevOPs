@@ -122,28 +122,34 @@ async function checkTokenBudget(deps: MessagesDeps, request: FastifyRequest, inp
 }
 
 /**
- * Best-effort commercial usage persistence (writes a signed billing_record to Supabase). Fire-and-forget
- * + fail-open: invoked AFTER a successful forward so it never adds latency to or fails the proxied
- * response. No-op unless an authenticated org + a recorder exist and the count is > 0.
+ * Journal commercial usage before acknowledging a successful response. Production uses the fsynced
+ * outbox; legacy injected recorders remain asynchronous for personal/test callers.
  */
-function recordUsageSafe(deps: MessagesDeps, request: FastifyRequest, model: string, inputTokens: number, outputTokens: number, pending: Set<Promise<void>>): void {
+function recordUsageSafe(deps: MessagesDeps, request: FastifyRequest, model: string, inputTokens: number, outputTokens: number, pending: Set<Promise<void>>): boolean {
   const orgId = request.orgId;
-  if (deps.recordUsage === undefined || typeof orgId !== "string" || orgId === "") return;
+  if ((deps.recordUsage === undefined && deps.usageOutbox === undefined) || typeof orgId !== "string" || orgId === "") return true;
   if (!(inputTokens > 0)) {
     // The billing_records `original_tokens > 0` CHECK would reject a 0-token record. Callers now pass the
     // UPSTREAM-confirmed input count (present on every 2xx), so reaching here means both that and the
     // pre-flight count were unavailable — a genuine invoice hole. WARN (don't drop silently) so it's visible.
     request.log?.warn?.({ orgId, model }, "usage record skipped: input_tokens<=0 (no count from upstream OR pre-flight)");
-    return;
+    return true;
   }
   try {
-    const task = deps.recordUsage({ orgId, ...(request.projectScopeId ? { projectScopeId: request.projectScopeId } : {}), eventId: randomUUID(), occurredAt: new Date().toISOString(), model, inputTokens, outputTokens });
+    const event = { orgId, ...(request.projectScopeId ? { projectScopeId: request.projectScopeId } : {}), eventId: randomUUID(), occurredAt: new Date().toISOString(), model, inputTokens, outputTokens };
+    if (deps.usageOutbox) {
+      deps.usageOutbox.enqueue(event);
+      return true;
+    }
+    const task = deps.recordUsage!(event);
     pending.add(task);
     void task.catch((e: unknown) => request.log?.error?.({ err: (e as Error).message }, "usage record failed (non-blocking)"))
       .finally(() => pending.delete(task));
   } catch (e) {
-    request.log?.error?.({ err: (e as Error).message }, "usage record failed (non-blocking)");
+    request.log?.error?.({ err: (e as Error).message }, deps.usageOutbox ? "usage journal failed" : "usage record failed (non-blocking)");
+    return deps.usageOutbox === undefined;
   }
+  return true;
 }
 
 /**
@@ -179,6 +185,10 @@ async function handleStreaming(body: MessagesBody, request: FastifyRequest, repl
   void (async () => {
     const parser = createSseParser();
     let streamFailed = false;
+    let sawStop = false;
+    const heldCompletion: string[] = [];
+    let heldBytes = 0;
+    let pendingChunk: string | undefined;
     // Incremental fold (not a growing events[] array): each parsed batch is folded into the running
     // message and then discarded, so per-request heap stays O(accumulated text) even for a very long
     // streaming generation — and even though we keep draining upstream after a client abort (below).
@@ -190,8 +200,21 @@ async function handleStreaming(body: MessagesBody, request: FastifyRequest, repl
         // abort recorded a 0/partial output count. Anthropic generates + charges for the whole response
         // regardless, so reading the already-open socket to completion is the correct billing behavior;
         // we just stop WRITING to the departed client.
-        if (!out.destroyed) out.write(chunk);
-        acc.push(parser.push(chunk));
+        const events = parser.push(chunk);
+        if (deps.usageOutbox && events.some((event) => event.event === "message_stop")) sawStop = true;
+        if (!out.destroyed) {
+          if (deps.usageOutbox && sawStop) {
+            heldBytes += Buffer.byteLength(chunk);
+            if (heldBytes > 1_048_576) throw new Error("upstream sent excessive data after message_stop");
+            heldCompletion.push(chunk);
+          } else if (deps.usageOutbox) {
+            // Hold one chunk so a split or unterminated message_stop cannot reach the client
+            // before the final usage journal fsync succeeds.
+            if (pendingChunk !== undefined) out.write(pendingChunk);
+            pendingChunk = chunk;
+          } else out.write(chunk);
+        }
+        acc.push(events);
       }
     } catch (e) {
       streamFailed = true;
@@ -207,7 +230,9 @@ async function handleStreaming(body: MessagesBody, request: FastifyRequest, repl
     } finally {
       // flush() in the FINALLY (not the try) so a partial event buffered when the stream ERRORED
       // mid-chunk — e.g. a split `message_delta` carrying output_tokens — is still recovered for billing.
-      acc.push(parser.flush());
+      const trailingEvents = parser.flush();
+      if (deps.usageOutbox && trailingEvents.some((event) => event.event === "message_stop")) sawStop = true;
+      acc.push(trailingEvents);
       // Capture the accumulated turn (redaction + FAIL-CLOSED inside the store).
       // Done BEFORE out.end() so the artifact is written before the response
       // completes. A client abort still captures what was forwarded.
@@ -237,8 +262,18 @@ async function handleStreaming(body: MessagesBody, request: FastifyRequest, repl
         },
         deps.telemetry,
       );
-      recordUsageSafe(deps, request, body.model, billedInput, outputTokensOf(message), pending);
-      if (!streamFailed && streamError === undefined) recordMemorySafe(deps, request, body, message, pending);
+      const usageRecorded = recordUsageSafe(deps, request, body.model, billedInput, outputTokensOf(message), pending);
+      if (!usageRecorded && !out.destroyed) {
+        out.write('event: error\ndata: {"type":"error","error":{"type":"billing_unavailable","message":"usage journal unavailable"}}\n\n');
+      }
+      if (deps.usageOutbox && !sawStop && !streamFailed && !out.destroyed) {
+        out.write('event: error\ndata: {"type":"error","error":{"type":"upstream_stream_error","message":"stream ended without message_stop"}}\n\n');
+      }
+      if (usageRecorded && !streamFailed && streamError === undefined && !out.destroyed) {
+        if (pendingChunk !== undefined && sawStop) out.write(pendingChunk);
+        if (sawStop) for (const chunk of heldCompletion) out.write(chunk);
+      }
+      if (usageRecorded && !streamFailed && streamError === undefined) recordMemorySafe(deps, request, body, message, pending);
       out.end();
     }
   })();
@@ -255,7 +290,7 @@ async function handleStreaming(body: MessagesBody, request: FastifyRequest, repl
 export function makeMessagesRoute(deps: MessagesDeps): FastifyPluginCallback {
   return function messagesPlugin(app: FastifyInstance, _opts, done): void {
     const pendingWrites = new Set<Promise<void>>();
-    app.addHook("onClose", async () => { await Promise.allSettled([...pendingWrites]); });
+    app.addHook("onClose", async () => { await Promise.allSettled([...pendingWrites]); await deps.usageOutbox?.close(); });
     app.post("/v1/messages", async (request, reply) => {
       const start = Date.now();
       const body = request.body as MessagesBody;
@@ -330,7 +365,9 @@ export function makeMessagesRoute(deps: MessagesDeps): FastifyPluginCallback {
         },
         deps.telemetry,
       );
-      recordUsageSafe(deps, request, body.model, billedInput, outputTokensOf(forwarded.data), pendingWrites);
+      if (!recordUsageSafe(deps, request, body.model, billedInput, outputTokensOf(forwarded.data), pendingWrites)) {
+        return reply.status(503).send({ type: "error", error: { type: "billing_unavailable", message: "usage journal unavailable" } });
+      }
       recordMemorySafe(deps, request, body, forwarded.data, pendingWrites);
 
       // nosemgrep: javascript.express.security.audit.xss.direct-response-write.direct-response-write -- FALSE POSITIVE: transparent JSON proxy. Forwards the upstream Anthropic response (Fastify sends it as application/json) to the Claude Code CLI client; never HTML rendered in a browser, so no XSS surface. The "user input" is the upstream provider's own JSON, not attacker markup.
