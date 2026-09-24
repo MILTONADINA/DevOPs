@@ -78,4 +78,14 @@ describe("ShadowContextManager (encoder + Tier-1 + pruner integration)", () => {
     const { selectedTurns } = await cm.select("database?", NOW + 40_000);
     expect(selectedTurns).toEqual([]);
   });
+
+  test("shadow selection carries trusted project scope through hot memory", async () => {
+    const cm = createContextManager(fakeEncoder, { hot: createHotMemory({ now: () => NOW }) });
+    await cm.ingest({ role: "user", content: "Vega database Supabase", timestampMs: NOW - 3000, scopeId: "vega" });
+    await cm.ingest({ role: "user", content: "Orion database Supabase", timestampMs: NOW - 2000, scopeId: "orion" });
+    await cm.ingest({ role: "user", content: "Unscoped database Supabase", timestampMs: NOW - 1000 });
+    const { decision, selectedTurns } = await cm.select("database?", NOW, "orion");
+    expect(selectedTurns.map((turn) => turn.content)).toEqual(["Orion database Supabase"]);
+    expect(decision.prunedIndices).toEqual([0, 2]);
+  });
 });

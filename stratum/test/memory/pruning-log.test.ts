@@ -41,10 +41,34 @@ describe("pruning-log mapping", () => {
   });
 
   test("empty decision → turns_total 0, empty arrays", () => {
-    const empty: PruneDecision = { spans: [], selectedIndices: [], prunedIndices: [], decayedScores: [], normalizedScores: [], params: { lambda: 0.97, gainShift: 0, theta: 1, nowSeconds: 0 }, normalizationSkipped: false };
+    const empty: PruneDecision = {
+      spans: [],
+      selectedIndices: [],
+      prunedIndices: [],
+      decayedScores: [],
+      normalizedScores: [],
+      params: { lambda: 0.97, gainShift: 0, theta: 1, nowSeconds: 0 },
+      normalizationSkipped: false,
+    };
     const row = pruneDecisionToRow("s", empty);
     expect(row["turns_total"]).toBe(0);
     expect(row["spans_selected"]).toEqual([]);
+  });
+
+  test("scoped decision logs scores at original history positions", () => {
+    const scoped: PruneDecision = {
+      ...decision,
+      selectedIndices: [1],
+      prunedIndices: [0, 2],
+      candidateIndices: [1],
+      decayedScores: [0.8],
+      normalizedScores: [0.8],
+      spans: [[1, 1]],
+    };
+    const row = pruneDecisionToRow("s", scoped);
+    expect(row["turns_total"]).toBe(3);
+    expect(row["relevance_scores"]).toEqual([null, 0.8, null]);
+    expect(row["spans_selected"]).toEqual(["[1,1]"]);
   });
 });
 

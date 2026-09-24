@@ -121,9 +121,11 @@ export interface PruneDecision {
   selectedIndices: number[];
   /** Pruned (not-selected) turn indices. */
   prunedIndices: number[];
-  /** Decayed raw scores R_i (pre-normalization) — logged per spec. */
+  /** Original-history positions scored when a trusted query scope filters turns. */
+  candidateIndices?: number[];
+  /** Decayed raw scores R_i (pre-normalization), in candidate order when scoped. */
   decayedScores: number[];
-  /** Normalized scores S (post-decay) — logged per spec. */
+  /** Normalized scores S (post-decay), in candidate order when scoped. */
   normalizedScores: number[];
   /** Params used (incl. the gain threshold) — logged per spec. */
   params: KadaneDialParams;
