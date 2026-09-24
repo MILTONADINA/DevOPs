@@ -155,8 +155,12 @@ and real-use gates remain open; the runners now fail nonzero without a provider.
 - [ ] **Tier B scenarios** (~12h). ≥4 developer workload scenarios derived from your real Phase 0 corpus: e.g., long debugging session, refactor across 5 files, multi-day project resume, deep stack-trace analysis.
 - [x] **Tier C golden queries**. A 50-case synthetic developer-workload
   corpus with required and forbidden anchors runs through the real cached
-  encoder and pruner without a judge. The current default is RED at 20/50:
-  project-scope anchors leak and dormant facts disappear. Zero Tier-C failures
+  encoder and pruner without a judge. Caller-supplied project scope metadata excludes
+  foreign turns before scoring; all 10 authored project-scope cases now pass,
+  while the current default is still RED at 29/50 because dormant and
+  multi-fact evidence is lost and stale alternatives survive. The fixture's
+  original text, ages, and golden anchors are unchanged. The request path has
+  no trusted project binding yet. Zero Tier-C failures
   remains a v0.4 ship gate.
 - [ ] **`npm run test:eval` wires** all three tiers into one command. CI runs Tier C on every PR; Tier A weekly; Tier B on Phase 2-touching PRs.
 

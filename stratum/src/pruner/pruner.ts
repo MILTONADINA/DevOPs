@@ -23,6 +23,8 @@ export interface HistoryEmbedding {
   embedding: Float32Array;
   /** Unix timestamp (seconds) when the turn was recorded. */
   timestampSeconds: number;
+  /** Trusted caller-supplied project binding; never inferred from turn text. */
+  scopeId?: string;
 }
 
 /**
@@ -33,7 +35,31 @@ export interface HistoryEmbedding {
  * @param params - KadaneDial params (λ / g / θ / now).
  * @returns the {@link PruneDecision} (selected + pruned indices + logged scores).
  */
-export function prune(queryEmbedding: Float32Array, history: HistoryEmbedding[], params: KadaneDialParams): PruneDecision {
+export function prune(queryEmbedding: Float32Array, history: HistoryEmbedding[], params: KadaneDialParams, queryScopeId?: string): PruneDecision {
+  if (queryScopeId !== undefined) {
+    if (queryScopeId.trim() === "") throw new RangeError("query scope must be nonempty");
+    const candidateIndices = history.flatMap((turn, index) => (turn.scopeId === queryScopeId ? [index] : []));
+    const scoped = prune(
+      queryEmbedding,
+      candidateIndices.map((index) => history[index]!),
+      params,
+    );
+    const selectedIndices = scoped.selectedIndices.map((index) => candidateIndices[index]!);
+    const selected = new Set(selectedIndices);
+    const spans: Array<[number, number]> = [];
+    for (const index of selectedIndices) {
+      const last = spans[spans.length - 1];
+      if (last && last[1] === index - 1) last[1] = index;
+      else spans.push([index, index]);
+    }
+    return {
+      ...scoped,
+      spans,
+      selectedIndices,
+      prunedIndices: history.map((_, index) => index).filter((index) => !selected.has(index)),
+      candidateIndices,
+    };
+  }
   const turns: HistoryTurn[] = history.map((h) => ({
     similarity: cosineSimilarity(queryEmbedding, h.embedding),
     timestampSeconds: h.timestampSeconds,

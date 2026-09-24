@@ -38,6 +38,24 @@ integrated into that command; `--fast` SHALL report only Tier-B plus Tier-C.
 Unsupported flags SHALL fail before a benchmark runs rather than be printed
 and silently ignored.
 
+## REQ-4 — Trusted project scope before relevance scoring
+
+WHEN the caller supplies a trusted project scope for a query, THE PRUNER SHALL
+consider only turns with the same trusted scope before calculating similarity,
+normalization, and contiguous spans. Turns with a different or missing scope
+SHALL be excluded, and the returned selected/pruned indices SHALL refer to the
+original history. The shadow context manager SHALL carry caller-supplied scope
+through hot memory to this selection. WHEN no query scope is supplied, existing
+unscoped behavior SHALL remain unchanged.
+WHEN a scoped decision is persisted, excluded turns SHALL have null score
+entries at their original positions, so the logged score array remains aligned
+with the original history.
+
+The Tier-C `project_scope` cases SHALL declare query and turn scope metadata
+without changing their text, ages, or golden anchors. The gate SHALL reject a
+project-scope case with missing query scope or turn scope; its real pruner call
+SHALL use this metadata. Scope SHALL NOT be inferred from turn or query text.
+
 ## Acceptance criteria
 
 - Focused tests prove the corpus cardinality, unique IDs and queries, source anchors, and
@@ -47,3 +65,14 @@ and silently ignored.
 - Running the command against the real cached encoder records the actual
   pass/fail result without modifying the dataset to force a pass.
 - The main eval command returns nonzero when a provider is absent.
+- A focused test gives a foreign turn stronger semantic similarity than a
+  target turn and verifies that only the target can survive a scoped query.
+- The fixed 50-case corpus remains red until every critical case passes; a
+  scope improvement SHALL NOT be reported as a green release gate by itself.
+
+## Current result
+
+The cached local encoder with the default λ=0.97 passes 29/50 cases after
+trusted scope filtering, including all 10 project-scope cases. Twenty-one
+critical cases still fail. The production request path does not yet supply a
+trusted project binding, so Tier-C and the v0.4 release gate remain red.

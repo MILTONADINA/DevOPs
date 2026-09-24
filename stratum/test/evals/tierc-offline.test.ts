@@ -23,6 +23,29 @@ describe("offline Tier-C gate", () => {
     }
   });
 
+  test("project-scope cases carry explicit query and turn scope metadata", () => {
+    const cases = loadTierCCorpus(CORPUS).filter((entry) => entry.scenario === "project_scope");
+    expect(cases).toHaveLength(10);
+    for (const entry of cases) {
+      expect(entry.scopeId).toBeTruthy();
+      expect(entry.turns.every((turn) => typeof turn.scopeId === "string" && turn.scopeId.length > 0)).toBe(true);
+      expect(entry.turns.some((turn) => turn.scopeId !== entry.scopeId)).toBe(true);
+    }
+  });
+
+  test("rejects project-scope cases missing trusted scope metadata", () => {
+    const lines = readFileSync(CORPUS, "utf8").trim().split("\n");
+    const scopedIndex = lines.findIndex((line) => line.includes('"scenario":"project_scope"'));
+    const scoped = JSON.parse(lines[scopedIndex]!) as { scopeId?: string; turns: Array<{ scopeId?: string }> };
+    delete scoped.scopeId;
+    lines[scopedIndex] = JSON.stringify(scoped);
+    expect(() => parseTierCCorpus(lines.join("\n"))).toThrow(/project scope metadata required/);
+    scoped.scopeId = "orion";
+    delete scoped.turns[0]!.scopeId;
+    lines[scopedIndex] = JSON.stringify(scoped);
+    expect(() => parseTierCCorpus(lines.join("\n"))).toThrow(/project scope metadata required/);
+  });
+
   test("rejects a corpus with too few cases before running a vacuous gate", () => {
     const first49 = readFileSync(CORPUS, "utf8").trim().split("\n").slice(0, 49).join("\n");
     expect(() => parseTierCCorpus(first49)).toThrow(/at least 50/);

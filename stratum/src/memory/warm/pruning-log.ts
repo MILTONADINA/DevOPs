@@ -38,12 +38,19 @@ export function spanToRange(span: [number, number]): string {
  * @returns the row object for insert (arrays as JS arrays; spans as int4range literals).
  */
 export function pruneDecisionToRow(sessionId: string, decision: PruneDecision): Record<string, unknown> {
+  const turnsTotal = decision.selectedIndices.length + decision.prunedIndices.length;
+  const relevanceScores: Array<number | null> = decision.candidateIndices
+    ? Array.from({ length: turnsTotal }, (_, index) => {
+        const candidate = decision.candidateIndices!.indexOf(index);
+        return candidate < 0 ? null : (decision.normalizedScores[candidate] ?? null);
+      })
+    : decision.normalizedScores;
   return {
     session_id: sessionId,
-    turns_total: decision.selectedIndices.length + decision.prunedIndices.length,
+    turns_total: turnsTotal,
     turns_selected: decision.selectedIndices,
     turns_pruned: decision.prunedIndices,
-    relevance_scores: decision.normalizedScores,
+    relevance_scores: relevanceScores,
     spans_selected: decision.spans.map(spanToRange),
     lambda_used: decision.params.lambda,
     gain_shift_used: decision.params.gainShift,

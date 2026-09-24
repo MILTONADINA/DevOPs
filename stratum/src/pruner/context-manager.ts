@@ -25,6 +25,8 @@ export interface IncomingTurn {
   content: string;
   /** Unix ms timestamp. */
   timestampMs: number;
+  /** Trusted caller-supplied project binding. */
+  scopeId?: string;
 }
 
 /** Per-call dial overrides (λ / g / θ); `nowSeconds` is supplied by select(). */
@@ -39,7 +41,7 @@ export interface ContextManager {
    * @param nowMs - current time (ms) for temporal decay + window eviction.
    * @returns the pruning decision + the selected turns (in window order).
    */
-  select(query: string, nowMs: number): Promise<{ decision: PruneDecision; selectedTurns: HotTurn[] }>;
+  select(query: string, nowMs: number, queryScopeId?: string): Promise<{ decision: PruneDecision; selectedTurns: HotTurn[] }>;
   /** The underlying hot memory (for inspection / metrics). */
   hot: HotMemory;
 }
@@ -84,18 +86,18 @@ export function createContextManager(encoder: BiEncoder, opts: ContextManagerOpt
     hot,
     async ingest(turn: IncomingTurn): Promise<void> {
       const [embedding] = await encoder.encode([turn.content]);
-      hot.add({ timestamp: turn.timestampMs, role: turn.role, content: turn.content, ...(embedding ? { embedding } : {}) });
+      hot.add({ timestamp: turn.timestampMs, role: turn.role, content: turn.content, ...(embedding ? { embedding } : {}), ...(turn.scopeId ? { scopeId: turn.scopeId } : {}) });
     },
-    async select(query: string, nowMs: number): Promise<{ decision: PruneDecision; selectedTurns: HotTurn[] }> {
+    async select(query: string, nowMs: number, queryScopeId?: string): Promise<{ decision: PruneDecision; selectedTurns: HotTurn[] }> {
       const [queryVec] = await encoder.encode([query]);
       hot.sweep(nowMs); // evict against the SAME clock prune() decays with (no skew)
       const live = hot.recent();
       if (!queryVec || live.length === 0) {
-        return { decision: prune(queryVec ?? new Float32Array(encoder.dimension), [], { ...dial, nowSeconds: nowMs / 1000 }), selectedTurns: [] };
+        return { decision: prune(queryVec ?? new Float32Array(encoder.dimension), [], { ...dial, nowSeconds: nowMs / 1000 }, queryScopeId), selectedTurns: [] };
       }
       // Turns without an embedding (shouldn't happen post-ingest) are skipped.
       const indexed = live.map((t, i) => ({ t, i })).filter((x) => x.t.embedding);
-      const history: HistoryEmbedding[] = indexed.map((x) => ({ embedding: x.t.embedding!, timestampSeconds: x.t.timestamp / 1000 }));
+      const history: HistoryEmbedding[] = indexed.map((x) => ({ embedding: x.t.embedding!, timestampSeconds: x.t.timestamp / 1000, ...(x.t.scopeId ? { scopeId: x.t.scopeId } : {}) }));
       // Scale-invariant decay (ADR-0015, default-off): horizon = fraction × the
       // window's own span (seconds). history is ascending by timestamp (Tier-1
       // keeps order), so span = last − first. ≥2 turns needed for a span.
@@ -104,7 +106,7 @@ export function createContextManager(encoder: BiEncoder, opts: ContextManagerOpt
         const spanSeconds = history[history.length - 1]!.timestampSeconds - history[0]!.timestampSeconds;
         params.decayHorizonSeconds = Math.max(1, decayHorizonFraction * spanSeconds);
       }
-      const decision = prune(queryVec, history, params);
+      const decision = prune(queryVec, history, params, queryScopeId);
       const selectedTurns = decision.selectedIndices.map((di) => indexed[di]!.t);
       return { decision, selectedTurns };
     },

@@ -14,6 +14,8 @@ export interface DevTurn {
   text: string;
   /** How long ago the turn occurred, in hours (→ timestamp via nowSeconds). */
   ageHours: number;
+  /** Trusted fixture project binding, when a scoped query is evaluated. */
+  scopeId?: string;
 }
 
 export interface DevGolden {
@@ -28,6 +30,7 @@ export interface DevScenario {
   id: string;
   scenario: string;
   query: string;
+  scopeId?: string;
   golden: DevGolden;
   turns: DevTurn[];
 }
@@ -61,9 +64,18 @@ export function parseDevScenarios(jsonl: string): DevScenario[] {
       if (typeof tt.text !== "string" || typeof tt.ageHours !== "number") {
         throw new Error(`tier-b line ${lineNo} (${o.id}): turn ${i} missing text/ageHours`);
       }
-      return { text: tt.text, ageHours: tt.ageHours };
+      if (tt.scopeId !== undefined && (typeof tt.scopeId !== "string" || tt.scopeId.trim() === "")) throw new Error(`tier-b line ${lineNo} (${o.id}): invalid turn scope`);
+      return { text: tt.text, ageHours: tt.ageHours, ...(tt.scopeId ? { scopeId: tt.scopeId } : {}) };
     });
-    out.push({ id: o.id, scenario: o.scenario ?? o.id, query: o.query, golden: { contains: g.contains, notContains: g.notContains, critical: g.critical }, turns });
+    if (o.scopeId !== undefined && (typeof o.scopeId !== "string" || o.scopeId.trim() === "")) throw new Error(`tier-b line ${lineNo} (${o.id}): invalid query scope`);
+    out.push({
+      id: o.id,
+      scenario: o.scenario ?? o.id,
+      query: o.query,
+      ...(o.scopeId ? { scopeId: o.scopeId } : {}),
+      golden: { contains: g.contains, notContains: g.notContains, critical: g.critical },
+      turns,
+    });
   }
   return out;
 }

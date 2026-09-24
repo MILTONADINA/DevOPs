@@ -22,6 +22,8 @@ export interface HotTurn {
   content: unknown;
   /** L2-normalized embedding computed at ingestion (what the pruner consumes). */
   embedding?: Float32Array;
+  /** Trusted project binding for scoped pruning. */
+  scopeId?: string;
 }
 
 export interface Tier1Options {
