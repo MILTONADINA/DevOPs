@@ -37,7 +37,7 @@ function recordMemorySafe(
   conversationId: string | null,
   exchangeId: string | null,
   pending: Set<Promise<void>>,
-): void {
+): Promise<boolean> | undefined {
   const orgId = request.orgId;
   if (!deps.recordMemory || !orgId) return;
   const lastUser = [...body.messages].reverse().find((message) => message.role === "user");
@@ -57,9 +57,18 @@ function recordMemorySafe(
       ],
     });
     pending.add(task);
-    void task.catch((error: unknown) => logger.error({ err: (error as Error).message }, "memory write failed (non-blocking)")).finally(() => pending.delete(task));
+    return task
+      .then(
+        () => true,
+        (error: unknown) => {
+          logger.error({ err: (error as Error).message }, "memory write failed (non-blocking)");
+          return false;
+        },
+      )
+      .finally(() => pending.delete(task));
   } catch (error) {
     logger.error({ err: (error as Error).message }, "memory write failed (non-blocking)");
+    return Promise.resolve(false);
   }
 }
 
@@ -94,7 +103,16 @@ async function resolveConversation(deps: MessagesDeps, request: FastifyRequest, 
   }
 }
 
-function observeSafe(deps: MessagesDeps, request: FastifyRequest, body: MessagesBody, response: unknown, conversationId: string | null, exchangeId: string | null, pending: Set<Promise<void>>): void {
+function observeSafe(
+  deps: MessagesDeps,
+  request: FastifyRequest,
+  body: MessagesBody,
+  response: unknown,
+  conversationId: string | null,
+  exchangeId: string | null,
+  pending: Set<Promise<void>>,
+  memoryReady?: Promise<boolean>,
+): void {
   if (!conversationId || !deps.observeConversation || !request.orgId || !request.apiKeyId) return;
   const user = [...body.messages].reverse().find((message) => message.role === "user");
   const query = textContent(user?.content);
@@ -107,6 +125,7 @@ function observeSafe(deps: MessagesDeps, request: FastifyRequest, body: Messages
       keyId: request.apiKeyId,
       ...(request.projectScopeId ? { projectScopeId: request.projectScopeId } : {}),
       ...(exchangeId ? { exchangeId } : {}),
+      ...(memoryReady ? { memoryReady } : {}),
       query,
       assistant,
     });
@@ -356,8 +375,8 @@ async function handleStreaming(body: MessagesBody, request: FastifyRequest, repl
       }
       if (usageRecorded && sawStop && !streamFailed && streamError === undefined) {
         const exchangeId = conversationId ? randomUUID() : null;
-        recordMemorySafe(deps, request, body, message, conversationId, exchangeId, pending);
-        observeSafe(deps, request, body, message, conversationId, exchangeId, pending);
+        const memoryReady = recordMemorySafe(deps, request, body, message, conversationId, exchangeId, pending);
+        observeSafe(deps, request, body, message, conversationId, exchangeId, pending, memoryReady);
       }
       out.end();
     }
@@ -459,8 +478,8 @@ export function makeMessagesRoute(deps: MessagesDeps): FastifyPluginCallback {
         return reply.status(503).send({ type: "error", error: { type: "billing_unavailable", message: "usage journal unavailable" } });
       }
       const exchangeId = conversationId ? randomUUID() : null;
-      recordMemorySafe(deps, request, body, forwarded.data, conversationId, exchangeId, pendingWrites);
-      observeSafe(deps, request, body, forwarded.data, conversationId, exchangeId, pendingWrites);
+      const memoryReady = recordMemorySafe(deps, request, body, forwarded.data, conversationId, exchangeId, pendingWrites);
+      observeSafe(deps, request, body, forwarded.data, conversationId, exchangeId, pendingWrites, memoryReady);
 
       // nosemgrep: javascript.express.security.audit.xss.direct-response-write.direct-response-write -- FALSE POSITIVE: transparent JSON proxy. Forwards the upstream Anthropic response (Fastify sends it as application/json) to the Claude Code CLI client; never HTML rendered in a browser, so no XSS surface. The "user input" is the upstream provider's own JSON, not attacker markup.
       return reply.send(forwarded.data);

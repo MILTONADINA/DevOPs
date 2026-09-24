@@ -10,6 +10,8 @@ export interface ShadowInput {
   keyId: string;
   projectScopeId?: string;
   exchangeId?: string;
+  /** Internal memory-write completion; observation queues before awaiting it. */
+  memoryReady?: Promise<boolean>;
   query: string;
   assistant: string;
 }
@@ -26,6 +28,8 @@ export interface ShadowMetric {
   candidateSupersededExchangeCount: number;
   /** Active typed-fact exchanges in the hot window; omitted when lookup is not configured. */
   factCoverage?: { activeExchangeCount: number; selectedExchangeCount: number; droppedExchangeCount: number };
+  /** Hot exchanges with failed memory writes; fact coverage is omitted while positive. */
+  provenanceIncompleteExchangeCount?: number;
 }
 
 export interface ShadowSupersessionDeps {
@@ -50,7 +54,7 @@ export function createShadowObserver(
   const maxConversations = Math.max(1, options.maxConversations ?? 100);
   const maxTurns = Math.max(2, options.maxTurns ?? 128);
   const idleMs = 7_200_000;
-  const windows = new Map<string, { manager: ContextManager; lastUsed: number; chain: Promise<void>; binding: string }>();
+  const windows = new Map<string, { manager: ContextManager; lastUsed: number; chain: Promise<void>; binding: string; failedExchanges: Set<string> }>();
   const newManager = (): ContextManager => createContextManager(encoder, { hot: createHotMemory({ now }) });
 
   return async (input) => {
@@ -61,7 +65,7 @@ export function createShadowObserver(
     if (entry && entry.binding !== binding) throw new Error("conversation binding changed");
     if (!entry) {
       while (windows.size >= maxConversations) windows.delete(windows.keys().next().value!);
-      entry = { manager: newManager(), lastUsed: at, chain: Promise.resolve(), binding };
+      entry = { manager: newManager(), lastUsed: at, chain: Promise.resolve(), binding, failedExchanges: new Set() };
       windows.set(input.conversationId, entry);
     }
     entry.lastUsed = at;
@@ -70,14 +74,20 @@ export function createShadowObserver(
     const work = current.chain
       .catch(() => undefined)
       .then(async () => {
+        // Enqueue immediately, then wait inside the per-conversation chain so a
+        // faster later write cannot reorder exchanges or make prior coverage stale.
+        const memoryPersisted = input.memoryReady === undefined ? undefined : await input.memoryReady.catch(() => false);
         const scopeId = input.projectScopeId ?? `${input.orgId}/unbound`;
         const query = input.query.slice(0, 1200);
         const assistant = input.assistant.slice(0, 1200);
         const { decision, selectedTurns } = await current.manager.select(query, now(), scopeId);
+        const liveIds = new Set(current.manager.hot.recent().flatMap((turn) => (turn.exchangeId ? [turn.exchangeId] : [])));
+        for (const failed of current.failedExchanges) if (!liveIds.has(failed)) current.failedExchanges.delete(failed);
+        const incompleteExchangeCount = current.failedExchanges.size;
         const projectScope = input.projectScopeId === undefined ? null : input.projectScopeId.startsWith(`${input.orgId}/`) ? input.projectScopeId.slice(input.orgId.length + 1) : "";
         if ((options.supersession || options.factCoverage) && projectScope !== null && !validProjectScope(projectScope)) throw new Error("invalid shadow project binding");
         let factCoverage: ShadowMetric["factCoverage"];
-        if (options.factCoverage) {
+        if (options.factCoverage && incompleteExchangeCount === 0) {
           const exchangeIds = [...new Set(current.manager.hot.recent().flatMap((turn) => (turn.scopeId === scopeId && turn.exchangeId ? [turn.exchangeId] : [])))];
           const selectedIds = new Set(selectedTurns.flatMap((turn) => (turn.exchangeId ? [turn.exchangeId] : [])));
           const facts = exchangeIds.length ? await options.factCoverage(input.orgId, input.conversationId, projectScope, exchangeIds) : new Map<string, number>();
@@ -86,7 +96,7 @@ export function createShadowObserver(
           factCoverage = { activeExchangeCount: activeIds.length, selectedExchangeCount, droppedExchangeCount: activeIds.length - selectedExchangeCount };
         }
         let candidateSupersededExchangeCount = 0;
-        if (options.supersession) {
+        if (options.supersession && incompleteExchangeCount === 0) {
           const exchangeIds = [...new Set(selectedTurns.map((turn) => turn.exchangeId).filter((id): id is string => id !== undefined))];
           if (exchangeIds.length > 0) {
             const entities = await options.supersession.resolveEntities(input.orgId, input.conversationId, projectScope, exchangeIds);
@@ -120,9 +130,14 @@ export function createShadowObserver(
           prunedCount: decision.prunedIndices.length,
           candidateSupersededExchangeCount,
           ...(factCoverage ? { factCoverage } : {}),
+          ...(incompleteExchangeCount > 0 ? { provenanceIncompleteExchangeCount: incompleteExchangeCount } : {}),
         });
         // Keep the current exchange and cap prior context without retaining unbounded raw turns.
-        if (current.manager.hot.size() + 2 > maxTurns) current.manager = newManager();
+        if (current.manager.hot.size() + 2 > maxTurns) {
+          current.manager = newManager();
+          current.failedExchanges.clear();
+        }
+        if (memoryPersisted === false && input.exchangeId) current.failedExchanges.add(input.exchangeId);
         const timestampMs = now();
         await current.manager.ingest({ role: "user", content: query, timestampMs, scopeId, ...(input.exchangeId ? { exchangeId: input.exchangeId } : {}) });
         await current.manager.ingest({ role: "assistant", content: assistant, timestampMs, scopeId, ...(input.exchangeId ? { exchangeId: input.exchangeId } : {}) });
