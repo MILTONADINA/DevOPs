@@ -174,19 +174,32 @@ The enclave has no logging. Errors are returned as typed error codes only — no
 | Standard | Status | Notes |
 |---|---|---|
 | SOC 2 Type II | Target: Month 12 | Architecture designed for compliance from day one |
-| GDPR Article 17 (right to erasure) | Supported | Session data deletion cascade across all tiers |
+| GDPR Article 17 (right to erasure) | Not verified | No complete erasure endpoint or retention assessment is implemented |
 | HIPAA | Not supported in MVP | PHI requires BAA and additional controls |
-| CCPA | Supported | No sale of personal data; data minimization by design |
+| CCPA | Not verified | No complete deletion workflow or compliance assessment is recorded |
 
 ### GDPR Erasure
 
-When a customer requests erasure of a session:
+The following is a planned workflow, not a deployed capability. There is no
+end-to-end erasure endpoint or one-year/<30-second benchmark yet. The current
+`billing_records` table is immutable and has foreign keys to organizations
+and sessions, so its `session_id` cannot be replaced in place as step 4 below
+suggests. That step requires a new schema and retention design.
+
+When a customer requests erasure of a session, the intended workflow is:
 
 1. Tier 1: clear session from RAM immediately
 2. Tier 2: DELETE from all fact tables WHERE session_id = ?
 3. Tier 3: Delete from Pinecone by metadata filter; delete nodes from Neo4j
-4. Billing records: anonymize session_id (replace with salted hash) — required for financial compliance
+4. Billing records: design a lawful, technically sound separation of retained
+   financial totals from identifiable session data before implementing erasure.
 5. Return erasure confirmation with timestamp
+
+The [European Commission explains](https://commission.europa.eu/law/law-topic/data-protection/information-business-and-organisations/application-gdpr_en)
+that pseudonymised data remains personal data if re-identification is possible;
+replacing an ID with a salted hash must not be assumed to be anonymisation.
+Any retention exception needs an applicable legal basis under
+[GDPR Article 17(3)](https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX%3A32016R0679).
 
 ---
 

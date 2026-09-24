@@ -395,10 +395,20 @@ Anthropic's reasoning-based security scanner (GA Feb 2026) reads code "the way a
 **Effort remaining**: ~30h.
 
 - [ ] **`stratum/src/billing/recorder.ts`** (~10h). HMAC-SHA256-signed `BillingRecord` writes. Append-only.
-- [ ] **Append-only Postgres trigger** (~3h). UPDATE/DELETE on `billing_records` table → raise exception. Test: attempt UPDATE → expect exception.
+- [x] **Append-only Postgres trigger**. The applied local migration raises on
+  UPDATE, UPSERT, DELETE, and TRUNCATE. A rolled-back PostgreSQL fixture
+  verified those rejections, generated fee columns, and the billing-to-session
+  foreign key. The signature verifier now requires explicit credentials,
+  pages through the exact record count, and fails on partial reads; a capped
+  1,001-record fixture found tampering after the first REST page. This does not
+  close the separate erasure or release gates.
 - [ ] **`stratum/src/billing/calculator.ts`** (~5h). Per-record + monthly aggregate calculations. `0.20 × (original - quarantined) × price` formula (placeholder; not active until Stripe).
 - [ ] **`stratum/src/billing/invoice.ts` stub** (~3h). Interface only; no Stripe yet. Implementable when v1.0.x customer arrives.
-- [ ] **GDPR erasure endpoint** (~5h). Anonymizes billing records (keeps financial total, removes PII). <30s on 1-year history. Tested.
+- [ ] **GDPR erasure endpoint** (~5h). The current immutable billing records
+  have organization/session foreign keys, so in-place session-ID replacement
+  is impossible. Design a separate retention/identity boundary, establish the
+  applicable legal basis, then test one-year erasure in <30s. No compliance
+  claim is made yet.
 - [ ] **CFO dashboard skeleton** (~3h). Read-only view of billing schema; no real billing data yet. Hidden behind `DASHBOARD_CFO_VIEW=true` env var.
 
 ### 8a. v0.9.0 release

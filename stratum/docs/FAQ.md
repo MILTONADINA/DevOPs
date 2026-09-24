@@ -80,7 +80,12 @@ Sessions are scoped to a session ID. Within a session, context from one project 
 
 ### What happens to my data if I cancel?
 
-Cancellation triggers a GDPR-compliant erasure workflow: Tier 1 is cleared immediately, Tier 2 fact records are deleted within 24 hours, Tier 3 Pinecone vectors and Neo4j nodes are deleted within 72 hours. Billing records are anonymized (session IDs replaced with salted hashes) rather than deleted, as financial records have a legal retention requirement. You can request a data export before cancellation via the dashboard.
+The complete cancellation and erasure workflow is not implemented or verified
+yet. The current local database has immutable billing records linked to
+organization and session IDs; it cannot replace those IDs with salted hashes
+in place. Export and deletion timing are also unverified. Do not rely on this
+service for a regulated cancellation workflow until the v0.9 erasure design,
+retention assessment, and one-year/<30-second check are complete.
 
 ---
 
