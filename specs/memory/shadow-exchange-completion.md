@@ -30,5 +30,8 @@ remain mandatory before any request-path change.
   added.
 - A fully selected exchange proposes zero extra turns; a turn lacking trusted
   exchange ID does not create a completion proposal.
+- A disposable local service-role fixture verifies complete and partial
+  exchange counts under a real organization, project, and conversation, then
+  deletes its seeded rows.
 - Typecheck and targeted lint/format pass. The LoCoMo pairing surrogate
   remains exploratory evidence only, not a release claim.

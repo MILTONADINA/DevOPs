@@ -82,12 +82,34 @@ try {
   const coverage = metrics.at(-1)?.factCoverage;
   assert(coverage?.activeExchangeCount === 2 && coverage.selectedExchangeCount === 1 && coverage.droppedExchangeCount === 1, `unexpected live shadow fact coverage: ${JSON.stringify(coverage)}`);
   assert(coverage.activeFactCount === 5 && coverage.selectedFactCount === 2 && coverage.droppedFactCount === 3, `unexpected fact-row coverage: ${JSON.stringify(coverage)}`);
+  const complete = metrics.at(-1)?.exchangeCompletion;
+  assert(
+    complete?.selectedExchangeCount === 1 && complete.partialExchangeCount === 0 && complete.addedTurnCount === 0 && complete.candidateSelectedCount === 2,
+    `unexpected complete exchange proposal: ${JSON.stringify(complete)}`,
+  );
   const rescue = metrics.at(-1)?.queryFactRescue;
   assert(
     rescue?.rescuedExchangeCount === 1 && rescue.rescuedFactCount >= 1 && rescue.addedTurnCount === 2 && rescue.candidateSelectedCount === 4,
     `query candidate failed to rescue the matching old exchange: ${JSON.stringify(rescue)}`,
   );
-  process.stdout.write("local scoped exchange, fact-row, and query-rescue coverage passed\n");
+
+  const partialMetrics: ShadowMetric[] = [];
+  const partialEncoder: BiEncoder = { dimension: 2, encode: async (texts) => texts.map((text) => (text === "low" ? Float32Array.from([0, 1]) : Float32Array.from([1, 0]))) };
+  const observePartial = createShadowObserver(partialEncoder, (metric) => partialMetrics.push(metric), {
+    now: () => 100_000_000,
+    factCoverage: createFactExchangeCoverageLookup(db),
+    queryFactCandidates: createQueryFactCandidateLookup(db),
+  });
+  await observePartial({ ...event, exchangeId: oldExchange, query: "high", assistant: "low" });
+  await observePartial({ ...event, exchangeId: newExchange, query: "low", assistant: "low" });
+  await observePartial({ ...event, exchangeId: randomUUID(), query: "target", assistant: "pending" });
+  const partial = partialMetrics.at(-1)?.exchangeCompletion;
+  assert(
+    partialMetrics.at(-1)?.selectedCount === 1 && partial?.selectedExchangeCount === 1 && partial.partialExchangeCount === 1 && partial.addedTurnCount === 1 && partial.candidateSelectedCount === 2,
+    `unexpected partial exchange proposal: ${JSON.stringify(partial)}`,
+  );
+  assert(!JSON.stringify(partial).includes(oldExchange) && !JSON.stringify(partial).includes(newExchange), "completion metric leaked exchange identity");
+  process.stdout.write("local scoped exchange, fact-row, query-rescue, and completion coverage passed\n");
 } catch (error) {
   failure = error;
 } finally {
