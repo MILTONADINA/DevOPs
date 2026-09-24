@@ -84,6 +84,9 @@ function deriveAction(result: SuiteResult): string {
   if (hints.length) return hints.join("; ");
   const firstFail = result.scenarios.find((s) => !s.passed);
   if (firstFail) {
+    if (firstFail.evidence && !firstFail.evidence.passed) {
+      return `${firstFail.name} dropped gold evidence — preserve the required turns and validate the decay configuration on published benchmarks.`;
+    }
     const metric = !firstFail.faithfulness.passed ? "Faithfulness" : "Answer Relevancy";
     return `${firstFail.name} below ${metric} threshold — widen the context window for this scenario or tune θ.`;
   }

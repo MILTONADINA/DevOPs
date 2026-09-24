@@ -91,6 +91,75 @@ export function createClaudeCompletion(opts: LlmOptions = {}): LlmCompletion {
   };
 }
 
+/** Local exploratory judge/answerer over a literal-loopback OpenAI-compatible endpoint. */
+export function createLocalEvalCompletion(baseUrl: string, model: string, doFetch: typeof fetch = fetch): LlmCompletion {
+  if (!/^http:\/\/(?:127\.0\.0\.1|\[::1\])(?::[0-9]{1,5})?\/v1\/?$/.test(baseUrl)) {
+    throw new Error("local eval requires a literal-loopback HTTP /v1 endpoint");
+  }
+  const url = new URL(baseUrl);
+  if (url.protocol !== "http:" || !["127.0.0.1", "[::1]"].includes(url.hostname) || !["/v1", "/v1/"].includes(url.pathname) || url.username || url.password || url.search || url.hash) {
+    throw new Error("local eval requires a literal-loopback HTTP /v1 endpoint");
+  }
+  if (!/^local\/[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$/.test(model)) throw new Error("EVAL_LOCAL_MODEL must be local/<model>");
+  return {
+    async complete(prompt, opts): Promise<string> {
+      const response = await doFetch(`${url.origin}/v1/chat/completions`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          model: model.slice(6),
+          temperature: 0,
+          max_tokens: opts?.maxTokens ?? 512,
+          chat_template_kwargs: { enable_thinking: false, preserve_thinking: false },
+          stream: false,
+          messages: [{ role: "user", content: prompt }],
+        }),
+        redirect: "error",
+        signal: AbortSignal.timeout(180_000),
+      });
+      if (!response.ok || !response.body) throw new Error(`local eval model returned HTTP ${response.status}`);
+      const reader = response.body.getReader();
+      const chunks: Buffer[] = [];
+      let bytes = 0;
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        bytes += value.byteLength;
+        if (bytes > 65_536) {
+          await reader.cancel();
+          throw new Error("local eval model response exceeded 65536 bytes");
+        }
+        chunks.push(Buffer.from(value));
+      }
+      let body: unknown;
+      try {
+        body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+      } catch {
+        throw new Error("local eval model returned invalid JSON");
+      }
+      const choice = (body as { choices?: { message?: { content?: unknown }; finish_reason?: string }[] } | null)?.choices?.[0];
+      if (choice?.finish_reason === "length") throw new Error("local eval model completion was truncated");
+      if (choice?.finish_reason !== "stop") throw new Error("local eval model did not finish normally");
+      const content = choice?.message?.content;
+      if (typeof content !== "string" || content.trim() === "") throw new Error("local eval model returned no text");
+      return content;
+    },
+  };
+}
+
+export function selectEvalProvider(env: NodeJS.ProcessEnv = process.env): { completion: LlmCompletion; label: string; exploratory: boolean } | null {
+  const base = env["EVAL_LOCAL_BASE_URL"];
+  const model = env["EVAL_LOCAL_MODEL"];
+  if (base || model) {
+    if (!base || !model) throw new Error("local eval requires EVAL_LOCAL_BASE_URL and EVAL_LOCAL_MODEL");
+    return { completion: createLocalEvalCompletion(base, model), label: model, exploratory: true };
+  }
+  if (env["EVAL_ANTHROPIC_API_KEY"] || env["ANTHROPIC_API_KEY"]) {
+    return { completion: createClaudeCompletion({ apiKey: env["EVAL_ANTHROPIC_API_KEY"] || env["ANTHROPIC_API_KEY"] }), label: DEFAULT_JUDGE_MODEL, exploratory: false };
+  }
+  return null;
+}
+
 /** Fence untrusted text with a per-call nonce so the model treats it as data. */
 function fence(nonce: string, label: string, text: string): string {
   return `<<${nonce}:${label}>>\n${text}\n<<${nonce}:/${label}>>`;
@@ -196,11 +265,7 @@ export function parseJudgeScores(raw: string, expectedNonce?: string): MetricSco
     }
   }
   if (!obj) {
-    throw new Error(
-      expectedNonce !== undefined
-        ? `judge reply missing/!matching nonce — possible prompt injection: ${raw.slice(0, 120)}`
-        : `judge reply is not valid JSON: ${raw.slice(0, 120)}`,
-    );
+    throw new Error(expectedNonce !== undefined ? `judge reply missing/!matching nonce — possible prompt injection: ${raw.slice(0, 120)}` : `judge reply is not valid JSON: ${raw.slice(0, 120)}`);
   }
   const f = obj.faithfulness;
   const a = obj.answer_relevancy ?? obj.answerRelevancy;
@@ -264,13 +329,7 @@ export function judgeConfigured(opts: LlmOptions = {}): boolean {
  * @param repeats - how many samples to draw (clamped to an integer ≥ 1).
  * @returns the array of {@link MetricScores} samples (length = the clamped repeats).
  */
-export async function scoreContextRepeated(
-  answerer: Answerer,
-  judge: Judge,
-  query: string,
-  context: string,
-  repeats = 1,
-): Promise<MetricScores[]> {
+export async function scoreContextRepeated(answerer: Answerer, judge: Judge, query: string, context: string, repeats = 1): Promise<MetricScores[]> {
   const r = Number.isFinite(repeats) && repeats >= 1 ? Math.floor(repeats) : 1;
   const samples: MetricScores[] = [];
   for (let i = 0; i < r; i++) {

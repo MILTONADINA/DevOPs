@@ -126,6 +126,12 @@ These unblock the trust-chain story. Do these BEFORE starting Phase 0 corpus cap
 **Theme**: "My Claude Code costs went down 30-50% without quality loss."
 **Ship gate**: Eval suite GREEN; zero Tier C regressions; 1 week real-use confirms no degradation.
 **Effort remaining**: ~120h.
+**Current evidence:** The default per-hour decay failed a one-question real
+local Qwen LoCoMo run by dropping all gold evidence; a predeclared span-based
+setting retained it while pruning 22% of turns. This is an exploratory
+single-question comparison, not a release gate. A one-question local
+LongMemEval haystack timed out before scoring. Full judged coverage, Tier C,
+and real-use gates remain open; the runners now fail nonzero without a provider.
 
 ### 3a. Pre-requisites
 
