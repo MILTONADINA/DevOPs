@@ -39,7 +39,7 @@ describe("extractApiKey", () => {
 });
 
 describe("resolveApiKeyVia", () => {
-  const fakeClient = (rows: { id: string; org_id: string }[], err?: string): SupabaseClient => {
+  const fakeClient = (rows: { id: string; org_id: string; project_scope?: string | null }[], err?: string): SupabaseClient => {
     const builder = {
       select: () => builder,
       eq: () => builder,
@@ -51,6 +51,14 @@ describe("resolveApiKeyVia", () => {
   test("an active key resolves to its org", async () => {
     const resolved = await resolveApiKeyVia(fakeClient([{ id: "k1", org_id: "o1" }]))("cq_live_whatever");
     expect(resolved).toEqual({ orgId: "o1", keyId: "k1" });
+  });
+  test("a project-bound key resolves with an organization-qualified scope", async () => {
+    const resolved = await resolveApiKeyVia(fakeClient([{ id: "k1", org_id: "o1", project_scope: "orion" }]))("cq_live_whatever");
+    expect(resolved).toEqual({ orgId: "o1", keyId: "k1", projectScopeId: "o1/orion" });
+    await expect(resolveApiKeyVia(fakeClient([{ id: "k2", org_id: "o2", project_scope: "orion" }]))("another")).resolves.toMatchObject({ projectScopeId: "o2/orion" });
+  });
+  test("an invalid stored scope fails closed", async () => {
+    await expect(resolveApiKeyVia(fakeClient([{ id: "k1", org_id: "o1", project_scope: "../other" }]))("x")).rejects.toThrow(/invalid stored project scope/);
   });
   test("an unknown/inactive key → null", async () => {
     expect(await resolveApiKeyVia(fakeClient([]))("nope")).toBeNull();
@@ -97,6 +105,17 @@ describe("auth gate via buildProxy", () => {
     const res = await app.inject({ method: "GET", url: "/v1/echo-org", headers: { authorization: "Bearer good-key" } });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({ orgId: "org-x", keyId: "key-1" });
+    await app.close();
+  });
+
+  test("the request project scope comes from the authenticated key, not a client header or query", async () => {
+    const bound: ApiKeyResolver = async (raw) => (raw === "bound" ? { orgId: "org-x", keyId: "key-2", projectScopeId: "org-x/orion" } : null);
+    const app = buildProxy({ rateLimit: false, cors: false, auth: { resolve: bound } });
+    app.get("/v1/echo-scope", (req) => ({ scope: req.projectScopeId ?? null }));
+    await app.ready();
+    const res = await app.inject({ method: "GET", url: "/v1/echo-scope?project-scope=vega", headers: { authorization: "Bearer bound", "x-project-scope": "vega" } });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ scope: "org-x/orion" });
     await app.close();
   });
 

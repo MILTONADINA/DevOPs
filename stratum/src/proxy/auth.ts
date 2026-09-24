@@ -1,8 +1,8 @@
 /**
  * Multi-tenant API-key authentication (v1.0.0 component, build-ahead).
  *
- * Resolves an inbound API key to its owning org so the proxy can scope every request to a
- * tenant. Keys are stored HASH-ONLY (api_keys.key_hash — SHA-256; the raw key is shown once at
+ * Resolves an inbound API key to its owning org and optional project scope. Keys are stored
+ * HASH-ONLY (api_keys.key_hash — SHA-256; the raw key is shown once at
  * creation and never persisted), so a DB leak never exposes usable keys. Opt-in: buildProxy only
  * enforces auth when given `auth` deps, so the Phase-1 personal-use proxy is unchanged. The hook +
  * resolver are injectable, so this is fully testable with a fake — no DB, no Fastify network.
@@ -19,6 +19,8 @@ declare module "fastify" {
     orgId?: string;
     /** The api_keys.id that authenticated the request. */
     apiKeyId?: string;
+    /** Organization-qualified project scope from the authenticated API key, if bound. */
+    projectScopeId?: string;
     /**
      * True on EVERY request when the auth gate is registered (commercial mode). Routes use this to
      * REFUSE a client-supplied ?org-id fallback when auth is enforced — the org must come from the
@@ -52,7 +54,12 @@ export function extractApiKey(headers: Record<string, unknown>): string | undefi
 }
 
 /** Resolves a raw key to its org (or null if unknown/inactive). */
-export type ApiKeyResolver = (rawKey: string) => Promise<{ orgId: string; keyId: string } | null>;
+export type ApiKeyResolver = (rawKey: string) => Promise<{ orgId: string; keyId: string; projectScopeId?: string } | null>;
+
+/** Project slug accepted by the operator CLI and the database constraint. */
+export function validProjectScope(value: unknown): value is string {
+  return typeof value === "string" && /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/.test(value);
+}
 
 /**
  * A resolver backed by Supabase: hash the key, look it up among ACTIVE keys, return the org.
@@ -65,10 +72,13 @@ export type ApiKeyResolver = (rawKey: string) => Promise<{ orgId: string; keyId:
 export function resolveApiKeyVia(client: SupabaseClient): ApiKeyResolver {
   return async (rawKey: string) => {
     const hash = hashApiKey(rawKey);
-    const { data, error } = await client.from("api_keys").select("id, org_id").eq("key_hash", hash).eq("is_active", true).limit(1);
+    const { data, error } = await client.from("api_keys").select("id, org_id, project_scope").eq("key_hash", hash).eq("is_active", true).limit(1);
     if (error) throw new Error(`api key lookup failed: ${error.message}`);
-    const row = (data ?? [])[0] as { id: string; org_id: string } | undefined;
-    return row ? { orgId: row.org_id, keyId: row.id } : null;
+    const row = (data ?? [])[0] as { id: string; org_id: string; project_scope?: unknown } | undefined;
+    if (!row) return null;
+    if (row.project_scope == null) return { orgId: row.org_id, keyId: row.id };
+    if (!validProjectScope(row.project_scope)) throw new Error("invalid stored project scope");
+    return { orgId: row.org_id, keyId: row.id, projectScopeId: `${row.org_id}/${row.project_scope}` };
   };
 }
 
@@ -124,6 +134,7 @@ export function registerAuth(app: FastifyInstance, deps: AuthDeps): void {
     if (resolved === null) return unauthorized(reply, "invalid or inactive API key");
     req.orgId = resolved.orgId;
     req.apiKeyId = resolved.keyId;
+    if (resolved.projectScopeId !== undefined) req.projectScopeId = resolved.projectScopeId;
     return undefined;
   });
 }

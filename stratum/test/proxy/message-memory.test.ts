@@ -35,6 +35,8 @@ const payload = { model: "local/check", messages: [
   { role: "user", content: "latest question" },
 ], max_tokens: 32 };
 const auth = { resolve: async (key: string) => key === "good" ? { orgId: "trusted-org", keyId: "key-id" } : null };
+const boundAuth = { resolve: async (key: string) => key === "bound" ?
+  { orgId: "trusted-org", keyId: "key-bound", projectScopeId: "trusted-org/orion" } : null };
 
 test("successful nonstreaming request sends only the final turn with the authenticated org", async () => {
   const { messages, memory } = deps();
@@ -53,6 +55,16 @@ test("successful stream sends the completed final turn; unauthenticated requests
   const response = await app.inject({ method: "POST", url: "/v1/messages", headers: { authorization: "Bearer good" }, payload: { ...payload, stream: true } });
   expect(response.statusCode).toBe(200);
   expect(memory).toHaveBeenCalledExactlyOnceWith({ orgId: "trusted-org", model: "local/check",
+    turns: [{ role: "user", content: "latest question" }, { role: "assistant", content: "assistant answer" }] });
+});
+
+test.each([false, true])("a bound key carries trusted project scope into a completed memory event (stream=%s)", async (stream) => {
+  const { messages, memory } = deps();
+  app = buildProxy({ cors: false, rateLimit: false, auth: boundAuth, messages });
+  const response = await app.inject({ method: "POST", url: "/v1/messages?project-scope=vega",
+    headers: { authorization: "Bearer bound", "x-project-scope": "vega" }, payload: { ...payload, stream } });
+  expect(response.statusCode).toBe(200);
+  expect(memory).toHaveBeenCalledExactlyOnceWith({ orgId: "trusted-org", projectScopeId: "trusted-org/orion", model: "local/check",
     turns: [{ role: "user", content: "latest question" }, { role: "assistant", content: "assistant answer" }] });
 });
 
