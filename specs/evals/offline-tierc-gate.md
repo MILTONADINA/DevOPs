@@ -75,5 +75,6 @@ SHALL use this metadata. Scope SHALL NOT be inferred from turn or query text.
 
 The cached local encoder with the default λ=0.97 passes 29/50 cases after
 trusted scope filtering, including all 10 project-scope cases. Twenty-one
-critical cases still fail. The production request path does not yet supply a
-trusted project binding, so Tier-C and the v0.4 release gate remain red.
+critical cases still fail. Commercial requests can now carry a trusted scope
+from a project-bound API key, but the pruner does not consume it on the request
+path. Legacy keys remain unbound; Tier-C and the v0.4 release gate remain red.
