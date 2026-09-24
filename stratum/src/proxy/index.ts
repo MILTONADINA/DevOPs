@@ -39,6 +39,7 @@ import { createSupabaseMessageMemoryRecorder } from "./message-memory";
 import { createSupabaseConversationResolver } from "./conversation";
 import { createShadowObserver } from "./shadow-observer";
 import { createOnnxEncoder } from "../pruner/encoder";
+import { createQueryFactCandidateLookup } from "../memory/warm/query-fact-exchanges";
 import {
   createExchangeFunctionLookup,
   createFactExchangeCoverageLookup,
@@ -174,6 +175,7 @@ export function buildStartOptions(env: StartEnv, base: BuildProxyOptions, makeCl
           },
           {
             factCoverage: createFactExchangeCoverageLookup(client),
+            queryFactCandidates: createQueryFactCandidateLookup(client),
             supersession: {
               resolveEntities: createExchangeFunctionLookup(client),
               findFunctionSuperseded: createProjectFunctionSupersessionLookup(client),
