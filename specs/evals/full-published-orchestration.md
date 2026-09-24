@@ -36,6 +36,14 @@ It SHALL label a local model result exploratory, never a release pass. It
 SHALL leave request pruning disabled until Tier-C, both full published judged
 gates, and one-week real-use quality pass.
 
+## REQ-4 — Keep operator guidance current
+
+WHEN full-suite orchestration is merged, THE v0.4 plan and evaluation guide
+SHALL describe default `test:eval` as invoking both complete published gates
+after Tier-C and Tier-B. They SHALL distinguish implemented orchestration from
+an actual passing judged run, and SHALL continue to name the red Tier-C gate,
+CI scheduling, and real-use validation as open work.
+
 ## Acceptance
 
 - Failing-first offline tests show the default main command does not invoke

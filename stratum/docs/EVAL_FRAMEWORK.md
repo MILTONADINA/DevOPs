@@ -93,8 +93,9 @@ gitignored, not redistributed). Result at the documented λ=0.97: **RED** —
 1.4% evidence survival, 92% context reduction; the λ sweep shows λ=1.0 recovers
 84% evidence at 47% reduction. Pruning stays OUT of the request path. Full
 analysis: **ADR-0014**. LongMemEval's loader and separate judged runner
-(`npm run eval:longmemeval`) are also implemented. A full passing judged run
-on both benchmarks and full-suite orchestration remain open (PB-41).
+(`npm run eval:longmemeval`) are also implemented. The default full-suite
+command now invokes both published gates over the complete local corpora after
+Tier-C and judged Tier-B; a full passing judged run remains open (PB-41).
 
 **Acquisition and license:** Obtain `locomo10.json` from the
 [official LoCoMo repository](https://github.com/snap-research/locomo/tree/main/data)
@@ -145,7 +146,7 @@ missing/leaked anchor before changing pruning behavior.
 ## Running the Eval Suite
 
 ```bash
-# Full suite entry point: currently returns nonzero until Tier-A is integrated
+# Full suite entry point: default command invokes all 1,540 answerable LoCoMo and 500 LongMemEval questions after Tier-C and judged Tier-B; currently exits nonzero on red Tier-C
 npm run test:eval
 
 # Fast suite: Tier C then judged Tier B; currently returns nonzero on red Tier C
