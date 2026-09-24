@@ -80,6 +80,32 @@ describe("commercial usage persistence on /v1/messages", () => {
     expect(res.json()).toMatchObject({ usage: { output_tokens: 42 } });
   });
 
+  test("successful response stays non-blocking while close drains its pending usage write", async () => {
+    let release!: () => void;
+    const pending = new Promise<void>((resolve) => { release = resolve; });
+    let started = false;
+    app = buildProxy({ cors: false, rateLimit: false, auth: AUTH, messages: deps({ recordUsage: async () => { started = true; await pending; } }) });
+    await app.ready();
+    expect((await post()).statusCode).toBe(200);
+    expect(started).toBe(true);
+    let closed = false;
+    const closing = app.close().then(() => { closed = true; });
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(closed).toBe(false);
+    release();
+    await closing;
+    expect(closed).toBe(true);
+    app = undefined;
+  });
+
+  test("a synchronous recorder error does not fail the successful upstream response", async () => {
+    app = buildProxy({ cors: false, rateLimit: false, auth: AUTH, messages: deps({ recordUsage: () => { throw new Error("recorder unavailable"); } }) });
+    await app.ready();
+    const response = await post();
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ usage: { output_tokens: 42 } });
+  });
+
   test("the STREAMING branch records usage too (the path Claude Code actually uses)", async () => {
     const calls: UsageEvent[] = [];
     async function* chunks(): AsyncGenerator<string> {
@@ -116,5 +142,28 @@ describe("commercial usage persistence on /v1/messages", () => {
     await app.ready();
     expect((await post({ ...BODY, stream: true, project_scope: "vega" }, "bound")).statusCode).toBe(200);
     expect(calls).toEqual([{ orgId: "org-7", projectScopeId: "org-7/orion", model: "claude-sonnet-4-6", inputTokens: 5, outputTokens: 4 }]);
+  });
+
+  test("streaming response completes before its usage write while close drains it", async () => {
+    let release!: () => void;
+    const pending = new Promise<void>((resolve) => { release = resolve; });
+    async function* chunks(): AsyncGenerator<string> {
+      yield 'event: message_start\ndata: {"type":"message_start","message":{"id":"m","role":"assistant","usage":{"input_tokens":5,"output_tokens":1}}}\n\n';
+      yield 'event: message_stop\ndata: {"type":"message_stop"}\n\n';
+    }
+    app = buildProxy({ cors: false, rateLimit: false, auth: AUTH, messages: {
+      ...deps({ recordUsage: async () => pending }),
+      countTokens: async () => ({ input_tokens: 5, token_count_method: "exact", message_breakdown: [] }),
+      forwardStream: async () => ({ status: 200, stream: chunks() }),
+    } });
+    await app.ready();
+    expect((await post({ ...BODY, stream: true })).statusCode).toBe(200);
+    let closed = false;
+    const closing = app.close().then(() => { closed = true; });
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(closed).toBe(false);
+    release();
+    await closing;
+    app = undefined;
   });
 });
