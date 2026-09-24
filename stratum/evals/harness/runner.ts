@@ -19,7 +19,7 @@ import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 
 import type { Answerer, Judge } from "./metrics";
-import { selectEvalProvider, createClaudeAnswerer, createLlmJudge } from "./metrics";
+import { selectEvalProvider, createClaudeAnswerer, createSelectedJudge } from "./metrics";
 import { gateScenario } from "./compare";
 import { checkGoldenQuery } from "./golden";
 import { evaluateSuite, renderReport, type SuiteResult, type SuiteVerdict } from "./report";
@@ -149,7 +149,7 @@ export async function main(argv: string[] = [], runTierC: () => Promise<number> 
   }
 
   if (haveData && provider) {
-    out(`CQ Eval Suite — Tier-B (real ONNX encoder + ${provider.label} judge${provider.exploratory ? "; exploratory local-model result" : ""})${flags}`);
+    out(`CQ Eval Suite — Tier-B (real ONNX encoder + ${provider.label} ${provider.exploratory ? "exploratory scalar judge" : "DeepEval Python 4.2.6 metrics"})${flags}`);
     out("=".repeat(60));
     try {
       // Dynamic import breaks the static runner↔dev-suite cycle (dev-suite
@@ -164,7 +164,8 @@ export async function main(argv: string[] = [], runTierC: () => Promise<number> 
         return 1;
       }
       const encoder = createOnnxEncoder({ cacheDir: join(process.cwd(), "models") });
-      const { suite, verdict } = await runDevSuite(scenarios, encoder, createClaudeAnswerer(provider.completion), createLlmJudge(provider.completion), EVAL_NOW_SECONDS);
+      const judge = createSelectedJudge(provider);
+      const { suite, verdict } = await runDevSuite(scenarios, encoder, createClaudeAnswerer(provider.completion), judge, EVAL_NOW_SECONDS).finally(() => judge.close?.());
       if (suite.scenarios.length === 0) {
         out("Tier-B produced zero scored scenarios; refusing a vacuous full-suite pass.");
         return 1;

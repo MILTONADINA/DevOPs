@@ -12,7 +12,7 @@
 
 import { join } from "node:path";
 import { createOnnxEncoder } from "../src/pruner/encoder";
-import { createClaudeAnswerer, createLlmJudge } from "../evals/harness/metrics";
+import { createClaudeAnswerer, createSelectedJudge, selectEvalProvider } from "../evals/harness/metrics";
 import { loadDevScenarios } from "../evals/harness/dataset";
 import { runDevSuite } from "../evals/harness/dev-suite";
 import { renderReport } from "../evals/harness/report";
@@ -24,18 +24,20 @@ export async function main(): Promise<number> {
   const out = (s: string): void => {
     process.stdout.write(`${s}\n`);
   };
-  if (!process.env["ANTHROPIC_API_KEY"]) {
-    out("eval:tierb GATED: set ANTHROPIC_API_KEY (answerer + judge use the real API).");
-    return 0;
+  const provider = selectEvalProvider();
+  if (!provider) {
+    out("eval:tierb GATED: set EVAL_ANTHROPIC_API_KEY or ANTHROPIC_API_KEY.");
+    return 1;
   }
 
   const file = join(process.cwd(), "evals", "datasets", "developer", "tier-b.jsonl");
   const scenarios = loadDevScenarios(file);
   out(`Loaded ${scenarios.length} Tier-B scenarios from ${file}.`);
-  out("→ encoding (real ONNX) + pruning + answering + judging (real Claude Haiku)…");
+  out(`→ encoding (real ONNX) + pruning + answering + judging (${provider.label}; ${provider.exploratory ? "exploratory scalar judge" : "DeepEval Python 4.2.6 metrics"})…`);
 
   const encoder = createOnnxEncoder({ cacheDir: join(process.cwd(), "models") });
-  const { suite, verdict, outcomes } = await runDevSuite(scenarios, encoder, createClaudeAnswerer(), createLlmJudge(), NOW_SECONDS);
+  const judge = createSelectedJudge(provider);
+  const { suite, verdict, outcomes } = await runDevSuite(scenarios, encoder, createClaudeAnswerer(provider.completion), judge, NOW_SECONDS).finally(() => judge.close?.());
 
   out("");
   out("Per-scenario pruning + scores:");
@@ -54,7 +56,7 @@ export async function main(): Promise<number> {
   const passCount = suite.scenarios.filter((s) => s.passed).length;
   out(`Summary: ${passCount}/${suite.scenarios.length} scenarios passed; avg context reduction ${avgReduction}%.`);
   out("NOTE: Tier-B is synthetic-but-realistic (EVAL_FRAMEWORK.md). A FAIL here is a real finding (e.g. over-aggressive temporal decay dropping an old-but-valid decision) → tune λ/θ, do NOT enable pruning in the request path.");
-  return verdict.passed ? 0 : 1;
+  return verdict.passed && !provider.exploratory ? 0 : 1;
 }
 
 const entryPath = process.argv[1] ?? "";

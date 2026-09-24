@@ -30,7 +30,7 @@ import { existsSync } from "node:fs";
 import { createOnnxEncoder } from "../src/pruner/encoder";
 import { prune, type HistoryEmbedding } from "../src/pruner/pruner";
 import { DEFAULT_KADANEDIAL, halfLifeHours } from "../src/pruner/kadanedial";
-import { createClaudeAnswerer, createLlmJudge, scoreContextRepeated, selectEvalProvider, type Answerer, type Judge } from "../evals/harness/metrics";
+import { createClaudeAnswerer, createSelectedJudge, scoreContextRepeated, selectEvalProvider, type Answerer, type Judge } from "../evals/harness/metrics";
 import { summarizeScores } from "../evals/harness/aggregate";
 import { gateScenario } from "../evals/harness/compare";
 import { evaluateSuite, renderReport } from "../evals/harness/report";
@@ -191,9 +191,9 @@ export async function main(): Promise<number> {
   const conversations = full ? loaded : loaded.slice(0, nConv);
   const plan = coverage?.plan ?? conversations.map((c) => ({ c, qs: sampleQuestions(c, { maxQuestions: nQ, categories: cats }) }));
   const totalQ = plan.reduce((a, p) => a + p.qs.length, 0);
-  const callBudget = totalQ * repeats * (2 + 2 * lambdas.length); // ×R repeats (PB-42); baseline + per-λ each (answer+judge)
+  const cycleCount = totalQ * repeats * (1 + lambdas.length); // baseline + per-λ answer/judge cycles; selections may dedupe
 
-  out(`CQ Eval Suite — Tier-A LoCoMo (real ONNX encoder + ${provider.label} judge${provider.exploratory ? "; EXPLORATORY local-model result" : ""})`);
+  out(`CQ Eval Suite — Tier-A LoCoMo (real ONNX encoder + ${provider.label} ${provider.exploratory ? "EXPLORATORY scalar judge" : "DeepEval Python 4.2.6 metrics"})`);
   out("=".repeat(64));
   out(full ? `Conversations: ${conversations.length}/10   Selected questions: ${totalQ} (cats ${cats.join(",")})` : `Conversations: ${conversations.length}/10   Questions/conv: ${nQ} (cats ${cats.join(",")})   Sampled questions: ${totalQ}`);
   if (coverage) out(`Full coverage: selected ${coverage.selected}/1540; evidence-labeled ${coverage.labeled}; unlabeled ${coverage.unlabeled}.`);
@@ -203,7 +203,7 @@ export async function main(): Promise<number> {
   out(horizonFrac > 0 ? `Decay: SCALE-INVARIANT (ADR-0015) — horizon = ${horizonFrac}×span per conversation` : "Decay: absolute per-hour (documented default)");
   out(repeats > 1 ? `Judge sampling: R=${repeats} repeats/scenario, AVERAGED (PB-42 noise damping)` : "Judge sampling: single shot (set LOCOMO_REPEATS>1 to damp judge noise — ADR-0015/PB-42)");
   out(`Thresholds: Faithfulness ≥ ${DEFAULT_THRESHOLDS.faithfulnessMin}, Answer-Relevancy ≥ ${DEFAULT_THRESHOLDS.answerRelevancyMin}, max degradation ${DEFAULT_THRESHOLDS.maxDegradation}`);
-  out(`Upper-bound model calls: ${callBudget} (${provider.label}; pruned calls deduped by selection).`);
+  out(`Answer+judge cycles: up to ${cycleCount} (${provider.label}; pruned selections deduped). DeepEval metrics may make multiple model calls per cycle.`);
   out("Note: cat-5 (adversarial/unanswerable) is excluded — it tests refusal, not memory retention.");
   out("");
 
@@ -214,7 +214,9 @@ export async function main(): Promise<number> {
 
   const encoder = createOnnxEncoder({ cacheDir: join(process.cwd(), "models") });
   const answerer = createClaudeAnswerer(provider.completion);
-  const judge = createLlmJudge(provider.completion);
+  const judge = createSelectedJudge(provider);
+
+  try {
 
   const outcomes: QuestionOutcome[] = [];
   for (const { c, qs } of plan) {
@@ -317,6 +319,9 @@ export async function main(): Promise<number> {
     );
   }
   return verdict.passed && (!full || !provider.exploratory) ? 0 : 1;
+  } finally {
+    await judge.close?.();
+  }
 }
 
 const entryPath = process.argv[1] ?? "";

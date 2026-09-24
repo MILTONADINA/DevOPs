@@ -1,11 +1,9 @@
 /**
  * Metric sources — the LLM-as-judge implementation (Phase 2 / v0.4.x).
  *
- * docs/EVAL_FRAMEWORK.md's flow needs two model calls per scenario: an
- * "answerer" (Claude Haiku given a context + query → an answer) and a "judge"
- * (Faithfulness + Answer-Relevancy scoring of that answer). DeepEval is a Python
- * lib; this is the TS LLM-as-judge equivalent — one structured judge call
- * returning both scores.
+ * docs/EVAL_FRAMEWORK.md's flow uses an answerer and a judge. Claude release
+ * gates call the named Python DeepEval metrics through deepeval-judge.ts;
+ * the scalar judge below is retained for local exploratory runs.
  *
  * Both the answerer and the judge are built on an injectable {@link LlmCompletion}
  * seam. The DEFAULT is the real Claude SDK (so `npm run test:eval` / smoke uses
@@ -17,6 +15,7 @@
 
 import Anthropic from "@anthropic-ai/sdk";
 import { randomUUID } from "node:crypto";
+import { createDeepEvalJudge } from "./deepeval-judge";
 import type { MetricScores } from "./types";
 
 /** Single-shot text completion — the one LLM primitive the answerer + judge need. */
@@ -46,6 +45,11 @@ export interface Judge {
    * @returns the {@link MetricScores} (faithfulness + answerRelevancy in [0,1]).
    */
   score(input: { query: string; context: string; answer: string }): Promise<MetricScores>;
+}
+
+/** Release runs use pinned Python DeepEval 4.2.6; local exploratory runs retain the scalar judge. */
+export function createSelectedJudge(provider: { completion: LlmCompletion; exploratory: boolean }): Judge & { close?: () => Promise<void> } {
+  return provider.exploratory ? createLlmJudge(provider.completion) : createDeepEvalJudge();
 }
 
 export interface LlmOptions {
