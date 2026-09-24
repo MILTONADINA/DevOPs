@@ -287,6 +287,38 @@ describe("shadow observer", () => {
     expect(JSON.stringify(metrics.at(-1))).not.toContain("target");
   });
 
+  test("counts a partial fact-bearing exchange as dropped and proposes its missing turn", async () => {
+    const metrics: ShadowMetric[] = [];
+    const partialEncoder: BiEncoder = {
+      dimension: 2,
+      encode: async (texts) => texts.map((text) => (text === "low" ? Float32Array.from([0, 1]) : Float32Array.from([1, 0]))),
+    };
+    const observe = createShadowObserver(partialEncoder, (metric) => metrics.push(metric), {
+      now: () => 100_000_000,
+      factCoverage: async () => new Map([["partial", 2]]),
+      queryFactCandidates: async () => new Map([["partial", 2]]),
+    });
+    const event = { conversationId: ID, orgId: "org", keyId: "key", projectScopeId: "org/orion" };
+    await observe({ ...event, exchangeId: "partial", query: "high", assistant: "low" });
+    await observe({ ...event, exchangeId: "current", query: "target", assistant: "pending" });
+    expect(metrics.at(-1)?.selectedCount).toBe(1);
+    expect(metrics.at(-1)?.factCoverage).toEqual({
+      activeExchangeCount: 1,
+      selectedExchangeCount: 0,
+      droppedExchangeCount: 1,
+      activeFactCount: 2,
+      selectedFactCount: 0,
+      droppedFactCount: 2,
+    });
+    expect(metrics.at(-1)?.queryFactRescue).toEqual({
+      matchedFactCount: 2,
+      rescuedExchangeCount: 1,
+      rescuedFactCount: 2,
+      addedTurnCount: 1,
+      candidateSelectedCount: 2,
+    });
+  });
+
   test("marks coverage unavailable while a failed memory exchange remains hot", async () => {
     const metrics: ShadowMetric[] = [];
     const observe = createShadowObserver(encoder, (metric) => metrics.push(metric), {

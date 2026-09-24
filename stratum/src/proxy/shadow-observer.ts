@@ -103,15 +103,18 @@ export function createShadowObserver(
         const projectScope = input.projectScopeId === undefined ? null : input.projectScopeId.startsWith(`${input.orgId}/`) ? input.projectScopeId.slice(input.orgId.length + 1) : "";
         if ((options.supersession || options.factCoverage || options.queryFactCandidates) && projectScope !== null && !validProjectScope(projectScope))
           throw new Error("invalid shadow project binding");
+        const liveTurns = current.manager.hot.recent().filter((turn) => turn.scopeId === scopeId);
+        const exchangeIds = [...new Set(liveTurns.flatMap((turn) => (turn.exchangeId ? [turn.exchangeId] : [])))];
+        const selectedRefs = new Set(selectedTurns);
+        const completeSelectedIds = new Set(exchangeIds);
+        for (const turn of liveTurns) if (turn.exchangeId && !selectedRefs.has(turn)) completeSelectedIds.delete(turn.exchangeId);
         let factCoverage: ShadowMetric["factCoverage"];
         if (options.factCoverage && incompleteExchangeCount === 0) {
-          const exchangeIds = [...new Set(current.manager.hot.recent().flatMap((turn) => (turn.scopeId === scopeId && turn.exchangeId ? [turn.exchangeId] : [])))];
-          const selectedIds = new Set(selectedTurns.flatMap((turn) => (turn.exchangeId ? [turn.exchangeId] : [])));
           const facts = exchangeIds.length ? await options.factCoverage(input.orgId, input.conversationId, projectScope, exchangeIds) : new Map<string, number>();
           const activeIds = exchangeIds.filter((id) => facts.has(id));
-          const selectedExchangeCount = activeIds.filter((id) => selectedIds.has(id)).length;
+          const selectedExchangeCount = activeIds.filter((id) => completeSelectedIds.has(id)).length;
           const activeFactCount = activeIds.reduce((sum, id) => sum + facts.get(id)!, 0);
-          const selectedFactCount = activeIds.reduce((sum, id) => sum + (selectedIds.has(id) ? facts.get(id)! : 0), 0);
+          const selectedFactCount = activeIds.reduce((sum, id) => sum + (completeSelectedIds.has(id) ? facts.get(id)! : 0), 0);
           factCoverage = {
             activeExchangeCount: activeIds.length,
             selectedExchangeCount,
@@ -123,12 +126,9 @@ export function createShadowObserver(
         }
         let queryFactRescue: ShadowMetric["queryFactRescue"];
         if (options.queryFactCandidates && incompleteExchangeCount === 0) {
-          const liveTurns = current.manager.hot.recent().filter((turn) => turn.scopeId === scopeId);
-          const exchangeIds = [...new Set(liveTurns.flatMap((turn) => (turn.exchangeId ? [turn.exchangeId] : [])))];
-          const selectedIds = new Set(selectedTurns.flatMap((turn) => (turn.exchangeId ? [turn.exchangeId] : [])));
           const matches = exchangeIds.length ? await options.queryFactCandidates(input.orgId, input.conversationId, projectScope, exchangeIds, query) : new Map<string, number>();
-          const rescuedIds = new Set(exchangeIds.filter((id) => !selectedIds.has(id) && matches.has(id)));
-          const addedTurnCount = liveTurns.filter((turn) => turn.exchangeId && rescuedIds.has(turn.exchangeId)).length;
+          const rescuedIds = new Set(exchangeIds.filter((id) => !completeSelectedIds.has(id) && matches.has(id)));
+          const addedTurnCount = liveTurns.filter((turn) => turn.exchangeId && rescuedIds.has(turn.exchangeId) && !selectedRefs.has(turn)).length;
           queryFactRescue = {
             matchedFactCount: exchangeIds.reduce((sum, id) => sum + (matches.get(id) ?? 0), 0),
             rescuedExchangeCount: rescuedIds.size,
