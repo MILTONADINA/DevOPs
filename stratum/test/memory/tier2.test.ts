@@ -36,6 +36,14 @@ describe("Tier-2 table routing", () => {
 });
 
 describe("factToRow (write projection)", () => {
+  test("sets exchange provenance from trusted context and hides it on typed reads", () => {
+    const exchangeId = "c68f130e-c584-43fa-aefe-7b2e54aa34a8";
+    const forged = { ...td, source_exchange_id: "attacker" } as AnyFact;
+    const { row } = factToRow(forged, { ...ctx, exchangeId });
+    expect(row["source_exchange_id"]).toBe(exchangeId);
+    expect((rowToFact("tech_decisions", row) as Record<string, unknown>)["source_exchange_id"]).toBeUndefined();
+    expect(factToRow(td, ctx).row["source_exchange_id"]).toBeUndefined();
+  });
   test("forces stored project scope from trusted context", () => {
     const forged = { ...td, project_scope: "vega" } as AnyFact;
     const { row } = factToRow(forged, { ...ctx, projectScope: "orion" });

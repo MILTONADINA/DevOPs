@@ -12,12 +12,13 @@ import { createSupabaseConversationResolver } from "./conversation";
 export function createSupabaseMessageMemoryRecorder(client: SupabaseClient, extractor: FactExtractor, auditRepoRoot?: string): (event: MessageMemoryEvent) => Promise<void> {
   const warm = createWarmMemory(client);
   const resolveConversation = createSupabaseConversationResolver(client);
-  return async ({ orgId, projectScopeId, conversationId, keyId, model, turns }) => {
+  return async ({ orgId, projectScopeId, conversationId, keyId, exchangeId, model, turns }) => {
     const projectScope = projectScopeId === undefined ? null : projectScopeId.slice(orgId.length + 1);
     if (projectScopeId !== undefined && (!projectScopeId.startsWith(`${orgId}/`) || !validProjectScope(projectScope))) {
       throw new Error("invalid authenticated project scope for memory event");
     }
     if (Boolean(conversationId) !== Boolean(keyId)) throw new Error("incomplete authenticated conversation identity for memory event");
+    if (exchangeId && !conversationId) throw new Error("exchange identity requires a verified conversation");
     let sessionId: string;
     if (conversationId && keyId) {
       sessionId = await resolveConversation({ orgId, keyId, ...(projectScopeId ? { projectScopeId } : {}), model, requestedId: conversationId });
@@ -34,7 +35,7 @@ export function createSupabaseMessageMemoryRecorder(client: SupabaseClient, extr
     // no stored fact; a failed RPC leaves the inserted facts suppressed.
     const audited = auditRepoRoot === undefined ? undefined : auditFacts(facts, await indexRepository({ cwd: auditRepoRoot, maxCount: 100 }));
     const rows = audited === undefined ? facts : facts.map((fact) => ({ ...fact, is_suppressed: true }));
-    const result = await warm.persist(rows, { orgId, sessionId, projectScope });
+    const result = await warm.persist(rows, { orgId, sessionId, projectScope, ...(exchangeId ? { exchangeId } : {}) });
     if (result.errors.length > 0) throw new Error(`memory fact persistence failed: ${result.errors.map((e) => `${e.table}: ${e.message}`).join("; ")}`);
     if (result.skipped !== 0 || result.persisted !== facts.length) throw new Error("memory fact persistence omitted a validated fact");
     if (audited !== undefined) {
