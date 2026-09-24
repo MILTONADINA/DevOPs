@@ -18,6 +18,12 @@ It SHALL state that provider-backed message traffic requires a configured
 provider and SHALL NOT claim the cold-clone, cross-platform, or real-data
 recovery release gates are met from a single-machine smoke check.
 
+## REQ-3 — Single Stratum setup entry
+
+WHEN an operator runs `npm run setup` from `stratum/`, THE SYSTEM SHALL invoke
+the same root local setup workflow. No setup entry SHALL load dotenv or create
+a `.env` file from a template.
+
 ## Acceptance criteria
 
 - **AC-1:** root `npm run setup -- --help` documents supported systems and
@@ -27,3 +33,5 @@ recovery release gates are met from a single-machine smoke check.
   stack running.
 - **AC-3:** the root setup source contains no dotenv loading or `.env` file
   access; setup output identifies the remaining provider requirement.
+- **AC-4:** both package setup commands resolve to the root local workflow,
+  and the old dotenv-writing Stratum setup script is absent.

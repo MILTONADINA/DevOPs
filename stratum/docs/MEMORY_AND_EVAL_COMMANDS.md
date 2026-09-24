@@ -17,22 +17,22 @@ for the local database setup and its release limits.
 ## Setup
 
 ```bash
-cd stratum && npm install
-npm run setup            # validate Node/deps/.env + report which capability tiers are live
+cd DevOPs
+npm run setup            # install missing Stratum deps; start local Compose; smoke-test proxy/DB
 ```
 
-`npm run setup` is the one-command readiness check (v0.8.x cold-clone-to-running): it
-creates `.env` from `.env.example` if missing and prints, given your current keys, exactly
-which commands run now (FREE/local always; Supabase + Anthropic tiers when configured).
-Add `-- --fetch-model` to also pre-download the ONNX encoder.
+`npm run setup` at the repository root or inside `stratum/` uses the same local
+workflow. It does not read or create `.env` files. The proxy smoke check uses
+the local database; provider-backed messages need a configured provider.
+Clean-machine and cross-platform timing gates remain open.
 
 `npm run backup -- --org-id <uuid> [--pretty]` exports one org's full row-set across all
-16 tables to a timestamped JSON in the gitignored `backups/` (disaster recovery / data
+21 tables to a timestamped JSON in the gitignored `backups/` (disaster recovery / data
 portability / GDPR export). **FREE**, read-only (SELECT only); needs Supabase creds.
 `npm run restore -- --file <path> [--dry-run]` re-inserts a backup in FK-dependency order
 — preserving UUIDs (so cross-table references stay valid) and stripping billing's generated
-columns — into a CLEAN target. The full backup → delete → restore round-trip is
-referential-integrity-verified.
+columns — into a CLEAN target. A disposable local backup → delete → restore
+round-trip is referential-integrity-verified; real-data recovery is unverified.
 
 `npm run invoice -- --org-id <uuid> [--since <iso>] [--until <iso>] [--csv <path>] [--send]`
 computes an org's **token-arbitrage invoice** (BUSINESS_MODEL.md: 20% of savings, with the
