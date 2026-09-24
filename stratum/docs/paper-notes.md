@@ -41,6 +41,20 @@ The authors attribute cases where full context wins mainly to **retrieval missin
 - Compare paper-faithful `τ = 0.6` and iterative global spans against current `gainShift = 0.0` and local spans on fixed cases, recording evidence survival, stale-turn selection, retained tokens, and answer quality. Do not choose a default from a single dataset.
 - Treat dormant facts as a memory-recall problem as well as a hot-context problem: the current two-hour hot window cannot show whether warm storage retrieves evidence from days earlier. Measure that separately from pruning.
 
+## 8. Local method-transfer diagnostic (2026-09-24)
+
+An offline comparison used the existing cached INT8 MiniLM encoder, all 50 unchanged Tier-C cases, and 120 timeline-spread, answerable LoCoMo questions (12 per dialogue). It measured **selected-context anchors** on Tier-C and **gold evidence survival** on LoCoMo, without generating or judging answers. The paper-style variant used `τ=0.6`, `θ=1.0`, no decay, iterative maximum-gain spans; pair units joined consecutive speakers within each session, leaving 140 unmatched single turns across 3,011 units. It is a transfer diagnostic under a different retriever, not a reproduction of the paper's GPT4Score results.
+
+| Variant | Tier-C passed | LoCoMo mean gold survival | LoCoMo context reduction |
+|---|---:|---:|---:|
+| Current default, separate turns, λ=0.97, gain=0 | 29/50 | 11.1% | 92.6% |
+| Separate turns, no decay, gain=0 | 29/50 | 86.7% | 48.1% |
+| Separate turns, no decay, gain=0.6, local spans | 11/50 | 85.0% | 81.8% |
+| Separate turns, no decay, gain=0.6, global spans | 11/50 | 86.7% | 80.8% |
+| Paired turns, no decay, gain=0.6, global spans | Not applicable to atomic Tier-C cases | 86.0% | 80.9% |
+
+The published gain and pair representation do not clear the product's Tier-C gate. The LoCoMo result measures evidence inclusion, not answer quality; it cannot justify activation. Reproducible script and raw output are in `.workflow/proofs/dycp-paper-transfer-2026-09-24.{ts,log}` in this checkout. Keep the current defaults and pursue verified provenance, multi-fact recall, and stale-decision handling before another release-gate attempt.
+
 ## Open questions
 
 How much do pair embeddings change retrieval on developer conversations? Do the authors' gain and span rules improve Stratum's gold evidence survival under its encoder? What is the net cost with the intended provider's cache policy? These require measurements; the paper does not answer them for this product.
