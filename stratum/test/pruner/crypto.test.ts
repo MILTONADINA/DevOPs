@@ -1,14 +1,62 @@
-// Contract test for the Phase-4 client-encryption interface stub: it must
-// REJECT (never return placeholder crypto), so accidental use fails loudly.
-
+import { createCipheriv, webcrypto } from "node:crypto";
 import { describe, test, expect } from "vitest";
-import { deriveSessionKey, encryptSpans } from "../../src/pruner/crypto";
+import { deriveSessionKey, encryptSpans, type EncryptedPayload } from "../../src/pruner/crypto";
 
-describe("crypto.ts — Phase 4 interface stub", () => {
-  test("deriveSessionKey rejects (not implemented)", async () => {
-    await expect(deriveSessionKey(new Uint8Array(32), "sess")).rejects.toThrow(/Phase 4|not implemented/i);
+const MASTER = Uint8Array.from({ length: 32 }, (_, i) => i);
+const NONCE = "verified-attestation-challenge";
+
+async function decryptForTest(payload: EncryptedPayload, key: Uint8Array): Promise<string> {
+  const imported = await webcrypto.subtle.importKey("raw", key, "AES-GCM", false, ["decrypt"]);
+  const ciphertextAndTag = Buffer.concat([Buffer.from(payload.ciphertext, "base64"), Buffer.from(payload.auth_tag, "base64")]);
+  const plaintext = await webcrypto.subtle.decrypt(
+    { name: "AES-GCM", iv: Buffer.from(payload.iv, "base64"), additionalData: Buffer.from(`cq-attestation-nonce-v1:${payload.attestation_nonce}`), tagLength: 128 },
+    imported,
+    ciphertextAndTag,
+  );
+  return Buffer.from(plaintext).toString("utf8");
+}
+
+describe("client encryption primitive", () => {
+  test("AES-256-GCM runtime agrees with NIST's zero-key 96-bit-IV known answer", () => {
+    const cipher = createCipheriv("aes-256-gcm", Buffer.alloc(32), Buffer.alloc(12), { authTagLength: 16 });
+    const ciphertext = Buffer.concat([cipher.update(Buffer.alloc(16)), cipher.final()]);
+    expect(ciphertext.toString("hex")).toBe("cea7403d4d606b6e074ec5d3baf39d18");
+    expect(cipher.getAuthTag().toString("hex")).toBe("d0d1c8a799996bf0265b98b5d48ab919");
   });
-  test("encryptSpans rejects (not implemented)", async () => {
-    await expect(encryptSpans("ctx", new Uint8Array(32), "nonce")).rejects.toThrow(/Phase 4|not implemented/i);
+
+  test("HKDF agrees with WebCrypto and separates sessions and masters", async () => {
+    const actual = await deriveSessionKey(MASTER, "session-a");
+    const imported = await webcrypto.subtle.importKey("raw", MASTER, "HKDF", false, ["deriveBits"]);
+    const expected = await webcrypto.subtle.deriveBits({ name: "HKDF", hash: "SHA-256", salt: Buffer.from("cq-zk-context-hkdf-v1"), info: Buffer.from("cq-session-session-a") }, imported, 256);
+    expect(actual).toEqual(new Uint8Array(expected));
+    expect(await deriveSessionKey(MASTER, "session-a")).toEqual(actual);
+    expect(await deriveSessionKey(MASTER, "session-b")).not.toEqual(actual);
+    expect(
+      await deriveSessionKey(
+        Uint8Array.from(MASTER, (byte) => byte ^ 1),
+        "session-a",
+      ),
+    ).not.toEqual(actual);
+  });
+
+  test("encrypts with fresh IV and authenticates the attestation nonce", async () => {
+    const key = await deriveSessionKey(MASTER, "session-a");
+    const first = await encryptSpans("private context 🔒", key, NONCE);
+    const second = await encryptSpans("private context 🔒", key, NONCE);
+    expect(Buffer.from(first.iv, "base64")).toHaveLength(12);
+    expect(Buffer.from(first.auth_tag, "base64")).toHaveLength(16);
+    expect(first.iv).not.toBe(second.iv);
+    expect(first.attestation_nonce).toBe(NONCE);
+    expect(await decryptForTest(first, key)).toBe("private context 🔒");
+    await expect(decryptForTest({ ...first, attestation_nonce: "changed" }, key)).rejects.toThrow();
+    await expect(decryptForTest({ ...first, auth_tag: Buffer.alloc(16).toString("base64") }, key)).rejects.toThrow();
+    await expect(decryptForTest({ ...first, ciphertext: Buffer.alloc(18).toString("base64") }, key)).rejects.toThrow();
+  });
+
+  test("rejects invalid keys and blank binding inputs", async () => {
+    await expect(deriveSessionKey(new Uint8Array(31), "session-a")).rejects.toThrow(/32-byte master key/);
+    await expect(deriveSessionKey(MASTER, " ")).rejects.toThrow(/session ID/);
+    await expect(encryptSpans("private", new Uint8Array(31), NONCE)).rejects.toThrow(/32-byte session key/);
+    await expect(encryptSpans("private", MASTER, " ")).rejects.toThrow(/attestation nonce/);
   });
 });
