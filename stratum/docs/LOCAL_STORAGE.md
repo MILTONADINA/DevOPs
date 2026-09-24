@@ -40,8 +40,14 @@ them. The SQL-only audit check is in `test/integration/local-compose-audit.sql`
 and runs inside a rolled-back transaction.
 
 Run `npm run db:verify-recall` for a disposable local SessionStart bridge check.
-It seeds active, suppressed, and foreign organization facts, checks that only
-the active bound fact appears, then removes the fixture. Run
+It seeds unbound, same-organization project, suppressed, and foreign
+organization facts. It verifies that the actual bridge returns only the
+operator-bound project's fact and that semantic ranking filters by project
+before its limit, then removes the fixture. Set `DEVOPS_STRATUM_PROJECT_SCOPE`
+to the same lowercase project slug used when creating that project's API key;
+an absent value recalls only unbound legacy facts. An invalid value skips
+recall before connecting. This setting supplements the required project root
+and `DEVOPS_STRATUM_ORG_ID` binding. Run
 `npm run db:with-env -- npm run verify-tier2` for the Tier-2 adapter's five-fact
 round-trip and cleanup check; this command reads credentials only from its
 process environment.
