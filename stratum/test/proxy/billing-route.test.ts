@@ -47,7 +47,17 @@ function fakeDeps(): { deps: BillingDeps; captured: { orgId?: string; since?: st
       captured.orgId = orgId;
       captured.since = q.since;
       captured.until = q.until;
-      const full = { id: "r1", created_at: "t", session_id: "s1", original_tokens: 50_000, quarantined_tokens: 7_500, token_delta: 42_500, cost_delta_usd: 0.6375, cq_fee_usd: 0.1275, signed_hash: "h1" };
+      const full = {
+        id: "r1",
+        created_at: "t",
+        session_id: "s1",
+        original_tokens: 50_000,
+        quarantined_tokens: 7_500,
+        token_delta: 42_500,
+        cost_delta_usd: 0.6375,
+        cq_fee_usd: 0.1275,
+        signed_hash: "h1",
+      };
       return Promise.resolve(orgId === "o1" ? { records: [full], total: 1 } : { records: [], total: 0 });
     },
     developerBreakdown: (orgId) => Promise.resolve(orgId === "o1" ? [{ developer_id: null, name: null, token_delta: 42_500, cq_fee_usd: 0.13 }] : []),
@@ -63,6 +73,40 @@ function fakeDeps(): { deps: BillingDeps; captured: { orgId?: string; since?: st
   };
   return { deps, captured };
 }
+
+describe("organization billing access for project-bound keys", () => {
+  const paths = ["summary", "invoice", "records", "invoices", "audit.csv"];
+  const resolve: ApiKeyResolver = (raw) =>
+    Promise.resolve(raw === "bound" ? { orgId: "o1", keyId: "bound-id", projectScopeId: "o1/orion" } : raw === "unbound" ? { orgId: "o1", keyId: "org-id" } : null);
+
+  test("bound keys receive 403 before any billing source read, despite spoofed scope", async () => {
+    const { deps } = fakeDeps();
+    const reads = [vi.spyOn(deps, "getOrgPlan"), vi.spyOn(deps, "listBillingRecords"), vi.spyOn(deps, "listRecords"), vi.spyOn(deps, "developerBreakdown"), vi.spyOn(deps, "listInvoices")];
+    const app = buildProxy({ rateLimit: false, cors: false, auth: { resolve }, billing: deps });
+    await app.ready();
+    for (const path of paths) {
+      const response = await app.inject({
+        method: "GET",
+        url: `/v1/billing/${path}?org-id=o1&project-scope=`,
+        headers: { authorization: "Bearer bound", "x-project-scope": "" },
+      });
+      expect(response.statusCode, path).toBe(403);
+      expect(response.json().error.message).toBe("organization-level key required");
+    }
+    for (const read of reads) expect(read).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  test("unbound commercial key retains all five billing reads", async () => {
+    const app = buildProxy({ rateLimit: false, cors: false, auth: { resolve }, billing: fakeDeps().deps });
+    await app.ready();
+    for (const path of paths) {
+      const response = await app.inject({ method: "GET", url: `/v1/billing/${path}`, headers: { authorization: "Bearer unbound" } });
+      expect(response.statusCode, path).toBe(200);
+    }
+    await app.close();
+  });
+});
 
 describe("GET /v1/billing/invoice", () => {
   test("computes the invoice for ?org-id (growth plan → $99 minimum floor)", async () => {

@@ -124,6 +124,12 @@ List sessions for the authenticated org.
 
 ## Billing
 
+In commercial mode, all five `/v1/billing/*` data endpoints require an
+unbound organization API key. A project-bound key receives HTTP 403 because
+invoices, ledger records, and developer totals cover the whole organization.
+The `/billing` HTML shell can load without a key, but its data requests still
+require an authorized key. Personal mode retains the `?org-id` fallback.
+
 ### GET /v1/billing/summary
 
 Monthly billing summary for the org.

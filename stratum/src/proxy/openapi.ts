@@ -139,21 +139,21 @@ export const OPENAPI_SPEC = {
       get: {
         summary: "Monthly billing summary",
         parameters: [ORG_ID_QUERY, { name: "month", in: "query", schema: { type: "string", pattern: "^\\d{4}-\\d{2}$" } }],
-        responses: { "200": { description: "Summary" }, "404": ERROR_RESPONSE },
+        responses: { "200": { description: "Summary" }, "403": ERROR_RESPONSE, "404": ERROR_RESPONSE },
       },
     },
     "/v1/billing/invoice": {
       get: {
         summary: "Computed invoice",
         parameters: [ORG_ID_QUERY, ...SINCE_UNTIL],
-        responses: { "200": { description: "Invoice", content: { "application/json": { schema: { $ref: "#/components/schemas/Invoice" } } } }, "404": ERROR_RESPONSE },
+        responses: { "200": { description: "Invoice", content: { "application/json": { schema: { $ref: "#/components/schemas/Invoice" } } } }, "403": ERROR_RESPONSE, "404": ERROR_RESPONSE },
       },
     },
     "/v1/billing/records": {
       get: {
         summary: "Paginated raw billing records",
         parameters: [ORG_ID_QUERY, ...SINCE_UNTIL, { name: "limit", in: "query", schema: { type: "integer", maximum: 500 } }, { name: "offset", in: "query", schema: { type: "integer" } }],
-        responses: { "200": { description: "Records page" } },
+        responses: { "200": { description: "Records page" }, "403": ERROR_RESPONSE },
       },
     },
     "/v1/billing/invoices": {
@@ -165,11 +165,15 @@ export const OPENAPI_SPEC = {
           { name: "limit", in: "query", schema: { type: "integer", maximum: 500 } },
           { name: "offset", in: "query", schema: { type: "integer" } },
         ],
-        responses: { "200": { description: "Invoices page" }, "400": ERROR_RESPONSE, "404": ERROR_RESPONSE },
+        responses: { "200": { description: "Invoices page" }, "400": ERROR_RESPONSE, "403": ERROR_RESPONSE, "404": ERROR_RESPONSE },
       },
     },
     "/v1/billing/audit.csv": {
-      get: { summary: "Signed-hash audit trail (CSV download)", parameters: [ORG_ID_QUERY, ...SINCE_UNTIL], responses: { "200": { description: "CSV", content: { "text/csv": {} } } } },
+      get: {
+        summary: "Signed-hash audit trail (CSV download)",
+        parameters: [ORG_ID_QUERY, ...SINCE_UNTIL],
+        responses: { "200": { description: "CSV", content: { "text/csv": {} } }, "403": ERROR_RESPONSE },
+      },
     },
     "/v1/memory/facts": {
       get: { summary: "Recent Tier-2 facts", parameters: [ORG_ID_QUERY, { name: "limit", in: "query", schema: { type: "integer" } }], responses: { "200": { description: "Facts" } } },
