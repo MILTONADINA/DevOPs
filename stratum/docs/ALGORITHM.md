@@ -2,13 +2,14 @@
 
 ## Background
 
-This document specifies the CQ-Extended KadaneDial algorithm — the mathematical core of Startum's pruning engine.
+This document specifies the CQ-Extended KadaneDial algorithm — the mathematical core of Stratum's pruning engine.
 
 The base DyCP algorithm and KadaneDial are described in:
 
-> Choi, N. et al. *DYCP: Dynamic Context Pruning for Long-Form Dialogue with LLMs.* arXiv:2601.07994, January 2026.
+> Choi, Zhang, and Choi. [*DyCP: Dynamic Context Pruning for Long-Form Dialogue with LLMs*, arXiv:2601.07994v5](https://arxiv.org/html/2601.07994v5), June 2026.
 
 CQ extends the base algorithm with a **temporal decay factor λ** that penalizes semantically relevant but temporally stale context. This extension is our proprietary contribution and is not present in the original paper.
+The paper and Stratum also differ in the scoring unit, gain default, and span-selection implementation. See [paper-notes.md](paper-notes.md) for source results and a measured transfer comparison.
 
 ---
 
@@ -55,48 +56,27 @@ S = (S_raw - μ) / σ
 
 Z-score normalization ensures the gain threshold `g` operates on a standardized scale regardless of the absolute magnitude of relevance scores. This makes the algorithm stable across heterogeneous dialogue types.
 
-### Step 5 — KadaneDial span selection (base)
+### Step 5 — KadaneDial span selection (paper)
 
-KadaneDial is Kadane's maximum subarray algorithm adapted to allow multiple spans:
+DyCP repeatedly finds the maximum-sum contiguous span in the remaining scores. Its paper gain is `z_i − τ`, with `τ = 0.6` and a stopping threshold `θ = 1.0` in the published experiments:
 
 ```
 Parameters:
-  g: float   # gain shift (threshold for a turn to contribute positively)
-  θ: float   # minimum cumulative gain for a span to be included (default: 1.0)
+  τ = 0.6   # gain threshold used in the paper's experiments
+  θ = 1.0   # minimum maximum-span gain used in the paper's experiments
 
 Algorithm:
-  spans = []
-  current_start = None
-  current_sum = 0
-  max_sum = 0
-  span_start = None
-
-  for i in range(n-1):
-    adjusted = S[i] - g
-
-    if current_start is None and adjusted > 0:
-      current_start = i
-      current_sum = adjusted
-    elif current_start is not None:
-      current_sum += adjusted
-      if current_sum > max_sum:
-        max_sum = current_sum
-        span_end = i
-      if current_sum <= 0:
-        if max_sum >= θ:
-          spans.append((span_start, span_end))
-        current_start = None
-        current_sum = 0
-        max_sum = 0
-
-  # Don't forget the last open span
-  if current_start is not None and max_sum >= θ:
-    spans.append((span_start, span_end))
-
-  return spans
+  gains[i] = S[i] - τ
+  selected = []
+  repeat:
+    (start, end, best_gain) = maximum_sum_contiguous_span(gains)
+    if best_gain < θ: break
+    selected.append((start, end))
+    mask gains[start..end] so later spans cannot overlap it
+  return selected sorted chronologically
 ```
 
-The result is a list of `(start, end)` index pairs into `H` representing contiguous blocks of high relevance.
+The result is a list of `(start, end)` index pairs into `H` representing contiguous blocks of high relevance. Stratum's current `src/pruner/kadanedial.ts` instead emits eligible local runs and defaults to `gainShift = 0.0`; `θ = 1.0` is shared. The paper's method has no temporal decay. These differences remain because changing them requires unchanged Tier-C and judged Tier-A validation.
 
 ---
 
@@ -129,7 +109,7 @@ The full modified pipeline:
 1. R_i = S_raw_i × λ^((now - timestamp_i) / 3600)   [decay applied]
 2. μ = mean(R), σ = std(R)
 3. S_normalized = (R - μ) / σ                         [z-score of decayed scores]
-4. KadaneDial(S_normalized, g, θ)                     [span selection as before]
+4. KadaneDial(S_normalized, g, θ)                     [current Stratum local-run selection]
 ```
 
 ### Choosing λ
@@ -157,7 +137,7 @@ Turn-count-based decay (`λ^(n-i)`) is broken for developer workloads. A 10-turn
 | Parameter | Type | Default | Range | Description |
 |---|---|---|---|---|
 | `λ` (lambda) | float | 0.97 | (0, 1] | Temporal decay factor per hour |
-| `g` | float | 0.0 | any | Gain shift (KadaneDial threshold) |
+| `g` | float | 0.0 | any | Stratum gain shift; the paper uses τ=0.6 |
 | `θ` | float | 1.0 | > 0 | Minimum cumulative gain for span inclusion |
 | `model` | string | `all-MiniLM-L6-v2` | — | ONNX bi-encoder model |
 | `embedding_dim` | int | 384 | — | Output dimension of the encoder |
