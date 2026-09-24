@@ -42,9 +42,10 @@ and silently ignored.
 
 WHEN the caller supplies a trusted project scope for a query, THE PRUNER SHALL
 consider only turns with the same trusted scope before calculating similarity,
-normalization, and contiguous spans. Turns with a different or missing scope
-SHALL be excluded, and the returned selected/pruned indices SHALL refer to the
-original history. The shadow context manager SHALL carry caller-supplied scope
+normalization, contiguous spans, and any span-relative decay horizon. Turns
+with a different or missing scope SHALL be excluded, and the returned
+selected/pruned indices SHALL refer to the original history. The shadow
+context manager SHALL carry caller-supplied scope
 through hot memory to this selection. WHEN no query scope is supplied, existing
 unscoped behavior SHALL remain unchanged.
 WHEN a scoped decision is persisted, excluded turns SHALL have null score
