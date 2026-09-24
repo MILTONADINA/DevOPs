@@ -133,6 +133,7 @@ describe("shadow observer", () => {
     await observe(event);
     await observe(event);
     expect(metrics[1]?.candidateCount).toBe(2);
+    expect(metrics[1]?.exchangeCompletion).toBeUndefined();
     expect(JSON.stringify(metrics)).not.toContain("private");
     await expect(observe({ ...event, keyId: "two" })).rejects.toThrow("binding changed");
     await expect(observe({ ...event, projectScopeId: "org/orion" })).rejects.toThrow("binding changed");
@@ -212,6 +213,12 @@ describe("shadow observer", () => {
     await observe({ ...event, exchangeId: "new-exchange" });
     await observe({ ...event, exchangeId: "third-exchange" });
     expect(metrics[2]?.selectedCount).toBe(4);
+    expect(metrics[2]?.exchangeCompletion).toEqual({
+      selectedExchangeCount: 2,
+      partialExchangeCount: 0,
+      addedTurnCount: 0,
+      candidateSelectedCount: 4,
+    });
     expect(metrics[2]?.candidateSupersededExchangeCount).toBe(1);
   });
 
@@ -300,8 +307,15 @@ describe("shadow observer", () => {
     });
     const event = { conversationId: ID, orgId: "org", keyId: "key", projectScopeId: "org/orion" };
     await observe({ ...event, exchangeId: "partial", query: "high", assistant: "low" });
+    await observe({ ...event, exchangeId: "unselected", query: "low", assistant: "low" });
     await observe({ ...event, exchangeId: "current", query: "target", assistant: "pending" });
     expect(metrics.at(-1)?.selectedCount).toBe(1);
+    expect(metrics.at(-1)?.exchangeCompletion).toEqual({
+      selectedExchangeCount: 1,
+      partialExchangeCount: 1,
+      addedTurnCount: 1,
+      candidateSelectedCount: 2,
+    });
     expect(metrics.at(-1)?.factCoverage).toEqual({
       activeExchangeCount: 1,
       selectedExchangeCount: 0,
