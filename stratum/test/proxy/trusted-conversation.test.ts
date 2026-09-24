@@ -120,4 +120,32 @@ describe("shadow observer", () => {
     await observe(event);
     expect(metrics[3]?.candidateCount).toBe(0);
   });
+
+  test("counts only selected turns with unambiguous project-bound supersession", async () => {
+    const metrics: ShadowMetric[] = [];
+    const calls: unknown[][] = [];
+    const observe = createShadowObserver(encoder, (metric) => metrics.push(metric), {
+      supersession: {
+        resolveEntities: async (org, session, project, exchanges) => {
+          calls.push([org, session, project, exchanges]);
+          return new Map([
+            ["old-exchange", "oldFn"],
+            ["new-exchange", "newFn"],
+          ]);
+        },
+        findFunctionSuperseded: async (org, project, names) => {
+          calls.push([org, project, names]);
+          return [{ superseded: "oldFn", supersededBy: "newFn" }];
+        },
+      },
+    });
+    const event = { conversationId: ID, orgId: "org", keyId: "key", projectScopeId: "org/orion", query: "q", assistant: "a" };
+    await observe({ ...event, exchangeId: "old-exchange" });
+    await observe({ ...event, exchangeId: "new-exchange" });
+    await observe({ ...event, exchangeId: "ambiguous-exchange" });
+    expect(calls).toContainEqual(["org", ID, "orion", ["old-exchange", "new-exchange"]]);
+    expect(metrics[2]?.supersededSelectedCount).toBe(2);
+    expect(JSON.stringify(metrics)).not.toContain("oldFn");
+    expect(JSON.stringify(metrics)).not.toContain("newFn");
+  });
 });
