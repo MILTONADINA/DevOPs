@@ -79,7 +79,12 @@ export function createShadowObserver(
             if (names.length > 0) {
               const [graphPairs, freshPairs] = await Promise.all([
                 options.supersession.findFunctionSuperseded(input.orgId, projectScope, names),
-                options.supersession.findFreshSuperseded(input.orgId, input.conversationId, projectScope, exchangeIds),
+                options.supersession.findFreshSuperseded(
+                  input.orgId,
+                  input.conversationId,
+                  projectScope,
+                  selectedExchanges.map((exchange) => exchange.exchangeId),
+                ),
               ]);
               const selected = selectedExchanges.map((exchange, index) => ({ index, entity: exchange.entity }));
               candidateSupersededExchangeCount = selected.length - suppressSuperseded(selected, [...graphPairs, ...freshPairs]).length;
