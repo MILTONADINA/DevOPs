@@ -9,6 +9,11 @@ test("org backup includes the per-fact audit statuses", () => {
   expect(ORG_SCOPED_TABLES).toContain("audit_statuses");
 });
 
+test("org backup includes both graph session provenance tables", () => {
+  expect(ORG_SCOPED_TABLES).toContain("knowledge_entity_sessions");
+  expect(ORG_SCOPED_TABLES).toContain("knowledge_edge_sessions");
+});
+
 describe("parseArgs", () => {
   test("defaults: no org, no out, not pretty", () => {
     expect(parseArgs([])).toEqual({ pretty: false });

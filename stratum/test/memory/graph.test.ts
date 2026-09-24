@@ -26,6 +26,48 @@ describe("Tier-3 knowledge graph (Supabase adapter)", () => {
     expect(store["knowledge_entities"]).toHaveLength(1);
   });
 
+  test("reused entity records both trusted sessions without upgrading legacy provenance", async () => {
+    const { client, store } = makeFakeSupabase({
+      knowledge_entities: [{ id: "ke1", org_id: "o1", kind: "Decision", name: "use RS256", provenance_complete: false }],
+    });
+    const g = createKnowledgeGraph(client);
+    expect(await g.ensureEntity({ orgId: "o1", kind: "Decision", name: "use RS256", sessionId: "s1" })).toBe("ke1");
+    expect(await g.ensureEntity({ orgId: "o1", kind: "Decision", name: "use RS256", sessionId: "s2" })).toBe("ke1");
+    expect(store["knowledge_entity_sessions"]).toMatchObject([
+      { org_id: "o1", entity_id: "ke1", session_id: "s1" },
+      { org_id: "o1", entity_id: "ke1", session_id: "s2" },
+    ]);
+    expect(store["knowledge_entities"]![0]!["provenance_complete"]).toBe(false);
+  });
+
+  test("unscoped graph reuse downgrades a tracked row to uncertain", async () => {
+    const { client, store } = makeFakeSupabase({
+      knowledge_entities: [{ id: "ke1", org_id: "o1", kind: "Decision", name: "use RS256", provenance_complete: true }],
+      knowledge_edges: [{ id: "edge1", org_id: "o1", from_entity: "ke1", to_entity: "other", edge_type: "SUPERSEDES", provenance_complete: true }],
+    });
+    const graph = createKnowledgeGraph(client);
+    await graph.ensureEntity({ orgId: "o1", kind: "Decision", name: "use RS256" });
+    await graph.addEdge({ orgId: "o1", fromEntity: "ke1", toEntity: "other", edgeType: "SUPERSEDES" });
+    expect(store["knowledge_entities"]![0]!["provenance_complete"]).toBe(false);
+    expect(store["knowledge_edges"]![0]!["provenance_complete"]).toBe(false);
+  });
+
+  test("new session graph rows are tagged complete and link writes fail loud", async () => {
+    const { client, store } = makeFakeSupabase();
+    const g = createKnowledgeGraph(client);
+    const entity = await g.ensureEntity({ orgId: "o1", kind: "Decision", name: "use RS256", sessionId: "s1" });
+    const edge = await g.addEdge({ orgId: "o1", fromEntity: entity, toEntity: "other", edgeType: "SUPERSEDES", sessionId: "s1" });
+    expect(store["knowledge_entities"]![0]!["provenance_complete"]).toBe(true);
+    expect(store["knowledge_edges"]![0]!["provenance_complete"]).toBe(true);
+    expect(store["knowledge_entity_sessions"]![0]).toMatchObject({ entity_id: entity, session_id: "s1" });
+    expect(store["knowledge_edge_sessions"]![0]).toMatchObject({ edge_id: edge, session_id: "s1" });
+
+    const failing = createKnowledgeGraph(
+      makeFakeSupabase({ knowledge_entities: [{ id: "ke1", org_id: "o1", kind: "Decision", name: "use RS256" }] }, { insertError: new Set(["knowledge_entity_sessions"]) }).client,
+    );
+    await expect(failing.ensureEntity({ orgId: "o1", kind: "Decision", name: "use RS256", sessionId: "s1" })).rejects.toThrow(/provenance/i);
+  });
+
   test("source file metadata is stored and refreshed without a duplicate node", async () => {
     const { client, store } = makeFakeSupabase();
     const g = createKnowledgeGraph(client);
@@ -52,6 +94,17 @@ describe("Tier-3 knowledge graph (Supabase adapter)", () => {
     const id = await g.addEdge({ orgId: "o1", fromEntity: "a", toEntity: "b", edgeType: "SUPERSEDES" });
     expect(id).toBe("edge1");
     expect(store["knowledge_edges"]).toHaveLength(1);
+  });
+
+  test("reused edge records each trusted session", async () => {
+    const { client, store } = makeFakeSupabase({ knowledge_edges: [{ id: "edge1", from_entity: "a", to_entity: "b", edge_type: "SUPERSEDES", org_id: "o1" }] });
+    const g = createKnowledgeGraph(client);
+    expect(await g.addEdge({ orgId: "o1", fromEntity: "a", toEntity: "b", edgeType: "SUPERSEDES", sessionId: "s1" })).toBe("edge1");
+    expect(await g.addEdge({ orgId: "o1", fromEntity: "a", toEntity: "b", edgeType: "SUPERSEDES", sessionId: "s2" })).toBe("edge1");
+    expect(store["knowledge_edge_sessions"]).toMatchObject([
+      { org_id: "o1", edge_id: "edge1", session_id: "s1" },
+      { org_id: "o1", edge_id: "edge1", session_id: "s2" },
+    ]);
   });
 
   test("findSuperseded maps the rpc result (superseded_by → supersededBy) — the ADR-0011 query", async () => {

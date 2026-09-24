@@ -34,6 +34,8 @@ export const RESTORE_ORDER = [
   "invoices",
   "knowledge_entities",
   "knowledge_edges",
+  "knowledge_entity_sessions",
+  "knowledge_edge_sessions",
   "memory_vectors",
   "audit_conflicts",
   "audit_statuses",
@@ -132,7 +134,10 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
 
   let inserted = 0;
   for (const { table, rows } of plan) {
-    const { error } = await client.from(table).insert(rows);
+    // Inserting graph parents recreates their first session links via DB triggers.
+    // Keep those links and add any later-session links from the backup.
+    const conflict = table === "knowledge_entity_sessions" ? "org_id,entity_id,session_id" : table === "knowledge_edge_sessions" ? "org_id,edge_id,session_id" : undefined;
+    const { error } = conflict ? await client.from(table).upsert(rows, { onConflict: conflict, ignoreDuplicates: true }) : await client.from(table).insert(rows);
     if (error) throw new Error(`restore ${table} failed after ${inserted} row(s): ${error.message} (restore into a CLEAN target; a collision means the org still exists)`);
     inserted += rows.length;
   }

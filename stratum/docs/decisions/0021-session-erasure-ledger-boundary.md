@@ -72,6 +72,16 @@ derived vectors/links are counted, cross-organization calls return no row,
 and public roles cannot invoke it. The RPC performs no deletion; step 1 is
 still open for RAM, backup, and external-store inventory.
 
+Migrations `20260924010000_graph_session_provenance.sql` and
+`20260924020000_graph_provenance_update_guard.sql` record trusted session
+links on graph entities and edges and keep incomplete provenance from being
+upgraded by later writes. The promotion job carries each fact's database
+session ID into graph and vector writes. Organization backup and restore now
+preserve those links; a disposable two-session recovery check verifies that a
+shared graph row remains shared. Historic graph rows and any untagged source
+ingestion remain uncertain. These changes do not inventory deleted backups,
+RAM or external copies, and do not authorize erasure of billing records.
+
 ## Rejected shortcut
 
 Replacing the session ID in `billing_records` with a salted hash is impossible

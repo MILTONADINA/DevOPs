@@ -47,6 +47,8 @@ BEGIN
      OR (report->'counts'->>'source_fact_links')::integer IS DISTINCT FROM 1
      OR (report->'counts'->>'knowledge_entities')::integer IS DISTINCT FROM 1
      OR (report->'counts'->>'knowledge_edges')::integer IS DISTINCT FROM 1
+     OR (report->'counts'->>'knowledge_entity_sessions')::integer IS DISTINCT FROM 1
+     OR (report->'counts'->>'knowledge_edge_sessions')::integer IS DISTINCT FROM 0
      OR (report->'counts'->>'memory_vectors')::integer IS DISTINCT FROM 1
      OR (report->>'graph_ownership') IS DISTINCT FROM 'ambiguous'
      OR (report->>'external_copies') IS DISTINCT FROM 'not_inventoried'
