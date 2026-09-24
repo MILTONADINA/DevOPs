@@ -20,7 +20,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { createClient } from "@supabase/supabase-js";
 import { buildProxy, type BuildProxyOptions } from "../src/proxy/app";
-import { buildStartOptions, type StartEnv } from "../src/proxy/index";
+import { assertCommercialStartup, buildStartOptions, type StartEnv } from "../src/proxy/index";
 import { createDefaultMessagesDeps } from "../src/proxy/default-deps";
 import { readSessionsFromDir } from "../src/proxy/routes/dashboard";
 
@@ -32,6 +32,7 @@ const env: StartEnv = {
   CQ_BILLING_SIGNING_SECRET: process.env["CQ_BILLING_SIGNING_SECRET"],
   VERCEL: process.env["VERCEL"] ?? "1",
 };
+assertCommercialStartup(env);
 
 // The capture store + dashboard read this dir; on a serverless host only /tmp is writable.
 const captureDir = process.env["CQ_CAPTURE_DIR"] ?? "/tmp";

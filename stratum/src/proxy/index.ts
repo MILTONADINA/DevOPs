@@ -99,6 +99,14 @@ export function commercialEnabled(env: StartEnv): boolean {
   return on && typeof env.SUPABASE_URL === "string" && env.SUPABASE_URL !== "" && typeof env.SUPABASE_SERVICE_KEY === "string" && env.SUPABASE_SERVICE_KEY !== "";
 }
 
+/** Production entrypoints must never expose commercial messages without a billable store. */
+export function assertCommercialStartup(env: StartEnv): void {
+  if (env.CQ_COMMERCIAL !== "true" && env.CQ_COMMERCIAL !== "1") return;
+  if (!env.SUPABASE_URL?.trim() || !env.SUPABASE_SERVICE_KEY?.trim()) throw new Error("commercial startup requires Supabase database credentials");
+  if (!env.CQ_BILLING_SIGNING_SECRET?.trim()) throw new Error("commercial startup requires a dedicated billing signing secret");
+  if (env.VERCEL && env.VERCEL !== "0") throw new Error("commercial billing requires persistent storage; Vercel serverless storage is ephemeral");
+}
+
 export type ClientFactory = (url: string, key: string) => SupabaseClient;
 
 /**
@@ -210,6 +218,7 @@ export async function start(): Promise<void> {
     CQ_AUDIT_REPO_ROOT: process.env["CQ_AUDIT_REPO_ROOT"],
     DEVOPS_STRATUM_PROJECT_ROOT: process.env["DEVOPS_STRATUM_PROJECT_ROOT"],
   };
+  assertCommercialStartup(env);
   const base: BuildProxyOptions = {
     messages: createDefaultMessagesDeps(),
     dashboard: { readSessions: () => readSessionsFromDir(sessionsDir) },
