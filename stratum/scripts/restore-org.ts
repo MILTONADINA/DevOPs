@@ -10,8 +10,7 @@
  *
  * billing_records is append-only with GENERATED columns (token_delta/cost_delta_usd/cq_fee_usd);
  * those are stripped before insert (the DB recomputes them). Self-referential nullable FKs
- * (tech_decisions.supersedes_id) are assumed null (the extractor strips them); a populated
- * forward self-reference within one table is a documented limitation.
+ * Decision supersession references are restored after all decision rows exist.
  */
 
 import { readFileSync } from "node:fs";
@@ -88,6 +87,20 @@ export function validateBackup(obj: unknown): BackupFile {
       throw new Error(`backup table ${table} organization mismatch`);
     }
   }
+  const decisions = b.tables["tech_decisions"] ?? [];
+  const decisionIds = new Set<string>();
+  for (const row of decisions) {
+    const id = (row as { id?: unknown } | null)?.id;
+    if (typeof id !== "string" || id === "") throw new Error("backup decision ID missing");
+    if (decisionIds.has(id)) throw new Error("backup duplicate decision ID");
+    decisionIds.add(id);
+  }
+  for (const row of decisions) {
+    const reference = (row as { supersedes_id?: unknown } | null)?.supersedes_id;
+    if (reference == null) continue;
+    if (typeof reference !== "string" || reference === "") throw new Error("backup supersedes reference invalid");
+    if (!decisionIds.has(reference)) throw new Error("backup supersedes reference missing from decisions");
+  }
   const sessionIds = new Set<string>();
   const keyIds = new Set((b.tables["api_keys"] ?? []).map((row) => (row as { id?: unknown } | null)?.id));
   for (const row of b.tables["sessions"] ?? []) {
@@ -124,11 +137,24 @@ export function stripGeneratedCols(table: string, rows: unknown[]): unknown[] {
 /** The ordered, non-empty insert plan (pure; testable). Tables absent/empty in the backup are skipped. */
 export function restorePlan(backup: BackupFile): { table: string; rows: unknown[] }[] {
   const plan: { table: string; rows: unknown[] }[] = [];
+  const hasDecisionReferences = decisionSupersessionUpdates(backup).length > 0;
   for (const table of RESTORE_ORDER) {
     const rows = backup.tables[table];
-    if (Array.isArray(rows) && rows.length > 0) plan.push({ table, rows: stripGeneratedCols(table, rows) });
+    if (Array.isArray(rows) && rows.length > 0)
+      plan.push({
+        table,
+        rows: table === "tech_decisions" && hasDecisionReferences ? rows.map((row) => ({ ...(row as Record<string, unknown>), supersedes_id: null })) : stripGeneratedCols(table, rows),
+      });
   }
   return plan;
+}
+
+/** References patched after every decision ID has been inserted. */
+export function decisionSupersessionUpdates(backup: BackupFile): { id: string; supersedes_id: string }[] {
+  return (backup.tables["tech_decisions"] ?? []).flatMap((row) => {
+    const decision = row as { id: string; supersedes_id?: string | null };
+    return decision.supersedes_id ? [{ id: decision.id, supersedes_id: decision.supersedes_id }] : [];
+  });
 }
 
 export async function main(argv: string[] = process.argv.slice(2)): Promise<number> {
@@ -184,6 +210,12 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
     const { error } = conflict ? await client.from(table).upsert(rows, { onConflict: conflict, ignoreDuplicates: true }) : await client.from(table).insert(rows);
     if (error) throw new Error(`restore ${table} failed after ${inserted} row(s): ${error.message} (restore into a CLEAN target; a collision means the org still exists)`);
     inserted += rows.length;
+    if (table === "tech_decisions") {
+      for (const reference of decisionSupersessionUpdates(backup)) {
+        const restored = await client.from("tech_decisions").update({ supersedes_id: reference.supersedes_id }).eq("org_id", backup.orgId).eq("id", reference.id).select("id");
+        if (restored.error || restored.data?.length !== 1) throw new Error(`restore decision supersession failed: ${restored.error?.message ?? "decision missing"}`);
+      }
+    }
   }
   if (Array.isArray(backup.tables["source_fact_links"]) && backup.tables["source_fact_links"].length === 0) {
     const cleared = await client.from("source_fact_links").delete().eq("org_id", backup.orgId);

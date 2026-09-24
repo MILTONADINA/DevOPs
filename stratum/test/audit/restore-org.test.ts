@@ -4,7 +4,7 @@
 
 import { describe, test, expect, vi } from "vitest";
 import { join } from "node:path";
-import { parseArgs, validateBackup, stripGeneratedCols, restorePlan, main, RESTORE_ORDER } from "../../scripts/restore-org";
+import { parseArgs, validateBackup, stripGeneratedCols, restorePlan, decisionSupersessionUpdates, main, RESTORE_ORDER } from "../../scripts/restore-org";
 import { ORG_SCOPED_TABLES, type BackupFile } from "../../scripts/backup-org";
 
 test("real restore fails without credentials while dry run validates the file", async () => {
@@ -84,6 +84,15 @@ describe("validateBackup", () => {
     expect(validateBackup(valid)).toBe(valid);
     expect(() => validateBackup({ ...valid, tables: { ...valid.tables, api_keys: [] } })).toThrow(/conversation.*key/i);
   });
+  test("rejects missing, malformed, or duplicated decision references before restore", () => {
+    const old = { id: "d1", org_id: "o1", supersedes_id: null };
+    const newer = { id: "d2", org_id: "o1", supersedes_id: "d1" };
+    const valid = { ...ok, tables: { ...ok.tables, tech_decisions: [newer, old] } };
+    expect(validateBackup(valid)).toBe(valid);
+    expect(() => validateBackup({ ...valid, tables: { ...valid.tables, tech_decisions: [newer] } })).toThrow(/supersedes.*missing/i);
+    expect(() => validateBackup({ ...valid, tables: { ...valid.tables, tech_decisions: [{ ...newer, supersedes_id: 42 }, old] } })).toThrow(/supersedes.*invalid/i);
+    expect(() => validateBackup({ ...valid, tables: { ...valid.tables, tech_decisions: [newer, old, old] } })).toThrow(/duplicate.*decision/i);
+  });
 });
 
 describe("stripGeneratedCols", () => {
@@ -102,6 +111,27 @@ describe("stripGeneratedCols", () => {
 });
 
 describe("restorePlan", () => {
+  test("inserts decisions before restoring forward and cyclic supersession references", () => {
+    const decisions = [
+      { id: "d2", org_id: "o1", supersedes_id: "d1", decision_text: "newer" },
+      { id: "d1", org_id: "o1", supersedes_id: "d2", decision_text: "older" },
+    ];
+    const backup: BackupFile = { orgId: "o1", exportedAt: "t", tables: { tech_decisions: decisions } };
+    expect(restorePlan(backup)).toEqual([
+      {
+        table: "tech_decisions",
+        rows: [
+          { ...decisions[0], supersedes_id: null },
+          { ...decisions[1], supersedes_id: null },
+        ],
+      },
+    ]);
+    expect(decisionSupersessionUpdates(backup)).toEqual([
+      { id: "d2", supersedes_id: "d1" },
+      { id: "d1", supersedes_id: "d2" },
+    ]);
+    expect(decisions[0].supersedes_id).toBe("d1");
+  });
   test("orders parents before children and skips empty/absent tables", () => {
     const backup: BackupFile = {
       orgId: "o1",
