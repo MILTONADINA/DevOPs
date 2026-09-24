@@ -10,8 +10,10 @@ check must inspect every pending page before a retry creates another item.
 WHEN sending an invoice for an organization and period, THE STRIPE SINK SHALL
 page through that customer's pending invoice items using `starting_after`
 until it finds matching org/period metadata or Stripe reports `has_more=false`.
-IF it finds a match on any page, THEN it SHALL reuse the item and SHALL NOT
-create another invoice item.
+IF it finds a match on any page and no other pending items, THEN it SHALL
+reuse the item and SHALL NOT create another invoice item. IF unrelated pending
+items exist, THEN it SHALL fail before invoice creation under
+`specs/billing/stripe-invoice-amount-gate.md#req-1`.
 
 ## REQ-2 — Fail closed on incomplete pagination
 
@@ -31,7 +33,8 @@ silently reuse a stale pending charge.
 ## Acceptance criteria
 
 - An injected Stripe test places 100 nonmatching items on page one and a
-  matching org/period item on page two; no invoice-item POST occurs.
+  matching org/period item on page two; the scan reaches page two, then rejects
+  before any POST because the unrelated items would be swept into the invoice.
 - Malformed or nonadvancing pagination rejects before any invoice-item POST.
 - A matching org/period item with a different amount rejects before invoice creation.
 - Existing dollar-to-cent, live-key refusal, and invoice flow tests pass.
