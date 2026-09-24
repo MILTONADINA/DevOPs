@@ -16,11 +16,15 @@ const org = randomUUID();
 const session = randomUUID();
 const sharedSession = randomUUID();
 const fact = randomUUID();
+const activeFact = randomUUID();
 const conflict = randomUUID();
 const entityA = randomUUID();
 const entityB = randomUUID();
+const fileEntity = randomUUID();
 const edge = randomUUID();
+const filePath = `src/local-recovery-${org}.ts`;
 const backupPath = join(process.cwd(), "backups", `local-check-${org}.backup.json`);
+const emptyLinkBackupPath = join(process.cwd(), "backups", `local-check-${org}-empty-links.backup.json`);
 const overridePath = join(process.cwd(), "backups", `local-check-${org}.config.txt`);
 
 function checked(result, step) {
@@ -40,8 +44,10 @@ function run(script, args) {
 async function clearRows() {
   for (const [table, column, value] of [
     ["audit_statuses", "fact_id", fact], ["audit_conflicts", "id", conflict],
-    ["function_changes", "id", fact], ["knowledge_edges", "id", edge],
+    ["function_changes", "id", fact], ["function_changes", "id", activeFact],
+    ["knowledge_edges", "id", edge],
     ["knowledge_entities", "id", entityA], ["knowledge_entities", "id", entityB],
+    ["knowledge_entities", "id", fileEntity],
     ["sessions", "id", sharedSession], ["sessions", "id", session], ["organizations", "id", org],
   ]) checked(await db.from(table).delete().eq(column, value), `delete ${table}`);
 }
@@ -55,6 +61,10 @@ try {
     { id: entityA, org_id: org, session_id: session, kind: "Decision", name: `recovery-a-${org}`, provenance_complete: true },
     { id: entityB, org_id: org, session_id: session, kind: "Decision", name: `recovery-b-${org}`, provenance_complete: true },
   ]), "insert graph entities");
+  checked(await db.from("knowledge_entities").insert({
+    id: fileEntity, org_id: org, session_id: session, kind: "File",
+    name: filePath, file_path: filePath, provenance_complete: true,
+  }), "insert File entity");
   checked(await db.from("knowledge_edges").insert({
     id: edge, org_id: org, session_id: session, from_entity: entityA,
     to_entity: entityB, edge_type: "SUPERSEDES", provenance_complete: true,
@@ -71,6 +81,11 @@ try {
       status: "CONFLICT", claimed_state: "oldRecovery renamed", actual_state: "newRecovery deleted", conflict_commit: "local-check" }],
   }), "persist conflict");
   if (inserted !== 1) throw new Error("expected one conflict before backup");
+  checked(await db.from("function_changes").insert({
+    id: activeFact, org_id: org, session_id: session, confidence: 0.9,
+    old_name: "linkedRecovery", new_name: "linkedRecoveryNew", change_type: "renamed", file_path: filePath,
+  }), "insert active linked fact");
+  const originalSourceLink = checked(await db.from("source_fact_links").select("id,created_at").eq("org_id", org).eq("file_entity_id", fileEntity).eq("function_change_id", activeFact).single(), "read original source link");
 
   // If either CLI loads dotenv, this harmless project-local override points it
   // at a closed port and makes the check fail. Process credentials must win.
@@ -79,11 +94,13 @@ try {
   run("scripts/backup-org.ts", ["--org-id", org, "--out", backupPath]);
   const backup = JSON.parse(readFileSync(backupPath, "utf8"));
   if (backup.orgId !== org || backup.tables.organizations.length !== 1 ||
-      backup.tables.sessions.length !== 2 || backup.tables.function_changes.length !== 1 ||
-      backup.tables.knowledge_entities.length !== 2 || backup.tables.knowledge_edges.length !== 1 ||
-      backup.tables.knowledge_entity_sessions.length !== 3 || backup.tables.knowledge_edge_sessions.length !== 2 ||
+      backup.tables.sessions.length !== 2 || backup.tables.function_changes.length !== 2 ||
+      backup.tables.knowledge_entities.length !== 3 || backup.tables.knowledge_edges.length !== 1 ||
+      backup.tables.knowledge_entity_sessions.length !== 4 || backup.tables.knowledge_edge_sessions.length !== 2 ||
+      backup.tables.source_fact_links.length !== 1 || backup.tables.source_fact_links[0].id !== originalSourceLink.id ||
+      backup.tables.source_fact_links[0].created_at !== originalSourceLink.created_at ||
       backup.tables.audit_statuses.length !== 1 || backup.tables.audit_conflicts.length !== 1) {
-    throw new Error("backup omitted an expected scoped row");
+    throw new Error(`backup omitted an expected scoped row: ${JSON.stringify(Object.fromEntries(Object.entries(backup.tables).map(([name, rows]) => [name, rows.length])))}`);
   }
 
   await clearRows();
@@ -96,18 +113,26 @@ try {
   const restoredAlert = checked(await db.from("audit_conflicts").select("id,conflict_commit,acknowledged").eq("id", conflict).eq("org_id", org).single(), "read restored alert");
   const restoredShared = checked(await db.from("knowledge_entity_sessions").select("session_id").eq("org_id", org).eq("entity_id", entityA), "read restored entity links");
   const restoredEdgeLinks = checked(await db.from("knowledge_edge_sessions").select("session_id").eq("org_id", org).eq("edge_id", edge), "read restored edge links");
+  const restoredSourceLink = checked(await db.from("source_fact_links").select("id,created_at").eq("org_id", org).eq("file_entity_id", fileEntity).eq("function_change_id", activeFact).single(), "read restored source link");
   const inventory = checked(await db.rpc("inspect_session_erasure", { p_org_id: org, p_session_id: session }), "read restored erasure inventory");
   if (restoredFact.id !== fact || restoredFact.session_id !== session || !restoredFact.is_suppressed ||
       restoredStatus.status !== "CONFLICT" || restoredAlert.id !== conflict ||
       restoredAlert.conflict_commit !== "local-check" || restoredAlert.acknowledged ||
-      restoredShared.length !== 2 || restoredEdgeLinks.length !== 2 || inventory.graph_ownership !== "shared") {
+      restoredShared.length !== 2 || restoredEdgeLinks.length !== 2 || inventory.graph_ownership !== "shared" ||
+      restoredSourceLink.id !== originalSourceLink.id || restoredSourceLink.created_at !== originalSourceLink.created_at ||
+      inventory.counts.source_fact_links !== 1) {
     throw new Error("restored fact or audit evidence differs from the backup");
   }
-  process.stdout.write("local audited organization and graph provenance backup and restore passed\n");
+  writeFileSync(emptyLinkBackupPath, JSON.stringify({ ...backup, tables: { ...backup.tables, source_fact_links: [] } }));
+  await clearRows();
+  run("scripts/restore-org.ts", ["--file", emptyLinkBackupPath]);
+  const emptyLinks = checked(await db.from("source_fact_links").select("id").eq("org_id", org), "read empty restored source links");
+  if (emptyLinks.length !== 0) throw new Error("restore recreated source links absent from an explicit empty snapshot");
+  process.stdout.write("local audited organization, graph provenance, and source-link backup and restore passed\n");
 } catch (error) {
   failure = error;
 } finally {
   try { await clearRows(); } catch (error) { if (!failure) failure = error; }
-  for (const path of [backupPath, overridePath]) if (existsSync(path)) rmSync(path);
+  for (const path of [backupPath, emptyLinkBackupPath, overridePath]) if (existsSync(path)) rmSync(path);
 }
 if (failure) throw failure;

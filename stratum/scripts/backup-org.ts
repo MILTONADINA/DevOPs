@@ -34,6 +34,7 @@ export const ORG_SCOPED_TABLES = [
   "knowledge_edges",
   "knowledge_entity_sessions",
   "knowledge_edge_sessions",
+  "source_fact_links",
   "memory_vectors",
   "audit_conflicts",
   "audit_statuses",

@@ -81,6 +81,9 @@ preserve those links; a disposable two-session recovery check verifies that a
 shared graph row remains shared. Historic graph rows and any untagged source
 ingestion remain uncertain. These changes do not inventory deleted backups,
 RAM or external copies, and do not authorize erasure of billing records.
+The source-link recovery follow-up exports File-to-fact links and restores
+their original IDs after replacing trigger-generated duplicates, preserving
+source evidence in a clean-target backup round trip.
 
 ## Rejected shortcut
 
