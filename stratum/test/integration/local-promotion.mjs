@@ -13,10 +13,14 @@ if (url !== "http://127.0.0.1:54321" || !key || process.env.DEVOPS_STRATUM_PROJE
 const db = createClient(url, key, { auth: { persistSession: false } });
 const org = randomUUID();
 const session = randomUUID();
+const secondSession = randomUUID();
 const active = randomUUID();
+const secondActive = randomUUID();
 const suppressed = randomUUID();
 const oldName = `old_${active.slice(0, 8)}`;
 const newName = `new_${active.slice(0, 8)}`;
+const secondOldName = `old_${secondActive.slice(0, 8)}`;
+const secondNewName = `new_${secondActive.slice(0, 8)}`;
 
 function checked(result, step) {
   if (result.error) throw new Error(`${step}: ${result.error.message}`);
@@ -34,9 +38,13 @@ function run(script, args, env = {}) {
 let failure;
 try {
   checked(await db.from("organizations").insert({ id: org, name: "DevOPs local promotion check" }), "insert org");
-  checked(await db.from("sessions").insert({ id: session, org_id: org, model: "local-check" }), "insert session");
+  checked(await db.from("sessions").insert([
+    { id: session, org_id: org, model: "local-check" },
+    { id: secondSession, org_id: org, model: "local-check" },
+  ]), "insert sessions");
   checked(await db.from("function_changes").insert([
     { id: active, org_id: org, session_id: session, confidence: 0.9, is_suppressed: false, old_name: oldName, new_name: newName, change_type: "renamed" },
+    { id: secondActive, org_id: org, session_id: secondSession, confidence: 0.9, is_suppressed: false, old_name: secondOldName, new_name: secondNewName, change_type: "renamed" },
     { id: suppressed, org_id: org, session_id: session, confidence: 0.9, is_suppressed: true, old_name: "hidden_old", new_name: "hidden_new", change_type: "renamed" },
   ]), "insert facts");
 
@@ -53,19 +61,37 @@ try {
   const promotion = run("scripts/promote-tier2-to-tier3.ts", [], {
     PROMOTE_ORG_ID: org, PROMOTE_OLDER_THAN_DAYS: "0", PROMOTE_LIMIT: "5",
   });
-  if (!promotion.includes("Promoted 1 fact(s)")) throw new Error("promotion did not select exactly one active fact");
+  if (!promotion.includes("Promoted 2 fact(s)")) throw new Error("promotion did not select exactly two active facts");
   const facts = checked(await db.from("function_changes").select("id,promoted_to_t3").eq("org_id", org), "read facts");
-  if (facts.find((fact) => fact.id === active)?.promoted_to_t3 !== true || facts.find((fact) => fact.id === suppressed)?.promoted_to_t3 !== false) {
+  if (facts.find((fact) => fact.id === active)?.promoted_to_t3 !== true
+      || facts.find((fact) => fact.id === secondActive)?.promoted_to_t3 !== true
+      || facts.find((fact) => fact.id === suppressed)?.promoted_to_t3 !== false) {
     throw new Error("promotion flags do not match active/suppressed facts");
   }
   const vectors = checked(await db.from("memory_vectors").select("source_ref").eq("org_id", org), "read vectors");
-  if (vectors.length !== 1 || vectors[0].source_ref !== active) throw new Error("promotion did not write only the active fact vector");
+  if (vectors.length !== 2 || new Set(vectors.map((row) => row.source_ref)).size !== 2
+      || !vectors.some((row) => row.source_ref === active) || !vectors.some((row) => row.source_ref === secondActive)) {
+    throw new Error("promotion did not write only the two active fact vectors");
+  }
+  const entityLinks = checked(await db.from("knowledge_entity_sessions").select("entity_id,session_id").eq("org_id", org), "read entity provenance");
+  const edgeLinks = checked(await db.from("knowledge_edge_sessions").select("edge_id,session_id").eq("org_id", org), "read edge provenance");
+  const entities = checked(await db.from("knowledge_entities").select("provenance_complete").eq("org_id", org), "read entity completeness");
+  const edges = checked(await db.from("knowledge_edges").select("provenance_complete").eq("org_id", org), "read edge completeness");
+  if (entityLinks.length !== 4 || edgeLinks.length !== 2
+      || entityLinks.filter((row) => row.session_id === session).length !== 2
+      || entityLinks.filter((row) => row.session_id === secondSession).length !== 2
+      || edgeLinks.filter((row) => row.session_id === session).length !== 1
+      || edgeLinks.filter((row) => row.session_id === secondSession).length !== 1
+      || entities.some((row) => row.provenance_complete !== true)
+      || edges.some((row) => row.provenance_complete !== true)) {
+    throw new Error("promotion did not record complete session graph provenance");
+  }
 
   const report = run("scripts/understand-codebase-bound.ts", ["--entity", oldName], { DEVOPS_STRATUM_ORG_ID: org });
   if (!report.includes(`Entity: ${oldName}`) || !report.includes("Status: SUPERSEDED") || !report.includes(`Superseded by: ${newName}`)) {
     throw new Error("bound graph query did not report the promoted supersession");
   }
-  process.stdout.write("local active fact promoted to graph/vector and bound entity status resolved\n");
+  process.stdout.write("two local session-bound facts promoted to graph/vector with provenance and entity status resolved\n");
 } catch (error) {
   failure = error;
 } finally {

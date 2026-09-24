@@ -14,8 +14,12 @@ if (url !== "http://127.0.0.1:54321" || !key || process.env.DEVOPS_STRATUM_PROJE
 const db = createClient(url, key, { auth: { persistSession: false } });
 const org = randomUUID();
 const session = randomUUID();
+const sharedSession = randomUUID();
 const fact = randomUUID();
 const conflict = randomUUID();
+const entityA = randomUUID();
+const entityB = randomUUID();
+const edge = randomUUID();
 const backupPath = join(process.cwd(), "backups", `local-check-${org}.backup.json`);
 const overridePath = join(process.cwd(), "backups", `local-check-${org}.config.txt`);
 
@@ -36,7 +40,9 @@ function run(script, args) {
 async function clearRows() {
   for (const [table, column, value] of [
     ["audit_statuses", "fact_id", fact], ["audit_conflicts", "id", conflict],
-    ["function_changes", "id", fact], ["sessions", "id", session], ["organizations", "id", org],
+    ["function_changes", "id", fact], ["knowledge_edges", "id", edge],
+    ["knowledge_entities", "id", entityA], ["knowledge_entities", "id", entityB],
+    ["sessions", "id", sharedSession], ["sessions", "id", session], ["organizations", "id", org],
   ]) checked(await db.from(table).delete().eq(column, value), `delete ${table}`);
 }
 
@@ -44,6 +50,17 @@ let failure;
 try {
   checked(await db.from("organizations").insert({ id: org, name: "DevOPs local recovery check" }), "insert org");
   checked(await db.from("sessions").insert({ id: session, org_id: org, model: "local-check" }), "insert session");
+  checked(await db.from("sessions").insert({ id: sharedSession, org_id: org, model: "local-check" }), "insert shared session");
+  checked(await db.from("knowledge_entities").insert([
+    { id: entityA, org_id: org, session_id: session, kind: "Decision", name: `recovery-a-${org}`, provenance_complete: true },
+    { id: entityB, org_id: org, session_id: session, kind: "Decision", name: `recovery-b-${org}`, provenance_complete: true },
+  ]), "insert graph entities");
+  checked(await db.from("knowledge_edges").insert({
+    id: edge, org_id: org, session_id: session, from_entity: entityA,
+    to_entity: entityB, edge_type: "SUPERSEDES", provenance_complete: true,
+  }), "insert graph edge");
+  checked(await db.from("knowledge_entity_sessions").insert({ org_id: org, entity_id: entityA, session_id: sharedSession }), "link shared entity");
+  checked(await db.from("knowledge_edge_sessions").insert({ org_id: org, edge_id: edge, session_id: sharedSession }), "link shared edge");
   checked(await db.from("function_changes").insert({
     id: fact, org_id: org, session_id: session, confidence: 0.9,
     old_name: "oldRecovery", new_name: "newRecovery", change_type: "renamed",
@@ -62,7 +79,9 @@ try {
   run("scripts/backup-org.ts", ["--org-id", org, "--out", backupPath]);
   const backup = JSON.parse(readFileSync(backupPath, "utf8"));
   if (backup.orgId !== org || backup.tables.organizations.length !== 1 ||
-      backup.tables.sessions.length !== 1 || backup.tables.function_changes.length !== 1 ||
+      backup.tables.sessions.length !== 2 || backup.tables.function_changes.length !== 1 ||
+      backup.tables.knowledge_entities.length !== 2 || backup.tables.knowledge_edges.length !== 1 ||
+      backup.tables.knowledge_entity_sessions.length !== 3 || backup.tables.knowledge_edge_sessions.length !== 2 ||
       backup.tables.audit_statuses.length !== 1 || backup.tables.audit_conflicts.length !== 1) {
     throw new Error("backup omitted an expected scoped row");
   }
@@ -75,12 +94,16 @@ try {
   const restoredFact = checked(await db.from("function_changes").select("id,is_suppressed,session_id").eq("id", fact).single(), "read restored fact");
   const restoredStatus = checked(await db.from("audit_statuses").select("status").eq("fact_id", fact).eq("org_id", org).single(), "read restored status");
   const restoredAlert = checked(await db.from("audit_conflicts").select("id,conflict_commit,acknowledged").eq("id", conflict).eq("org_id", org).single(), "read restored alert");
+  const restoredShared = checked(await db.from("knowledge_entity_sessions").select("session_id").eq("org_id", org).eq("entity_id", entityA), "read restored entity links");
+  const restoredEdgeLinks = checked(await db.from("knowledge_edge_sessions").select("session_id").eq("org_id", org).eq("edge_id", edge), "read restored edge links");
+  const inventory = checked(await db.rpc("inspect_session_erasure", { p_org_id: org, p_session_id: session }), "read restored erasure inventory");
   if (restoredFact.id !== fact || restoredFact.session_id !== session || !restoredFact.is_suppressed ||
       restoredStatus.status !== "CONFLICT" || restoredAlert.id !== conflict ||
-      restoredAlert.conflict_commit !== "local-check" || restoredAlert.acknowledged) {
+      restoredAlert.conflict_commit !== "local-check" || restoredAlert.acknowledged ||
+      restoredShared.length !== 2 || restoredEdgeLinks.length !== 2 || inventory.graph_ownership !== "shared") {
     throw new Error("restored fact or audit evidence differs from the backup");
   }
-  process.stdout.write("local audited organization backup and restore passed\n");
+  process.stdout.write("local audited organization and graph provenance backup and restore passed\n");
 } catch (error) {
   failure = error;
 } finally {

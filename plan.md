@@ -424,9 +424,11 @@ Anthropic's reasoning-based security scanner (GA Feb 2026) reads code "the way a
   scoped inventory, shared-graph safety, financial retention decision, and
   one-year benchmark requirements. Establish the applicable legal basis and
   implement the boundary before an endpoint can report success. A read-only
-  local database RPC now counts session-linked rows and explicitly marks
-  graph ownership, RAM, backups, and external copies unresolved. No compliance
-  claim is made yet.
+  local database RPC now counts session-linked rows and distinguishes complete,
+  shared, and uncertain graph provenance. Two-session promotion and local
+  backup/restore checks preserve recorded links. Untagged graph rows, RAM,
+  backup deletion, and external copies remain unresolved. No compliance claim
+  is made yet.
 - [ ] **CFO dashboard skeleton** (~3h). Read-only view of billing schema; no real billing data yet. Hidden behind `DASHBOARD_CFO_VIEW=true` env var.
 
 ### 8a. v0.9.0 release

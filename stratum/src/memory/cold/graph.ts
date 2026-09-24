@@ -117,41 +117,66 @@ export interface KnowledgeGraph {
  * @returns a {@link KnowledgeGraph}.
  */
 export function createKnowledgeGraph(client: SupabaseClient): KnowledgeGraph {
+  async function linkSession(table: "knowledge_entity_sessions" | "knowledge_edge_sessions", orgId: string, rowId: string, sessionId: string): Promise<void> {
+    const idColumn = table === "knowledge_entity_sessions" ? "entity_id" : "edge_id";
+    const { error } = await client.from(table).upsert({ org_id: orgId, [idColumn]: rowId, session_id: sessionId }, { onConflict: `org_id,${idColumn},session_id`, ignoreDuplicates: true });
+    if (error) throw new Error(`graph session provenance failed: ${error.message}`);
+  }
+
   return {
     async ensureEntity(input: EnsureEntityInput): Promise<string> {
-      const existing = await client.from("knowledge_entities").select("id,file_path,summary").eq("org_id", input.orgId).eq("kind", input.kind).eq("name", input.name).limit(1);
+      const existing = await client.from("knowledge_entities").select("id,file_path,summary,provenance_complete").eq("org_id", input.orgId).eq("kind", input.kind).eq("name", input.name).limit(1);
       if (existing.error) throw new Error(`ensureEntity select failed: ${existing.error.message}`);
-      const first = ((existing.data ?? []) as { id: string; file_path?: string; summary?: string }[])[0];
+      const first = ((existing.data ?? []) as { id: string; file_path?: string; summary?: string; provenance_complete?: boolean }[])[0];
       const metadata: Record<string, string> = {};
       if (input.filePath !== undefined) metadata["file_path"] = input.filePath;
       if (input.summary !== undefined) metadata["summary"] = input.summary;
       if (first) {
+        if (input.sessionId !== undefined) await linkSession("knowledge_entity_sessions", input.orgId, first.id, input.sessionId);
+        const patch: Record<string, unknown> = {};
         if ((input.filePath !== undefined && first.file_path !== input.filePath) || (input.summary !== undefined && first.summary !== input.summary)) {
-          const updated = await client.from("knowledge_entities").update(metadata).eq("id", first.id).eq("org_id", input.orgId);
+          Object.assign(patch, metadata);
+        }
+        if (input.sessionId === undefined && first.provenance_complete === true) patch["provenance_complete"] = false;
+        if (Object.keys(patch).length > 0) {
+          const updated = await client.from("knowledge_entities").update(patch).eq("id", first.id).eq("org_id", input.orgId);
           if (updated.error) throw new Error(`ensureEntity metadata update failed: ${updated.error.message}`);
         }
         return first.id;
       }
 
       const row: Record<string, unknown> = { org_id: input.orgId, kind: input.kind, name: input.name, ...metadata };
-      if (input.sessionId !== undefined) row["session_id"] = input.sessionId;
+      if (input.sessionId !== undefined) {
+        row["session_id"] = input.sessionId;
+        row["provenance_complete"] = true;
+      }
       const created = await client.from("knowledge_entities").insert(row).select("id").single();
       if (created.error || !created.data) throw new Error(`ensureEntity insert failed: ${created.error?.message ?? "no row returned"}`);
-      return (created.data as { id: string }).id;
+      const id = (created.data as { id: string }).id;
+      if (input.sessionId !== undefined) await linkSession("knowledge_entity_sessions", input.orgId, id, input.sessionId);
+      return id;
     },
 
     async addEdge(input: AddEdgeInput): Promise<string> {
       const existing = await client
         .from("knowledge_edges")
-        .select("id")
+        .select("id,provenance_complete")
         .eq("org_id", input.orgId) // org-scope the existence check (no cross-tenant read)
         .eq("from_entity", input.fromEntity)
         .eq("to_entity", input.toEntity)
         .eq("edge_type", input.edgeType)
         .limit(1);
       if (existing.error) throw new Error(`addEdge select failed: ${existing.error.message}`);
-      const first = ((existing.data ?? []) as { id: string }[])[0];
-      if (first) return first.id;
+      const first = ((existing.data ?? []) as { id: string; provenance_complete?: boolean }[])[0];
+      if (first) {
+        if (input.sessionId !== undefined) {
+          await linkSession("knowledge_edge_sessions", input.orgId, first.id, input.sessionId);
+        } else if (first.provenance_complete === true) {
+          const updated = await client.from("knowledge_edges").update({ provenance_complete: false }).eq("id", first.id).eq("org_id", input.orgId);
+          if (updated.error) throw new Error(`addEdge provenance downgrade failed: ${updated.error.message}`);
+        }
+        return first.id;
+      }
 
       const row: Record<string, unknown> = {
         org_id: input.orgId,
@@ -159,10 +184,15 @@ export function createKnowledgeGraph(client: SupabaseClient): KnowledgeGraph {
         to_entity: input.toEntity,
         edge_type: input.edgeType,
       };
-      if (input.sessionId !== undefined) row["session_id"] = input.sessionId;
+      if (input.sessionId !== undefined) {
+        row["session_id"] = input.sessionId;
+        row["provenance_complete"] = true;
+      }
       const created = await client.from("knowledge_edges").insert(row).select("id").single();
       if (created.error || !created.data) throw new Error(`addEdge insert failed: ${created.error?.message ?? "no row returned"}`);
-      return (created.data as { id: string }).id;
+      const id = (created.data as { id: string }).id;
+      if (input.sessionId !== undefined) await linkSession("knowledge_edge_sessions", input.orgId, id, input.sessionId);
+      return id;
     },
 
     async findSuperseded(orgId: string, entityNames: string[]): Promise<Supersession[]> {

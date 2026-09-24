@@ -32,6 +32,8 @@ export const ORG_SCOPED_TABLES = [
   "variable_changes",
   "knowledge_entities",
   "knowledge_edges",
+  "knowledge_entity_sessions",
+  "knowledge_edge_sessions",
   "memory_vectors",
   "audit_conflicts",
   "audit_statuses",
@@ -123,7 +125,16 @@ export async function exportOrg(client: SupabaseClient, orgId: string, exportedA
   tables["organizations"] = await selectAll(client, "organizations", "id", orgId, ["id"]);
 
   for (const t of ORG_SCOPED_TABLES) {
-    const order = t === "org_config" ? ["org_id"] : t === "audit_statuses" ? ["fact_table", "fact_id"] : ["id"];
+    const order =
+      t === "org_config"
+        ? ["org_id"]
+        : t === "audit_statuses"
+          ? ["fact_table", "fact_id"]
+          : t === "knowledge_entity_sessions"
+            ? ["entity_id", "session_id"]
+            : t === "knowledge_edge_sessions"
+              ? ["edge_id", "session_id"]
+              : ["id"];
     tables[t] = await selectAll(client, t, "org_id", orgId, order);
   }
 
@@ -132,7 +143,7 @@ export async function exportOrg(client: SupabaseClient, orgId: string, exportedA
   if (sessionIds.length > 0) {
     const logs: unknown[] = [];
     for (let i = 0; i < sessionIds.length; i += 100) {
-      logs.push(...await selectAll(client, "pruning_logs", "session_id", sessionIds.slice(i, i + 100), ["id"]));
+      logs.push(...(await selectAll(client, "pruning_logs", "session_id", sessionIds.slice(i, i + 100), ["id"])));
     }
     tables["pruning_logs"] = logs;
   } else {

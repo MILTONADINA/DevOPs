@@ -16,6 +16,23 @@ and any external copy or backup. It SHALL distinguish session-owned graph rows
 from graph rows reused by another session. A missing or ambiguous owner SHALL
 fail closed rather than silently leave or delete content.
 
+### REQ-1a — Graph provenance across reuse
+
+WHEN a graph entity or edge is created with a trusted session ID, THE DATABASE
+SHALL record that session as a source in the same transaction. WHEN the graph
+adapter reuses an existing entity or edge for another trusted session, IT
+SHALL record the second session before reporting success. Provenance links
+SHALL enforce same-organization entity/edge/session references. Existing rows
+whose complete source history cannot be proved SHALL remain marked uncertain;
+adding a new link SHALL NOT retroactively make them exclusive. The session
+promoter SHALL pass each database-loaded fact's trusted session ID to graph
+and vector promotion, including when a batch spans several sessions. The
+inventory SHALL include entities and edges linked through provenance even
+when their original `session_id` differs, and SHALL distinguish uncertain,
+shared and exclusive graph ownership without deleting any row.
+An organization backup and restore SHALL preserve all recorded session links
+so a recovered inventory cannot misclassify a shared graph row.
+
 ## REQ-2 — Ledger invariant and retention decision
 
 WHILE billing records remain append-only and signed over their original
@@ -54,3 +71,7 @@ remaining rows. A small fixture alone SHALL NOT satisfy that gate.
   rows reference the session and organization; deleting either is blocked.
 - The live local foreign-key inventory and existing ledger fixture establish
   this blocker. No erasure endpoint or one-year performance result is claimed.
+- The local inventory now reports linked graph rows and provenance uncertainty;
+  disposable two-session promotion and backup/restore checks cover recorded
+  links. Untagged legacy graph, RAM, external copies and backup deletion remain
+  unresolved.
