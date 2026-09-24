@@ -19,6 +19,14 @@ function fakeDeps(opts: { active?: number } = {}): { deps: SessionsDeps; capture
     },
     getSession: (_orgId, id) => Promise.resolve(id === "s1" ? SESSION : null),
     getSessionStats: (_orgId, id) => Promise.resolve(id === "s1" ? STATS : null),
+    inspectErasure: (orgId, id) => {
+      captured["erasure"] = { orgId, id };
+      return Promise.resolve(id === "s1" ? {
+        scope: "local_database_only", org_id: orgId, session_id: id,
+        counts: { billing_records: 2 }, graph_ownership: "ambiguous",
+        external_copies: "not_inventoried", backups: "not_inventoried", in_memory: "not_inventoried",
+      } : null);
+    },
     endSession: (_orgId, id) => {
       captured["ended"] = id;
       return Promise.resolve(id === "s1" ? { ...SESSION, ended_at: "2026-05-30T00:00:00Z" } : null);
@@ -141,6 +149,47 @@ describe("GET /v1/sessions/:id/stats", () => {
     expect(res.statusCode).toBe(200);
     expect(captured["list"]).toEqual({ orgId: "o7", limit: 3 });
     await app.close();
+  });
+});
+
+describe("GET /v1/sessions/:id/erasure-preflight", () => {
+  test("requires an organization-level authenticated key and reports blockers without deleting", async () => {
+    const { deps, captured } = fakeDeps();
+    const app = buildProxy({ rateLimit: false, cors: false, sessions: deps, auth: {
+      resolve: async (key) => key === "org" ? { orgId: "o1", keyId: "k1" } :
+        key === "project" ? { orgId: "o1", keyId: "k2", projectScopeId: "o1/alpha" } : null,
+    } });
+    await app.ready();
+    const url = "/v1/sessions/s1/erasure-preflight?org-id=spoofed";
+    expect((await app.inject({ method: "GET", url, headers: { authorization: "Bearer project" } })).statusCode).toBe(403);
+    expect(captured["erasure"]).toBeUndefined();
+    const result = await app.inject({ method: "GET", url, headers: { authorization: "Bearer org" } });
+    expect(result.statusCode).toBe(200);
+    expect(result.json()).toMatchObject({ status: "blocked_billing_retention", reasons: [
+      "billing_retention_undecided", "graph_ownership_ambiguous", "stores_not_inventoried", "erasure_execution_unavailable",
+    ] });
+    expect(captured["erasure"]).toEqual({ orgId: "o1", id: "s1" });
+    expect(captured["ended"]).toBeUndefined();
+    expect((await app.inject({ method: "GET", url: "/v1/sessions/ghost/erasure-preflight", headers: { authorization: "Bearer org" } })).statusCode).toBe(404);
+    await app.close();
+  });
+  test("does not expose preflight through personal-mode query parameters", async () => {
+    const app = buildProxy({ rateLimit: false, cors: false, sessions: fakeDeps().deps });
+    await app.ready();
+    expect((await app.inject({ method: "GET", url: "/v1/sessions/s1/erasure-preflight?org-id=o1" })).statusCode).toBe(403);
+    await app.close();
+  });
+});
+
+describe("createSupabaseSessionsDeps.inspectErasure", () => {
+  test("uses the scoped service RPC and rejects a mismatched inventory", async () => {
+    let args: unknown;
+    const client = { rpc: (_name: string, input: unknown) => {
+      args = input;
+      return Promise.resolve({ data: { scope: "local_database_only", org_id: "other", session_id: "s1", counts: { billing_records: 0 }, graph_ownership: "none" }, error: null });
+    } } as unknown as SupabaseClient;
+    await expect(createSupabaseSessionsDeps(client).inspectErasure("o1", "s1")).rejects.toThrow("invalid scoped inventory");
+    expect(args).toEqual({ p_org_id: "o1", p_session_id: "s1" });
   });
 });
 

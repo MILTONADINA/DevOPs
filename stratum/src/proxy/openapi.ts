@@ -136,6 +136,13 @@ export const OPENAPI_SPEC = {
         responses: { "200": { description: "Stats" }, "404": ERROR_RESPONSE },
       },
     },
+    "/v1/sessions/{id}/erasure-preflight": {
+      get: {
+        summary: "Read-only session erasure inventory and blockers (organization-level key required)",
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+        responses: { "200": { description: "Blocked erasure preflight with scoped local inventory" }, "403": ERROR_RESPONSE, "404": ERROR_RESPONSE },
+      },
+    },
     "/v1/billing/summary": {
       get: {
         summary: "Monthly billing summary",
