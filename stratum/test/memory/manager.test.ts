@@ -14,6 +14,49 @@ import type { VectorStore } from "../../src/memory/cold/vectors";
 import type { BiEncoder } from "../../src/pruner/encoder";
 
 describe("MemoryManager — fact survives 50 turns", () => {
+  test("extracts one exchange together and unbound evicted turns separately", async () => {
+    const { client } = makeFakeSupabase();
+    const groups: string[][] = [];
+    let clockMs = 0;
+    const manager = createMemoryManager({
+      extractor: { extract: async (input) => { groups.push(input.turns.map((turn) => turn.content)); return []; } },
+      warm: createWarmMemory(client), context: { orgId: "org-1", sessionId: "sess-1" },
+      hotOptions: { windowMs: 10, now: () => clockMs },
+    });
+    await manager.ingest({ role: "user", content: "question A", timestamp: 0, exchangeId: "exchange-a" });
+    await manager.ingest({ role: "assistant", content: "answer A", timestamp: 0, exchangeId: "exchange-a" });
+    await manager.ingest({ role: "user", content: "question D", timestamp: 0, exchangeId: "exchange-d" });
+    await manager.ingest({ role: "assistant", content: "answer D", timestamp: 0, exchangeId: "exchange-d" });
+    await manager.ingest({ role: "user", content: "unbound B", timestamp: 0 });
+    await manager.ingest({ role: "assistant", content: "unbound C", timestamp: 0 });
+    clockMs = 100;
+    await manager.flush();
+    expect(groups).toEqual([["question A", "answer A"], ["question D", "answer D"], ["unbound B"], ["unbound C"]]);
+  });
+
+  test("an extraction error requeues every unpersisted group in order", async () => {
+    const { client } = makeFakeSupabase();
+    const seen: string[] = [];
+    let fail = true;
+    let clockMs = 0;
+    const manager = createMemoryManager({
+      extractor: { extract: async (input) => {
+        const content = input.turns.map((turn) => turn.content).join("+");
+        seen.push(content);
+        if (content === "second" && fail) { fail = false; throw new Error("extract transient"); }
+        return [];
+      } },
+      warm: createWarmMemory(client), context: { orgId: "org-1", sessionId: "sess-1" },
+      hotOptions: { windowMs: 10, now: () => clockMs },
+    });
+    await manager.ingest({ role: "user", content: "first", timestamp: 0 });
+    await manager.ingest({ role: "user", content: "second", timestamp: 0 });
+    clockMs = 100;
+    await expect(manager.flush()).rejects.toThrow("extract transient");
+    await manager.flush();
+    expect(seen).toEqual(["first", "second", "first", "second"]);
+  });
+
   test("a decision evicted from hot memory is recalled from warm 50 turns later", async () => {
     const { client, store } = makeFakeSupabase();
     const warm = createWarmMemory(client);
