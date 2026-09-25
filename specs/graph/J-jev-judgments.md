@@ -47,6 +47,9 @@ THE SYSTEM SHALL list `api.typesafe.ai` and `docs.typesafe.ai` in `.workflow/net
 ### REQ-J8 (Event-driven) — Proof-failure triage
 WHEN `scripts/triage-claims.mjs` runs, THE SYSTEM SHALL re-run each failing claim's `test_command` with a timeout. It SHALL send Jev the claim's description, command, exit code and the last 60 lines of output with secret redaction, ask one Choice for the failure's cause, and write a table of claim, cause, probability, confidence and whether the case needs escalation to `.workflow/state/claim-triage-<date>.md`.
 
+### REQ-J9 (Event-driven) — Residual fault classification
+WHEN `scripts/graph-classify-fault.mjs` receives a failure that no deterministic signature matches and no `--agent-class` is given, THE SYSTEM SHALL ask Jev one Choice over the four REQ-R6 classes (`environment`, `api`, `transient`, `code`), sending only the first 20 error lines and the exit code. It SHALL return `classified_by: jev` with the confidence and probabilities only when `decide()` clears a 0.8 confidence threshold. IF Jev is unavailable, refuses the state as secret-shaped, or is below the threshold, THEN THE SYSTEM SHALL exit 2 and require an explicit agent verdict, as REQ-R6 did before this tier. Signatures and an explicit `--agent-class` SHALL take precedence, and Jev SHALL NOT be called for them. This amends REQ-R6 (specs/graph/R-resilience.md), which names the tier.
+
 ## Acceptance criteria
 
 ### AC-J1.1 (REQ-J1..J6)
@@ -64,3 +67,9 @@ WHEN `scripts/triage-claims.mjs` runs, THE SYSTEM SHALL re-run each failing clai
 
 ### AC-J8.1 (REQ-J8)
 **Given** a real key **When** the triage runs on the current failing set **Then** every failing claim appears exactly once in the table, and each row whose confidence is below the threshold is marked for escalation.
+
+### AC-J9.1 (REQ-J9)
+**Given** `tests/graph-resilience/classify-jev.test.mjs` with an injected Jev call **When** `npm test` runs **Then** it proves, with no network access and every test seen red before the implementation existed:
+- a signature and an explicit agent verdict each win without calling Jev;
+- a confident answer returns `classified_by: jev` with its confidence, over exactly the four REQ-R6 classes, with the exit code in the state;
+- an uncertain answer, an unavailable Jev, and error output holding a secret shape each require an agent verdict, and the secret case makes no network call.
