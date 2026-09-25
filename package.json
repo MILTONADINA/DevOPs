@@ -1,7 +1,7 @@
 {
   "name": "@miltonadina/devops",
   "version": "0.3.0",
-  "description": "A self-configuring, verification-first DevOps workflow for AI coding agents. Universal across Claude Code, Codex, Cursor, Antigravity, Kiro, and local LLMs.",
+  "description": "A self-configuring, verification-first DevOps workflow for AI coding agents. Built for Claude Code; its AGENTS.md contract is tool-agnostic (Codex reads it natively), and no adapters for other tools ship yet.",
   "type": "module",
   "bin": {
     "devops": "./scripts/devops-cli.js",
@@ -13,7 +13,7 @@
     "analyze": "bash scripts/analyze.sh",
     "install:project": "./scripts/init-project.sh",
     "validate:claims": "npx --yes tsx ./verification/claim-validator.ts",
-    "test": "node --test tests/analyze-entry.test.mjs tests/hermeticity.test.mjs tests/reproducibility-check.test.mjs tests/setup-local.test.mjs tests/graph-dashboard/*.test.mjs tests/graph-resilience/*.test.mjs tests/jev/*.test.mjs",
+    "test": "node --test tests/analyze-entry.test.mjs tests/hermeticity.test.mjs tests/reproducibility-check.test.mjs tests/setup-local.test.mjs tests/graph-dashboard/*.test.mjs tests/graph-resilience/*.test.mjs tests/graph/*.test.mjs tests/jev/*.test.mjs",
     "lint:renovate": "node ./scripts/lint-renovate.js",
     "lint:stack-specific-skills": "node ./scripts/lint-stack-specific-skills.js",
     "graph:dashboard": "node scripts/graph-dashboard/server.mjs"
