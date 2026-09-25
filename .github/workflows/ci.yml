@@ -78,10 +78,9 @@ jobs:
         run: npm run lint:stack-specific-skills
       - name: Test dashboard and test hermeticity (REQ-R12..R13), held to its floor (REQ-M23)
         shell: bash
-        # Preflight checks these directories; they do not require installed packages.
-        # Security-tool versions are supplied by the isolated test fixtures.
+        # No directories are created first: the suite must pass in a fresh checkout that has no
+        # node_modules or .workflow/proofs (PB-59). The preflight tests bring their own fixtures.
         run: |
-          mkdir -p node_modules/.bin stratum/node_modules/.bin .workflow/proofs
           npm test 2>&1 | tee "$RUNNER_TEMP/root-tests.log"
           node scripts/check-test-floor.mjs root "$RUNNER_TEMP/root-tests.log"
       - name: Test floors only rise; added test files assert (masterpiece REQ-M23)
@@ -93,5 +92,5 @@ jobs:
           git fetch --no-tags --depth=1 origin "$BASE_REF"
           git show FETCH_HEAD:governance/test-floors.json > "$RUNNER_TEMP/base-floors.json" 2>/dev/null || echo '{}' > "$RUNNER_TEMP/base-floors.json"
           node scripts/check-test-floor.mjs --ratchet "$RUNNER_TEMP/base-floors.json"
-          mapfile -t added < <(git diff --name-only --diff-filter=A FETCH_HEAD HEAD -- 'tests/**/*.test.mjs' 'stratum/test/**/*.test.ts')
+          mapfile -t added < <(git diff --name-only --diff-filter=A FETCH_HEAD HEAD -- ':(glob)tests/**/*.test.mjs' ':(glob)stratum/test/**/*.test.ts')
           if [ "${#added[@]}" -gt 0 ]; then node scripts/check-assertions.mjs "${added[@]}"; else echo "check-assertions: no test files added"; fi

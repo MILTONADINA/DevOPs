@@ -598,12 +598,39 @@ test('observer: a killed run (30 min silent, run record failed) is not active an
   assert.strictEqual(run.kind, 'sprint');
 });
 
-test('observer: a run whose record says running is never marked stale, however long it is silent', async () => {
+test('observer: a run whose record says running is not marked stale after 30 silent minutes', async () => {
   const { root, stateDir } = await observerFixture('long-running', { labels: ['planner'], record: { cycleId: 'cyc-live', status: 'running' } });
   const [run] = await reader.readGraphRuns(root, { stateDir, now: THIRTY_MIN_LATER() });
   assert.strictEqual(run.active, true);
   assert.strictEqual(run.nodes.find((n) => n.label === 'planner').status, 'running');
   assert.strictEqual(run.cycleId, 'cyc-live');
+});
+
+// If the orchestrator session dies, nothing ever moves its run record off `running`. Live agents have been
+// silent for up to 74 minutes (2026-09-25 measurement), so a record saying running gets 3 hours, not 18
+// minutes, before its silent nodes are shown as stale.
+test('observer: a run whose record still says running goes stale after 3 silent hours', async () => {
+  const { root, stateDir } = await observerFixture('orphaned', { labels: ['planner'], record: { cycleId: 'cyc-orphan', status: 'running' } });
+  const [run] = await reader.readGraphRuns(root, { stateDir, now: Date.now() + (3 * 60 + 5) * 60 * 1000 });
+  assert.strictEqual(run.active, false);
+  assert.strictEqual(run.nodes.find((n) => n.label === 'planner').status, 'stale');
+  assert.strictEqual(run.state, 'running', 'the record is still shown as it is, next to the stale node');
+});
+
+// A resumed cycle's run record names the new run in runId and the earlier one in resumedFrom (REQ-R10).
+test('observer: the earlier run of a resumed cycle is joined as superseded and never inherits running', async () => {
+  const { root, stateDir } = await observerFixture('first-attempt', { labels: ['planner'], record: null });
+  await mkdir(path.join(stateDir, 'graph-cycles', 'cyc-resumed'), { recursive: true });
+  await writeFile(path.join(stateDir, 'graph-cycles', 'cyc-resumed', 'run.json'), JSON.stringify({ cycleId: 'cyc-resumed', runId: 'wf_second-attempt', resumedFrom: 'wf_first-attempt', status: 'running' }));
+  const [run] = await reader.readGraphRuns(root, { stateDir, now: THIRTY_MIN_LATER() });
+  assert.strictEqual(run.workflowId, 'wf_first-attempt');
+  assert.strictEqual(run.observed, true);
+  assert.strictEqual(run.cycleId, 'cyc-resumed');
+  assert.strictEqual(run.state, 'superseded');
+  assert.strictEqual(run.active, false);
+  assert.strictEqual(run.nodes.find((n) => n.label === 'planner').status, 'stale');
+  const records = await reader.readRunRecords(stateDir);
+  assert.strictEqual(records.get('wf_second-attempt').status, 'running');
 });
 
 test('observer: a sprint run with no run record is NOT_OBSERVED with a null cycle id', async () => {
@@ -625,6 +652,20 @@ test('observer: a non-sprint workflow is labelled as such, and goes stale after 
   assert.strictEqual(later.active, false);
   assert.ok(later.nodes.every((n) => n.status === 'stale'));
 });
+
+// A run with its own record keeps it, even when another cycle's record names it in resumedFrom, whichever
+// cycle directory is read first.
+for (const [label, olderName, liveName] of [['older cycle read first', 'a-older', 'z-live'], ['live cycle read first', 'z-older', 'a-live']]) {
+  test(`observer: a direct record wins over another cycle's resumedFrom (${label})`, async () => {
+    const stateDir = path.join(fixtureRoot, 'precedence-' + olderName, 'state');
+    await mkdir(path.join(stateDir, 'graph-cycles', olderName), { recursive: true });
+    await mkdir(path.join(stateDir, 'graph-cycles', liveName), { recursive: true });
+    await writeFile(path.join(stateDir, 'graph-cycles', olderName, 'run.json'), JSON.stringify({ cycleId: olderName, runId: 'wf_other', resumedFrom: 'wf_live', status: 'failed' }));
+    await writeFile(path.join(stateDir, 'graph-cycles', liveName, 'run.json'), JSON.stringify({ cycleId: liveName, runId: 'wf_live', status: 'running' }));
+    const records = await reader.readRunRecords(stateDir);
+    assert.deepStrictEqual(records.get('wf_live'), { cycleId: liveName, status: 'running' });
+  });
+}
 
 test('observer: a malformed or runId-less run.json is not joined and never throws', async () => {
   const { root, stateDir } = await observerFixture('bad-record', { labels: ['planner'], record: null });
