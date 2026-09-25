@@ -17,3 +17,5 @@ api.anthropic.com
 
 # Exact loopback API for the owner-approved local Stratum stack.
 127.0.0.1
+api.typesafe.ai
+docs.typesafe.ai
