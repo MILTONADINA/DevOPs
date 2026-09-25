@@ -22,7 +22,7 @@ When CQ stores a memory about your codebase — for example, "the `getUser()` fu
 
 ### What is ZK-Context?
 
-ZK-Context is CQ's encryption architecture. Your raw session context is encrypted on your local machine before it is sent to the CQ proxy. Decryption only happens inside an AWS Nitro Enclave — a hardware-isolated compute environment that even CQ operators cannot access. The Nitro Enclave produces a cryptographic attestation document that you can verify independently: it proves the exact code running inside the enclave is the published CQ code, not a modified version. ZK-Context is available on Enterprise plans.
+ZK-Context is CQ's planned encryption architecture (v0.7). It is not built yet: no enclave has been built or released, and encrypted forwarding is disabled (`docs/enclave-pcr-values.md`). As designed, your raw session context is encrypted on your local machine before it is sent to the CQ proxy, and it is decrypted only inside an AWS Nitro Enclave, a hardware-isolated compute environment that even CQ operators cannot access. The enclave would produce a cryptographic attestation document that you can verify independently, proving the exact code running inside it is the published CQ code. It is planned for Enterprise plans.
 
 ### Does CQ store my code?
 
@@ -93,7 +93,7 @@ retention assessment, and one-year/<30-second check are complete.
 
 ### How do I verify the TEE attestation?
 
-The expected PCR values for each CQ enclave release are published in `docs/enclave-pcr-values.md` in this repository. The CQ client library verifies these automatically before establishing a ZK-Context session. To verify manually:
+Not yet: no enclave has been built, so there are no PCR values, no attestation endpoint and no verifier (`docs/enclave-pcr-values.md`). Once an enclave is released and independently reviewed, its expected PCR values will be published in that file, and the client will verify the attestation document's signature, certificate chain, fresh nonce, enclave public key and PCRs before sending any session key. The planned manual check:
 
 ```bash
 # Request an attestation document from the enclave
@@ -105,7 +105,7 @@ curl https://proxy.startum.com/v1/attestation/document
 
 ### Does CQ see my Anthropic API key?
 
-In local development (Phase 1 proxy), yes — the key is in the proxy's environment (`ANTHROPIC_API_KEY`; the proxy does not read `.env`) and the proxy uses it to forward requests to Anthropic. In production ZK-Context mode, the key is passed through the encrypted payload and only reconstructed inside the TEE before the API call. CQ's proxy never logs API keys. The operator dashboard shows only masked keys (`sk-ant-...xxxx`).
+In local development (Phase 1 proxy), yes — the key is in the proxy's environment (`ANTHROPIC_API_KEY`; the proxy does not read `.env`) and the proxy uses it to forward requests to Anthropic. In the planned ZK-Context mode (v0.7, not built), the key would travel only inside the encrypted payload and be reconstructed inside the TEE before the API call. CQ's proxy never logs API keys. The operator dashboard shows only masked keys (`sk-ant-...xxxx`).
 
 ### Is CQ SOC 2 compliant?
 

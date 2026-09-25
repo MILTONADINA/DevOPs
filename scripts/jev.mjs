@@ -7,8 +7,8 @@
 // is never proof of work on its own.
 //
 // Only repository text and this project's own logs may be sent. The client
-// refuses secret-shaped content and the API key itself, and reads the key only
-// from TYPESAFE_API_KEY.
+// refuses secret-shaped content and the API key itself, and reads the key from
+// TYPESAFE_API_KEY or from the file named by TYPESAFE_API_KEY_FILE.
 
 import { readFileSync } from 'node:fs';
 
