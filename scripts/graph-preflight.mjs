@@ -270,7 +270,12 @@ function main() {
   gitRemote(gitReady);
   nodeVersion();
   npmRuns();
-  dependencyDirectory('deps.root', path.join(ROOT, 'node_modules'), checkOnly, registry);
+  // Test overrides (GRAPH_PREFLIGHT_DEPS_ROOT_DIR, _DEPS_STRATUM_DIR, _PROOFS_DIR) must stay inside the
+  // project root, so a fixture can stand in for gitignored directories a fresh checkout lacks.
+  const rootDependencies = path.resolve(process.env.GRAPH_PREFLIGHT_DEPS_ROOT_DIR || path.join(ROOT, 'node_modules'));
+  if (!insideRoot(rootDependencies)) throw new Error('Root dependencies leave the project root');
+  if (existsSync(rootDependencies) && !insideRoot(realpathSync(rootDependencies))) throw new Error('Root dependencies redirect outside the project root');
+  dependencyDirectory('deps.root', rootDependencies, checkOnly, registry);
   const stratumDependencies = path.resolve(process.env.GRAPH_PREFLIGHT_DEPS_STRATUM_DIR || path.join(ROOT, 'stratum', 'node_modules'));
   if (!insideRoot(stratumDependencies)) throw new Error('Stratum dependencies leave the project root');
   if (existsSync(stratumDependencies) && !insideRoot(realpathSync(stratumDependencies))) throw new Error('Stratum dependencies redirect outside the project root');
@@ -280,7 +285,9 @@ function main() {
     if (name === 'cosign' && checks.at(-1).status === 'fail' && !checkOnly) repairCosign(registry);
   }
   writable('state.writable', STATE);
-  writable('proofs.writable', path.join(ROOT, '.workflow', 'proofs'));
+  const proofsDirectory = path.resolve(process.env.GRAPH_PREFLIGHT_PROOFS_DIR || path.join(ROOT, '.workflow', 'proofs'));
+  if (!insideRoot(proofsDirectory)) throw new Error('Proofs directory leaves the project root');
+  writable('proofs.writable', proofsDirectory);
   haltAbsent();
   blockedHumanAbsent();
   const sha = gitReady ? firstLine(run('git', ['rev-parse', 'HEAD']).stdout) : null;
