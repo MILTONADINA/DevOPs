@@ -58,7 +58,8 @@ async function clearRows() {
     ["knowledge_edges", "id", edge],
     ["knowledge_entities", "id", entityA], ["knowledge_entities", "id", entityB],
     ["knowledge_entities", "id", fileEntity],
-    ["sessions", "id", referenceSession], ["sessions", "id", sharedSession], ["sessions", "id", session], ["api_keys", "id", referenceKey], ["organizations", "id", org],
+    ["sessions", "id", referenceSession], ["sessions", "id", sharedSession], ["sessions", "id", session], ["api_keys", "id", referenceKey],
+    ["invoice_send_claims", "org_id", org], ["organizations", "id", org],
   ]) checked(await db.from(table).delete().eq(column, value), `delete ${table}`);
 }
 
@@ -68,6 +69,7 @@ try {
   checked(await db.from("sessions").insert({ id: session, org_id: org, model: "local-check" }), "insert session");
   checked(await db.from("sessions").insert({ id: sharedSession, org_id: org, model: "local-check" }), "insert shared session");
   checked(await db.from("api_keys").insert({ id: referenceKey, org_id: org, key_hash: randomUUID(), name: "reference fixture", project_scope: "orion" }), "insert reference key");
+  checked(await db.from("invoice_send_claims").insert({ org_id: org, period_start: "2026-08-01T00:00:00Z", period_end: "2026-09-01T00:00:00Z" }), "insert held invoice claim");
   checked(await db.from("sessions").insert({ id: referenceSession, org_id: org, project_scope: "orion", kind: "conversation", conversation_key_id: referenceKey, model: "local-check" }), "insert reference conversation");
   checked(await db.from("knowledge_entities").insert([
     { id: entityA, org_id: org, session_id: session, kind: "Decision", name: `recovery-a-${org}`, provenance_complete: true, scope_verified: true },
@@ -171,6 +173,11 @@ try {
   const restoredShared = checked(await db.from("knowledge_entity_sessions").select("session_id").eq("org_id", org).eq("entity_id", entityA), "read restored entity links");
   const restoredEdgeLinks = checked(await db.from("knowledge_edge_sessions").select("session_id").eq("org_id", org).eq("edge_id", edge), "read restored edge links");
   const restoredSourceLink = checked(await db.from("source_fact_links").select("id,created_at").eq("org_id", org).eq("file_entity_id", fileEntity).eq("function_change_id", activeFact).single(), "read restored source link");
+  const restoredClaims = checked(await db.from("invoice_send_claims").select("period_start,period_end").eq("org_id", org), "read restored invoice claims");
+  const restoredKey = checked(await db.from("api_keys").select("is_active").eq("id", referenceKey).single(), "read restored key state");
+  if (restoredClaims.length !== 1 || restoredKey.is_active !== false) {
+    throw new Error(`held invoice claim not restored (${restoredClaims.length}) or a restored key is active (${restoredKey.is_active}); PB-64/PB-65`);
+  }
   const inventory = checked(await db.rpc("inspect_session_erasure", { p_org_id: org, p_session_id: session }), "read restored erasure inventory");
   const referenceInventory = checked(await db.rpc("inspect_session_erasure", { p_org_id: org, p_session_id: referenceSession }), "read restored reference inventory");
   if (restoredFact.id !== fact || restoredFact.session_id !== session || !restoredFact.is_suppressed ||

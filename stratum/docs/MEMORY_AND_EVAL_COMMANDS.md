@@ -27,9 +27,9 @@ the local database; provider-backed messages need a configured provider.
 Clean-machine and cross-platform timing gates remain open.
 
 `npm run backup -- --org-id <uuid> [--pretty]` exports one org's full row-set across all
-21 tables to a timestamped JSON in the gitignored `backups/` (disaster recovery / data
+23 tables to a timestamped JSON in the gitignored `backups/` (disaster recovery / data
 portability / GDPR export). **FREE**, read-only (SELECT only); needs Supabase creds.
-`npm run restore -- --file <path> [--dry-run]` re-inserts a backup in FK-dependency order
+`npm run restore -- --file <path> [--dry-run] [--keep-key-state]` re-inserts a backup (API keys come back inactive unless `--keep-key-state`) in FK-dependency order
 — preserving UUIDs (so cross-table references stay valid) and stripping billing's generated
 columns — into a CLEAN target. A disposable local backup → delete → restore
 round-trip is referential-integrity-verified; real-data recovery is unverified.

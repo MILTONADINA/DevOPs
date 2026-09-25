@@ -38,8 +38,8 @@ test("real restore fails without credentials while dry run validates the file", 
 
 describe("parseArgs", () => {
   test("defaults + flags", () => {
-    expect(parseArgs([])).toEqual({ dryRun: false });
-    expect(parseArgs(["--file", "/tmp/b.json", "--dry-run"])).toEqual({ file: "/tmp/b.json", dryRun: true });
+    expect(parseArgs([])).toEqual({ dryRun: false, keepKeyState: false });
+    expect(parseArgs(["--file", "/tmp/b.json", "--dry-run"])).toEqual({ file: "/tmp/b.json", dryRun: true, keepKeyState: false });
   });
 });
 
@@ -185,5 +185,32 @@ describe("restorePlan", () => {
     expect(RESTORE_ORDER.indexOf("api_keys")).toBeLessThan(RESTORE_ORDER.indexOf("sessions"));
     expect(RESTORE_ORDER.indexOf("function_changes")).toBeLessThan(RESTORE_ORDER.indexOf("audit_statuses"));
     expect(RESTORE_ORDER.indexOf("audit_conflicts")).toBeLessThan(RESTORE_ORDER.indexOf("audit_statuses"));
+  });
+});
+
+// PB-64 and PB-65 (2026-09-25): a restore cannot know about revocations made after the backup, so API
+// keys come back inactive unless the operator asks otherwise; invoice claims are part of the backup.
+describe("backup and restore hardening (PB-64, PB-65)", () => {
+  const base = (keys: unknown[]): BackupFile => ({
+    orgId: "o1",
+    exportedAt: "2026-09-25T00:00:00Z",
+    tables: Object.fromEntries([["organizations", [{ id: "o1" }]], ...ORG_SCOPED_TABLES.map((table) => [table, table === "api_keys" ? keys : []]), ["pruning_logs", []]]),
+  });
+
+  test("restores API keys inactive by default, whatever the backup says", () => {
+    const plan = restorePlan(base([{ id: "k1", org_id: "o1", key_hash: "h1", name: "ci", is_active: true }, { id: "k2", org_id: "o1", key_hash: "h2", name: "old", is_active: false }]));
+    const keys = plan.find((p) => p.table === "api_keys")!.rows as { is_active: boolean }[];
+    expect(keys.map((k) => k.is_active)).toEqual([false, false]);
+  });
+
+  test("--keep-key-state restores each key's backed-up state", () => {
+    expect(parseArgs(["--file", "b.json", "--keep-key-state"]).keepKeyState).toBe(true);
+    const plan = restorePlan(base([{ id: "k1", org_id: "o1", key_hash: "h1", name: "ci", is_active: true }]), { keepKeyState: true });
+    expect((plan.find((p) => p.table === "api_keys")!.rows[0] as { is_active: boolean }).is_active).toBe(true);
+  });
+
+  test("invoice_send_claims is backed up and restored right after invoices", () => {
+    expect(ORG_SCOPED_TABLES).toContain("invoice_send_claims");
+    expect(RESTORE_ORDER.indexOf("invoice_send_claims")).toBe(RESTORE_ORDER.indexOf("invoices") + 1);
   });
 });

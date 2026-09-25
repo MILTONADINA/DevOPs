@@ -25,6 +25,7 @@ export const ORG_SCOPED_TABLES = [
   "sessions",
   "billing_records",
   "invoices",
+  "invoice_send_claims",
   "function_changes",
   "tech_decisions",
   "policy_updates",
@@ -136,7 +137,9 @@ export async function exportOrg(client: SupabaseClient, orgId: string, exportedA
             ? ["entity_id", "session_id"]
             : t === "knowledge_edge_sessions"
               ? ["edge_id", "session_id"]
-              : ["id"];
+              : t === "invoice_send_claims"
+                ? ["period_start", "period_end"] // primary key (org_id, period_start, period_end); no id column
+                : ["id"];
     tables[t] = await selectAll(client, t, "org_id", orgId, order);
   }
 
