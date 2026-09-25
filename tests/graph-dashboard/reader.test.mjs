@@ -61,7 +61,7 @@ before(async () => {
     'async function discoverRunDirectories(', 'function buildLabelStates(',
     'async function computeRunActivityWindow(', 'async function computeLabelTiming(',
     'async function findBacklogItem(', 'function deriveExpectedLabels(',
-    'function buildNodes(',
+    'function buildNodes(', 'async function readRunRecords(',
   ]) {
     assert.ok(section.includes(fn), `extracted section is missing expected declaration: ${fn}`);
   }
@@ -71,7 +71,7 @@ before(async () => {
   }
 
   const header = 'import { readFile, readdir, stat } from "node:fs/promises";\nimport * as path from "node:path";\n\n';
-  const footer = '\n\nexport { readGraphRuns, buildRunModel, discoverRunDirectories, buildLabelStates, readJournalEvents, computeRunActivityWindow, computeLabelTiming, findBacklogItem, scanFileForBacklogItem, deriveExpectedLabels, buildNodes };\n';
+  const footer = '\n\nexport { readGraphRuns, buildRunModel, discoverRunDirectories, buildLabelStates, readJournalEvents, computeRunActivityWindow, computeLabelTiming, findBacklogItem, scanFileForBacklogItem, deriveExpectedLabels, buildNodes, readRunRecords };\n';
 
   const tmpDir = await mkdtemp(path.join(os.tmpdir(), 'graph-dashboard-reader-'));
   extractedModulePath = path.join(tmpDir, 'reader-under-test.mjs');
@@ -564,3 +564,77 @@ test('synthetic: readGraphRuns never throws for one bad run dir among several go
   const ids = runs.map((r) => r.workflowId).sort();
   assert.ok(ids.includes('wf_good'), 'the good run must still come back even if a sibling run is weird');
 });
+
+// =============================================================================
+// Masterpiece REQ-M24 / AC-M24.1 (roadmap MR-15, PB-57): the dashboard joins
+// run records, never shows a killed run as live, and labels what it cannot see.
+// =============================================================================
+async function observerFixture(name, { labels, record }) {
+  const root = path.join(fixtureRoot, name);
+  const runDir = path.join(root, 'sess1', 'subagents', 'workflows', 'wf_' + name);
+  const stateDir = path.join(root, 'state');
+  await mkdir(runDir, { recursive: true });
+  await mkdir(path.join(stateDir, 'graph-cycles'), { recursive: true });
+  const lines = labels.map((label, i) => JSON.stringify({ type: 'started', key: 'k' + i, agentId: 'agent' + i, label, phase: 'Plan' }));
+  await writeFile(path.join(runDir, 'journal.jsonl'), lines.join('\n') + '\n');
+  for (let i = 0; i < labels.length; i++) await writeFile(path.join(runDir, 'agent-agent' + i + '.jsonl'), '{}');
+  if (record) {
+    await mkdir(path.join(stateDir, 'graph-cycles', record.cycleId), { recursive: true });
+    await writeFile(path.join(stateDir, 'graph-cycles', record.cycleId, 'run.json'), JSON.stringify({ ...record, runId: 'wf_' + name }));
+  }
+  return { root, stateDir };
+}
+
+const THIRTY_MIN_LATER = () => Date.now() + 30 * 60 * 1000;
+
+test('observer: a killed run (30 min silent, run record failed) is not active and its node is stale', async () => {
+  const { root, stateDir } = await observerFixture('killed', { labels: ['planner'], record: { cycleId: 'cyc-killed', status: 'failed' } });
+  const [run] = await reader.readGraphRuns(root, { stateDir, now: THIRTY_MIN_LATER() });
+  assert.strictEqual(run.active, false);
+  assert.strictEqual(run.nodes.find((n) => n.label === 'planner').status, 'stale');
+  assert.strictEqual(run.cycleId, 'cyc-killed');
+  assert.strictEqual(run.observed, true);
+  assert.strictEqual(run.state, 'failed');
+  assert.strictEqual(run.kind, 'sprint');
+});
+
+test('observer: a run whose record says running is never marked stale, however long it is silent', async () => {
+  const { root, stateDir } = await observerFixture('long-running', { labels: ['planner'], record: { cycleId: 'cyc-live', status: 'running' } });
+  const [run] = await reader.readGraphRuns(root, { stateDir, now: THIRTY_MIN_LATER() });
+  assert.strictEqual(run.active, true);
+  assert.strictEqual(run.nodes.find((n) => n.label === 'planner').status, 'running');
+  assert.strictEqual(run.cycleId, 'cyc-live');
+});
+
+test('observer: a sprint run with no run record is NOT_OBSERVED with a null cycle id', async () => {
+  const { root, stateDir } = await observerFixture('unrecorded', { labels: ['preflight', 'planner'], record: null });
+  const [run] = await reader.readGraphRuns(root, { stateDir, now: Date.now() });
+  assert.strictEqual(run.observed, false);
+  assert.strictEqual(run.state, 'NOT_OBSERVED');
+  assert.strictEqual(run.cycleId, null);
+  assert.strictEqual(run.kind, 'sprint');
+  assert.strictEqual(run.active, true, 'fresh activity keeps an unrecorded run active');
+});
+
+test('observer: a non-sprint workflow is labelled as such, and goes stale after 18 silent minutes', async () => {
+  const { root, stateDir } = await observerFixture('design-run', { labels: ['map:one', 'map:two'], record: null });
+  const [fresh] = await reader.readGraphRuns(root, { stateDir, now: Date.now() });
+  assert.strictEqual(fresh.kind, 'workflow');
+  assert.strictEqual(fresh.active, true);
+  const [later] = await reader.readGraphRuns(root, { stateDir, now: THIRTY_MIN_LATER() });
+  assert.strictEqual(later.active, false);
+  assert.ok(later.nodes.every((n) => n.status === 'stale'));
+});
+
+test('observer: a malformed or runId-less run.json is not joined and never throws', async () => {
+  const { root, stateDir } = await observerFixture('bad-record', { labels: ['planner'], record: null });
+  await mkdir(path.join(stateDir, 'graph-cycles', 'broken'), { recursive: true });
+  await writeFile(path.join(stateDir, 'graph-cycles', 'broken', 'run.json'), '{not json');
+  await mkdir(path.join(stateDir, 'graph-cycles', 'no-run-id'), { recursive: true });
+  await writeFile(path.join(stateDir, 'graph-cycles', 'no-run-id', 'run.json'), JSON.stringify({ cycleId: 'no-run-id', status: 'failed' }));
+  const records = await reader.readRunRecords(stateDir);
+  assert.strictEqual(records.size, 0);
+  const [run] = await reader.readGraphRuns(root, { stateDir, now: Date.now() });
+  assert.strictEqual(run.state, 'NOT_OBSERVED');
+});
+
