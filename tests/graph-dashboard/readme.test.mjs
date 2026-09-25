@@ -219,12 +219,12 @@ test('documents the halt banner as existence-only, contents shown verbatim', () 
   assert.ok(includesPhrase(readme, 'never interpreted, only displayed verbatim'));
 });
 
-test('documents the exact four node states and the real node-chain shape', () => {
-  assert.ok(indexHtml.includes("var NODE_STATES = ['queued', 'running', 'done', 'errored'];"), 'the four node states changed in index.html');
-  for (const stateVar of ['--state-queued', '--state-running', '--state-done', '--state-errored']) {
+test('documents the exact five node states and the real node-chain shape', () => {
+  assert.ok(indexHtml.includes("var NODE_STATES = ['queued', 'running', 'done', 'errored', 'stale'];"), 'the five node states changed in index.html');
+  for (const stateVar of ['--state-queued', '--state-running', '--state-done', '--state-errored', '--state-stale']) {
     assert.ok(indexHtml.includes(stateVar), `index.html no longer defines ${stateVar}`);
   }
-  for (const word of ['queued', 'running', 'done', 'errored', 'planner', 'reviewer', 'security', 'validator']) {
+  for (const word of ['queued', 'running', 'done', 'errored', 'stale', 'planner', 'reviewer', 'security', 'validator']) {
     assert.ok(readme.includes(word), `README no longer mentions "${word}"`);
   }
 });
@@ -307,19 +307,18 @@ test('the four named slash commands the README defers control to actually exist'
   }
 });
 
-test('cycleId and cycleOutcome really are hardcoded null with no other assignment anywhere', () => {
-  const cycleIdOccurrences = serverSrc.match(/cycleId:[^\n]*/g) || [];
+test('cycleId comes only from a joined run record, and cycleOutcome stays hardcoded null', () => {
   const cycleOutcomeOccurrences = serverSrc.match(/cycleOutcome:[^\n]*/g) || [];
-  assert.equal(cycleIdOccurrences.length, 1, `expected exactly one "cycleId:" key in server.mjs, found ${cycleIdOccurrences.length}`);
   assert.equal(cycleOutcomeOccurrences.length, 1, `expected exactly one "cycleOutcome:" key in server.mjs, found ${cycleOutcomeOccurrences.length}`);
-  assert.ok(cycleIdOccurrences[0].trim().startsWith('cycleId: null'), `cycleId is no longer hardcoded null: ${cycleIdOccurrences[0]}`);
   assert.ok(cycleOutcomeOccurrences[0].trim().startsWith('cycleOutcome: null'), `cycleOutcome is no longer hardcoded null: ${cycleOutcomeOccurrences[0]}`);
+  assert.ok(serverSrc.includes('cycleId: record ? record.cycleId : null'), 'cycleId must come from the joined run record and be null otherwise');
+  assert.ok(serverSrc.includes("state: record ? record.status || 'UNKNOWN' : 'NOT_OBSERVED'"), 'a run with no run record must be NOT_OBSERVED');
 
   assert.ok(readme.includes('**`cycleId`**'));
   assert.ok(readme.includes('cycleOutcome') && readme.includes('readyForPR'));
   assert.ok(includesPhrase(readme, 'not shown today'));
-  // run.json (REQ-R10) now records the cycle id; the README must say the dashboard does not read it yet.
-  assert.ok(readme.includes('graph-cycles/<cycleId>/run.json') && includesPhrase(readme, 'does not read it yet'));
+  // The cycle id is joined from run.json (REQ-R10, masterpiece MR-15); the README must say where it comes from.
+  assert.ok(readme.includes('graph-cycles/<cycleId>/run.json') && includesPhrase(readme, 'joined by `runId`'));
   assert.ok(readme.includes('always `null`'));
 });
 
