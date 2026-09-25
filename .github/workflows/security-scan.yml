@@ -88,6 +88,48 @@ jobs:
           sys.exit(rc)
           PY
 
+  dependency-audit:
+    # specs/security/ci-dependency-audit.md (masterpiece REQ-M22). Reads the lockfiles;
+    # fails on a high or critical advisory and when a lockfile resolves no dependencies.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444  # v5.0.0
+        with: { node-version: 22 }
+      - name: npm audit (root and stratum)
+        shell: bash
+        run: |
+          set -- . stratum
+          set -euo pipefail
+          status=0
+          for dir in "$@"; do
+            rc=0
+            (cd "$dir" && npm audit --audit-level=high --json > "$RUNNER_TEMP/audit.json") || rc=$?
+            python3 - "$dir" "$rc" "$RUNNER_TEMP/audit.json" <<'PY' || status=1
+          import json, sys
+          directory, rc, path = sys.argv[1], int(sys.argv[2]), sys.argv[3]
+          d = json.load(open(path))
+          meta = d.get("metadata", {})
+          total = meta.get("dependencies", {}).get("total", 0)
+          vulns = meta.get("vulnerabilities", {})
+          print(f"npm audit {directory}: exit {rc}, {total} dependencies, vulnerabilities {vulns}")
+          for name, v in sorted(d.get("vulnerabilities", {}).items()):
+              if v.get("severity") in ("high", "critical"):
+                  print(f"VULNERABLE {v['severity']} {name} {v.get('range', '')}")
+          if total == 0:
+              sys.exit(f"npm audit {directory} saw no dependencies: refusing to report a pass")
+          if "error" in d:
+              sys.exit(f"npm audit {directory} failed: {d['error']}")
+          sys.exit(1 if rc else 0)
+          PY
+          done
+          exit $status
+      - name: Dependency review (pull requests only)
+        if: github.event_name == 'pull_request'
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294  # v5.0.0
+        with:
+          fail-on-severity: high
+
   # ---------------------------------------------------------------------
   # DeepTeam OWASP_ASI_2026() red-team gate (spec phase-2/B-deepteam-ci.md).
   # All `uses:` here SHA-pinned per REQ-B8 / AST08 defense.
