@@ -5,7 +5,7 @@
  * targets (docs/MONITORING.md + docs/GLOSSARY.md):
  *   Tier-1 hot recall (RAM)        sub-ms              (GLOSSARY)
  *   Pruner (ONNX encode + KadaneDial)  p99 < 20ms      (MONITORING pruning.latency_ms)
- *   Tier-2 warm fact query         p95 < 80ms          (MONITORING memory.tier2_latency_ms)
+ *   Tier-2 warm fact query         p95 < 50ms          (plan.md §4 ship gate; stricter than MONITORING's 80ms alert)
  *   Tier-3 vector search           p95 < 200ms         (MONITORING memory.tier3_*_latency_ms)
  *   Tier-3 graph status query      p95 < 200ms         (no explicit target; vector-class)
  *
@@ -181,19 +181,19 @@ export async function main(): Promise<number> {
         await warm.queryRecent(orgId, { limit: 20 });
       });
       const t2s = summarize(t2);
-      rows.push({ label: "Tier-2 warm fact query (queryRecent, live Supabase)", summary: t2s, target: { metric: "p95", maxMs: 80 }, passed: gate(t2s, { metric: "p95", maxMs: 80 }) });
+      rows.push({ label: "Tier-2 warm fact query (queryRecent, Supabase API)", summary: t2s, target: { metric: "p95", maxMs: 50 }, passed: gate(t2s, { metric: "p95", maxMs: 50 }) });
 
       const t3g = await benchAsync(40, async () => {
         await graph.entityStatus(orgId, "benchFn0");
       });
       const t3gs = summarize(t3g);
-      rows.push({ label: "Tier-3 graph status (entity_status, live Supabase)", summary: t3gs, target: { metric: "p95", maxMs: 200 }, passed: gate(t3gs, { metric: "p95", maxMs: 200 }) });
+      rows.push({ label: "Tier-3 graph status (entity_status, Supabase API)", summary: t3gs, target: { metric: "p95", maxMs: 200 }, passed: gate(t3gs, { metric: "p95", maxMs: 200 }) });
 
       const t3v = await benchAsync(40, async () => {
         await vectors.search(orgId, qVec, 10);
       });
       const t3vs = summarize(t3v);
-      rows.push({ label: "Tier-3 vector search (pgvector, live Supabase)", summary: t3vs, target: { metric: "p95", maxMs: 200 }, passed: gate(t3vs, { metric: "p95", maxMs: 200 }) });
+      rows.push({ label: "Tier-3 vector search (pgvector, Supabase API)", summary: t3vs, target: { metric: "p95", maxMs: 200 }, passed: gate(t3vs, { metric: "p95", maxMs: 200 }) });
     } catch (error) {
       benchmarkError = error;
     }

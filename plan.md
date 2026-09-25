@@ -246,9 +246,11 @@ must be recalculated after the open gates are reconciled.
   an injected model completion; validated facts only. The live smoke used Haiku.
 - [x] **`stratum/src/memory/warm/tier2.ts`** + query API. Trusted org/session
   keys and read validation are covered by unit and live smoke evidence.
-- [ ] **Tier 2 latency gate**. `npm run bench:tiers` exists, but the recorded
-  remote-client result exceeded its 80ms monitoring target; the blueprint's
-  <50ms p95 ship target needs a representative deployment measurement.
+- [ ] **Tier 2 latency gate**. `npm run bench:tiers` now checks the <50ms p95
+  ship target (it used MONITORING's 80ms alert). A local Compose run on
+  2026-09-25 measured Tier-2 p95 2.31 ms (Tier-3 graph 1.53 ms, vector
+  1.54 ms, same machine). That is a local sample, not the representative
+  deployment measurement this gate needs; no deployment topology exists yet.
 
 ### 4c. Tier 3 — Cold Memory (Supabase pgvector + graph)
 

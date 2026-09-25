@@ -1,12 +1,17 @@
 {
   "name": "devops-marketplace",
-  "description": "DevOPs — the universal DevOps workflow for AI coding agents",
+  "description": "DevOPs: a verification-first DevOps workflow for AI coding agents, built for Claude Code",
   "plugins": [
     {
       "name": "devops",
       "source": ".",
       "category": "workflow",
-      "tags": ["devops", "spec-driven", "verification", "security", "universal"]
+      "tags": [
+        "devops",
+        "spec-driven",
+        "verification",
+        "security"
+      ]
     }
   ]
 }
