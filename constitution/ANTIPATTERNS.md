@@ -272,8 +272,11 @@ write to `meta-memory/` before you write it; no script does it for you.
 **Pattern:** Agent installs and uses skills from unverified sources without
 provenance checks.
 
-**Failure mode:** Skill poisoning. Real incident: the ClawHub skill registry
-was systematically poisoned at scale.
+**Failure mode:** Skill poisoning. Reported incident: in the "ClawHavoc"
+campaign (disclosed by Koi Security on 2026-02-01), attackers uploaded
+trojanized skills to OpenClaw's ClawHub registry; by 2026-02-05 Antiy counted
+1,184 malicious packages from 12 publisher accounts
+([Cybersecurity News](https://cybersecuritynews.com/clawhavoc-poisoned-openclaws-clawhub/)).
 
 **Enforcement:** Skills are signed with Sigstore/Cosign. The installer
 verifies signatures before installing. Each skill's SHA-256 is pinned
