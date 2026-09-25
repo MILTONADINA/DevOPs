@@ -13,6 +13,7 @@ import {
   rowToFact,
   createWarmMemory,
 } from "../../src/memory/warm/tier2";
+import { factSchema } from "../../src/memory/warm/schemas";
 import { makeFakeSupabase } from "./fake-supabase";
 import type { AnyFact, TechDecisionFact, FunctionChangeFact, TodoFact } from "../../src/types/facts";
 
@@ -22,8 +23,12 @@ const fc: FunctionChangeFact = { ...base, fact_type: "FunctionChange", old_name:
 const ctx = { orgId: "org-uuid", sessionId: "real-session-uuid" };
 
 describe("Tier-2 table routing", () => {
-  test("FACT_TABLES + reverse map are consistent for all 5 types", () => {
-    expect(Object.keys(FACT_TABLES)).toHaveLength(5);
+  test("FACT_TABLES + reverse map give every validated fact type its own table", () => {
+    // Derived from the validation schema, so adding a fact type (as #136 did) needs no edit here
+    // but still fails if the type is validated without a table, or two types share one.
+    const validated = factSchema.options.map((option) => option.shape.fact_type.value).sort();
+    expect(Object.keys(FACT_TABLES).sort()).toEqual(validated);
+    expect(new Set(Object.values(FACT_TABLES)).size).toBe(validated.length);
     for (const [ft, table] of Object.entries(FACT_TABLES)) {
       expect(tableForFactType(ft as AnyFact["fact_type"])).toBe(table);
       expect(TABLE_FACT_TYPES[table]).toBe(ft);

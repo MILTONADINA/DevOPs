@@ -163,6 +163,9 @@ describe("shadow observer", () => {
     const metrics: ShadowMetric[] = [];
     const calls: unknown[][] = [];
     const observe = createShadowObserver(encoder, (metric) => metrics.push(metric), {
+      // A fixed clock: with this constant encoder every raw score is equal, so real-clock
+      // millisecond decay differences decided whether z-normalization ran (flaky selection).
+      now: () => 100_000_000,
       supersession: {
         resolveEntities: async (org, session, project, exchanges) => {
           calls.push([org, session, project, exchanges]);

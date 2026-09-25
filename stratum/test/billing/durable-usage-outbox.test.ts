@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 vi.unmock("node:fs");
 vi.unmock("fs");
-import { mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { createLocalUsageOutbox } from "../../src/billing/durable-usage-outbox";
 import type { UsageEvent } from "../../src/billing/usage-recorder";
@@ -21,6 +21,7 @@ const EVENT: UsageEvent = {
 };
 
 function directory(): string {
+  mkdirSync(join(process.cwd(), "data"), { recursive: true }); // gitignored: absent in a fresh checkout
   const dir = mkdtempSync(join(process.cwd(), "data", "usage-outbox-test-"));
   dirs.push(dir);
   return dir;
