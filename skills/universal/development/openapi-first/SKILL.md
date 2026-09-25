@@ -152,4 +152,5 @@ Generated code provides:
 
 **This skill is working when:** every API endpoint in the project is described
 in OpenAPI, every type is generated (not hand-written), and contract tests run
-on every PR. Track in `governance/telemetry/openapi-coverage.jsonl`.
+on every PR. The intended record is
+`governance/telemetry/openapi-coverage.jsonl`. Nothing writes it yet, so check by hand.

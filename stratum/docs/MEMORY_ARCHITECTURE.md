@@ -208,7 +208,7 @@ Neo4j stores the knowledge graph for deterministic queries like "what is the cur
 ```cypher
 (Function)-[:DEPRECATED_BY {at: timestamp}]->(Function)
 (Function)-[:REFERENCED_IN {line: int}]->(Commit)
-(Decision)-[:SUPERCEDES]->(Decision)
+(Decision)-[:SUPERSEDES]->(Decision)
 (Decision)-[:APPLIES_TO]->(Project)
 (Developer)-[:AUTHORED]->(Commit)
 (Commit)-[:MODIFIES]->(Function)

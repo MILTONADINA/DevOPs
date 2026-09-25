@@ -62,16 +62,19 @@ duplicated Claude Code's native behavior (`ask-dont-assume`,
 
 ## Why
 
-Across 591 documented production agent failures (2023–2026), **88% trace to
-infrastructure gaps, not model quality**. The failure modes are well-known:
+Clyro, which sells agent-governance tooling, reports that of 591 agent
+incidents it collected (2023–2026; the dataset is not published), **88% of
+those it could classify traced to infrastructure gaps, not model quality**
+([Clyro, Apr 2026](https://clyro.dev/blog/the-5-ai-agent-failure-modes-why-they-fail-in-production/)). Its five failure modes are below. The shares
+are Clyro's; the examples are not from its dataset.
 
-| Rank | Failure mode | Share | Example incident |
-|------|--------------|-------|------------------|
-| 1 | Context Blindness | 31.6% | Agent forgets a decision made 50 turns ago |
-| 2 | Rogue Actions | 30.3% | Amazon Kiro deleted a production AWS environment, 13h outage |
-| 3 | Silent Degradation | 24.9% | Output quality drifts week-over-week, unnoticed |
-| 4 | Memory Corruption | 8.1% | Persistent memory poisoned by adversarial input |
-| 5 | Runaway Execution | 5.1% | Claude Code subagent burned 27M tokens in a 4.6h infinite loop |
+| Rank | Failure mode | Share | Example |
+|------|--------------|-------|---------|
+| 1 | Context Blindness | 31.6% | Agent forgets a decision made 50 turns ago (illustrative) |
+| 2 | Rogue Actions | 30.3% | Amazon's Kiro agent reportedly deleted and recreated an AWS Cost Explorer environment, a ~13h outage in one region (FT, Feb 2026; [Amazon](https://www.aboutamazon.com/news/aws/aws-service-outage-ai-bot-kiro) attributes it to misconfigured access controls) |
+| 3 | Silent Degradation | 24.9% | Output quality drifts week-over-week, unnoticed (illustrative) |
+| 4 | Memory Corruption | 8.1% | Persistent memory poisoned by adversarial input (illustrative) |
+| 5 | Runaway Execution | 5.1% | A Claude Code subagent retried one failing command 300+ times over ~4.6h, using ~27M tokens (user report, [anthropics/claude-code#15909](https://github.com/anthropics/claude-code/issues/15909)) |
 
 DevOPs is the infrastructure that fixes all five — without trusting the model to
 behave. The mantra: **you cannot ask an agent if it is in a loop; you must prove it

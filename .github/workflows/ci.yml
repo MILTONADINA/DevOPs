@@ -38,7 +38,8 @@ jobs:
       - run: npm install -g tsx
       - name: Validate all claims
         run: tsx verification/claim-validator.ts --all --no-rerun
-        # Note: --no-rerun in CI; full --rerun in pre-merge gate
+        # --no-rerun: re-running proofs needs the local environment. .workflow/proofs/ is
+        # gitignored, so on a CI checkout this finds no claims and passes (PB-60).
       - name: Check stale proofs
         run: tsx verification/stale-proof-detector.ts
       - name: Lint Renovate template (REQ-H1..H6)

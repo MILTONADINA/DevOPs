@@ -98,5 +98,5 @@ If a secret has ALREADY been committed (caught by Tier 2/3):
 
 ---
 
-**This skill is working when:** zero secrets reach the remote. Track in
-`governance/telemetry/secret-findings.jsonl`.
+**This skill is working when:** zero secrets reach the remote. The intended
+record is `governance/telemetry/secret-findings.jsonl`. Nothing writes it yet, so check by hand.

@@ -18,9 +18,12 @@ skill that produces EARS specs.
 
 ## Why this matters for AI coding
 
-Without EARS, LLMs without specs generate vulnerable code 9.8-42.1% of the
-time (multiple 2025-2026 benchmarks). EARS removes the "interpret it however
-makes sense" failure mode by being parseable.
+One 2025 study found that 9.8-42.1% of code from eight LLMs under plain
+prompts contained a vulnerability, across two security benchmarks
+([Yan et al., arXiv:2506.23034](https://arxiv.org/abs/2506.23034)). That study
+did not test EARS. EARS is used here because precise requirements leave less
+to interpret: it removes the "interpret it however makes sense" failure mode
+by being parseable.
 
 ## See also
 

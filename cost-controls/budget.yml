@@ -15,7 +15,8 @@ hourly_cap_usd: 20.00
 
 # Per-day cap (rolling 24h).
 # Catches "left it running overnight" disasters.
-# Real incident: $437 burned overnight.
+# Example: an overnight run reported to cost $437 (unverified anecdote;
+# source in cost-controls/README.md).
 daily_cap_usd: 100.00
 
 # Per-month cap (rolling 30d). For project-level cost governance.

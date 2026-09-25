@@ -30,7 +30,7 @@
 | 11 | ASI05-10 (remaining ASI threats) | `governance/owasp-asi-2026/threats.md` (full reference + mitigations) | 1 |
 | 12 | OWASP AST10 skill supply-chain (ClawHub-style) | `governance/owasp-asi-2026/threats.md` (AST10 section); skill signing in Phase 2 | 1 (ref); 2 ✅ sealed 41e82f9 (Area E sigstore + Area F install-time verify) |
 
-## C. Agent failure modes — 591-incident taxonomy (gaps 13-18)
+## C. Agent failure modes — Clyro's 591-incident taxonomy (gaps 13-18)
 
 | # | Gap | Location | Phase |
 |---|-----|----------|-------|
@@ -39,7 +39,7 @@
 | 15 | Silent Degradation (24.9%) | `governance/skill-evals/registry.yml` (weekly eval) | 1 (registry); 6 (auto-run) |
 | 16 | Memory Corruption (8.1%) | `memory/stratum/` (git-attestation); `constitution/ANTIPATTERNS.md` #7 | 1 |
 | 17 | Runaway Execution (5.1%) | `hooks/universal/pre-tool/budget-brake.sh`, `loop-detection.sh` | 1 |
-| 18 | Real incident catalog (Amazon Kiro 13h outage, Claude Code 27M tokens, $437 overnight, 14K list_files) | `constitution/ANTIPATTERNS.md` references all of these | 1 |
+| 18 | Incident catalog (Kiro / AWS Cost Explorer outage, reported; Claude Code ~27M-token retry loop, user report; $437 overnight `list_files` loop, unverified anecdote) | Sources: `README.md` (Kiro, #15909) and `cost-controls/README.md` (#15909, the $437 anecdote). `constitution/ANTIPATTERNS.md` refers to Kiro and the $437 anecdote | 1 |
 
 ## D. Mechanical brakes (gaps 19-24)
 

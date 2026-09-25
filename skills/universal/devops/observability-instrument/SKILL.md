@@ -154,5 +154,5 @@ All four open-source options accept OTel via OTLP — set the
 ---
 
 **This skill is working when:** every production span has user.id and tenant.id
-in baggage, and every LLM call has token_count + cost_usd attributes. Track
-in `governance/telemetry/instrumentation-coverage.jsonl`.
+in baggage, and every LLM call has token_count + cost_usd attributes. The intended
+record is `governance/telemetry/instrumentation-coverage.jsonl`. Nothing writes it yet, so check by hand.

@@ -35,12 +35,18 @@ LLM call requested
 └──────────────────┘
 ```
 
-## Reference incidents these prevent
+## Reference incidents these guard against
 
-- "$437 burned overnight in a single session" (2026) → budget brake
-- "Claude Code subagent consumed 27M tokens in a 4.6h infinite loop" → loop detection
-- "14,000 list_files calls in one Magicrails session" → same-call threshold
-- "$6 burned in 30 seconds" → reserve-commit pattern
+- A library author's launch post describes an overnight LangChain agent that
+  called `list_files` 14,000 times and cost $437. It is an unverified anecdote
+  ([dev.to/magicrails, Apr 2026](https://dev.to/magicrails/i-let-my-ai-agent-run-overnight-it-cost-437-dd7)). → budget brake, same-call threshold
+- A Claude Code subagent retried one failing command 300+ times over ~4.6h,
+  using ~27M tokens (user report, [anthropics/claude-code#15909](https://github.com/anthropics/claude-code/issues/15909)).
+  → loop detection
+
+Illustration, not an incident: in a simulated vendor demo, a looping bot
+spends ~$5.95 in 30 seconds ([Cycles, Mar 2026](https://runcycles.io/blog/runaway-demo-agent-cost-blowup-walkthrough)). → reserve-commit
+pattern
 
 ## Customizing
 

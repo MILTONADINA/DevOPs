@@ -1,6 +1,6 @@
 ---
 name: checkpoint
-description: Write the baton at .workflow/state/baton.md for tool handoff. Aggregates session summary, lists open blockers, captures next_action. Use when approaching session limits, before switching tools, or at natural task boundaries.
+description: Write the baton at .workflow/state/baton.md for tool handoff. Aggregates session summary, lists open blockers, captures the `## Next action` section. Use when approaching session limits, before switching tools, or at natural task boundaries.
 ---
 
 # /checkpoint
