@@ -107,6 +107,9 @@ The dry run checks the file only. It rejects:
 - a missing expected table, or any table restore does not support;
 - a file without `operational_references` (an export from before that table
   existed);
+- a file without `invoice_send_claims` (an export from before PB-65, 2026-09-25).
+  This refusal is deliberate. The claims are what stop a second invoice for the
+  same organization and period, so a restore without them could send one twice;
 - any row in an organization-scoped table, or in `source_fact_links`, whose
   `org_id` differs from `orgId`;
 - decision supersession links that are missing, duplicated, cross-project,
