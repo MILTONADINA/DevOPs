@@ -19,13 +19,12 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { validProjectScope } from "../../proxy/auth";
 
-/** Knowledge-graph node kinds (CLAUDE.md node types + Project). */
+/** Knowledge-graph node kinds: the node types in docs/MEMORY_ARCHITECTURE.md, plus File. */
 export type EntityKind = "Function" | "Commit" | "Decision" | "Developer" | "Policy" | "Project" | "File";
 
 /**
- * Edge types. NOTE: CLAUDE.md spells the supersession edge "SUPERCEDES"; this uses
- * the correct English "SUPERSEDES", consistent with `tech_decisions.supersedes_id`
- * + ADR-0011 (see ADR-0013).
+ * Edge types. The supersession edge is "SUPERSEDES", consistent with
+ * `tech_decisions.supersedes_id` + ADR-0011 (see ADR-0013).
  *
  * DIRECTION — read each edge as the English sentence "`from` EDGE `to`". The
  * subject (`from`) is named by the edge type; directions are NOT uniform across

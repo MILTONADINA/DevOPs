@@ -4,9 +4,10 @@
 # Detects tool-call loops by tracking (tool_name, args_hash) tuples across
 # the session. If the same tuple appears more than THRESHOLD times, halt.
 #
-# Real incidents this prevents:
-#   - 14,000 list_files calls in one Magicrails session
-#   - Claude Code subagent burning 27M tokens in a 4.6h infinite loop
+# Incidents this guards against (sources in cost-controls/README.md):
+#   - an overnight agent that called list_files 14,000 times (unverified anecdote)
+#   - a Claude Code subagent that retried one failing command 300+ times over
+#     ~4.6h, using ~27M tokens (user report, anthropics/claude-code#15909)
 #
 # "You cannot ask an agent if it is in a loop; you must prove it mathematically."
 

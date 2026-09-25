@@ -8,8 +8,8 @@
 # This hook CANNOT be overridden by the agent. If the cap is hit, the session
 # halts and the user must intervene.
 #
-# Real incident this prevents: "$437 burned overnight in a single session"
-# (documented in 591-incident AI failure-mode catalog 2023-2026).
+# Example this guards against: an overnight agent run reported to cost $437
+# (an unverified anecdote; source in cost-controls/README.md).
 
 set -euo pipefail
 

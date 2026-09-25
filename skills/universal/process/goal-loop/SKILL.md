@@ -108,5 +108,5 @@ error messages. No vague reflections.
 ---
 
 **This skill is working when:** sessions reach `done` state through verification
-rather than assertion. Track verified_done / claimed_done ratio in
-`governance/telemetry/done-ratio.jsonl`. Target: > 0.95.
+rather than assertion. Target: verified_done / claimed_done > 0.95. The
+intended record is `governance/telemetry/done-ratio.jsonl`. Nothing writes it yet, so check by hand.

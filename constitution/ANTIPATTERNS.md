@@ -144,8 +144,9 @@ exit condition is verification passing, not assertion of completion.
 **Pattern:** Agent calls the same tool with the same arguments repeatedly,
 expecting different results, or never noticing it's stuck.
 
-**Failure mode:** Runaway Execution. Real incident: an agent called
-`list_files` over and over in one session.
+**Failure mode:** Runaway Execution. Reported example: an overnight agent
+called `list_files` 14,000 times (an unverified anecdote; sources in
+`cost-controls/README.md`).
 
 **Example (wrong):**
 
@@ -165,8 +166,8 @@ not wired, noticing the repetition and stopping is up to you.
 
 **Pattern:** Agent has no awareness of session cost; iterates without bound.
 
-**Failure mode:** Runaway Execution. Real incident: a single session kept
-spending money overnight.
+**Failure mode:** Runaway Execution. Reported example: one overnight run was
+said to cost $437 (an unverified anecdote).
 
 **Enforcement:** where the host tool wires
 `hooks/universal/pre-tool/budget-brake.sh`, it runs before each tool call,
@@ -209,8 +210,10 @@ list; the fact stays suppressed.
 **Pattern:** Agent writes to a production branch, deploys to production, or
 modifies production data without explicit human approval.
 
-**Failure mode:** Rogue Actions catastrophe. Real incident: Amazon Kiro AI
-agent autonomously deleted a production AWS environment, causing an outage.
+**Failure mode:** Rogue Actions catastrophe. Reported incident: Amazon's Kiro
+agent deleted and recreated an AWS Cost Explorer environment, causing an
+outage in one region (FT, Feb 2026; Amazon attributes it to misconfigured
+access controls).
 
 **Enforcement:** production writes and deploys wait for a human decision;
 approval is the user's action, never yours. Where the host tool wires them,
@@ -323,7 +326,7 @@ questions. Wastes tokens.
 **Enforcement:** the session-start banner (`load-baton.sh`) reports whether
 `.workflow/state/baton.md` exists and how old it is; it does not read the
 baton for you. When the baton is recent, read it before starting and continue
-from its `next_action`, unless the user's request sets a different task.
+from its `## Next action` section, unless the user's request sets a different task.
 
 ---
 

@@ -71,14 +71,15 @@ work: write user journeys, then EARS specs via `/ears-spec`.
 
 ## Session handoff (switching tools)
 
-Reached your Claude Code 5-hour limit? Want to switch to local LLM?
+Hit your Claude plan's usage limit (the five-hour session limit or the weekly limit)? Want to switch to local LLM?
 
 ```
 You: /checkpoint
 ```
 
-Then open the next tool. The baton at `.workflow/state/baton.md` is read
-automatically. The agent resumes from `next_action`.
+Then open the next tool. At session start, `load-baton.sh` reports whether
+`.workflow/state/baton.md` exists and how old it is; the agent reads the baton
+and resumes from its `## Next action` section.
 
 ## Multi-client setup
 
@@ -104,7 +105,7 @@ Cost ledgers are scoped per `tenant_id` (Stratum) for per-client invoicing.
 - Re-run the deploy command
 
 ### Claim validator fails
-- Read which claim failed and why (`node verification/claim-validator.js --all`)
+- Read which claim failed and why (`npm run validate:claims -- --all`)
 - Fix: re-run the test, update the proof, or retract the claim
 - Never edit the proof to hide a failure — the validator will catch it via
   reproducibility hash mismatch

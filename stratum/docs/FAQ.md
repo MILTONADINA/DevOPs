@@ -105,7 +105,7 @@ curl https://proxy.startum.com/v1/attestation/document
 
 ### Does CQ see my Anthropic API key?
 
-In local development (Phase 1 proxy), yes — your API key is in `.env` and the proxy forwards it to Anthropic. In production ZK-Context mode, the key is passed through the encrypted payload and only reconstructed inside the TEE before the API call. CQ's proxy never logs API keys. The operator dashboard shows only masked keys (`sk-ant-...xxxx`).
+In local development (Phase 1 proxy), yes — the key is in the proxy's environment (`ANTHROPIC_API_KEY`; the proxy does not read `.env`) and the proxy uses it to forward requests to Anthropic. In production ZK-Context mode, the key is passed through the encrypted payload and only reconstructed inside the TEE before the API call. CQ's proxy never logs API keys. The operator dashboard shows only masked keys (`sk-ant-...xxxx`).
 
 ### Is CQ SOC 2 compliant?
 

@@ -191,8 +191,9 @@ before it went green; coverage thresholds hold; no vacuous tests pass review.
 > Borrowed (pattern, not code) from [obra/superpowers](https://github.com/obra/superpowers)
 > (MIT) — made explicit here so every subagent inherits it. Added v0.3.x §2g.
 
-**Working when:** All session-end summaries show 100% verified-claim rate. Track
-in `governance/telemetry/proof-rate.jsonl`. Any session below 100% is a defect.
+**Working when:** All session-end summaries show 100% verified-claim rate. The intended
+record is `governance/telemetry/proof-rate.jsonl`; nothing writes it yet, so
+check by hand. Any session below 100% is a defect.
 
 ---
 
@@ -213,7 +214,7 @@ to baton). Worth it: zero context loss across tool boundaries.
   - Open blockers and questions
   - Literal next instruction for the next agent
 - On session-start, read the baton. If `last_updated` is < 24 hours, **resume
-  from `next_action`**, not from scratch.
+  from its `## Next action` section**, not from scratch.
 - The baton is the single source of truth for "what's in progress." It supersedes
   any conflicting memory from any other source.
 - The next tool may be Claude Code, Codex, Cursor, Antigravity, Kiro, or a local

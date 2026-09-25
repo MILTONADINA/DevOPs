@@ -58,7 +58,7 @@ limit, or has a bug.
 2. Session-start hook fires; baton is detected.
 3. Read `CLAUDE.md` (or relevant adapter file) and `AGENTS.md`.
 4. Read `.workflow/state/baton.md`. Address blockers first.
-5. Resume from `next_action`.
+5. Resume from the baton's `## Next action` section.
 
 The next tool doesn't need to know the previous tool's specifics — the baton
 is plain markdown.
@@ -99,5 +99,5 @@ check the vendor's current plan page before relying on a row.
 ---
 
 **This skill is working when:** users can switch tools mid-project without
-losing context. Track resume-after-switch success in
-`governance/telemetry/resume-success.jsonl`.
+losing context. The intended record of resume-after-switch
+success is `governance/telemetry/resume-success.jsonl`. Nothing writes it yet, so check by hand.

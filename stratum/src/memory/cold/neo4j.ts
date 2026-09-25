@@ -3,7 +3,7 @@
  *
  * Stores structured relationships between entities for deterministic queries.
  * Node types: Function, Commit, Decision, Developer, Policy, Project.
- * Edge types: DEPRECATED_BY, REFERENCED_IN, SUPERCEDES, AUTHORED, MODIFIES, GOVERNS.
+ * Edge types: DEPRECATED_BY, REFERENCED_IN, SUPERSEDES, AUTHORED, MODIFIES, GOVERNS.
  *
  * Enables queries like "What is the current status of function X?"
  * at ~50 tokens vs. 50,000 tokens of raw history.

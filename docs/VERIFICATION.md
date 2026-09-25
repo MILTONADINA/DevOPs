@@ -33,8 +33,10 @@ Low confidence claims block merge until human approves.
 ## Re-running
 
 ```bash
-node verification/claim-validator.js --all   # validates everything
-node verification/claim-validator.js --all --no-rerun   # schema + git only
+npm run validate:claims -- --all              # validates everything, re-running each proof
+npm run validate:claims -- --all --no-rerun   # schema + git only
 ```
 
-CI: run on every PR. Pre-merge: with `--rerun`.
+CI runs the `--no-rerun` form on every PR, but `.workflow/proofs/` is gitignored,
+so on a CI checkout it finds no claims and passes (polish backlog PB-60). Before
+merging, re-run the claims locally with the first form.
