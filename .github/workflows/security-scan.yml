@@ -37,6 +37,13 @@ jobs:
           # widen this allowlist's scope beyond intent. gitleaks-action
           # honors GITLEAKS_CONFIG as an explicit --config-equivalent path.
           GITLEAKS_CONFIG: governance/gitleaks-ci.toml
+          # The root .gitleaksignore baselines the deliberate test fixtures the
+          # scheduled full-history scan reports, by exact fingerprint. Those
+          # fingerprints depend on the gitleaks version, so the version the
+          # action already defaults to is pinned here explicitly; bump it only
+          # together with a regenerated .gitleaksignore
+          # (specs/security/history-secret-scan-baseline.md).
+          GITLEAKS_VERSION: "8.24.3"
           # gitleaks-action posts a PR comment by default. On pull_request events
           # the default GITHUB_TOKEN is read-only, so the comment POST returns
           # 403 "Resource not accessible by integration" and fails the job —
