@@ -16,6 +16,7 @@
 import { readFileSync } from "node:fs";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { ORG_SCOPED_TABLES, type BackupFile } from "./backup-org";
+import { TABLE_FACT_TYPES, rowToFact } from "../src/memory/warm/tier2";
 
 /** Insert order: every parent table before its children (FK-safe). */
 export const RESTORE_ORDER = [
@@ -158,6 +159,17 @@ export function validateBackup(obj: unknown): BackupFile {
     })
   ) {
     throw new Error("backup pruning_logs session mismatch");
+  }
+  // v0.5 gate "Zod validation gates all writes": restore writes facts, so every fact row must pass the same
+  // schema the reader applies (rowToFact -> validateFact). Suppression is a state, not content, so a suppressed
+  // row is validated as if it were active.
+  for (const table of Object.keys(TABLE_FACT_TYPES)) {
+    for (const row of b.tables[table] ?? []) {
+      const r = row as Record<string, unknown> | null;
+      if (!r || rowToFact(table, { ...r, is_suppressed: false }) === null) {
+        throw new Error(`backup table ${table} row ${String(r?.["id"] ?? "?")} fails fact validation`);
+      }
+    }
   }
   return b as BackupFile;
 }

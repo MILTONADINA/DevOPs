@@ -155,10 +155,16 @@ export async function main(): Promise<number> {
       out(`→ seeding a throwaway org (${orgId.slice(0, 8)}…) for Tier-2/3 latency…`);
       const session = await client.from("sessions").insert({ id: sessionId, org_id: orgId, model: "benchmark", kind: "memory" });
       if (session.error) throw new Error(`benchmark session insert failed: ${session.error.message}`);
-      const warmFacts = await client
-        .from("operational_references")
-        .insert(Array.from({ length: 100 }, (_, i) => ({ org_id: orgId, session_id: sessionId, confidence: 0.9, subject: `benchmark reference ${i}`, reference: `benchmark-${i}` })));
-      if (warmFacts.error) throw new Error(`benchmark warm fact insert failed: ${warmFacts.error.message}`);
+      // Seed through the warm adapter, which Zod-validates every fact (v0.5: validation gates all writes).
+      const seededAt = new Date().toISOString();
+      const warmFacts = await warm.persist(
+        Array.from({ length: 100 }, (_, i) => ({
+          id: randomUUID(), created_at: seededAt, session_id: sessionId, confidence: 0.9, is_verified: false, is_suppressed: false,
+          fact_type: "OperationalReference" as const, subject: `benchmark reference ${i}`, reference: `benchmark-${i}`,
+        })),
+        { orgId, sessionId },
+      );
+      if (warmFacts.persisted !== 100) throw new Error(`benchmark warm fact seeding persisted ${warmFacts.persisted} of 100: ${JSON.stringify(warmFacts)}`);
       const warmResult = await warm.queryRecent(orgId, { limit: 20 });
       if (warmResult.length !== 20) throw new Error(`benchmark warm query returned ${warmResult.length} facts, expected 20`);
       out("→ warm query returned 20 facts from 100 seeded references.");
