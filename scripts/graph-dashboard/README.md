@@ -148,17 +148,18 @@ permanent design constraint, not a gap slated to be filled in later.
   (`/sprint`) all stay slash commands, run deliberately by a human in a
   session — this dashboard cannot do any of them today, and must never
   grow a way to.
-- **Two specific fields are not recoverable today — at all**, not
-  approximated, not partially shown, always `null`:
+- **Two specific fields are not shown today**, not approximated, not
+  partially shown, always `null`:
   - **`cycleId`**
   - **A labeled final outcome record (`cycleOutcome` / `readyForPR`)**
 
   Confirmed by reading `.claude/workflows/sprint-cycle.js` itself: both are
   returned only to the orchestrating session, as the Workflow's own return
-  value. Neither is ever written into `journal.jsonl`, any
-  `agent-*.meta.json`, or anywhere else under a run directory — there is
-  currently no file on disk this dashboard, or anything else, could read
-  to recover either one after the fact.
+  value. Neither is written into `journal.jsonl`, any `agent-*.meta.json`,
+  or anywhere else under a run directory. Since cycle 7,
+  `.workflow/state/graph-cycles/<cycleId>/run.json` (REQ-R10) records the
+  cycle id, run id and status, but this dashboard does not read it yet
+  (masterpiece roadmap MR-15).
 
   What **is** recoverable, and only on a best-effort, never-fabricated
   basis:
