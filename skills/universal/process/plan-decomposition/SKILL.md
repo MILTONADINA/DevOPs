@@ -40,7 +40,6 @@ Before:
 3. **Order them.** Apply these rules:
    - Schema / database changes BEFORE code that uses them
    - Tests BEFORE implementation (TDD)
-   - Lowest-risk first (build confidence, fail early)
    - Foundation BEFORE features that depend on it
    - Security review tasks INTERLEAVED, not at the end
 
@@ -100,7 +99,7 @@ Before:
 a task — "Form submits to POST /api/auth/reset and renders confirmation page
 on 200, error message on 4xx" is.
 
-**Front-loading risk**: putting all the hard parts at the end means failures
+**Back-loading risk**: putting all the hard parts at the end means failures
 discovered late. Interleave risky tasks with safe ones.
 
 **No security tasks**: security isn't a task you do at the end. It's a checkpoint

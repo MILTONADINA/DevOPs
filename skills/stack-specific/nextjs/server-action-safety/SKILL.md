@@ -217,10 +217,13 @@ session store, JWT verified server-side). They do not protect against:
   entirely. Defend at the DB-policy layer (Postgres RLS, Supabase
   RLS -- see the `stack-specific/supabase/rls-policies` skill).
 - Cross-Site Request Forgery from same-site contexts that share the
-  user's cookie. Next.js Server Actions DO include built-in CSRF
-  protection (same-origin policy on the generated POST endpoints), but
-  verify your Next.js version's specifics; older 13.x branches had
-  partial coverage.
+  user's cookie. Next.js adds a built-in check: Server Actions accept
+  only POST, and a request whose `Origin` host differs from its
+  `Host` / `X-Forwarded-Host` is rejected (list any user-facing
+  origins that legitimately differ from the host the server sees in
+  `serverActions.allowedOrigins`). A request with no `Origin` header
+  is let through with a warning, so keep SameSite cookies as the
+  session-layer backstop.
 
 This skill teaches the application-layer discipline; defense in depth
 layers below it.

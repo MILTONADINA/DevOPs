@@ -75,7 +75,16 @@ export async function main(): Promise<number> {
   const haystack = join(dir, "longmemeval_s.json");
   const oracle = join(dir, "longmemeval_oracle.json");
   const file = existsSync(haystack) ? haystack : existsSync(oracle) ? oracle : null;
-  const provider = selectEvalProvider();
+  // Token usage of this run's Claude answerer calls (DeepEval judge calls go through the Python worker and are
+  // not counted here). The cache fields show whether a cached context prefix is actually being read.
+  const usage = { requests: 0, input: 0, cacheWrite: 0, cacheRead: 0, output: 0 };
+  const provider = selectEvalProvider(process.env, (u) => {
+    usage.requests += 1;
+    usage.input += u.input_tokens;
+    usage.cacheWrite += u.cache_creation_input_tokens ?? 0;
+    usage.cacheRead += u.cache_read_input_tokens ?? 0;
+    usage.output += u.output_tokens;
+  });
   if (!file || !provider) {
     out("LongMemEval Tier-A gate — GATED (an input is missing; not run)");
     out("==============================================================");
@@ -121,7 +130,8 @@ export async function main(): Promise<number> {
   }
 
   const encoder = createOnnxEncoder({ cacheDir: join(process.cwd(), "models") });
-  const answerer = createClaudeAnswerer(provider.completion);
+  // Each question has its own haystack; caching pays only when repeats re-send it.
+  const answerer = createClaudeAnswerer(provider.completion, { cacheContext: repeats > 1 });
   const judge = createSelectedJudge(provider);
 
   try {
@@ -197,6 +207,12 @@ export async function main(): Promise<number> {
   return verdict.passed && (!full || !provider.exploratory) ? 0 : 1;
   } finally {
     await judge.close?.();
+    if (usage.requests > 0) {
+      out(
+        `Claude answerer usage (${usage.requests} requests; DeepEval judge calls not included): input ${usage.input}, ` +
+          `cache write ${usage.cacheWrite}, cache read ${usage.cacheRead}, output ${usage.output} tokens.`,
+      );
+    }
   }
 }
 

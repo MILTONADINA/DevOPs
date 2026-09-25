@@ -44,16 +44,16 @@ verifiable claim.
 
 Per spec A NFR-A2: Shannon's MCP server runs with the least privileges its
 task requires. `subagents/universal/security.md` scopes invocation to the
-security subagent — planner/coder subagents are denied (the dedicated
-`researcher` subagent was removed 2026-09-14).
+security subagent — planner/coder subagents may not invoke it; this is a documented boundary
+that no DevOPs hook enforces.
 
 ## Upstream
 
-Forward-looking integration. The exact upstream package and URL will be
-confirmed at v0.2.0 release via the upstream-maintenance verification cadence
-authored under task A.12 (`.workflow/maintenance/upstream-verify.md`). The
+Forward-looking integration. The exact upstream package and URL are not yet
+confirmed; the upstream-maintenance verification cadence authored under task
+A.12 (`.workflow/maintenance/upstream-verify.md`) tracks them. The
 DevOPs-side MCP wrapper package `@miltonadina/shannon-mcp` is reserved; the
-JSON shape in `shannon.json` is the load-bearing contract this PR establishes.
+JSON shape in `shannon.json` is the load-bearing contract.
 
 Threat-model context (ASI02 Tool Misuse, ASI03 Identity & Privilege Abuse):
 see `docs/threat-models/phase-2/A-pentest-stack.md`.

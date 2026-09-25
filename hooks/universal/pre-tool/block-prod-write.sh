@@ -78,16 +78,14 @@ cat >&2 <<EOF
 ║  This command would affect production resources. It has been      ║
 ║  BLOCKED because no recent human approval token exists.           ║
 ║                                                                   ║
-║  To proceed, the human operator must explicitly approve:          ║
+║  Stop and ask the user. Approval is the human operator's action:  ║
+║  they add an entry to .workflow/state/approvals.jsonl, and the    ║
+║  command may be re-run within 5 minutes of it. Do not write an    ║
+║  approval entry yourself.                                         ║
 ║                                                                   ║
-║    /approve-prod-deploy                                           ║
-║                                                                   ║
-║  This writes an approval token to .workflow/state/approvals.jsonl ║
-║  valid for 5 minutes. Re-run the command within that window.      ║
-║                                                                   ║
-║  This block protects you from agent runaway against production.   ║
-║  Real incident: Amazon's Kiro deleted a prod AWS environment      ║
-║  causing a 13-hour outage. Don't be the next one.                 ║
+║  This block protects production from agent runaway. Real          ║
+║  incident: Amazon's Kiro deleted a prod AWS environment, causing  ║
+║  a 13-hour outage.                                                ║
 ╚═══════════════════════════════════════════════════════════════════╝
 EOF
 

@@ -44,7 +44,7 @@ Any time you say one of:
 ```yaml
 claim:
   id: claim-2026-05-22-001
-  type: implementation | test | scan | deploy | migration | refactor | perf
+  type: implementation | test | scan | deploy | migration | refactor | perf | doc | security-review | threat-model
   spec_ref: "specs/<file>.md#<section-anchor>"
   description: "<one factual sentence, no marketing language>"
   proof:
@@ -57,7 +57,7 @@ claim:
     test_output_path: ".workflow/proofs/claim-2026-05-22-001-test.log"
     duration_ms: 4271
   confidence: high | medium | low
-  reproducibility_hash: "sha256:<hash of (test_command + env + git_sha)>"
+  reproducibility_hash: "sha256:<computed as in step 5>"
   caveats: |
     Optional. State any conditions where the proof might not reproduce
     (flaky test, network dependency, time-of-day sensitivity).
@@ -65,8 +65,12 @@ claim:
 
 4. Save the full test output (stdout + stderr) at `test_output_path`.
 
-5. Compute `reproducibility_hash` deterministically. Reference
-   implementation in `verification/reproducibility-check.ts`.
+5. Compute `reproducibility_hash` exactly as the validator does: `"sha256:"`
+   followed by the hex SHA-256 of `test_command` + `"\n---\n"` + the
+   `proof.environment` entries as `key=value` lines sorted by key and joined
+   with `"\n"` (empty when there is no `environment`) + `"\n---\n"` +
+   `git_sha`. The code is `recomputeReproducibilityHash` in
+   `verification/claim-validator.ts`.
 
 ---
 
@@ -131,8 +135,12 @@ claim:
 After emitting the claim, run:
 
 ```bash
-node verification/claim-validator.js .workflow/proofs/claim-2026-05-22-018.yml
+npm run validate:claims -- .workflow/proofs/claim-2026-05-22-018.yml
 ```
+
+That npm script exists in the DevOPs repository itself. In a project where
+DevOPs is installed, run the same validator as
+`tsx "$DEVOPS_ROOT/verification/claim-validator.ts" <claim-file>`.
 
 The validator re-runs `test_command` and confirms:
 

@@ -90,15 +90,12 @@ if exceeded "$projected_session" "$SESSION_CAP"; then
 ║  Reserve requested:  \$$RESERVE
 ║  Projected total:    \$$projected_session
 ║                                                                   ║
-║  This session is HALTED. The cap protects you from runaway        ║
-║  agent costs. To proceed:                                         ║
-║                                                                   ║
-║    1. Review .workflow/state/budget-ledger.jsonl                  ║
-║    2. If the work justifies it, raise the cap in                  ║
-║       .workflow/state/budget.yml                                  ║
-║    3. Restart the session                                         ║
-║                                                                   ║
-║  Or run /checkpoint to write a baton and resume in a new session. ║
+║  This session is halted: the cap protects the user from runaway   ║
+║  agent costs. Stop and tell the user. Raising the cap in          ║
+║  .workflow/state/budget.yml is the user's decision, not yours, so ║
+║  do not edit that file. If the work should continue in a later    ║
+║  session, write the baton first (/checkpoint, defined in          ║
+║  slash-commands/universal/checkpoint.md).                         ║
 ╚═══════════════════════════════════════════════════════════════════╝
 EOF
     exit 2

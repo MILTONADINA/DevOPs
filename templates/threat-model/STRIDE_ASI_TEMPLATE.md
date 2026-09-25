@@ -37,6 +37,9 @@ actors → entry points → trust boundaries → data stores → external system
 
 ## STRIDE analysis
 
+> The Description, Mitigation and Implementation status cells below are an
+> illustrative password-reset example; replace every one of them for your feature.
+
 | Threat | Description | Mitigation | Implementation status |
 |--------|-------------|------------|----------------------|
 | **Spoofing** — can someone impersonate? | Auth-token forging | JWT signed with HS256/key rotation; refresh on each call | implemented |

@@ -6,5 +6,5 @@
     "SHANNON_API_KEY": "${SHANNON_API_KEY}",
     "SHANNON_AUTHORIZED_SCOPE": "${SHANNON_AUTHORIZED_SCOPE}"
   },
-  "description": "Shannon pentest-LLM orchestrator MCP. Coordinates LLM-driven scans across nmap/nuclei/etc. SHANNON_AUTHORIZED_SCOPE must match the pentest authorization in .workflow/client/profile.yml (Constitution P7). Forward-looking wrapper package; exact upstream invocation may shift before v0.2.0 -- the JSON shape is the contract, the package name is provisional."
+  "description": "Shannon pentest-LLM orchestrator MCP. Coordinates LLM-driven scans across nmap/nuclei/etc. SHANNON_AUTHORIZED_SCOPE must match the pentest authorization in .workflow/client/profile.yml (Constitution P7). Forward-looking wrapper package, not yet published -- the JSON shape is the contract; the package name and upstream invocation stay provisional until the upstream is confirmed (.workflow/maintenance/upstream-verify.md)."
 }

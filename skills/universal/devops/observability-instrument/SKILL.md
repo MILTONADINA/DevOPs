@@ -8,9 +8,8 @@ description: Add OpenTelemetry spans with user_id and tenant_id in baggage to an
 > OpenTelemetry, OpenInference semantic conventions, baggage for per-tenant
 > attribution, PII redaction inline. Production-grade from day one.
 
-**Tradeoff:** Every new code path needs instrumentation. Worth it: 73% of agent
-quality regressions are caught before users when full tracing is in place (2025
-LLMOps survey).
+**Tradeoff:** Every new code path needs instrumentation. Worth it: full tracing
+catches more agent quality regressions before users see them.
 
 ---
 
@@ -35,7 +34,7 @@ import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
 import { propagation, ROOT_CONTEXT } from '@opentelemetry/api';
 import { W3CBaggagePropagator, W3CTraceContextPropagator, CompositePropagator } from '@opentelemetry/core';
-import { Resource } from '@opentelemetry/resources';
+import { resourceFromAttributes } from '@opentelemetry/resources';
 import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions';
 import { piiRedactingExporter } from './pii-redaction.js';
 
@@ -44,7 +43,7 @@ propagation.setGlobalPropagator(new CompositePropagator({
 }));
 
 const sdk = new NodeSDK({
-  resource: new Resource({
+  resource: resourceFromAttributes({
     [SemanticResourceAttributes.SERVICE_NAME]: 'auth-service',
     [SemanticResourceAttributes.SERVICE_VERSION]: process.env.GIT_SHA,
     [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: process.env.ENV,
@@ -102,7 +101,7 @@ This adds spans like:
 - `llm.input_messages.0.content`: (redacted)
 - `llm.token_count.prompt`: 1234
 - `llm.token_count.completion`: 567
-- `llm.cost_usd`: 0.0231
+- `llm.cost_usd`: 0.0122
 
 ---
 

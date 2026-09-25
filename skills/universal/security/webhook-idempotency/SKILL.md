@@ -67,27 +67,37 @@ like otherwise.
 
 ## Replay window
 
-Even with idempotency keys, a stale-but-valid event delivered hours or days
-later may not deserve processing. The **replay window** is a configurable
-time-bound that rejects events whose payload timestamp falls outside it.
+The idempotency key stops a second processing of an event already handled.
+The **replay window** stops a captured delivery from being re-sent later: it
+is a configurable time-bound on the provider's signed per-delivery timestamp
+(for Stripe, the `t=` value in the `Stripe-Signature` header), and a request
+whose signed timestamp falls outside it is rejected. Legitimate retries pass,
+because Stripe generates a new signature and timestamp for every delivery
+attempt. The event's own creation time (`event.created`) is signed too, but
+it stays the same across retries, so it is not a replay clock: windowing on
+it rejects every retry that arrives after the window.
 
 Typical recommendation: **5 minutes (300 seconds)** of skew tolerance. Stripe's
-own recommendation in their docs is "tolerance of 300 seconds"; this matches
-HMAC-signed-request best practice across most providers.
+official libraries default to a 300-second tolerance on the signature
+timestamp; this matches HMAC-signed-request best practice across most
+providers.
 
 The replay-window check is independent of the idempotency-key check:
 
 - **Idempotency-key check** -- "have I already processed *this specific*
   event?"
-- **Replay-window check** -- "is *any* event with this timestamp still in
-  scope for processing?"
+- **Replay-window check** -- "is *this delivery's* signed timestamp recent
+  enough to accept?"
 
-Reject events whose timestamp is more than 300 seconds (or your configured
-window) before the current server time. This defends against stored-and-
-replayed deliveries where an attacker who captured a webhook payload tries
-to replay it later. Note that the replay-window depends on a verified
-signed timestamp from the provider; raw payload timestamps without
-signature verification are not trustable inputs.
+Reject deliveries whose signed timestamp is more than 300 seconds (or your
+configured window) before the current server time. This defends against
+stored-and-replayed deliveries where an attacker who captured a webhook
+payload tries to replay it later. Note that the replay-window depends on a
+verified signed timestamp from the provider; raw payload timestamps without
+signature verification are not trustable inputs. If a provider signs no
+timestamp, there is no replay window to apply: GitHub's `X-Hub-Signature-256`
+covers only the payload, and GitHub documents deduplication on
+`X-GitHub-Delivery` (which a redelivery reuses) as its replay defense.
 
 ---
 
@@ -163,16 +173,19 @@ async function handleStripeWebhook(rawBody: string, signatureHeader: string) {
   //    orthogonal concerns -- both required).
   let event: Stripe.Event;
   try {
-    event = stripe.webhooks.constructEvent(rawBody, signatureHeader, SIGNING_SECRET);
+    event = stripe.webhooks.constructEvent(
+      rawBody, signatureHeader, SIGNING_SECRET, REPLAY_WINDOW_SECONDS);
   } catch {
     return { status: 400, body: 'invalid signature' };
   }
 
-  // 2. Replay-window check on the signed timestamp (300 second skew).
-  const now = Math.floor(Date.now() / 1000);
-  if (Math.abs(now - event.created) > REPLAY_WINDOW_SECONDS) {
-    return { status: 400, body: 'event outside replay window' };
-  }
+  // 2. Replay window: constructEvent has already rejected any delivery whose
+  //    signed `t=` timestamp in the Stripe-Signature header is more than
+  //    REPLAY_WINDOW_SECONDS old (never pass 0, which turns that check off).
+  //    Stripe signs each delivery attempt afresh, so legitimate retries pass.
+  //    Do not window on event.created: it stays the same across retries, so
+  //    it would reject every retry that arrives more than five minutes after
+  //    the event.
 
   // 3. Idempotency-key check (Redis SETNX with 4-day TTL covering Stripe's
   //    72-hour retry schedule plus headroom).
@@ -220,14 +233,11 @@ class ProcessedEvent(Base):
     delivery_id = Column(String, primary_key=True)  # UNIQUE by virtue of PK
     received_at = Column(DateTime(timezone=True), nullable=False)
 
-REPLAY_WINDOW_SECONDS = 300
-
 @app.post("/api/webhook/github")
 async def handle_github_webhook(req: Request):
     raw_body = await req.body()
     signature = req.headers.get("X-Hub-Signature-256", "")
     delivery_id = req.headers.get("X-GitHub-Delivery", "")
-    timestamp_header = req.headers.get("X-GitHub-Hook-Installation-Target-ID", "")
 
     # 1. Verify signature (HMAC-SHA256 with shared secret).
     secret = b"placeholder-secret-redacted"  # in prod: load from vault
@@ -235,16 +245,12 @@ async def handle_github_webhook(req: Request):
     if not hmac.compare_digest(expected, signature):
         raise HTTPException(status_code=400, detail="invalid signature")
 
-    # 2. Replay-window check on the delivery-attempt timestamp. GitHub
-    #    publishes the timestamp in a separate header on signed-delivery
-    #    feeds; here we use the body's "created_at" as an example.
+    # 2. No replay window: X-Hub-Signature-256 covers only the body and
+    #    GitHub signs no delivery timestamp. A body timestamp such as
+    #    "created_at" is not a per-delivery clock and would reject
+    #    redeliveries. The delivery-id check in step 3 is the replay defense
+    #    GitHub documents; a redelivery reuses the same X-GitHub-Delivery.
     payload = await req.json()
-    created_at_iso = payload.get("created_at", "")
-    if created_at_iso:
-        created_at = datetime.fromisoformat(created_at_iso.replace("Z", "+00:00"))
-        now = datetime.now(timezone.utc)
-        if abs((now - created_at).total_seconds()) > REPLAY_WINDOW_SECONDS:
-            raise HTTPException(status_code=400, detail="event outside replay window")
 
     # 3. Idempotency-key check via DB unique constraint on delivery_id.
     session = Session()
@@ -354,7 +360,7 @@ times → 1 side effect, N - 1 "duplicate" responses.
 
 - `governance/owasp-asi-2026/threats.md` -- ASI02 (Tool Misuse) full reference
 - `skills/stack-specific/stripe/webhook-idempotency` -- Stripe-specific
-  extension (area D; Phase 2 implementation pending)
+  extension
 - Renovate / Dependabot webhook noise: out of scope; this skill is about
   webhooks that trigger application side effects, not DevOps platform
   notifications.

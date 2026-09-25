@@ -9,7 +9,8 @@
 
 ## Rules — READ-ONLY
 
-- All file writes blocked except in `docs/audits/`
+- Write files only under `docs/audits/` (no hook enforces mode rules, so this
+  restriction holds only while you keep it)
 - No deploys
 - No code changes
 - Produces a findings document

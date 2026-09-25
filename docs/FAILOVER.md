@@ -30,14 +30,17 @@ Tool A approaches limit
 |------|---------|
 | Claude Code | CLAUDE.md (sources AGENTS.md) |
 | Codex CLI | AGENTS.md (native) |
-| Cursor | .cursorrules generated |
+| Cursor | .cursorrules (write from AGENTS.md) |
 | Antigravity | AGENTS.md (native) |
 | Kiro | AGENTS.md + steering files |
-| Gemini CLI | GEMINI.md generated |
-| Copilot | copilot-instructions.md generated |
-| Windsurf | .windsurfrules generated |
-| Aider | CONVENTIONS.md generated |
+| Gemini CLI | GEMINI.md (write from AGENTS.md) |
+| Copilot | .github/copilot-instructions.md (write from AGENTS.md) |
+| Windsurf | .windsurfrules (write from AGENTS.md) |
+| Aider | CONVENTIONS.md (write from AGENTS.md) |
 | OpenCode | CLAUDE.md compatible |
+
+Nothing in DevOPs generates these adapter files; before switching to a tool
+that needs one, write it from AGENTS.md.
 
 ## Local LLM fallback
 

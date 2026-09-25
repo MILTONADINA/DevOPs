@@ -91,7 +91,7 @@ Use complex sparingly — most requirements decompose into 2-3 simple ones.
 4. **Subject is always THE SYSTEM** (or a named subsystem like THE PAYMENT
    SERVICE). Not "the user does X."
 
-5. **Number requirements**: REQ-001, REQ-002, … so you can reference them in
+5. **Number requirements**: REQ-1, REQ-2, … so you can reference them in
    tests, ADRs, and PRs.
 
 ---
@@ -139,15 +139,19 @@ AC-3.3: Given an expired reset link, when the user submits a new password,
 ```
 
 Tests are derived directly from ACs. The relationship REQ → AC → test is the
-traceability chain. The claim-validator follows this chain backwards on every
-PR.
+traceability chain. Keeping it intact is the spec author's and the reviewer's
+job: the claim-validator's only traceability check is that a claim's
+`spec_ref` starts with `specs/`; it does not check that each test maps back
+to an AC.
 
 ---
 
 ## Tool integration
 
-- Amazon Kiro generates EARS automatically from natural language descriptions.
-- GitHub spec-kit (formerly Spec Kit) accepts EARS as the canonical format.
+- Kiro writes a feature spec's `requirements.md` in EARS notation.
+- GitHub spec-kit's default spec template does not use EARS; the `ears`
+  extension in its community catalog adds EARS authoring, linting and
+  conversion commands.
 - The `spec-extraction` skill in DevOPs produces EARS by default.
 
 ---

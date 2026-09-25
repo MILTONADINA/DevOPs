@@ -1,6 +1,6 @@
 ---
 name: fastapi-dependency-injection
-description: FastAPI dependency-injection patterns and anti-patterns -- request-scoped auth tokens leaking into singleton DI graphs, missing `Depends()` declarations on auth-required routes, `dependency_overrides` mis-use in tests bleeding into production code paths. Triggers on FastAPI route authoring (`@app.get`, `@app.post`, `Depends()` references). OWASP ASI03 (Identity & Privilege Abuse) defense for auth-token handling via DI.
+description: FastAPI dependency-injection patterns and anti-patterns -- request-scoped auth tokens leaking into singleton DI graphs, missing `Depends()` declarations on auth-required routes, `dependency_overrides` mis-use leaking a fake identity across tests. Triggers on FastAPI route authoring (`@app.get`, `@app.post`, `Depends()` references). OWASP ASI03 (Identity & Privilege Abuse) defense for auth-token handling via DI.
 ---
 
 # FastAPI Dependency Injection
@@ -39,9 +39,8 @@ same memoized identity).
 Separately, `dependency_overrides` -- FastAPI's testing affordance
 that replaces a dependency for a test run -- is a global mutation on
 the app's DI registry. A test that forgets to clean up its override
-leaves the override in place for subsequent tests and (in pathological
-cases where pytest-asyncio and prod share an app instance) for prod
-traffic itself.
+leaves the override in place for every later test in the session, so
+those tests exercise a fake identity instead of the real auth check.
 
 ---
 
@@ -109,13 +108,13 @@ admin_router = APIRouter(
 ```python
 from functools import lru_cache
 from fastapi import Depends
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=".env")
     database_url: str
     api_key: str
-    class Config:
-        env_file = ".env"
+    feature_flags: dict[str, bool] = {}
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
@@ -183,18 +182,20 @@ is the closest FastAPI gets to a context manager at the route boundary.
 ```python
 # WRONG
 @lru_cache(maxsize=1)
-async def get_current_user(token: str = Depends(oauth2_scheme)) -> User:
-    return await verify_token(token)
+def get_current_user() -> User:
+    # A refactor moved the token lookup into a request-context helper,
+    # so the function takes no arguments and the cache has one entry.
+    return load_user_from_request_context()
 ```
 
-`@lru_cache` keys on the function args. The first request's token
-becomes the cache key; every subsequent request with a different token
-ALSO returns the first request's User because... actually `@lru_cache`
-with maxsize=1 means each new token-arg evicts the cache, so the
-caching is degenerate here. But the worse case: if the function has
-NO args (e.g., a misguided refactor that reads token from a thread-local),
-maxsize=1 caches the first identity forever. Test passes (one request);
-prod corrupts identity. Never memoize auth dependencies.
+`@lru_cache` keys on the function's arguments. With no arguments there
+is exactly one cache entry, so the first request's identity is returned
+to every later request in the worker process. The test suite passes
+(one request, one identity); production serves one user's identity to
+everyone. With a token argument the cache does not share identity, but
+on an `async def` it caches the coroutine object, and a repeated token
+fails with `RuntimeError: cannot reuse already awaited coroutine`.
+Never memoize auth dependencies.
 
 ### Anti-pattern 2 -- Middleware-only auth that's not visible in route signatures
 
@@ -228,9 +229,8 @@ def test_admin_view():
     app.dependency_overrides[get_current_user] = lambda: User(id="admin")
     response = client.get("/admin/users")
     assert response.status_code == 200
-    # No teardown -- the override persists for the next test, AND if
-    # pytest-asyncio shares the app instance with prod (rare but real
-    # in some monolith deployments), the override leaks into prod.
+    # No teardown -- the override persists for every later test, which
+    # then run against the fake admin identity instead of real auth.
 ```
 
 Use a fixture with proper teardown:

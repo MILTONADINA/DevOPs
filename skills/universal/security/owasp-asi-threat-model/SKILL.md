@@ -8,9 +8,9 @@ description: Produce a STRIDE + OWASP Top 10 for Agentic Applications (ASI) 2026
 > STRIDE for the system. OWASP ASI 2026 for the agent. Both for any feature
 > involving AI agents.
 
-**Tradeoff:** Adds a design artifact before coding. Worth it: 48% of
-cybersecurity pros rank agentic AI as the #1 attack vector for 2026, yet only
-34% of enterprises have AI-specific controls. The threat model is the bridge.
+**Tradeoff:** Adds a design artifact before coding. Worth it: agents add
+attack surface that classical controls do not cover (tool invocation,
+persistent memory, delegated privilege). The threat model is the bridge.
 
 ---
 
@@ -57,7 +57,10 @@ cybersecurity pros rank agentic AI as the #1 attack vector for 2026, yet only
 
 ## Template
 
-Use `templates/threat-model/STRIDE_ASI_TEMPLATE.md`. The structure:
+Use `templates/threat-model/STRIDE_ASI_TEMPLATE.md`. The structure is below;
+the filled-in rows and their Status values are illustrative, not a record of
+any project. Set each Status from what you verified in your project: a
+hook-based mitigation is `implemented` only if the harness registers the hook.
 
 ```markdown
 # Threat Model — <feature-name>
@@ -144,8 +147,9 @@ data stores>
 - ASI05 Memory Poisoning → `memory/stratum/` (git-attestation)
 - ASI07 Resource Exhaustion → `hooks/universal/pre-tool/budget-brake.sh`,
   `loop-detection.sh`
-- ASI09 Trust Exploitation → `hooks/universal/pre-tool/*` (hooks fire
-  regardless of agent intent)
+- ASI09 Trust Exploitation → `hooks/universal/pre-tool/*` (a hook fires
+  regardless of agent intent once the harness registers it; for Claude Code
+  that is `.claude/settings.json`)
 
 ---
 

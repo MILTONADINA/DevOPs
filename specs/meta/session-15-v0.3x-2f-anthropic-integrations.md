@@ -4,7 +4,7 @@
 **Status**: AUTHORED + CLOSED 2026-05-28 (single-session emission per masterpiece blueprint claim-emission discipline)
 **Author**: Milton Adina (Session 15 goal: "develop the project ... deliver a masterpiece" — best-of-the-best path: bundle §2a closure with §2f Anthropic integrations under same masterpiece bar)
 **Branch**: `session-15-2f-claude-security-review` → squash-merged to `main` at commit `9cfcc75` (PR #18)
-**Quality bar**: production-grade per blueprint §6 — SHA-pinned action references, minimum-required GitHub Actions permissions, explicit model selection (Opus 4.7), documented bootstrap secret requirement (`CLAUDE_API_KEY`), prompt-injection caveat surfaced + version-bounded mitigation plan.
+**Quality bar**: production-grade per blueprint §6 — SHA-pinned action references, minimum-required GitHub Actions permissions, explicit model selection (latest Opus), documented bootstrap secret requirement (`CLAUDE_API_KEY`), prompt-injection caveat surfaced + version-bounded mitigation plan.
 
 This spec covers the three §2f first-party Anthropic integration tasks per `plan.md §2f` as a coordinated change unit. Single spec + single claim per the masterpiece claim-emission discipline.
 
@@ -24,7 +24,7 @@ THE workflow SHALL SHA-pin the `anthropics/claude-code-security-review` action t
 
 ### AC-S15-2f-1.3
 
-THE workflow SHALL explicitly set `claude-model: claude-opus-4-7` to override the upstream action's default (currently `claude-opus-4-1-20250805`).
+THE workflow SHALL explicitly set `claude-model` to the latest Opus (`claude-opus-5-5`) to override the upstream action's default (currently `claude-opus-4-1-20250805`).
 
 ### AC-S15-2f-1.4
 

@@ -5,7 +5,7 @@
 # 0c6a49f1fa56a1d472575da86a94dbc1edb78eda dated 2026-02-11).
 #
 # This action provides AI-powered semantic security analysis of changed files in
-# pull requests using Claude (default model overridden to claude-opus-4-7 below).
+# pull requests using Claude (default model overridden to claude-opus-5-5 below).
 # It posts inline review comments and uploads a results JSON artifact.
 #
 # Decision rationale: governance/decisions/ADR-014-claude-security-review-integration.md
@@ -67,7 +67,7 @@ jobs:
         with:
           claude-api-key: ${{ secrets.CLAUDE_API_KEY }}
           # Default action model is Opus 4.1; override to latest Opus.
-          claude-model: claude-opus-4-7
+          claude-model: claude-opus-5-5
           comment-pr: true
           upload-results: true
           # Exclude non-source directories to focus analysis on code that

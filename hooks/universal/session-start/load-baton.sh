@@ -35,7 +35,7 @@ if [[ -f "$BATON" ]]; then
     if (( age_hours <= MAX_AGE_HOURS )); then
         echo "📋 BATON FOUND (age: ${age_hours}h, max: ${MAX_AGE_HOURS}h)"
         echo "    → Resume from .workflow/state/baton.md"
-        echo "    → Read 'next_action' section first"
+        echo "    → Read its '## Next action' section first"
         echo ""
     else
         echo "⚠  Baton found but stale (age: ${age_hours}h > ${MAX_AGE_HOURS}h)"
@@ -76,7 +76,9 @@ if [[ -f "$CLIENT_PROFILE" ]]; then
     client_name=$(grep "^name:" "$CLIENT_PROFILE" | head -n1 | awk '{print $2}' || echo "unknown")
     echo "👤 CLIENT: $client_name"
     echo "    → Compliance scope and pentest authorization in $CLIENT_PROFILE"
-    echo "    → Stay within scope. Cross-client operations are blocked."
+    echo "    → Stay inside that scope and the project root; cross-client"
+    echo "      operations are forbidden. hooks/universal/pre-tool/client-boundary.sh"
+    echo "      blocks paths outside the root only where the host tool wires it."
     echo ""
 fi
 

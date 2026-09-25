@@ -80,8 +80,12 @@ critical defect.
 ## Pattern 2 -- `REVOKE EXECUTE FROM public` after creating the function
 
 PostgreSQL grants `EXECUTE` on functions to `PUBLIC` (every role) by
-default. For any function that should be invokable only by specific
-roles or only by authenticated users:
+default, and Supabase's default privileges also grant `EXECUTE` on new
+functions in `public` directly to `anon`, `authenticated`, and
+`service_role`. Revoking from `PUBLIC` alone therefore leaves `anon`
+and `authenticated` able to call the function. Revoke from `PUBLIC`,
+`anon`, and `authenticated`, then grant back only to the role(s) that
+should call it:
 
 ```sql
 -- Create the function.
@@ -92,18 +96,19 @@ SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $$ ... $$;
 
--- Immediately revoke the public default.
-REVOKE EXECUTE ON FUNCTION public.admin_grant_role(uuid, text) FROM public;
+-- Immediately revoke the Postgres default (PUBLIC) and Supabase's direct grants.
+REVOKE EXECUTE ON FUNCTION public.admin_grant_role(uuid, text) FROM public, anon, authenticated;
 
--- Grant only to the role(s) that should call it.
-GRANT EXECUTE ON FUNCTION public.admin_grant_role(uuid, text) TO authenticated;
-
--- Or, for service-role-only functions:
+-- Grant only to the role(s) that should call it. An admin operation is service-role-only:
 GRANT EXECUTE ON FUNCTION public.admin_grant_role(uuid, text) TO service_role;
+
+-- A function any signed-in user may call (scoped inside by auth.uid()) would instead get:
+-- GRANT EXECUTE ON FUNCTION public.some_user_function(...) TO authenticated;
 ```
 
-The `REVOKE ... FROM public` is the load-bearing step. Without it, the
-`anon` role (unauthenticated users) can call the function. PostgREST
+The `REVOKE ... FROM public, anon, authenticated` is the load-bearing
+step. Without it, the `anon` role (unauthenticated users) can call the
+function. PostgREST
 exposes the endpoint; clients hit it; the SECURITY DEFINER body runs
 with admin privileges on behalf of an unauthenticated attacker.
 
@@ -194,8 +199,9 @@ AS $$ /* does something privileged */ $$;
 -- (no REVOKE)
 ```
 
-The default `EXECUTE TO public` grant means PostgREST exposes the
-function for anonymous callers. Test it: hit
+The default grants (to `PUBLIC`, and Supabase's direct grants to
+`anon` and `authenticated`) mean PostgREST exposes the function for
+anonymous callers. Test it: hit
 `https://<project>.supabase.co/rest/v1/rpc/elevated_helper` with only
 the anon key. If you get a 200, the function is publicly callable. The
 REVOKE + targeted GRANT pattern is mandatory.

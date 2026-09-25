@@ -8,9 +8,12 @@ disable-model-invocation: true
 
 Creates `.workflow/state/graph-halt`. `hooks/universal/pre-tool/deploy-gate.sh`
 checks for this file unconditionally, before any other check, and blocks
-every deploy-shaped or billing-path command while it exists. `/sprint`
-should also refuse to start a new cycle while it exists (check this at the
-top of any sprint-cycle Workflow run).
+every deploy-shaped or billing-path command while it exists. It also fails
+`scripts/graph-preflight.sh`'s `halt.absent` check, so `/sprint` refuses to
+launch or resume a cycle (the Workflow's own preflight role repeats the check
+before its planner runs). A cycle already past preflight keeps running; only
+its deploy/publish commands (vercel, wrangler, npm publish) and git
+commit/push/tag are blocked.
 
 This is a real human safety control — use it if a running cycle looks
 wrong, before investigating further. It does not roll back anything already

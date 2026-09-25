@@ -19,21 +19,22 @@ limit, or has a bug.
 | Tool | Entry file | Skills read |
 |------|-----------|-------------|
 | Claude Code | `CLAUDE.md` + `.claude/skills/` | SKILL.md (native) |
-| Codex CLI | `AGENTS.md` + `.codex/AGENTS.md` | SKILL.md (since v0.42) |
-| Cursor | `.cursorrules` (generated from AGENTS.md) | inline rules |
-| Antigravity | `AGENTS.md` | SKILL.md (since v1.0) |
-| Kiro | `AGENTS.md` + steering files | SKILL.md (since launch) |
-| Gemini CLI | `GEMINI.md` (generated) | inline |
+| Codex CLI | `AGENTS.md` + `.codex/AGENTS.md` | SKILL.md |
+| Cursor | `.cursorrules` (write from AGENTS.md) | inline rules |
+| Antigravity | `AGENTS.md` | SKILL.md |
+| Kiro | `AGENTS.md` + steering files | SKILL.md |
+| Gemini CLI | `GEMINI.md` (write from AGENTS.md) | inline |
 | Copilot | `.github/copilot-instructions.md` | inline |
-| Windsurf | `.windsurfrules` (generated) | inline |
-| Aider | `CONVENTIONS.md` (generated) | inline |
+| Windsurf | `.windsurfrules` (write from AGENTS.md) | inline |
+| Aider | `CONVENTIONS.md` (write from AGENTS.md) | inline |
 | OpenCode | `CLAUDE.md` (compatible) | SKILL.md |
 
 ---
 
 ## Failover triggers
 
-1. **Hard limit hit**: Claude Code 5-hour usage cap, Codex turn limit, etc.
+1. **Hard limit hit**: the active tool's usage cap, rate limit or turn
+   limit. Caps vary by vendor plan; check the vendor's current plan page.
 2. **Tool-specific bug**: agent gets stuck on a specific tool's quirk.
 3. **Capability mismatch**: current task needs a feature the active tool lacks
    (computer use, browser, specific MCP).
@@ -68,12 +69,13 @@ is plain markdown.
 
 For runaway-cost prevention or air-gapped work, route to a local LLM:
 
-- **OpenCode** with `qwen2.5-coder:32b` or `deepseek-coder-v2`
-- **Aider** with `ollama/codestral` or `lmstudio/yi-coder`
+- **OpenCode** or **Aider** with a local coding model served by Ollama or
+  LM Studio (the user picks the model)
 - **Continue.dev** for IDE-integrated local agents
 
-The `.workflow/state/budget-ledger.jsonl` triggers an automatic suggestion to
-fail over to local when the daily cap is approaching.
+Nothing suggests this failover automatically. When the daily spend in
+`.workflow/state/budget-ledger.jsonl` (kept where a budget hook is wired)
+nears the cap, propose it to the user yourself.
 
 ---
 
@@ -84,11 +86,15 @@ fail over to local when the daily cap is approaching.
 | Spec-driven work with EARS | Kiro, Claude Code |
 | Multi-agent orchestration | Antigravity, Claude Code (subagents) |
 | Browser automation (visual) | Claude Code + Playwright MCP, Antigravity |
-| Long-running refactor | Claude Code (Sonnet+Opus tiers) |
-| Quick edit, free | Cursor (free tier), Gemini CLI |
+| Long-running refactor | Claude Code |
+| Quick edit | Cursor, Gemini CLI |
 | Local/offline | OpenCode, Aider with Ollama |
 | GitHub PR automation | Codex CLI, Copilot |
-| Enterprise / regulated | Kiro (AWS-native), Claude Code (audit logs) |
+| Enterprise / regulated | Kiro, Claude Code |
+
+The table names strengths, not plans or prices. Free tiers, usage caps, model
+tiers and enterprise features such as audit logs change with vendor releases;
+check the vendor's current plan page before relying on a row.
 
 ---
 
