@@ -50,8 +50,8 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
   const url = process.env["SUPABASE_URL"];
   const key = process.env["SUPABASE_SERVICE_KEY"];
   if (!url || !key) {
-    out("api-keys SKIPPED: set SUPABASE_URL + SUPABASE_SERVICE_KEY. Exiting 0.");
-    return 0;
+    out("api-keys: SUPABASE_URL and SUPABASE_SERVICE_KEY are not set; nothing was listed or revoked. " + "For the local stack run it through `npm run db:with-env -- npm run api-keys -- ...` (docs/runbooks/COMMON_TASKS.md).");
+    return 2;
   }
   const client = createClient(url, key);
 
