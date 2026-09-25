@@ -16,7 +16,7 @@ project is retired
 | Script | npm script (from `stratum/`) | Writes to the database |
 | --- | --- | --- |
 | `stratum/scripts/backup-org.ts` | `npm run backup -- --org-id <uuid> [--out <path>] [--pretty]` | No. It only reads. |
-| `stratum/scripts/restore-org.ts` | `npm run restore -- --file <path> [--dry-run]` | Yes, unless `--dry-run` is given. |
+| `stratum/scripts/restore-org.ts` | `npm run restore -- --file <path> [--dry-run] [--keep-key-state]` | Yes, unless `--dry-run` is given. |
 
 Both read `SUPABASE_URL` and `SUPABASE_SERVICE_KEY` from the process
 environment, so run them through `npm run db:with-env -- ...`. A dry-run
@@ -30,11 +30,11 @@ Sources: `stratum/package.json:47-48`, `stratum/scripts/backup-org.ts:8`,
 
 A backup is one JSON object with three keys: `orgId`, `exportedAt`, and
 `tables`. `tables` maps each table name to an array of rows. The file holds
-22 tables:
+23 tables:
 
 - `organizations`, selected by `id`.
-- These 20 tables, selected by `org_id`: `developers`, `org_config`,
-  `sessions`, `billing_records`, `invoices`, `function_changes`,
+- These 21 tables, selected by `org_id`: `developers`, `org_config`,
+  `sessions`, `billing_records`, `invoices`, `invoice_send_claims`, `function_changes`,
   `tech_decisions`, `policy_updates`, `todos`, `variable_changes`,
   `operational_references`, `knowledge_entities`, `knowledge_edges`,
   `knowledge_entity_sessions`, `knowledge_edge_sessions`,
@@ -64,20 +64,6 @@ Sources: `stratum/scripts/backup-org.ts:22-49`,
 
 ## What a backup does not contain
 
-- **`invoice_send_claims`.** Migration
-  `20260924235900_invoice_send_claims.sql` creates this table, but it is not
-  in the export list, and restore rejects any table it does not know. The
-  schema creates 23 tables; the backup covers 22. This table is the guard
-  against billing a period twice. `npm run invoice -- --send` inserts a claim
-  row for the organization and period before it calls Stripe, and the row
-  stays after an ambiguous Stripe error until an operator reconciles. A
-  restore brings back no claims. After a restore, `--send` is blocked only by
-  an `invoices` row for that period whose status is not `failed`. A claimed
-  period with no such row, for example after an ambiguous error, can be billed
-  again. `--inspect-claim` and `--reconcile` refuse to run without a claim row,
-  so they cannot help on the restored organization. Before you run
-  `npm run invoice -- --send` against a restored organization, check Stripe
-  directly for invoices in each period that had a claim before the restore.
 - **Files on disk.** The proxy keeps billing usage events in a local outbox
   directory (default `stratum/data/usage-outbox/`) and reads captured sessions
   from `stratum/data/sessions/`. The encoder model cache is
@@ -101,7 +87,7 @@ Sources: `stratum/supabase/migrations/20260924235900_invoice_send_claims.sql:1-4
 ## Verify a backup
 
 1. Require exit code 0 and the final summary line from the backup command:
-   `<N> row(s) across <M> tables → <path>`. `M` is 22 for a current export.
+   `<N> row(s) across <M> tables → <path>`. `M` is 23 for a current export.
 2. Confirm the file at that path exists and is not empty.
 3. Validate the file without writing anything:
 
@@ -154,11 +140,15 @@ does not roll back earlier tables. The target is then partial; reconcile it
 before trying again (`docs/runbooks/LOCAL_STRATUM.md:104-105`). On success it
 prints `Restored <N> row(s) across <K> tables for org <uuid>.`
 
-Restore writes `api_keys` rows exactly as they were backed up, including
-`is_active`. A key revoked after the backup was taken is active again after
-the restore. Re-run each revocation made since the backup
-([COMMON_TASKS.md](COMMON_TASKS.md#revoke-an-api-key)) before the organization
-is used.
+Restore writes every `api_keys` row **inactive** by default (PB-64): a backup
+cannot know about revocations made after it was taken, so a key revoked since
+then must not come back to life. Restore prints a note with the number of keys
+it restored inactive. Mint new keys for the organization's clients with
+`npm run create-api-key`. Pass `--keep-key-state` only when you know that no
+key was revoked after the backup; each key then keeps its backed-up
+`is_active`. Restore targets a clean database: `api_keys` rows are plain
+inserts, so a key that already exists in the target makes the insert fail and
+restore stops, as described above.
 
 Sources: `stratum/scripts/restore-org.ts:21-49`, `stratum/scripts/restore-org.ts:173-192`,
 `stratum/scripts/restore-org.ts:254-286`, `stratum/scripts/backup-org.ts:42`.
@@ -179,7 +169,7 @@ In order, it:
    closed port. The check fails if either CLI loads it, which shows that
    process credentials win (`stratum/test/integration/local-backup-recovery.mjs:118-121`,
    `stratum/test/integration/local-backup-recovery.mjs:44-51`).
-3. Runs `backup-org.ts` and checks exact row counts for 13 of the 22
+3. Runs `backup-org.ts` and checks exact row counts for 13 of the 23
    tables: `organizations`, `sessions`, `api_keys`, `function_changes`,
    `tech_decisions`, `operational_references`, `knowledge_entities`,
    `knowledge_edges`, `knowledge_entity_sessions`, `knowledge_edge_sessions`,
@@ -232,14 +222,14 @@ Source for the npm script: `stratum/package.json:64`.
   isolated instance started with `DEVOPS_LOCAL_INSTANCE` and
   `DEVOPS_LOCAL_PORT` (`stratum/test/integration/local-backup-recovery.mjs:11-13`,
   `stratum/scripts/local-compose.ts:10-21`).
-- **Gaps listed above.** `invoice_send_claims`, the usage outbox, captured
-  session files, and the model cache are outside the backup. Losing the
-  invoice claims removes the double-billing guard for claimed periods, so
-  check Stripe before sending invoices for a restored organization
+- **Gaps listed above.** The usage outbox, captured session files, and the
+  model cache are outside the backup
   ([What a backup does not contain](#what-a-backup-does-not-contain)).
+  Held invoice claims (`invoice_send_claims`) are included since PB-65, so a
+  restore keeps the double-billing guard for claimed periods.
 - **No scheduled backups.** No script in `stratum/scripts/` or `scripts/`
   runs a backup on a schedule. Backups happen when an operator runs one.
 
-`stratum/docs/MEMORY_AND_EVAL_COMMANDS.md:29-30` says the export covers 21
-tables. The code exports 22 (`stratum/scripts/backup-org.ts:22-43`,
+`stratum/docs/MEMORY_AND_EVAL_COMMANDS.md` now says 23 tables, matching the
+code. The code exports 23 (`stratum/scripts/backup-org.ts:22-43`,
 `stratum/scripts/backup-org.ts:127`, `stratum/scripts/backup-org.ts:143-153`).

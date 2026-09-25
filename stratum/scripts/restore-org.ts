@@ -6,7 +6,7 @@
  * disaster recovery into a CLEAN target (or after the org was deleted) — a plain insert that
  * FAILS LOUD on any error (a PK collision means the org still exists; restore into an empty DB).
  *
- *   npm run restore -- --file <path> [--dry-run]
+ *   npm run restore -- --file <path> [--dry-run] [--keep-key-state]
  *
  * billing_records is append-only with GENERATED columns (token_delta/cost_delta_usd/cq_fee_usd);
  * those are stripped before insert (the DB recomputes them). Self-referential nullable FKs
@@ -33,6 +33,7 @@ export const RESTORE_ORDER = [
   "pruning_logs",
   "billing_records",
   "invoices",
+  "invoice_send_claims",
   "knowledge_entities",
   "knowledge_edges",
   "knowledge_entity_sessions",
@@ -51,14 +52,17 @@ const GENERATED_COLS: Record<string, string[]> = {
 interface Args {
   file?: string;
   dryRun: boolean;
+  /** Restore each API key's backed-up `is_active` instead of restoring every key inactive (PB-64). */
+  keepKeyState: boolean;
 }
 
 export function parseArgs(argv: string[]): Args {
-  const out: Args = { dryRun: false };
+  const out: Args = { dryRun: false, keepKeyState: false };
   for (let i = 0; i < argv.length; i++) {
     const tok = argv[i] ?? "";
     if (tok === "--file") out.file = argv[++i] ?? "";
     else if (tok === "--dry-run") out.dryRun = true;
+    else if (tok === "--keep-key-state") out.keepKeyState = true;
   }
   return out;
 }
@@ -169,8 +173,12 @@ export function stripGeneratedCols(table: string, rows: unknown[]): unknown[] {
   });
 }
 
-/** The ordered, non-empty insert plan (pure; testable). Tables absent/empty in the backup are skipped. */
-export function restorePlan(backup: BackupFile): { table: string; rows: unknown[] }[] {
+/**
+ * The ordered, non-empty insert plan (pure; testable). Tables absent/empty in the backup are skipped.
+ * API keys are restored inactive unless `keepKeyState` is set: a backup cannot know about revocations
+ * made after it was taken, so reactivating a leaked, since-revoked key must be an explicit choice (PB-64).
+ */
+export function restorePlan(backup: BackupFile, { keepKeyState = false }: { keepKeyState?: boolean } = {}): { table: string; rows: unknown[] }[] {
   const plan: { table: string; rows: unknown[] }[] = [];
   const hasDecisionReferences = decisionSupersessionUpdates(backup).length > 0;
   for (const table of RESTORE_ORDER) {
@@ -185,7 +193,9 @@ export function restorePlan(backup: BackupFile): { table: string; rows: unknown[
               ? { ...decision, supersedes_id: null, supersession_reviewer: null, supersession_evidence: null, supersession_reviewed_at: null }
               : decision;
           })
-          : stripGeneratedCols(table, rows),
+          : table === "api_keys" && !keepKeyState
+            ? stripGeneratedCols(table, rows).map((row) => ({ ...(row as Record<string, unknown>), is_active: false }))
+            : stripGeneratedCols(table, rows),
       });
   }
   return plan;
@@ -219,7 +229,7 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
   };
   const args = parseArgs(argv);
   if (args.file === undefined || args.file === "") {
-    out("usage: npm run restore -- --file <path> [--dry-run]");
+    out("usage: npm run restore -- --file <path> [--dry-run] [--keep-key-state]");
     return 1;
   }
 
@@ -231,7 +241,11 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
     return 1;
   }
 
-  const plan = restorePlan(backup);
+  const plan = restorePlan(backup, { keepKeyState: args.keepKeyState });
+  const keyCount = (backup.tables["api_keys"] ?? []).length;
+  if (keyCount > 0 && !args.keepKeyState) {
+    out(`Note: ${keyCount} API key(s) will be restored INACTIVE. A backup cannot know about revocations made after it was taken; mint new keys with npm run create-api-key, or re-run with --keep-key-state to restore each key's backed-up state.`);
+  }
   out(`Restore org ${backup.orgId}${backup.exportedAt ? ` (exported ${backup.exportedAt})` : ""}`);
   out("=".repeat(50));
   for (const { table, rows } of plan) out(`  ${table.padEnd(22)} ${rows.length}`);
