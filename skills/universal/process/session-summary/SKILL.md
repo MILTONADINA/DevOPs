@@ -80,7 +80,7 @@ OR
 
 ## Next session
 
-The baton at `.workflow/state/baton.md` contains the literal `next_action`.
+The baton at `.workflow/state/baton.md` contains the literal next instruction in its `## Next action` section.
 The next agent should read it first.
 
 ---

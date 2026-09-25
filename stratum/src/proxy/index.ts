@@ -10,9 +10,11 @@
  *  - COMMERCIAL (CQ_COMMERCIAL=true + Supabase creds): adds the multi-tenant auth gate (protecting
  *    /v1/*) + the config/memory/billing/sessions APIs over Supabase. Multi-tenant, key-authenticated.
  *
- * Usage:
- *   ANTHROPIC_BASE_URL=http://localhost:4080 npm run dev            # personal
- *   CQ_COMMERCIAL=true npm run dev                                  # commercial (needs SUPABASE_*)
+ * Usage (settings come from the process environment only; stratum/.env is not loaded):
+ *   npm run dev                          # personal; needs ANTHROPIC_API_KEY (or another provider)
+ *   CQ_COMMERCIAL=true npm run dev       # commercial (needs SUPABASE_*)
+ * In the proxy's own environment ANTHROPIC_BASE_URL is the UPSTREAM (default https://api.anthropic.com).
+ * Point a client at the proxy by setting ANTHROPIC_BASE_URL=http://localhost:4080 in the client's shell.
  */
 
 import path from "node:path";

@@ -13,15 +13,15 @@
 
 At the start of a top-level session, before responding to anything, the agent
 MUST do the following. A subagent launched with a specific task skips steps
-1-4 and 6: its prompt sets its scope, and resuming the baton's `next_action`
-would pull it off that task. Step 5 (client scope) and the rest of this
+1-4 and 6: its prompt sets its scope, and resuming the baton's `## Next action`
+section would pull it off that task. Step 5 (client scope) and the rest of this
 contract still apply to it.
 
 1. Read `constitution/PRINCIPLES.md` and load it as the immutable operating frame.
 2. Read `constitution/ANTIPATTERNS.md` for the explicit don'ts.
 3. Read `constitution/LOOP.md` for the goal-driven execution protocol.
 4. Check `.workflow/state/baton.md`. If it exists and `last_updated` is within 24
-   hours, **resume from `next_action`** rather than starting fresh.
+   hours, **resume from its `## Next action` section** rather than starting fresh.
 5. Check `.workflow/client/profile.yml` if present. Load client name, allowed
    data classes, compliance scope, and pentest authorization. Do not operate
    outside this scope.

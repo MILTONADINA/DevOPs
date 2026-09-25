@@ -1,48 +1,48 @@
 manifest_version: 1
-generated_at: '2026-09-25T17:18:18Z'
+generated_at: '2026-09-25T18:17:39Z'
 skills:
 - name: proof-of-work
   path: skills/universal/process/proof-of-work/SKILL.md
-  sha256: 03aa4e1e8821580144d169b30b7315e8309dcff8982201ac70350259b00c57da
+  sha256: 7d6145fa283f76a1ea010621634c70762dc4ce134a209924b88ef979d7e3261d
   sig_path: skills/universal/process/proof-of-work/SKILL.md.sig
   signed_by: https://github.com/MILTONADINA/DevOPs/.github/workflows/release-sign.yml@refs/heads/feature
-  signed_at: '2026-09-25T17:18:18Z'
+  signed_at: '2026-09-25T18:17:39Z'
   rekor_log_index: see .workflow/sigstore/signing-logs/
   signed_with_version: v2.4.3
   bundle_path: skills/universal/process/proof-of-work/SKILL.md.bundle
 - name: baton-handoff
   path: skills/universal/process/baton-handoff/SKILL.md
-  sha256: 9313dc319db0b6ba2ac568b87b6d0edd78c79c39025b4eac8e430948c749b002
+  sha256: b2f888af57fa03efb59c865ccc982847ca649323431223d804af502392ade81c
   sig_path: skills/universal/process/baton-handoff/SKILL.md.sig
   signed_by: https://github.com/MILTONADINA/DevOPs/.github/workflows/release-sign.yml@refs/heads/feature
-  signed_at: '2026-09-25T17:18:18Z'
+  signed_at: '2026-09-25T18:17:39Z'
   rekor_log_index: see .workflow/sigstore/signing-logs/
   signed_with_version: v2.4.3
   bundle_path: skills/universal/process/baton-handoff/SKILL.md.bundle
 - name: spec-extraction
   path: skills/universal/process/spec-extraction/SKILL.md
-  sha256: 44a41cde926e6afcd15f28615e1f49614068665251b15d9186165f67d50d2e49
+  sha256: 35c6cd68534900c7adfa66fb2103c89bef13196a82175b573c36f944f07d5e78
   sig_path: skills/universal/process/spec-extraction/SKILL.md.sig
   signed_by: https://github.com/MILTONADINA/DevOPs/.github/workflows/release-sign.yml@refs/heads/feature
-  signed_at: '2026-09-25T17:18:18Z'
+  signed_at: '2026-09-25T18:17:39Z'
   rekor_log_index: see .workflow/sigstore/signing-logs/
   signed_with_version: v2.4.3
   bundle_path: skills/universal/process/spec-extraction/SKILL.md.bundle
 - name: goal-loop
   path: skills/universal/process/goal-loop/SKILL.md
-  sha256: 5a57f0ba66a2ed599383a3e279fbee3afdea13ff11a8aaf655a9592ae3d5e03c
+  sha256: f672c4586abf8cd68069abf45e23bcf290a1830367a2a5e8a3ced4af6e411b4f
   sig_path: skills/universal/process/goal-loop/SKILL.md.sig
   signed_by: https://github.com/MILTONADINA/DevOPs/.github/workflows/release-sign.yml@refs/heads/feature
-  signed_at: '2026-09-25T17:18:18Z'
+  signed_at: '2026-09-25T18:17:39Z'
   rekor_log_index: see .workflow/sigstore/signing-logs/
   signed_with_version: v2.4.3
   bundle_path: skills/universal/process/goal-loop/SKILL.md.bundle
 - name: multi-tool-failover
   path: skills/universal/process/multi-tool-failover/SKILL.md
-  sha256: 99e164880e1e4b64021fa1f048c17db5e71582c94c5ca8e83e4c62c7116ca411
+  sha256: dd33ec965ceac8f3d6a125cd10c7d00ebe796ee2417b70505b38ea231fd074b0
   sig_path: skills/universal/process/multi-tool-failover/SKILL.md.sig
   signed_by: https://github.com/MILTONADINA/DevOPs/.github/workflows/release-sign.yml@refs/heads/feature
-  signed_at: '2026-09-25T17:18:18Z'
+  signed_at: '2026-09-25T18:17:39Z'
   rekor_log_index: see .workflow/sigstore/signing-logs/
   signed_with_version: v2.4.3
   bundle_path: skills/universal/process/multi-tool-failover/SKILL.md.bundle
@@ -51,16 +51,16 @@ skills:
   sha256: 6947622405f5901ba239436036b7ef440b06fc72e4cd6ad25233e76b8c3d0b62
   sig_path: skills/universal/process/plan-decomposition/SKILL.md.sig
   signed_by: https://github.com/MILTONADINA/DevOPs/.github/workflows/release-sign.yml@refs/heads/feature
-  signed_at: '2026-09-25T17:18:18Z'
+  signed_at: '2026-09-25T18:17:39Z'
   rekor_log_index: see .workflow/sigstore/signing-logs/
   signed_with_version: v2.4.3
   bundle_path: skills/universal/process/plan-decomposition/SKILL.md.bundle
 - name: session-summary
   path: skills/universal/process/session-summary/SKILL.md
-  sha256: c563274a5715c751dee07882d4eb01f709daa5eb34e490607cef5d4d7e560359
+  sha256: 23c0dfb0a19402ccdb2b9a5bf51440bc5fca361ea01bb72128f55a43f3e5339c
   sig_path: skills/universal/process/session-summary/SKILL.md.sig
   signed_by: https://github.com/MILTONADINA/DevOPs/.github/workflows/release-sign.yml@refs/heads/feature
-  signed_at: '2026-09-25T17:18:18Z'
+  signed_at: '2026-09-25T18:17:39Z'
   rekor_log_index: see .workflow/sigstore/signing-logs/
   signed_with_version: v2.4.3
   bundle_path: skills/universal/process/session-summary/SKILL.md.bundle
@@ -69,25 +69,25 @@ skills:
   sha256: 6d8b1bb00412a9afe73ed6aad96fd864ca6d734cf48ba7fe353716815111f2c2
   sig_path: skills/universal/development/ears-spec-writing/SKILL.md.sig
   signed_by: https://github.com/MILTONADINA/DevOPs/.github/workflows/release-sign.yml@refs/heads/feature
-  signed_at: '2026-09-25T17:18:18Z'
+  signed_at: '2026-09-25T18:17:39Z'
   rekor_log_index: see .workflow/sigstore/signing-logs/
   signed_with_version: v2.4.3
   bundle_path: skills/universal/development/ears-spec-writing/SKILL.md.bundle
 - name: openapi-first
   path: skills/universal/development/openapi-first/SKILL.md
-  sha256: 9e59cd60de0ec1f47b0cb3d2b387613b11e6056f83881d8e731d14e5ca4355d1
+  sha256: 53ca6a4d64600fd3d71e3008f769bd98cb4c6fe56b8e0112c874c053f3738d10
   sig_path: skills/universal/development/openapi-first/SKILL.md.sig
   signed_by: https://github.com/MILTONADINA/DevOPs/.github/workflows/release-sign.yml@refs/heads/feature
-  signed_at: '2026-09-25T17:18:18Z'
+  signed_at: '2026-09-25T18:17:39Z'
   rekor_log_index: see .workflow/sigstore/signing-logs/
   signed_with_version: v2.4.3
   bundle_path: skills/universal/development/openapi-first/SKILL.md.bundle
 - name: gitleaks-scan
   path: skills/universal/security/gitleaks-scan/SKILL.md
-  sha256: 527f9918fc266f0ee95b192db2511385d31032a513611caafa6de54947781f8d
+  sha256: 720060de6ae86984910551999a876b16260b5c034db8f791a151dd4407dc4160
   sig_path: skills/universal/security/gitleaks-scan/SKILL.md.sig
   signed_by: https://github.com/MILTONADINA/DevOPs/.github/workflows/release-sign.yml@refs/heads/feature
-  signed_at: '2026-09-25T17:18:18Z'
+  signed_at: '2026-09-25T18:17:39Z'
   rekor_log_index: see .workflow/sigstore/signing-logs/
   signed_with_version: v2.4.3
   bundle_path: skills/universal/security/gitleaks-scan/SKILL.md.bundle
@@ -96,7 +96,7 @@ skills:
   sha256: 4922dc374c35fe739ab4c5a0e47e7e007f1ef558f8bfa555288ea2bbd830076c
   sig_path: skills/universal/security/owasp-asi-threat-model/SKILL.md.sig
   signed_by: https://github.com/MILTONADINA/DevOPs/.github/workflows/release-sign.yml@refs/heads/feature
-  signed_at: '2026-09-25T17:18:18Z'
+  signed_at: '2026-09-25T18:17:39Z'
   rekor_log_index: see .workflow/sigstore/signing-logs/
   signed_with_version: v2.4.3
   bundle_path: skills/universal/security/owasp-asi-threat-model/SKILL.md.bundle
@@ -105,7 +105,7 @@ skills:
   sha256: 13cd134215be0355a1c1fe86d627be4715f510b2a2eabdfb79732d03cb2a5e9b
   sig_path: skills/universal/security/prompt-injection-defense/SKILL.md.sig
   signed_by: https://github.com/MILTONADINA/DevOPs/.github/workflows/release-sign.yml@refs/heads/feature
-  signed_at: '2026-09-25T17:18:18Z'
+  signed_at: '2026-09-25T18:17:39Z'
   rekor_log_index: see .workflow/sigstore/signing-logs/
   signed_with_version: v2.4.3
   bundle_path: skills/universal/security/prompt-injection-defense/SKILL.md.bundle
@@ -114,7 +114,7 @@ skills:
   sha256: b8e01381f62b7a85cc3475f7f39dbc33a4ec990f5657def355a00cecbd85d914
   sig_path: skills/universal/security/semgrep-scan/SKILL.md.sig
   signed_by: https://github.com/MILTONADINA/DevOPs/.github/workflows/release-sign.yml@refs/heads/feature
-  signed_at: '2026-09-25T17:18:18Z'
+  signed_at: '2026-09-25T18:17:39Z'
   rekor_log_index: see .workflow/sigstore/signing-logs/
   signed_with_version: v2.4.3
   bundle_path: skills/universal/security/semgrep-scan/SKILL.md.bundle
@@ -123,7 +123,7 @@ skills:
   sha256: 89916558a11e58844688e8a1fa4f5d2fbf099f11602f850858e141cd5e34b87e
   sig_path: skills/universal/security/webhook-idempotency/SKILL.md.sig
   signed_by: https://github.com/MILTONADINA/DevOPs/.github/workflows/release-sign.yml@refs/heads/feature
-  signed_at: '2026-09-25T17:18:18Z'
+  signed_at: '2026-09-25T18:17:39Z'
   rekor_log_index: see .workflow/sigstore/signing-logs/
   signed_with_version: v2.4.3
   bundle_path: skills/universal/security/webhook-idempotency/SKILL.md.bundle
@@ -132,7 +132,7 @@ skills:
   sha256: b8f0f6bd3527b2e0d6d9840acaf013870133364f3448f3e4f356217ff8365875
   sig_path: skills/universal/compliance/coppa-audit/SKILL.md.sig
   signed_by: https://github.com/MILTONADINA/DevOPs/.github/workflows/release-sign.yml@refs/heads/feature
-  signed_at: '2026-09-25T17:18:18Z'
+  signed_at: '2026-09-25T18:17:39Z'
   rekor_log_index: see .workflow/sigstore/signing-logs/
   signed_with_version: v2.4.3
   bundle_path: skills/universal/compliance/coppa-audit/SKILL.md.bundle
@@ -141,16 +141,16 @@ skills:
   sha256: 1c4540180ea3ceb068911f1471012c6ba71eaab593621f6ed480a1d65a09eab6
   sig_path: skills/universal/devops/cost-attribution/SKILL.md.sig
   signed_by: https://github.com/MILTONADINA/DevOPs/.github/workflows/release-sign.yml@refs/heads/feature
-  signed_at: '2026-09-25T17:18:18Z'
+  signed_at: '2026-09-25T18:17:39Z'
   rekor_log_index: see .workflow/sigstore/signing-logs/
   signed_with_version: v2.4.3
   bundle_path: skills/universal/devops/cost-attribution/SKILL.md.bundle
 - name: observability-instrument
   path: skills/universal/devops/observability-instrument/SKILL.md
-  sha256: 2f1bafecc3e1ffb1abeeddceedf8dbe0dc87ccc5dc95889577fcc6e0116b9bde
+  sha256: 79119559228d2e0b3b9b8b81e21925e4f7ceb2f29596029adb16065ca2b39b50
   sig_path: skills/universal/devops/observability-instrument/SKILL.md.sig
   signed_by: https://github.com/MILTONADINA/DevOPs/.github/workflows/release-sign.yml@refs/heads/feature
-  signed_at: '2026-09-25T17:18:18Z'
+  signed_at: '2026-09-25T18:17:39Z'
   rekor_log_index: see .workflow/sigstore/signing-logs/
   signed_with_version: v2.4.3
   bundle_path: skills/universal/devops/observability-instrument/SKILL.md.bundle

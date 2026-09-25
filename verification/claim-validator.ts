@@ -9,14 +9,12 @@
 //   5. reproducibility_hash recomputes to the same value
 //
 // Usage:
-//   node verification/claim-validator.js <claim-file> [--no-rerun]
-//   node verification/claim-validator.js --all
-//   node verification/claim-validator.js --session <session_id>
+//   npm run validate:claims -- <claim-file> [--no-rerun]
+//   npm run validate:claims -- --all [--no-rerun]
 //
 // Exit codes:
-//   0  all valid
-//   1  one or more invalid
-//   2  schema error in input file
+//   0  all valid, or no claim files found
+//   1  one or more invalid (schema failures included)
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';

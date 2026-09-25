@@ -1,0 +1,70 @@
+
+detected_at: "2026-09-25T18:16:41.917Z"
+project_root: "/private/tmp/claude-501/-Users-milto-Projects-DevOps/5f876e97-ab3b-4628-a658-ba6ce3b54077/scratchpad/wt-f"
+stack: 
+  language: 
+    - "javascript/typescript"
+  package_managers: 
+    - "npm"
+  frameworks: []
+  databases: []
+  orms: []
+  deploy_targets: []
+  auth: []
+domain: 
+  classes: 
+    - "children's data"
+    - "PHI"
+  compliance: 
+    - "COPPA"
+    - "HIPAA"
+state: "brownfield"
+risk: 
+  has_secrets_in_repo: null
+  has_open_vulns: null
+  recent_incident: false
+recommended: 
+  skills: 
+    - "process/proof-of-work"
+    - "process/baton-handoff"
+    - "process/spec-extraction"
+    - "process/plan-decomposition"
+    - "process/goal-loop"
+    - "process/session-summary"
+    - "process/multi-tool-failover"
+    - "development/ears-spec-writing"
+    - "security/owasp-asi-threat-model"
+    - "security/prompt-injection-defense"
+    - "security/gitleaks-scan"
+    - "security/semgrep-scan"
+    - "devops/observability-instrument"
+    - "devops/cost-attribution"
+    - "compliance/coppa-audit"
+  hooks: 
+    - "universal/pre-tool/block-secrets.sh"
+    - "universal/pre-tool/block-prod-write.sh"
+    - "universal/pre-tool/block-rm-rf.sh"
+    - "universal/pre-tool/budget-brake.sh"
+    - "universal/pre-tool/loop-detection.sh"
+    - "universal/pre-tool/client-boundary.sh"
+    - "universal/post-tool/auto-format.sh"
+    - "universal/post-tool/gitleaks-scan.sh"
+    - "universal/session-start/load-baton.sh"
+    - "universal/session-end/write-baton.sh"
+  mcp_servers: 
+    - "playwright"
+    - "shannon"
+    - "pentagi"
+    - "lyrie"
+    - "pentest-ai"
+  subagents: 
+    - "planner"
+    - "coder"
+    - "tester"
+    - "reviewer"
+    - "security"
+    - "validator"
+  next_steps: 
+    - "Use templates/renovate/renovate.json -- Renovate config for dependency-update PR automation (see docs/COST_OPTIMIZATION.md)"
+  initial_mode: "brownfield"
+  initial_lifecycle: "build"

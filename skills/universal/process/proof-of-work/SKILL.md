@@ -155,4 +155,5 @@ to completion until it's fixed or withdrawn.
 ---
 
 **This skill is working when:** 100% of session-end summaries show all claims
-verified by the validator. Track in `governance/telemetry/proof-rate.jsonl`.
+verified by the validator. The intended record is
+`governance/telemetry/proof-rate.jsonl`. Nothing writes it yet, so check by hand.

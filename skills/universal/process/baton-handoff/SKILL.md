@@ -88,7 +88,9 @@ next session, answers, and the answers go into `specs/` or `decisions.md`.
 - Committed to git where the project tracks `.workflow/state/`. Where
   `.gitignore` excludes it (as the DevOPs repository itself does), the baton
   stays a local file; leave it untracked.
-- Read by: `hooks/universal/session-start/load-baton.sh` on every session start.
+- Checked by: `hooks/universal/session-start/load-baton.sh` on every session start.
+  It reports whether the baton exists and how old it is; it does not read the
+  contents for the agent.
 - Max age before "stale": 24 hours (configurable). After that it's informational only.
 
 ---
@@ -116,5 +118,5 @@ explicitly:
 ---
 
 **This skill is working when:** the user can type `continue` in any tool and
-the agent picks up correctly. Track resume success in
-`governance/telemetry/resume-success.jsonl`. Target: > 0.95.
+the agent picks up correctly. Target: resume success > 0.95. The
+intended record is `governance/telemetry/resume-success.jsonl`. Nothing writes it yet, so check by hand.

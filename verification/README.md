@@ -13,28 +13,30 @@ The proof-of-work enforcement layer.
 ## Usage
 
 ```bash
-# Validate all claims in .workflow/proofs/
-node verification/claim-validator.js --all
+# Validate all claims in .workflow/proofs/ (re-runs every proof)
+npm run validate:claims -- --all
 
 # Validate a single claim
-node verification/claim-validator.js .workflow/proofs/claim-2026-05-22-018.yml
+npm run validate:claims -- .workflow/proofs/claim-2026-05-22-018.yml
 
 # Validate without re-running (schema and SHA only)
-node verification/claim-validator.js --all --no-rerun
+npm run validate:claims -- --all --no-rerun
 
 # Find stale proofs
-node verification/stale-proof-detector.js
+npx tsx verification/stale-proof-detector.ts
 
-# Generate the hash for a new claim before writing it
-node verification/reproducibility-check.js 7c4a9f2 "pnpm test auth/token"
+# Generate the hash for a new claim before writing it (no environment block)
+npx tsx verification/reproducibility-check.ts 7c4a9f2 "pnpm test auth/token"
 ```
 
 ## Integration points
 
-- Session-end hook (`write-baton.sh`) reads `governance/telemetry/proof-rate.jsonl`
-  which is fed by validator runs.
-- CI: run `node verification/claim-validator.js --all` on every PR.
-- Pre-merge: same, with `--rerun`.
+- Session-end hook (`write-baton.sh`) counts the claim files in `.workflow/proofs/`
+  that are newer than the previous baton.
+- CI (`.github/workflows/ci.yml`) runs `claim-validator.ts --all --no-rerun` and the
+  stale-proof detector on every PR. `.workflow/proofs/` is gitignored, so on a CI
+  checkout both find no claims and pass. The real check is a local full re-run
+  before merge (see polish backlog PB-60).
 
 ## How a claim is born
 
@@ -43,4 +45,6 @@ node verification/reproducibility-check.js 7c4a9f2 "pnpm test auth/token"
 3. `proof-of-work` skill captures stdout+stderr to `.workflow/proofs/<id>-test.log`.
 4. Validator runs, confirms reproducibility.
 5. Session-summary aggregates verified claims.
-6. Stale proofs are pruned in CI.
+6. The stale-proof detector reports claims whose `git_sha` is missing from the local
+   object store (`git rev-parse --verify`). A commit that is stored but unreachable
+   from any ref still passes.

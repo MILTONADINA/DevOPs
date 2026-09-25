@@ -49,7 +49,7 @@ startum/
 
 **Check `docs/ROADMAP.md` for the active phase before writing any code.**
 
-Each phase has explicit acceptance criteria. Do not begin Phase N+1 until Phase N criteria are met and documented.
+Each phase has explicit acceptance criteria. Phases have overlapped in practice: v0.5.x and v0.6.x work landed before v0.4.x's gate passed. What may ship is governed by the release gates ("Ship gate") in the root `plan.md`, not by phase order. Do not mark a phase complete until its criteria are met and documented.
 
 | Phase | Description |
 |---|---|

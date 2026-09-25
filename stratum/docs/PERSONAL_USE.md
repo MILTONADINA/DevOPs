@@ -17,17 +17,24 @@ cd stratum
 npm install
 ```
 
-Create `stratum/.env` (gitignored — never commit it):
+The proxy reads its settings from the process environment only. It does not
+load `stratum/.env` (`test/proxy/process-env-only.test.ts` pins this). Export
+them in the shell that runs the proxy, reading the key from your password
+manager or keychain rather than a file in the repository:
 
-```
-ANTHROPIC_API_KEY=sk-ant-...     # required
+```bash
+export ANTHROPIC_API_KEY=...     # required to forward Claude Code traffic to Anthropic
 # Optional:
-PORT=4080                        # proxy port (default 4080)
-ANTHROPIC_BASE_URL=https://api.anthropic.com   # upstream (default; override for testing)
-RATE_LIMIT_MAX=100               # requests/min/IP (default 100)
-RATE_LIMIT_WINDOW=1 minute       # rate-limit window (default "1 minute")
-LOG_LEVEL=info
+export PORT=4080                 # proxy port (default 4080)
+export RATE_LIMIT_MAX=100        # requests/min/IP (default 100)
+export RATE_LIMIT_WINDOW="1 minute"   # rate-limit window (default "1 minute")
+export LOG_LEVEL=info
 ```
+
+In the proxy's shell, `ANTHROPIC_BASE_URL` is the upstream the proxy forwards
+to (default `https://api.anthropic.com`). Leave it unset there. Setting it to
+the proxy's own address makes the proxy forward to itself. Set it to
+`http://localhost:4080` only in the client's shell (step 3).
 
 ---
 
@@ -135,9 +142,9 @@ citing `AC-S15-2a-2.2`.
 
 | Symptom | Cause / fix |
 |---|---|
-| `ANTHROPIC_API_KEY must be set` on start | Add it to `stratum/.env`. |
+| `no LLM provider configured` on start | Export `ANTHROPIC_API_KEY` in the proxy's shell (step 1). `stratum/.env` is not read. |
 | `ANTHROPIC_BASE_URL ... not a parseable URL` / bad protocol on start | Fix the env value (http/https only); the proxy fails fast by design. |
-| Claude Code gets `429 rate_limit_error` from the proxy | You exceeded `RATE_LIMIT_MAX`/min. Raise it in `.env` or wait a minute. |
+| Claude Code gets `429 rate_limit_error` from the proxy | You exceeded `RATE_LIMIT_MAX`/min. Raise it with `export RATE_LIMIT_MAX=...` before starting the proxy, or wait a minute. |
 | `502 upstream_unreachable` | Network/transport error reaching Anthropic; the proxy retried then surfaced it. Check connectivity. |
 | Upstream 4xx/5xx | Passed through verbatim from Anthropic (e.g. overloaded, auth). Not captured. |
 | Dashboard shows "No sessions captured yet" | Run at least one request through the proxy first (steps 2–3). |

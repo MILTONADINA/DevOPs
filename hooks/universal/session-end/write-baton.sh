@@ -42,8 +42,8 @@ LIFECYCLE=$(cat .workflow/state/lifecycle.txt 2>/dev/null || echo "build")
 cat > "$BATON" <<EOF
 # Baton — handoff document
 
-> Written by session-end hook. Read by next session-start hook.
-> The next agent (any tool) reads this and resumes from \`next_action\`.
+> Written by the session-end hook. The session-start hook reports its age; the next agent reads it.
+> The next agent (any tool) reads this and resumes from its \`## Next action\` section.
 
 **last_updated**: $TS
 **session_id**: $SESSION_ID
@@ -123,7 +123,7 @@ The next session should:
 1. Read \`constitution/PRINCIPLES.md\`, \`ANTIPATTERNS.md\`, \`LOOP.md\`
 2. Read this baton
 3. Address any open blockers FIRST
-4. Then proceed with \`next_action\` above
+4. Then proceed with the \`## Next action\` section above
 5. If anything in this baton is unclear, ask the user before proceeding
 EOF
 
@@ -133,6 +133,6 @@ echo "{\"ts\":$(date -u +%s),\"event\":\"session_end\",\"session_id\":\"$SESSION
 echo "✓ Baton written to $BATON"
 echo "  Verified claims: $VERIFIED_COUNT"
 echo "  Open blockers:   $OPEN_BLOCKERS"
-echo "  Next agent will resume from 'next_action' section."
+echo "  Next agent will resume from its '## Next action' section."
 
 exit 0

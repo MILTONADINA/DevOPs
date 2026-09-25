@@ -18,10 +18,11 @@ Tool A approaches limit
    open Tool B
         │
         ▼
-   session-start hook reads baton
+   session-start hook reports the baton's age;
+   the agent reads the baton
         │
         ▼
-   continue from next_action
+   continue from ## Next action
 ```
 
 ## Supported tools

@@ -149,5 +149,5 @@ each one measurable: "p95 latency < 200ms", "OWASP ASI 2026 ASI01 mitigated",
 ---
 
 **This skill is working when:** every implementation PR cites a spec section,
-and the spec is updated before the implementation, not after. Track in
-`governance/telemetry/spec-trace-rate.jsonl`. Target: 100%.
+and the spec is updated before the implementation, not after. Target: 100%. The
+intended record is `governance/telemetry/spec-trace-rate.jsonl`. Nothing writes it yet, so check by hand.

@@ -4,8 +4,9 @@
 # Blocks any git push, deploy, or schema migration targeting production
 # unless an explicit approval token exists in .workflow/state/approvals.jsonl.
 #
-# Real incident this prevents: Amazon's Kiro AI agent autonomously deleted a
-# production AWS environment, causing a 13-hour outage (documented 2026).
+# Incident this guards against: Amazon's Kiro agent reportedly deleted and
+# recreated an AWS Cost Explorer environment, a ~13h outage in one region
+# (FT, Feb 2026; Amazon attributes it to misconfigured access controls).
 
 set -euo pipefail
 
@@ -83,9 +84,9 @@ cat >&2 <<EOF
 ║  command may be re-run within 5 minutes of it. Do not write an    ║
 ║  approval entry yourself.                                         ║
 ║                                                                   ║
-║  This block protects production from agent runaway. Real          ║
-║  incident: Amazon's Kiro deleted a prod AWS environment, causing  ║
-║  a 13-hour outage.                                                ║
+║  This block protects production from agent runaway. In a          ║
+║  reported incident, Amazon's Kiro agent deleted and recreated an  ║
+║  AWS environment; Amazon blames misconfigured access controls.    ║
 ╚═══════════════════════════════════════════════════════════════════╝
 EOF
 
