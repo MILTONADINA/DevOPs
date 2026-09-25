@@ -41,6 +41,8 @@ Thumbs.db
 *.log
 logs/
 .workflow/state/events.jsonl
+# Per-checkout analyzer output (absolute project_root, detected_at timestamp).
+.workflow/profile.yml
 
 # OS
 .DS_Store
