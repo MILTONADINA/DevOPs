@@ -297,15 +297,17 @@ test('static: the only network calls are GET /api/snapshot and GET /events (SSE)
   }
 });
 
-test('static: exactly four node states, nothing else', () => {
-  assert.match(scriptText, /var NODE_STATES = \['queued', 'running', 'done', 'errored'\];/);
-  // CSS custom properties: the four node-state colors plus exactly one
-  // connection-status-only shade (--state-reconnecting) -- never a fifth
+test('static: exactly five node states, nothing else', () => {
+  assert.match(scriptText, /var NODE_STATES = \['queued', 'running', 'done', 'errored', 'stale'\];/);
+  // CSS custom properties: the five node-state colors plus exactly one
+  // connection-status-only shade (--state-reconnecting) -- never a sixth
   // node color, and never a ".node--reconnecting" rule that would let the
-  // connection-only shade leak onto an actual node.
+  // connection-only shade leak onto an actual node. `stale` (masterpiece
+  // REQ-M24) is a node the journal calls running with no agent activity for
+  // 18 minutes in a run whose run record is not running.
   const stateVars = new Set(rawHtml.match(/--state-[a-z]+/g) || []);
-  assert.deepEqual([...stateVars].sort(), ['--state-done', '--state-errored', '--state-queued', '--state-reconnecting', '--state-running'].sort());
-  for (const s of ['queued', 'running', 'done', 'errored']) {
+  assert.deepEqual([...stateVars].sort(), ['--state-done', '--state-errored', '--state-queued', '--state-reconnecting', '--state-running', '--state-stale'].sort());
+  for (const s of ['queued', 'running', 'done', 'errored', 'stale']) {
     assert.match(rawHtml, new RegExp(`\\.node--${s}\\s*\\{`), `missing .node--${s} rule`);
   }
   assert.doesNotMatch(rawHtml, /\.node--reconnecting/);

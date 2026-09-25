@@ -148,18 +148,16 @@ permanent design constraint, not a gap slated to be filled in later.
   (`/sprint`) all stay slash commands, run deliberately by a human in a
   session — this dashboard cannot do any of them today, and must never
   grow a way to.
-- **Two specific fields are not shown today**, not approximated, not
-  partially shown, always `null`:
-  - **`cycleId`**
+- **One field is not shown today**, not approximated, not partially shown,
+  always `null`:
   - **A labeled final outcome record (`cycleOutcome` / `readyForPR`)**
 
-  Confirmed by reading `.claude/workflows/sprint-cycle.js` itself: both are
+  Confirmed by reading `.claude/workflows/sprint-cycle.js` itself: it is
   returned only to the orchestrating session, as the Workflow's own return
-  value. Neither is written into `journal.jsonl`, any `agent-*.meta.json`,
-  or anywhere else under a run directory. Since cycle 7,
-  `.workflow/state/graph-cycles/<cycleId>/run.json` (REQ-R10) records the
-  cycle id, run id and status, but this dashboard does not read it yet
-  (masterpiece roadmap MR-15).
+  value, and is not written into `journal.jsonl`, any `agent-*.meta.json`,
+  or the run record. The **`cycleId`**, unavailable until masterpiece MR-15,
+  is joined by `runId` from `.workflow/state/graph-cycles/<cycleId>/run.json`
+  (REQ-R10) whenever a run record exists, and is `null` otherwise.
 
   What **is** recoverable, and only on a best-effort, never-fabricated
   basis:
@@ -178,9 +176,16 @@ permanent design constraint, not a gap slated to be filled in later.
     `cycleOutcome`/`readyForPR` record above — this dashboard cannot see
     whether every gate a cycle depends on was actually satisfied
     end-to-end, only what the validator node itself reported.
-  - **Per-node state** (queued / running / done / errored) — derived from
-    `journal.jsonl`'s `started` / `result` / `failed` events, joined back
-    to a label via each event's own `key`.
+  - **Per-node state** (queued / running / done / errored / stale) — derived
+    from `journal.jsonl`'s `started` / `result` / `failed` events, joined back
+    to a label via each event's own `key`. A node the journal still calls
+    running is shown **stale** when its agent files have been silent for 18
+    minutes and its run's record (below) does not say `running`; a stale node
+    does not make its run active (masterpiece REQ-M24, PB-57).
+  - **Cycle id and run state** — joined by `runId` from
+    `.workflow/state/graph-cycles/<cycleId>/run.json` (REQ-R10). A sprint run
+    with no run record is labelled `NOT_OBSERVED`; a Workflow run that is not
+    a sprint cycle is labelled as such. Nothing here is guessed.
   - **Elapsed time**, per node and per run — derived entirely from
     filesystem mtimes/birthtimes (a node's own `agent-<id>.jsonl` +
     `agent-<id>.meta.json`; every file in the run directory for the run's

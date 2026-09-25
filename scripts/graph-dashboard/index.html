@@ -25,12 +25,15 @@
     --text-muted: #656d7a;
     --accent: #2563eb;
 
-    /* Exactly four node states exist -- queued/running/done/errored -- and
-       nothing else ever reads/writes a fifth color here. */
+    /* Exactly five node states exist -- queued/running/done/errored/stale -- and
+       nothing else ever reads/writes a sixth color here. `stale` is a node the
+       journal still calls running but whose agent files have been silent for
+       18 minutes in a run whose run record is not running (masterpiece REQ-M24). */
     --state-queued: #94a3b8;
     --state-running: #2563eb;
     --state-done: #16a34a;
     --state-errored: #dc2626;
+    --state-stale: #a16207;
     /* Connection-status-only shade (not a node state): an SSE reconnect
        attempt in progress. */
     --state-reconnecting: #d97706;
@@ -66,6 +69,7 @@
       --state-running: #3b82f6;
       --state-done: #22c55e;
       --state-errored: #f87171;
+      --state-stale: #eab308;
       --state-reconnecting: #f59e0b;
 
       --halt-bg: #7f1d1d;
@@ -184,6 +188,12 @@
     font-weight: 700;
     font-size: 14px;
     overflow-wrap: anywhere;
+    /* A backlog item can run to a page of text; show three lines and keep the
+       full text in the element's tooltip. */
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
   }
   .run-card-sub {
     font-size: 11px;
@@ -230,6 +240,7 @@
   .node--running { border-left-color: var(--state-running); animation: node-pulse 1.8s ease-in-out infinite; }
   .node--done    { border-left-color: var(--state-done); }
   .node--errored { border-left-color: var(--state-errored); }
+  .node--stale   { border-left-color: var(--state-stale); border-left-style: dashed; }
   @keyframes node-pulse {
     0%, 100% { box-shadow: 0 0 0 0 rgba(37, 99, 235, 0); }
     50%      { box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.18); }
@@ -248,6 +259,7 @@
   .node--running .node-status-label { color: var(--state-running); }
   .node--done    .node-status-label { color: var(--state-done); }
   .node--errored .node-status-label { color: var(--state-errored); }
+  .node--stale   .node-status-label { color: var(--state-stale); }
   .node-time { font-size: 11px; color: var(--text-muted); margin-top: 2px; min-height: 14px; }
 
   /* --- Footer: connection/freshness status only -- text, never a control. --- */
@@ -303,6 +315,7 @@
   }
   .recent-run-badge--active { background: var(--state-running); color: #fff; }
   .recent-run-badge--finished { background: var(--bg); color: var(--text-muted); border: 1px solid var(--border); }
+  .recent-run-badge--stale { background: var(--state-stale); color: #fff; }
   .recent-run-line { font-size: 12.5px; margin-top: 6px; overflow-wrap: anywhere; }
   .recent-run-line-label { font-weight: 650; }
   .recent-run-placeholder { font-style: italic; color: var(--text-muted); }
@@ -497,8 +510,8 @@
     2: 'Low-risk merge-to-main may loosen'
   };
 
-  var NODE_STATES = ['queued', 'running', 'done', 'errored'];
-  var STATUS_LABELS = { queued: 'Queued', running: 'Running', done: 'Done', errored: 'Errored' };
+  var NODE_STATES = ['queued', 'running', 'done', 'errored', 'stale'];
+  var STATUS_LABELS = { queued: 'Queued', running: 'Running', done: 'Done', errored: 'Errored', stale: 'Stale' };
   var PHASE_STEPS = ['Plan', 'Build', 'Verify', 'Release'];
 
   // Elements currently showing a *live* elapsed time (status === 'running'),
@@ -628,6 +641,18 @@
     return strip;
   }
 
+  // What is known about a run beyond its journal: its run record (REQ-R10), joined by
+  // runId on the server. Never guessed: a sprint run with no record says so.
+  function describeObservation(run) {
+    if (run.kind !== 'sprint') return 'non-sprint workflow';
+    if (!run.observed) return 'sprint run, NOT_OBSERVED (no run record)';
+    return 'cycle ' + run.cycleId + ' (' + run.state + ')';
+  }
+
+  function hasStaleNode(run) {
+    return Array.isArray(run.nodes) && run.nodes.some(function (n) { return n && n.status === 'stale'; });
+  }
+
   function buildRunCard(run) {
     var card = document.createElement('section');
     card.className = 'run-card';
@@ -638,12 +663,18 @@
     var title = document.createElement('div');
     title.className = 'run-card-title';
     title.textContent = run.backlogItem || ('Run ' + run.workflowId);
+    title.title = title.textContent;
     header.appendChild(title);
 
     var sub = document.createElement('div');
     sub.className = 'run-card-sub mono';
     sub.textContent = run.sessionId + ' / ' + run.workflowId;
     header.appendChild(sub);
+
+    var observation = document.createElement('div');
+    observation.className = 'run-card-sub run-card-observation';
+    observation.textContent = describeObservation(run);
+    header.appendChild(observation);
 
     card.appendChild(header);
     card.appendChild(buildPhaseStrip(deriveCurrentPhase(run.nodes)));
@@ -801,8 +832,9 @@
     idEl.textContent = (run.sessionId || 'unknown session') + ' / ' + (run.workflowId || 'unknown workflow');
     head.appendChild(idEl);
     var badge = document.createElement('span');
-    badge.className = 'recent-run-badge ' + (run.active ? 'recent-run-badge--active' : 'recent-run-badge--finished');
-    badge.textContent = run.active ? 'Active now' : 'Finished';
+    var stale = !run.active && hasStaleNode(run);
+    badge.className = 'recent-run-badge ' + (run.active ? 'recent-run-badge--active' : stale ? 'recent-run-badge--stale' : 'recent-run-badge--finished');
+    badge.textContent = run.active ? 'Active now' : stale ? 'Stale' : 'Finished';
     head.appendChild(badge);
     row.appendChild(head);
 
@@ -836,6 +868,11 @@
     outcomeValue.textContent = outcome.text;
     outcomeLine.appendChild(outcomeValue);
     row.appendChild(outcomeLine);
+
+    var cycleLine = document.createElement('div');
+    cycleLine.className = 'recent-run-line';
+    cycleLine.textContent = describeObservation(run);
+    row.appendChild(cycleLine);
 
     return row;
   }

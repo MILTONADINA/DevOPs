@@ -365,7 +365,9 @@ function deriveExpectedLabels(labelStates) {
   const tasks = plannerState.result && Array.isArray(plannerState.result.tasks) ? plannerState.result.tasks : null;
   if (!tasks) return [];
 
-  const chain = ['planner'];
+  // The Workflow's preflight stage runs before the planner; show it first when it was
+  // observed (never as a fabricated queued placeholder).
+  const chain = labelStates.has('preflight') ? ['preflight', 'planner'] : ['planner'];
   for (const task of tasks) {
     if (!task || typeof task.id !== 'string' || !task.id) continue;
     chain.push(`coder:${task.id}`, `tester:${task.id}`);
@@ -416,7 +418,41 @@ function labelStatesToObject(labelStates) {
   return obj;
 }
 
-async function buildRunModel({ sessionId, workflowId, runDir, journalPath }) {
+// A running node whose agent files have not changed for this long, in a run whose
+// run record is not `running`, is shown as `stale`, not `running` (PB-57; masterpiece
+// REQ-M24). 18 minutes is the tester stall budget (3 min x 6), the Workflow tool's own
+// kill threshold.
+const STALE_AFTER_MS = 18 * 60 * 1000;
+
+// Reads <stateDir>/graph-cycles/*/run.json (REQ-R10) into a Map keyed by runId. A cycle
+// directory with no or a malformed run.json is simply not joined; nothing is guessed.
+async function readRunRecords(stateDir) {
+  const records = new Map();
+  if (typeof stateDir !== 'string') return records;
+  const cyclesDir = path.join(stateDir, 'graph-cycles');
+  let names;
+  try {
+    names = await readdir(cyclesDir);
+  } catch {
+    return records;
+  }
+  for (const name of names) {
+    try {
+      const record = JSON.parse(await readFile(path.join(cyclesDir, name, 'run.json'), 'utf-8'));
+      if (record && typeof record.runId === 'string' && record.runId) {
+        records.set(record.runId, {
+          cycleId: typeof record.cycleId === 'string' && record.cycleId ? record.cycleId : name,
+          status: typeof record.status === 'string' ? record.status : null,
+        });
+      }
+    } catch {
+      // no run.json in this cycle directory, or unreadable: not joined
+    }
+  }
+  return records;
+}
+
+async function buildRunModel({ sessionId, workflowId, runDir, journalPath, record = null, now = Date.now() }) {
   const events = await readJournalEvents(journalPath);
   const labelStates = buildLabelStates(events);
 
@@ -435,7 +471,17 @@ async function buildRunModel({ sessionId, workflowId, runDir, journalPath }) {
 
   const expectedLabels = deriveExpectedLabels(labelStates);
   const nodes = buildNodes(labelStates, expectedLabels);
-  const active = Array.from(labelStates.values()).some((s) => s.status === 'running');
+  // Stale: a node still "running" by its journal, with no agent-file activity for
+  // STALE_AFTER_MS, in a run whose run record does not say it is running. A node with
+  // no agent files (no timing) is left as the journal says.
+  const recordSaysRunning = Boolean(record && record.status === 'running');
+  for (const node of nodes) {
+    if (node.status === 'running' && !recordSaysRunning && typeof node.lastEventAtMs === 'number' && now - node.lastEventAtMs > STALE_AFTER_MS) {
+      node.status = 'stale';
+    }
+  }
+  const active = nodes.some((n) => n.status === 'running');
+  const isSprint = Boolean(record) || labelStates.has('planner') || labelStates.has('preflight');
 
   const validatorState = labelStates.get('validator');
   const validatorOutcome = validatorState && validatorState.status === 'done' ? validatorState.result : null;
@@ -444,14 +490,18 @@ async function buildRunModel({ sessionId, workflowId, runDir, journalPath }) {
     sessionId,
     workflowId,
     runDir,
-    active, // true iff at least one label's latest event is 'started' with no later result/failed
+    active, // true iff at least one node is 'running': started, no later result/failed, and not stale
     firstActivityMs,
     lastActivityMs,
     backlogItem, // best-effort, non-fabricated -- null when not found
-    // Confirmed by reading .claude/workflows/sprint-cycle.js: neither of
-    // these is ever written under a run directory, only returned to the
-    // orchestrating session -- surfaced as explicit absence, never guessed.
-    cycleId: null,
+    // Joined from .workflow/state/graph-cycles/<cycleId>/run.json by runId (REQ-R10,
+    // masterpiece REQ-M24). A run with no run record is NOT_OBSERVED: its cycle id and
+    // final outcome are shown as absent, never guessed. The Workflow's own return value
+    // (cycleOutcome/readyForPR) is still never written to disk, so it stays null.
+    kind: isSprint ? 'sprint' : 'workflow',
+    observed: Boolean(record),
+    state: record ? record.status || 'UNKNOWN' : 'NOT_OBSERVED',
+    cycleId: record ? record.cycleId : null,
     cycleOutcome: null,
     // Closest available proxy for a cycle's outcome -- NOT the real
     // cycleOutcome above, which this reader can never see.
@@ -468,9 +518,10 @@ async function buildRunModel({ sessionId, workflowId, runDir, journalPath }) {
 // run's visibility -- support zero, one, or more than one run, and zero,
 // one, or more than one *active* run (callers filter `.active` themselves;
 // this makes no assumption about how many there are).
-async function readGraphRuns(journalRoot = JOURNAL_ROOT) {
+async function readGraphRuns(journalRoot = JOURNAL_ROOT, { stateDir = typeof STATE_DIR === 'string' ? STATE_DIR : null, now = Date.now() } = {}) {
   const runDirs = await discoverRunDirectories(journalRoot);
-  const settled = await Promise.allSettled(runDirs.map((r) => buildRunModel(r)));
+  const records = await readRunRecords(stateDir);
+  const settled = await Promise.allSettled(runDirs.map((r) => buildRunModel({ ...r, record: records.get(r.workflowId) || null, now })));
 
   const runs = [];
   settled.forEach((outcome, i) => {
