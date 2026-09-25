@@ -166,7 +166,13 @@ and real-use gates remain open; the runners now fail nonzero without a provider.
   Historical graph rows with uncertain project identity are omitted from
   commercial reads. Other org-wide APIs may still need project review. The pruner is still out of
   the request path and unbound keys supply no project scope. Zero
-  Tier-C failures remains a v0.4 ship gate.
+  Tier-C failures remains a ship gate for request-path pruning of any history
+  longer than the 2 h Tier-1 window. ADR-0023 (proposed 2026-09-25; the owner may
+  override) records why the KadaneDial pruner alone cannot move it: its input is
+  the 2 h hot window, while Tier-C ages run to 170 h. For the v0.4 hot-window
+  candidate, Tier-C is a selection-identity no-regression check; the long-history
+  cases go to a Tier-2 recall follow-on, where they must still pass.
+- [ ] **Provenance-gated exchange selection** (`specs/pruner/provenance-gated-selection.md`, ADR-0023). A default-off, shadow-only overlay on the unchanged KadaneDial decision: reviewed supersession and git `CONFLICT` can drop an exchange, a live uncontested query-matching typed fact can add one, and exchanges stay whole. Proven by a separately authored fixture (`specs/pruner/provenance-fixture-brief.md`), Tier-C selection identity, one pre-registered LongMemEval holdout tranche and a p99 latency bench. Pruning stays disabled; no paid evaluation.
 - [ ] **Session-aware evidence retrieval**. A read-only candidate adds one
   same-session neighbor to dense-plus-lexical raw-turn retrieval. On independent
   evidence-resolved questions it retained complete evidence for 1,265/1,407
