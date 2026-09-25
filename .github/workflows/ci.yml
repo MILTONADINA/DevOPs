@@ -25,9 +25,35 @@ jobs:
           elapsed_seconds=$(( $(date +%s) - started_at ))
           echo "Linux cold setup completed in ${elapsed_seconds}s"
           test "$elapsed_seconds" -lt 300
+      - name: SQL integration tests (specs/ops/ci-product-suites.md REQ-2)
+        run: |
+          shopt -s nullglob
+          files=(stratum/test/integration/*.sql)
+          test "${#files[@]}" -gt 0 || { echo "no SQL integration tests found" >&2; exit 1; }
+          for f in "${files[@]}"; do
+            echo "::group::$f"
+            docker exec -i devops-stratum-local-db psql -X -q -v ON_ERROR_STOP=1 -U supabase_admin -d postgres < "$f"
+            echo "::endgroup::"
+          done
+          echo "${#files[@]} SQL integration test files passed"
       - name: Stop disposable local stack
         if: always()
         run: DEVOPS_LOCAL_JWT_SECRET=cleanup docker compose -f stratum/supabase/docker-compose.local.yml -p devops-stratum-compose down
+
+  stratum-test:
+    # specs/ops/ci-product-suites.md REQ-1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: stratum
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444  # v5.0.0
+        with: { node-version: 22 }
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
 
   validate:
     runs-on: ubuntu-latest
