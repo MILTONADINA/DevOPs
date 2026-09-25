@@ -84,3 +84,42 @@ describe("/v1/messages telemetry wiring", () => {
     expect(serialized).not.toContain("SECRET-ANSWER");
   });
 });
+
+// v0.8 telemetry opt-out (stratum/docs/TELEMETRY.md): STRATUM_TELEMETRY_OPT_OUT=true stops the per-turn record.
+describe("STRATUM_TELEMETRY_OPT_OUT", () => {
+  test("true (or 1) resolves the no-op sink; unset, empty or anything else keeps the structured-log sink", async () => {
+    const { resolveTelemetrySink, defaultTelemetrySink, noopTelemetrySink } = await import("../../src/proxy/telemetry");
+    for (const value of ["true", "TRUE", " true ", "1"]) expect(resolveTelemetrySink({ STRATUM_TELEMETRY_OPT_OUT: value })).toBe(noopTelemetrySink);
+    for (const env of [{}, { STRATUM_TELEMETRY_OPT_OUT: "" }, { STRATUM_TELEMETRY_OPT_OUT: "false" }, { STRATUM_TELEMETRY_OPT_OUT: "no" }]) expect(resolveTelemetrySink(env)).toBe(defaultTelemetrySink);
+  });
+
+  test("the no-op sink emits nothing", async () => {
+    const { noopTelemetrySink } = await import("../../src/proxy/telemetry");
+    const { logger } = await import("../../src/lib/logger");
+    const info = vi.spyOn(logger, "info");
+    try {
+      noopTelemetrySink(attrs);
+      expect(info).not.toHaveBeenCalled();
+    } finally {
+      info.mockRestore();
+    }
+  });
+});
+
+test("an unset sink still honors STRATUM_TELEMETRY_OPT_OUT", async () => {
+  const { logger } = await import("../../src/lib/logger");
+  const info = vi.spyOn(logger, "info");
+  const prior = process.env["STRATUM_TELEMETRY_OPT_OUT"];
+  try {
+    process.env["STRATUM_TELEMETRY_OPT_OUT"] = "true";
+    emitTurnTelemetry(attrs, undefined);
+    expect(info).not.toHaveBeenCalled();
+    delete process.env["STRATUM_TELEMETRY_OPT_OUT"];
+    emitTurnTelemetry(attrs, undefined);
+    expect(info).toHaveBeenCalledTimes(1);
+  } finally {
+    if (prior === undefined) delete process.env["STRATUM_TELEMETRY_OPT_OUT"]; else process.env["STRATUM_TELEMETRY_OPT_OUT"] = prior;
+    info.mockRestore();
+  }
+});
+
