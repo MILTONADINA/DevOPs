@@ -19,6 +19,19 @@ function fakeSecurityTools(directory, includeCosign = true) {
   return bin;
 }
 
+// Stand-ins for gitignored directories a fresh checkout lacks (both node_modules, .workflow/proofs), so
+// these tests do not depend on the state of the checkout they run in (polish backlog PB-59). A test that
+// exercises one of these checks passes its own override after this spread.
+function checkoutFixture(directory) {
+  for (const deps of ['root-node_modules', 'stratum-node_modules']) mkdirSync(path.join(directory, deps, '.bin'), { recursive: true });
+  mkdirSync(path.join(directory, 'proofs'), { recursive: true });
+  return {
+    GRAPH_PREFLIGHT_DEPS_ROOT_DIR: path.join(directory, 'root-node_modules'),
+    GRAPH_PREFLIGHT_DEPS_STRATUM_DIR: path.join(directory, 'stratum-node_modules'),
+    GRAPH_PREFLIGHT_PROOFS_DIR: path.join(directory, 'proofs'),
+  };
+}
+
 test('declared Node engine supports import.meta.dirname used by graph scripts', () => {
   const manifest = JSON.parse(readFileSync(path.join(ROOT, 'package.json')));
   const lock = JSON.parse(readFileSync(path.join(ROOT, 'package-lock.json')));
@@ -59,7 +72,7 @@ test('normal preflight installs and can revert the Command Line Tools git shim',
     writeFileSync(fakeGit, original);
     chmodSync(fakeGit, 0o755);
     const reportPath = path.join(dir, 'preflight.json');
-    const env = { ...process.env, PATH: `${dir}:${fakeSecurityTools(dir)}:${process.env.PATH}`, GRAPH_PREFLIGHT_REPORT: reportPath };
+    const env = { ...process.env, PATH: `${dir}:${fakeSecurityTools(dir)}:${process.env.PATH}`, ...checkoutFixture(dir), GRAPH_PREFLIGHT_REPORT: reportPath };
     const result = spawnSync('bash', [PREFLIGHT], { cwd: ROOT, env, encoding: 'utf8', timeout: 30_000 });
     assert.equal(result.status, 10, result.stderr || result.stdout);
     const report = JSON.parse(readFileSync(reportPath, 'utf8'));
@@ -84,7 +97,7 @@ test('normal preflight repairs non-executable .bin entries and records the fix',
     const reportPath = path.join(dir, 'preflight.json');
     const result = spawnSync('bash', [PREFLIGHT], {
       cwd: ROOT,
-      env: { ...process.env, PATH: `${fakeSecurityTools(dir)}:${process.env.PATH}`, GRAPH_PREFLIGHT_DEPS_STRATUM_DIR: path.join(dir, 'node_modules'), GRAPH_PREFLIGHT_REPORT: reportPath },
+      env: { ...process.env, PATH: `${fakeSecurityTools(dir)}:${process.env.PATH}`, ...checkoutFixture(dir), GRAPH_PREFLIGHT_DEPS_STRATUM_DIR: path.join(dir, 'node_modules'), GRAPH_PREFLIGHT_REPORT: reportPath },
       encoding: 'utf8', timeout: 30_000,
     });
     assert.equal(result.status, 10, result.stderr || result.stdout);
@@ -97,7 +110,7 @@ test('normal preflight repairs non-executable .bin entries and records the fix',
     chmodSync(secondTool, 0o644);
     const second = spawnSync('bash', [PREFLIGHT], {
       cwd: ROOT,
-      env: { ...process.env, PATH: `${path.join(dir, 'fake-security-tools')}:${process.env.PATH}`, GRAPH_PREFLIGHT_DEPS_STRATUM_DIR: path.join(dir, 'node_modules'), GRAPH_PREFLIGHT_REPORT: reportPath },
+      env: { ...process.env, PATH: `${path.join(dir, 'fake-security-tools')}:${process.env.PATH}`, ...checkoutFixture(dir), GRAPH_PREFLIGHT_DEPS_STRATUM_DIR: path.join(dir, 'node_modules'), GRAPH_PREFLIGHT_REPORT: reportPath },
       encoding: 'utf8', timeout: 30_000,
     });
     assert.equal(second.status, 10, second.stderr || second.stdout);
@@ -131,7 +144,7 @@ test('missing Cosign installs only a pinned checksum-matching release and revert
     writeFileSync(curl, `#!/bin/sh\ncase "$*" in\n  *--head*) printf 'HTTP/2 302\\nLocation: https://release-assets.githubusercontent.com/fixture\\n' ;;\n  *--output*) while [ "$1" != "--output" ]; do shift; done; cp '${fixture}' "$2" ;;\nesac\n`);
     chmodSync(curl, 0o755);
     const reportPath = path.join(dir, 'preflight.json');
-    const env = { ...process.env, HOME: home, PATH: `${fakeBin}:${fakeSecurityTools(dir, false)}:${process.env.PATH}`, GRAPH_PREFLIGHT_REGISTRY: registryPath, GRAPH_PREFLIGHT_REPORT: reportPath };
+    const env = { ...process.env, HOME: home, PATH: `${fakeBin}:${fakeSecurityTools(dir, false)}:${process.env.PATH}`, GRAPH_PREFLIGHT_REGISTRY: registryPath, ...checkoutFixture(dir), GRAPH_PREFLIGHT_REPORT: reportPath };
     const result = spawnSync('bash', [PREFLIGHT], { cwd: ROOT, env, encoding: 'utf8', timeout: 30_000 });
     assert.equal(result.status, 10, result.stderr || result.stdout);
     assert.equal(JSON.parse(readFileSync(reportPath)).checks.find((check) => check.id === 'tool.cosign').status, 'fixed');
