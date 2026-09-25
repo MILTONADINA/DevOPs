@@ -49,8 +49,11 @@ ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.orders ENABLE ROW LEVEL SECURITY;
 ```
 
-After enabling, the table is INACCESSIBLE to non-superusers until at
-least one policy is created. That's the safe default. Adding the
+After enabling, the table is inaccessible through the Data API (the
+`anon` and `authenticated` roles) until at least one policy is created.
+That's the safe default. The table owner (`postgres`, which the SQL
+editor uses) and BYPASSRLS roles such as `service_role` still see every
+row, so a policy check run as either of them proves nothing. Adding the
 `ENABLE ROW LEVEL SECURITY` without immediately authoring policies is
 acceptable -- it fails closed.
 
@@ -134,11 +137,18 @@ NEXT_PUBLIC_SUPABASE_URL=https://abc.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=sb_publishable_...
 ```
 
-A grep of the client bundle for `sb_secret_` should return zero
-results. Wire that grep into CI for safety:
+A grep of the client bundle for the service-role key should return
+zero results. Search for the key's value as well as the `sb_secret_`
+prefix, because a legacy service-role JWT starts with the same `eyJ` as
+the anon key, so no prefix identifies it. Wire it into CI as a separate
+step after the build, and pass the key as a secret to that step only,
+so the build itself never holds it:
 
 ```bash
-grep -r "sb_secret_" .next/ public/ && exit 1 || exit 0
+: "${SUPABASE_SERVICE_ROLE_KEY:?provide it as a CI secret so the bundle can be scanned for it}"
+dirs=".next/static"; [ -d public ] && dirs="$dirs public"
+rc=0; grep -rqF -e "sb_secret_" -e "$SUPABASE_SERVICE_ROLE_KEY" $dirs || rc=$?
+[ "$rc" -eq 1 ]  # 1 = not found (pass); 0 = key found or 2 = scan error, e.g. no build output (fail)
 ```
 
 ---
@@ -165,24 +175,25 @@ the service-role key for server-side code, ideally in a thin API layer
 that enforces explicit authorization checks before invoking
 service-role queries.
 
-### Anti-pattern 2 -- USING without WITH CHECK on UPDATE policies
+### Anti-pattern 2 -- A WITH CHECK weaker than USING on UPDATE policies
 
 ```sql
 -- WRONG
 CREATE POLICY "update_own_posts"
 ON public.posts
 FOR UPDATE
-USING (author_id = auth.uid());
--- No WITH CHECK!
+USING (author_id = auth.uid())
+WITH CHECK (true);  -- the post-update row is unconstrained
 ```
 
 USING filters which rows the user can attempt to update. WITH CHECK
-validates the post-update state. Without WITH CHECK, the user can
-update their own post AND in the same update set `author_id` to
-someone else's UUID, effectively transferring ownership of the post
-(or stealing someone else's post by updating its other fields after
-the ownership transfer). Always pair USING with WITH CHECK on UPDATE,
-typically with the same predicate.
+validates the post-update state. A WITH CHECK weaker than USING lets
+the user update their own post and, in the same update, set
+`author_id` to someone else's UUID, transferring ownership of the
+post. Omitting WITH CHECK is not this bug: Postgres then applies the
+USING expression to the new row too. Write WITH CHECK explicitly on
+UPDATE policies, normally with the same predicate as USING, so the
+post-update rule is visible in review.
 
 ### Anti-pattern 3 -- Missing INSERT policy after enabling RLS
 
@@ -241,6 +252,9 @@ For every table with RLS enabled, write integration tests that exercise
 both authorized and unauthorized access:
 
 ```sql
+-- Act as an API user: RLS does not apply to the table owner or BYPASSRLS roles.
+SET ROLE authenticated;
+
 -- Connect as user A's JWT and INSERT a post.
 SET request.jwt.claim.sub = 'user-a-uuid';
 INSERT INTO posts (author_id, body) VALUES ('user-a-uuid', 'hello');

@@ -6,7 +6,7 @@ disable-model-invocation: true
 
 # /borrow-idea
 
-Formalizes the **Ideas → Artifacts workflow** established Session 14 (blueprint.md §11 + plan.md §13).
+Formalizes the **Ideas → Artifacts workflow** (blueprint.md §11 + plan.md §13).
 
 ## Usage
 
@@ -24,7 +24,7 @@ Examples:
 
 ## What this command does
 
-1. **Spawns the `integrations-curator` subagent** (`subagents/universal/integrations-curator.md`) with the given input as its research target.
+1. **Runs the `integrations-curator` role** per `subagents/universal/integrations-curator.md`, with the given input as its research target: spawn it as a subagent where that agent type is registered, otherwise give the brief to a general-purpose subagent or follow it directly.
 2. The subagent executes the 7-step loop:
    - Research the source (`gh repo view` for GitHub; WebSearch for features; read README + LICENSE)
    - Synthesize borrow / integrate / reject / defer recommendation with explicit reasoning

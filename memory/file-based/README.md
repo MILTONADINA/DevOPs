@@ -1,6 +1,7 @@
 # File-based memory
 
-The simplest tier. Markdown files committed to git.
+The simplest tier. Markdown files committed to git in a project's
+`.workflow/memory/`; this directory holds the starter files.
 
 ## Files
 
@@ -21,8 +22,8 @@ Every time:
 
 ## Loaded by
 
-`hooks/universal/session-start/load-baton.sh` reads the file-based memory on
-every session start. It's the first thing the agent sees after the constitution.
+No hook reads these files; `hooks/universal/session-start/load-baton.sh` does
+not open them. Read them at session start when the project has them.
 
 ## Format
 

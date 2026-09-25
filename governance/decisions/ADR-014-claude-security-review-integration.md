@@ -14,6 +14,12 @@ failure. Claude semantic review is advisory and must not be claimed as run
 when skipped. The public repository now requires approval for all external
 contributor workflow runs (`all_external_contributors`).
 
+**2026-09-25 amendment**: The model override now pins `claude-opus-5-5`, the
+current latest Opus, which is the intent Decision item 2 states ("override to
+the current latest Opus"). Its per-token price is lower than Opus 4.7's. See
+`specs/meta/prompt-surface-audit-2026-09-25.md` REQ-PSA-6. The review still
+skips visibly until a `CLAUDE_API_KEY` secret is configured.
+
 ## Context
 
 The DevOPs masterpiece envelope (per `blueprint.md §6` quality bar) requires production-grade security review on every change to `main`. Three review mechanisms exist:

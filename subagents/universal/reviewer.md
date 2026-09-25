@@ -2,10 +2,7 @@
 name: reviewer
 description: Reads diffs against the spec and constitution. Blocks merge on violations - drive-by refactoring, untraceable lines, missing proofs, low-confidence claims unflagged. Use after Coder completes a task and before merge.
 model: sonnet
-tools:
-  - read_file
-  - view
-  - bash_tool
+tools: Read, Glob, Bash
 permissions:
   write_paths:
     - .workflow/state/review-comments.md

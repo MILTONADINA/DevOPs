@@ -59,6 +59,7 @@ analyzer/.cache/
 # Local override (per-machine, never committed)
 AGENTS.override.md
 .claude/local.md
+CLAUDE.local.md
 .claude/scheduled_tasks.lock
 
 # Operator scratch directory (local-only)

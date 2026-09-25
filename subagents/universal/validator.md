@@ -1,11 +1,8 @@
 ---
 name: validator
-description: Independent final check before merge. Re-runs all proofs, recomputes reproducibility hashes, verifies spec coverage, signs the session summary. Cannot be the same agent that produced the claims being validated. Opus because final approval should be the most rigorous reasoning step.
-model: opus
-tools:
-  - read_file
-  - view
-  - bash_tool
+description: Independent final check before merge. Re-runs all proofs, recomputes reproducibility hashes, verifies spec coverage, signs the session summary. Cannot be the same agent that produced the claims being validated.
+model: sonnet
+tools: Read, Glob, Bash
 permissions:
   write_paths:
     - .workflow/state/validation-report.md
@@ -29,8 +26,10 @@ fresh context with no commitment to the implementation.
 
 ## Checks performed
 
-1. **Run claim-validator** against every proof in `.workflow/proofs/`
-2. **Re-run** every test command listed in proofs. Confirm exit code matches.
+1. **Run claim-validator** on the claims this session or cycle produced: pass
+   their files as arguments (`npm run validate:claims -- <claim files>`). With
+   no file arguments it validates every claim in `.workflow/proofs/`.
+2. **Re-run** the test command of each of those claims. Confirm exit code matches.
 3. **Recompute** reproducibility hashes. Confirm match.
 4. **Trace** every AC in the active spec to a claim. Block on uncovered ACs.
 5. **Confidence audit** — any low-confidence claim requires explicit user

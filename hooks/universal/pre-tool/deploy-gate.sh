@@ -52,9 +52,14 @@ block() {
 ║  approved graph-engineering plan, these require explicit human     ║
 ║  approval markers -- an autonomous cycle cannot self-approve.      ║
 ║                                                                     ║
-║  To approve: run /sprint-approve (production deploy, 1 approval)   ║
-║  or /sprint-approve --billing (billing-path change, 2 approvals    ║
-║  from distinct approvers required).                                ║
+║  Approval is the user's action, not yours: stop and hand the       ║
+║  decision to the user. Do not write a marker under                 ║
+║  .workflow/state/graph-approvals/ or remove                        ║
+║  .workflow/state/graph-halt yourself. The user approves with       ║
+║  /sprint-approve <cycle-id> [--billing] (1 approval for a deploy,  ║
+║  2 from distinct approvers for billing), following                 ║
+║  slash-commands/universal/sprint-approve.md where that command is  ║
+║  not installed.                                                    ║
 ╚═══════════════════════════════════════════════════════════════════╝
 EOF
     mkdir -p .workflow/state
@@ -97,7 +102,7 @@ fi
 
 # Kill switch: if present, no consequential graph-scoped action proceeds.
 if [[ -f "$HALT_FILE" ]]; then
-    block "graph kill switch is active (.workflow/state/graph-halt exists) -- run /graph-resume to clear it"
+    block "graph kill switch is active (.workflow/state/graph-halt exists) -- only the user clears it, with /graph-resume"
 fi
 
 # --- Production deploy detection ---

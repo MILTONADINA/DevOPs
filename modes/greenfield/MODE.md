@@ -11,7 +11,7 @@
 - **Plan first, code second** — every feature starts with a plan even if tiny
 - **EARS specs required** for everything beyond bootstrapping
 - **ADR for every non-obvious choice** (database, framework, deploy target)
-- **Snapshot the architecture** after the first 5 commits in `memory/file-based/architecture.md`
+- **Snapshot the architecture** after the first 5 commits in `.workflow/memory/architecture.md`
 - **More permissive** on file creation outside existing patterns
 
 ## Acceptance gates to exit greenfield

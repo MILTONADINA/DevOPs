@@ -30,7 +30,7 @@ startum/
 │   ├── BUSINESS_MODEL.md      ← billing logic
 │   └── ROADMAP.md             ← phase gates and acceptance criteria
 ├── src/
-│   ├── proxy/                 ← Cloudflare Worker proxy core
+│   ├── proxy/                 ← proxy core: Fastify server (index.ts); Cloudflare Worker adapter (worker.ts) is the unverified edge target
 │   ├── pruner/                ← KadaneDial + ONNX client
 │   ├── memory/                ← tier 1/2/3 storage adapters
 │   ├── audit/                 ← Git-attestation + model audit
@@ -66,19 +66,19 @@ Each phase has explicit acceptance criteria. Do not begin Phase N+1 until Phase 
 ## Critical Rules
 
 ### Token Counting
-- **Never use `tiktoken` for Anthropic token counts.** Use `@anthropic-ai/tokenizer` or the SDK's built-in counting endpoint.
-- Token counts must be exact. Estimates are not acceptable — the billing model depends on provable numbers.
+- **Never use `tiktoken` for Anthropic token counts.** Count with the SDK's `countTokens` endpoint (`src/proxy/token-count.ts`); `@anthropic-ai/tokenizer` is unpublished, so do not add it.
+- Billing depends on provable numbers. The exact counts are the response's `usage` (the billing basis) and the `countTokens` endpoint. When `countTokens` fails, the pre-flight count falls back to a chars/4 estimate flagged `token_count_method: "estimated"`, which billing must treat as non-provable. Never report an estimate as exact.
 - Log both input tokens and output tokens for every proxied request.
 
 ### Schema Design
 - Run every schema change through Supabase migrations. Never alter tables directly.
-- All Tier 2 structured fact tables must have: `id uuid`, `created_at timestamptz`, `session_id uuid`, `commit_hash text nullable`, `confidence_score float`.
-- Neo4j node types: `Function`, `Commit`, `Decision`, `Developer`, `Policy`. Edge types: `DEPRECATED_BY`, `REFERENCED_IN`, `SUPERCEDES`, `AUTHORED_BY`, `APPLIES_TO`.
+- Every Tier 2 structured fact table carries the shared warm-fact columns (`id`, `created_at`, `session_id`, `org_id`, `developer_id`, nullable `commit_hash`, `confidence` in 0..1, `is_verified`, `is_suppressed`, `promoted_to_t3`, `project_scope`, `source_exchange_id`), row-level security so only `service_role` reads or writes it, and the project-scope and exchange triggers. Copy them from the newest fact-table migration (`supabase/migrations/20260924230000_operational_references.sql`) and register the table in `FACT_TABLES` (`src/memory/warm/tier2.ts`); a fact table without `org_id` breaks tenant isolation.
+- Tier 3 runs on Supabase behind the `KnowledgeGraph` and `VectorStore` interfaces (`src/memory/cold/graph.ts`, `src/memory/cold/vectors.ts`; ADR-0013). `graph.ts` defines the node kinds, the edge types and each edge's direction; the supersession edge is `SUPERSEDES`. `neo4j.ts` and `pinecone.ts` are stubs for a future adapter.
 
 ### Algorithm Implementation
 - Read `docs/ALGORITHM.md` fully before implementing KadaneDial.
 - The temporal decay exponent must be time-based, not turn-count-based: `λ^(elapsed_seconds / 3600)`.
-- The relevance score formula is: `R_i = (S_i - g) * λ^((now - timestamp_i) / 3600)` where `S_i` is the z-score normalized cosine similarity.
+- Decay the raw cosine similarity first, then normalize: `R_i = S_raw_i × λ^((now - timestamp_i) / 3600)`, `S = z-score(R)`; then select spans on the gains `S_i - g`, keeping a span whose cumulative gain reaches `θ`. Decay never applies to z-scored values (`docs/ALGORITHM.md` → The CQ-Extended Score; `src/pruner/kadanedial.ts`).
 - Every pruning decision must be logged with: which turns were pruned, their relevance scores, and the gain threshold used.
 
 ### Security
@@ -97,7 +97,7 @@ Each phase has explicit acceptance criteria. Do not begin Phase N+1 until Phase 
 
 - TypeScript strict mode always. No `any` types.
 - All async functions must have explicit error handling. No unhandled promise rejections.
-- Every exported function needs a JSDoc comment with `@param`, `@returns`, and `@throws`.
+- Give each exported function a JSDoc comment that says what it does; add `@param`, `@returns` or `@throws` where the signature does not already make a parameter, the result or a thrown error clear.
 - Rust: use `thiserror` for error types. No `.unwrap()` in production paths.
 - File names: `kebab-case.ts`. Class names: `PascalCase`. Functions and variables: `camelCase`. Constants: `SCREAMING_SNAKE_CASE`.
 
@@ -105,32 +105,18 @@ Each phase has explicit acceptance criteria. Do not begin Phase N+1 until Phase 
 
 ## Environment Variables
 
-All secrets must be in `.env` (gitignored). Never hardcode keys. Required vars:
-
-```
-ANTHROPIC_API_KEY=
-SUPABASE_URL=
-SUPABASE_SERVICE_KEY=
-PINECONE_API_KEY=
-PINECONE_INDEX=
-NEO4J_URI=
-NEO4J_USERNAME=
-NEO4J_PASSWORD=
-AWS_NITRO_ENCLAVE_CID=
-AUDIT_MODEL_ENDPOINT=
-OPUS_API_KEY=
-CQ_MASTER_ENCRYPTION_KEY=
-```
+All secrets must be in `.env` (gitignored). Never hardcode keys. `.env.example` is the starting template, but it does not match the code in either direction. The proxy's own configuration is gathered in `start()` in `src/proxy/index.ts` (among them `CQ_COMMERCIAL`, `SUPABASE_URL`, `SUPABASE_SERVICE_KEY` and `CQ_BILLING_SIGNING_SECRET`); `ANTHROPIC_API_KEY` is read by `src/lib/anthropic.ts`, the other provider keys in `src/proxy/providers/router.ts` and `src/proxy/default-deps.ts`, and the eval harness prefers `EVAL_ANTHROPIC_API_KEY` so eval spend stays off the proxy's key. No code reads the Pinecone, Neo4j, AWS Nitro, `AUDIT_MODEL_*`, `OPUS_API_KEY` or `CQ_MASTER_ENCRYPTION_KEY` entries (Tier 3 runs on Supabase per ADR-0013; the ADR-0022 encryption primitive is not wired), so a missing value there blocks nothing.
 
 ---
 
 ## Testing
 
 ```bash
-npm run test          # unit tests
+npm run test          # vitest; collects only test/**/*.test.ts
 npm run test:eval     # pruning accuracy evals (slow, run before PRs)
-npm run test:e2e      # end-to-end proxy flow
+npm run typecheck     # tsc --noEmit
 npm run lint          # eslint + prettier check
+npm run test:all      # typecheck + lint + test + test:eval
 ```
 
 All tests must pass before any commit to `main`.
@@ -142,22 +128,22 @@ All tests must pass before any commit to `main`.
 ### Add a new Tier 2 structured fact type
 1. Define the TypeScript interface in `src/types/facts.ts`
 2. Write the Supabase migration in `supabase/migrations/`
-3. Add the extractor function in `src/memory/warm/extractors/`
-4. Write unit tests covering at least: happy path, null commit hash, confidence below threshold
+3. Extend the extraction prompt and parsing in `src/memory/warm/extractor.ts` and the Zod schema in `src/memory/warm/schemas.ts`; the prompt's enum values, the Zod schema and the migration's CHECK constraints must match
+4. Write unit tests under `test/memory/` covering at least: happy path, null commit hash, confidence below threshold
 5. Update `docs/TECHNICAL_SPEC.md` with the new schema
 
 ### Implement a new pruning heuristic
 1. Read `docs/ALGORITHM.md` and `docs/EVAL_FRAMEWORK.md` first
-2. Add the heuristic in `src/pruner/heuristics/`
-3. Add it to the eval suite in `evals/heuristics/`
+2. Add the heuristic in `src/pruner/` with unit tests under `test/pruner/`
+3. Add it to the eval harness in `evals/harness/` (datasets in `evals/datasets/`)
 4. Run `npm run test:eval` and verify <5% degradation
 5. Log the heuristic name in every pruning decision record
 
 ### Add a new API endpoint
-1. Define request/response types in `src/types/api.ts`
+1. Define request/response types in `src/types/proxy.ts`
 2. Implement the handler in `src/proxy/routes/`
-3. Update `docs/API_REFERENCE.md`
-4. Write integration tests in `tests/api/`
+3. Update `docs/API_REFERENCE.md` and `src/proxy/openapi.ts`
+4. Write tests under `test/proxy/` or `test/integration/` (vitest collects only `test/**/*.test.ts`)
 
 ---
 

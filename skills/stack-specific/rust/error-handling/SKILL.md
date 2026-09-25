@@ -23,11 +23,13 @@ discipline below trades line-count for crash-resistance.
 
 ## Why this matters
 
-A Rust web service that panics on `unwrap()` kills the request thread
-(in `tokio` runtimes, the panic is caught by the task supervisor, but
-the request returns 500 with no further detail). A panic that
-propagates into the runtime's task scheduler can bring down the entire
-process under load. The downstream effects are: lost requests, unclear
+A Rust web service that panics on `unwrap()` fails the request. In a
+`tokio` runtime the panic unwinds only the task serving that request:
+the runtime catches it and every other task keeps running, and the
+client receives a 500 only if a layer such as tower-http's
+`CatchPanicLayer` converts the panic into a response. Built with
+`panic = "abort"`, the same panic terminates the whole process. The
+downstream effects are: lost requests, unclear
 error attribution in logs, and -- if the panic's payload contains
 privileged state (a database connection string, a JWT, a customer
 email) -- accidental disclosure when the panic is logged.
@@ -167,7 +169,7 @@ async fn get_user(Path(user_id): Path<String>) -> Json<User> {
 ```
 
 Two panics per request, both triggered by ordinary conditions
-(database down, user doesn't exist). The handler returns 500 with no
+(database down, user doesn't exist). The request fails with no
 useful information, the panic message gets logged (potentially
 revealing internal state), and under load these add up to a flaky
 service. Convert to `Result` propagation; let the framework's error

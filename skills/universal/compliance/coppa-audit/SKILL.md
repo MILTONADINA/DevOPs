@@ -1,6 +1,6 @@
 ---
 name: coppa-audit
-description: Audit code, data flows, and UI for COPPA (Children's Online Privacy Protection Act) compliance. Use whenever the project handles or might handle data from users under 13 - kid-targeted apps, educational tools, or general apps with under-13 user segments. Triggers on terms like "children", "minor", "under 13", "K-12", "education", "kid", "youth".
+description: Audit code, data flows, and UI for COPPA (Children's Online Privacy Protection Act) compliance. Use whenever the project handles or might handle data from users under 13 - kid-targeted apps, K-12 or other educational tools used by children, or general apps with under-13 user segments.
 ---
 
 # COPPA Audit
@@ -8,7 +8,9 @@ description: Audit code, data flows, and UI for COPPA (Children's Online Privacy
 > Compliance check for code that handles children's data.
 
 **Tradeoff:** Adds a review step before any deploy touching child users. Worth
-it: COPPA penalties are up to $51,744 per violation per child (2024 update).
+it: COPPA civil penalties are up to $53,088 per violation per child (FTC
+figure since January 2025; it is inflation-adjusted under 16 CFR 1.98, so
+check the current amount before quoting it).
 
 ---
 

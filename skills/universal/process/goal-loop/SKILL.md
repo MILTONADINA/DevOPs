@@ -1,6 +1,6 @@
 ---
 name: goal-loop
-description: Execute the spec-tests-implement-verify cycle for one atomic task at a time. Use after plan-decomposition has produced a task list. This is the workhorse loop - the agent implements, runs tests, reflects on failure, retries with bounded iteration. Halts mechanically when budget, iteration count, or scratchpad stasis ceilings hit. See constitution/LOOP.md for full protocol.
+description: Execute the spec-tests-implement-verify cycle for one atomic task at a time. Use after plan-decomposition has produced a task list. This is the workhorse loop - the agent implements, runs tests, reflects on failure, retries with bounded iteration. Halts at the iteration ceiling, and when a budget, loop-detection or scratchpad-stasis hook fires where the host wires one. See constitution/LOOP.md for full protocol.
 ---
 
 # Goal Loop
@@ -98,8 +98,9 @@ the test. Never edit tests mid-loop.
 **Spec mutation**: if the spec is unclear, halt with a blocker. Don't reinterpret
 mid-implementation.
 
-**Success masking**: if the test command returned non-zero, the test did not
-pass. Period. The claim-validator will catch you anyway.
+**Success masking**: a non-zero exit code means the test did not pass, however
+close the output looks. Record the real exit code and treat the iteration as a
+FAIL.
 
 **Hidden context**: every iteration must reference specific failing tests and
 error messages. No vague reflections.

@@ -93,7 +93,11 @@ of each iteration to avoid repeating failed approaches.
 
 ### Hard ceilings
 
-The loop is bounded by deterministic ceilings, enforced by hooks:
+The loop is bounded by these ceilings. The iteration count, wall-clock time
+and scratchpad stasis are yours to track from the loop log; no hook counts
+them. Budget and tool-call repetition also have hooks (`budget-brake.sh` for
+session, hourly and daily caps; `loop-detection.sh` for identical calls) that
+enforce them where the host tool wires them:
 
 - **Iteration count**: max `N` (default 5). After N failures, the loop halts
   and writes a blocker.
@@ -107,8 +111,8 @@ The loop is bounded by deterministic ceilings, enforced by hooks:
 - **Scratchpad stasis**: if the loop log doesn't show meaningful state change
   across 3 iterations, the loop halts.
 
-All five ceilings fire from `hooks/universal/` and **cannot be overridden by
-the agent.**
+A wired hook cannot be disabled by the agent; a ceiling no hook enforces is
+still binding.
 
 ### Reflection step (required)
 
@@ -175,18 +179,20 @@ When N exceeded, budget exhausted, or any hard ceiling is hit:
 
 ## Anti-cheating provisions
 
-The loop has been observed to "cheat" in several ways. These are blocked:
+The loop has been observed to "cheat" in several ways. Each is a violation.
+Only success masking is caught by a tool, so the others rest on you and on
+review:
 
 ### Test deletion
 
-If the agent modifies acceptance tests during the loop (other than the initial
-generation from spec), the validator flags it. Tests can only be modified via
-a spec update.
+Do not modify acceptance tests during the loop (other than the initial
+generation from spec); change them only through a spec update. The validator
+does not diff tests, so review is what catches this.
 
 ### Spec mutation
 
-The agent cannot modify `/specs/` during a loop. Spec changes require
-explicit human approval and start a new loop.
+Do not modify `/specs/` during a loop. Spec changes require explicit human
+approval and start a new loop.
 
 ### Success masking
 
@@ -196,7 +202,7 @@ non-zero, `claim-validator` re-runs the command and rejects the claim.
 ### Hidden context
 
 The reflection step must reference specific failing test names and error
-messages. Vague reflections ("approach didn't work") are rejected.
+messages; a vague reflection ("approach didn't work") does not count as one.
 
 ---
 
@@ -272,7 +278,9 @@ The loop is implemented as:
 
 - Skill `skills/universal/process/goal-loop/` — invoked when the agent recognizes
   a loop-shaped task
-- Hook `hooks/universal/pre-tool/loop-detection.sh` — enforces hard ceilings
+- Hook `hooks/universal/pre-tool/loop-detection.sh` — enforces the tool-call
+  repetition ceiling where the host tool wires it
 - Validator `verification/claim-validator.ts` — verifies exit conditions
 
-All three must be present and active for the loop to function correctly.
+The skill and the validator are required; the hook is a backstop where it is
+wired.

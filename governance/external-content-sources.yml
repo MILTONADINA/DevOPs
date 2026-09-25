@@ -12,8 +12,9 @@
 #   2 = medium trust    (curated upstream / structured tool output)
 #   3 = lowest trust    (open internet / arbitrary RAG corpus / uploads)
 #
-# Trust tier modulates downstream policy: tier-3 sources receive stricter
-# rebuff thresholds, tier-1 sources are exempt from lakera-guard.
+# The trust tier is returned with each boundary evaluation but does not
+# change policy yet: every tier uses the same rebuff thresholds and goes
+# through the lakera-guard branch.
 
 sources:
   # Local user-controlled artefacts

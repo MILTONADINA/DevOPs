@@ -2,10 +2,7 @@
 name: librarian
 description: Phase 3 memory-layer query subagent. Reads structured facts from Stratum's Tier 1/2/3 stores (Hot rolling window / Warm Supabase facts / Cold Pinecone + Neo4j) and surfaces relevant facts for injection into agent context. Read-only against memory; never writes. Wired in via session-start hook once Phase 3 ships (v0.5.x). Until then, this file is a CONTRACT placeholder so Phase 3 implementation inherits a stable interface.
 model: haiku
-tools:
-  - read_file
-  - view
-  - bash_tool
+tools: Read, Glob, Bash
 permissions:
   read_paths:
     - "stratum/src/memory/**"
@@ -20,7 +17,7 @@ permissions:
 
 Phase 3 memory-query subagent. Reads-only against Stratum's three-tier memory store.
 
-**Status**: CONTRACT placeholder. Authored Session 14 so Phase 3 (v0.5.x) implementation has a stable interface to wire up. NOT active until Phase 3 ships.
+**Status**: CONTRACT placeholder, so Phase 3 (v0.5.x) implementation has a stable interface to wire up. NOT active until Phase 3 ships.
 
 ## Lifecycle
 
@@ -35,7 +32,7 @@ Phase 3 memory-query subagent. Reads-only against Stratum's three-tier memory st
 
 - **Session start**: automatic invocation via `load-baton.sh`. Query for current project + recent facts.
 - **Mid-session lookup**: on demand when user asks "what did we decide about X" or agent needs prior context.
-- **Cross-session research**: spawn `librarian` first as a knowledge prefetch before investigating prior decisions (the dedicated `researcher` subagent was removed 2026-09-14 as redundant with Claude Code's native Explore agent — this applies to whatever agent/tool does that investigation now).
+- **Cross-session research**: spawn `librarian` first as a knowledge prefetch before any agent (for example Claude Code's Explore agent) investigates prior decisions.
 
 Do NOT spawn for:
 - Writing facts (extractor pipeline handles this; librarian is read-only)
@@ -107,9 +104,9 @@ echo "$RELEVANT_FACTS" >> .workflow/state/session-context.md
 
 - `stratum/docs/MEMORY_ARCHITECTURE.md` — three-tier design (canonical)
 - `stratum/docs/TECHNICAL_SPEC.md` — fact-type schemas
-- `stratum/src/types/facts.ts` — Zod schemas (to be authored in v0.5.x §4b)
-- `stratum/src/memory/warm/extractor.ts` — Llama-based extractor (v0.5.x §4b)
-- `stratum/src/memory/cold/pinecone.ts` — semantic store (v0.5.x §4c)
-- `stratum/src/memory/cold/neo4j.ts` — graph store (v0.5.x §4c)
+- `stratum/src/types/facts.ts` — fact types; `stratum/src/memory/warm/schemas.ts` — their Zod schemas
+- `stratum/src/memory/warm/extractor.ts` — fact extractor (a local model set by `CQ_MEMORY_EXTRACT_MODEL`; output is Zod-validated)
+- `stratum/src/memory/cold/vectors.ts` — semantic store (pgvector on Supabase; ADR-0013)
+- `stratum/src/memory/cold/graph.ts` — graph store (Supabase tables; ADR-0013)
 - `plan.md §4` (v0.5.x) — Phase 3 implementation checklist
 - `blueprint.md §4` — architecture diagram with librarian's place

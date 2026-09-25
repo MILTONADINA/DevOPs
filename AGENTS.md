@@ -11,7 +11,11 @@
 
 ## First actions (mandatory, in order)
 
-Before responding to anything, the agent MUST:
+At the start of a top-level session, before responding to anything, the agent
+MUST do the following. A subagent launched with a specific task skips steps
+1-4 and 6: its prompt sets its scope, and resuming the baton's `next_action`
+would pull it off that task. Step 5 (client scope) and the rest of this
+contract still apply to it.
 
 1. Read `constitution/PRINCIPLES.md` and load it as the immutable operating frame.
 2. Read `constitution/ANTIPATTERNS.md` for the explicit don'ts.
@@ -65,8 +69,12 @@ Before responding to anything, the agent MUST:
 
 ## Mandatory checkpoints
 
-The following are NON-NEGOTIABLE. They fire as deterministic hooks regardless
-of the agent's intent:
+The following are NON-NEGOTIABLE. Most have a deterministic hook in
+`hooks/universal/` (the network whitelist has none), and a hook enforces its
+rule only where the host tool's configuration wires it; the tool's adapter
+file (for Claude Code, `CLAUDE.md`) says which hooks are wired in this
+checkout. Where no hook is wired, nothing stops the action for you and the
+rule binds you all the same:
 
 - **Hard budget brake**: if session cost exceeds `cost-controls/budget.yml`, the
   process is killed. No exceptions.
@@ -83,7 +91,7 @@ of the agent's intent:
 - **External network whitelist**: outbound HTTP is restricted to domains in
   `.workflow/network-allowlist.txt`.
 
-These are implemented in `hooks/universal/` and cannot be disabled by the agent.
+Where a hook is wired, the agent cannot disable it.
 
 ---
 
@@ -152,8 +160,9 @@ default to `brownfield` for safety. See `modes/` for the full rule sets.
 ## Lifecycle phase
 
 Each project moves through phases: discovery → design → build → harden → launch
-→ operate → evolve. The current phase is recorded in `.workflow/state/lifecycle.txt`
-and gates which skills are available. See `lifecycle/` for phase definitions.
+→ operate → evolve. The current phase is recorded in `.workflow/state/lifecycle.txt`.
+Each `lifecycle/<phase>/PHASE.md` names that phase's skill bundle and
+acceptance gates; no tool enforces them.
 
 ---
 
@@ -161,27 +170,29 @@ and gates which skills are available. See `lifecycle/` for phase definitions.
 
 DevOPs ships with two memory backends in order of preference:
 
-1. **File-based** (always on): `.workflow/memory/` — git-committed, durable,
-   reviewable. Read on every session start.
+1. **File-based** (always available): `.workflow/memory/`, which the DevOPs
+   installer creates in a project (the starter files and their format are in
+   DevOPs's `memory/file-based/`) — git-committed, durable, reviewable.
+   Nothing loads it for you: when the directory exists, read it at session
+   start.
 2. **Stratum** (recommended for production): structured fact tables + git
-   attestation. Configured in `memory/stratum/config.yml`.
+   attestation. It is configured through environment variables, not a file;
+   `memory/stratum/README.md` says which ones and how the tool reaches it.
 
-Both may be active simultaneously. See `docs/MEMORY.md`. (A third backend,
-Zep, was removed 2026-09-14 — unwired dead weight; see `memory/README.md`
-for why.)
+Both may be active simultaneously. See `docs/MEMORY.md`.
 
 ---
 
 ## Cost controls
 
-Model routing is automatic per `cost-controls/model-routing.yml`:
+`cost-controls/model-routing.yml` records which model each role uses. It is
+documentation, not a router: the tool that launches an agent applies the
+choice (for Claude Code, see `CLAUDE.md` → Model routing). Read the file
+rather than assuming a tier.
 
-- **Haiku 4.5** → routine tasks, classification, simple code, code review
-- **Sonnet 4.6** → default for complex implementation
-- **Opus 4.7** → architecture decisions, novel problems, planning
-
-Use Anthropic Batch API for non-real-time work (50% discount). The constitution
-layer is configured for prompt caching.
+Batch and prompt-caching recommendations for code that calls a model API
+directly are recorded in `cost-controls/model-routing.yml`; nothing applies
+them automatically.
 
 ---
 
@@ -195,10 +206,13 @@ Backends supported: Langfuse, Laminar, Arize Phoenix. See
 
 ---
 
-## Skills catalog (always available)
+## Skills catalog
 
-The following universal skills are available without explicit invocation. The
-agent decides which to use based on each skill's description:
+The universal skills below live at
+`skills/universal/<category>/<name>/SKILL.md`. Where the DevOPs installer has
+copied them into your tool's skills directory, the tool offers them by
+description; otherwise nothing loads them for you, so read the matching
+SKILL.md before doing that kind of work:
 
 - `spec-extraction` — turn user requirements into EARS-formatted specs
 - `plan-decomposition` — break spec into atomic verifiable tasks
@@ -208,13 +222,11 @@ agent decides which to use based on each skill's description:
 - `multi-tool-failover` — manage Claude Code → Codex → local LLM rotation
 - `goal-loop` — implement the spec → test → iterate → verify cycle
 - `ears-spec-writing` — author specs in EARS notation
-
-(`ask-dont-assume`, `karpathy-guidelines`, `surgical-edits` were removed
-2026-09-14 as redundant with Claude Code's own native behavior.)
 - `openapi-first` — generate code from API contracts
 - `owasp-asi-threat-model` — produce STRIDE+ASI threat models
 - `prompt-injection-defense` — sanitize external content entering context
-- `gitleaks-scan` — tier-1 secret detection (runs on every file write)
+- `gitleaks-scan` — tier-1 secret detection (runs on every file write where
+  the host tool wires `hooks/universal/post-tool/gitleaks-scan.sh`)
 - `semgrep-scan` — tier-2 OWASP Top 10 + security-audit rulesets (runs in CI)
 - `webhook-idempotency` — idempotency keys + replay-window for webhook handlers
 - `observability-instrument` — add OTel spans with baggage
@@ -262,12 +274,10 @@ For per-machine or experimental settings that should not be committed, create
 
 ## Tool-specific files
 
-The following tool-specific files reference back to this `AGENTS.md`:
-
-- `CLAUDE.md` — Claude Code adapter
-- `.codex/AGENTS.md` — Codex CLI extension
-- `.cursorrules` — Cursor rule
-- `.windsurfrules` — Windsurf rule
-- `GEMINI.md` — Gemini CLI
+`CLAUDE.md`, the Claude Code adapter, references back to this `AGENTS.md`.
+DevOPs ships no other tool-specific file. A tool that reads `AGENTS.md`
+natively needs no adapter; for a tool that reads only its own instruction
+file, write that file from this one so it points back here
+(`docs/FAILOVER.md` lists each tool's entry file).
 
 If you find conflicting instructions, `AGENTS.md` wins.

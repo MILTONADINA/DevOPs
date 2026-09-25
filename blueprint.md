@@ -439,7 +439,7 @@ The launch-readiness output is ALWAYS derived from markdown source-of-truth. Nev
 
 - If a number isn't in the .md sources, the report says "not yet recorded — refresh required" rather than inventing.
 - Effort estimates always cite their source line in plan.md.
-- Validator counts always cite either `npm run validate:claims -- --all` output or the documented exception (PB-21 coupled to PB-13).
+- Validator counts always cite either `npm run validate:claims -- --all` output or, for a failing claim, the exception recorded for it in `.workflow/state/polish-backlog.md` or `plan.md`.
 - Polish-backlog status always cites `.workflow/state/polish-backlog.md` (gitignored — local-truth-of-record per Session 9 design).
 - Branch matrix always cites `git rev-parse` / `git ls-remote` outputs, not memory.
 - PR history always cites `gh pr list` / `gh pr view` outputs, not memory.

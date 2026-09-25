@@ -44,8 +44,8 @@ in the result and exits non-zero.
 
 ## Upstream
 
-Forward-looking integration. The upstream package and URL will be confirmed
-at v0.2.0 release via the upstream-maintenance verification cadence (task A.12).
+Forward-looking integration. The upstream package and URL are not yet confirmed;
+the upstream-maintenance verification cadence (task A.12) tracks them.
 DevOPs-side MCP wrapper package `@miltonadina/pentagi-mcp` is reserved.
 
 Threat-model context (ASI07 Resource Exhaustion + ASI02 Tool Misuse): see

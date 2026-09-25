@@ -8,8 +8,9 @@ description: Convert a user's prose requirements into EARS-formatted specificati
 > Implements Principle 8 of the DevOPs Constitution.
 > Every commit must trace to a spec section. This skill produces those specs.
 
-**Tradeoff:** Upfront design time before code. Worth it: LLMs without specs
-generate vulnerable code 9.8-42.1% of the time (multiple 2025-2026 benchmarks).
+**Tradeoff:** Upfront design time before code. Worth it: requirements,
+security ones included, are written down and testable before code exists,
+instead of being left to the model's defaults.
 
 ---
 
@@ -33,8 +34,8 @@ in `/specs/`. Either:
    `specs/auth/`, `specs/billing/`, `specs/api/`, etc. Pick the right home or
    propose a new file.
 
-3. **Write requirements in EARS notation** (see `docs/EARS_GUIDE.md` for full
-   reference). Five patterns:
+3. **Write requirements in EARS notation** (full reference:
+   `skills/universal/development/ears-spec-writing/SKILL.md`). Five patterns:
 
    - **Ubiquitous**: `THE SYSTEM SHALL <action>`
    - **Event-driven**: `WHEN <event>, THE SYSTEM SHALL <action>`
@@ -53,7 +54,10 @@ in `/specs/`. Either:
 
 ## Spec template
 
-Use `templates/ears-spec/SPEC_TEMPLATE.md` as the starting structure:
+Use `templates/ears-spec/SPEC_TEMPLATE.md` as the starting structure; it is
+authoritative. The filled example below is abbreviated and leaves out several
+of the template's sections (Reviewers, Out of scope, Open questions,
+Implementation plan, Test plan, Change log):
 
 ```markdown
 # <Feature name>

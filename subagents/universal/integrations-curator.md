@@ -2,12 +2,7 @@
 name: integrations-curator
 description: Autonomously executes the Ideas → Artifacts workflow (per blueprint.md §11). Given a URL, GitHub repo, or feature description, researches the source, synthesizes borrow/don't-borrow reasoning, proposes blueprint.md + plan.md deltas with explicit version assignment + effort estimate. Read + analyze only; proposes Edit diffs but does NOT apply them — user reviews + applies.
 model: opus
-tools:
-  - read_file
-  - view
-  - web_search
-  - web_fetch
-  - bash_tool
+tools: Read, Glob, WebSearch, WebFetch, Bash
 permissions:
   read_paths:
     - "**/*.md"
@@ -48,7 +43,7 @@ Do NOT spawn for:
 For each idea:
 
 1. **Research** (read + fetch + search):
-   - `gh repo view <owner>/<repo>` for GitHub URLs (preferred over WebFetch per CLAUDE.md guidance)
+   - `gh repo view <owner>/<repo>` for GitHub URLs (preferred over WebFetch)
    - `gh api repos/<owner>/<repo>/contents` for file tree
    - Read README + top-level files + LICENSE
    - `WebSearch` for current state of the feature/announcement

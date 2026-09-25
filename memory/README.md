@@ -9,9 +9,11 @@ X?" — are currently unsupported; reopen if that need is confirmed.)
 
 ## The two tiers
 
-### 1. File-based memory (always on)
+### 1. File-based memory (always available)
 
-Location: `memory/file-based/` (committed to git per project)
+Location: `.workflow/memory/` in an installed project (`analyzer/install.ts`
+creates it empty; committed to git). `memory/file-based/` in this repository
+holds the starter files and their format.
 
 What it stores:
 - `decisions.md` — durable architectural decisions
@@ -22,7 +24,8 @@ What it stores:
 Pros: durable, reviewable, git-attested by definition.
 Cons: not semantically searchable; manual curation.
 
-Read on every session start. Updated by humans + agent with PR.
+Nothing loads it automatically: read it at session start when it exists.
+Updated by humans + agent with PR.
 
 ### 2. Stratum (structured fact store, recommended)
 
@@ -33,11 +36,13 @@ What it stores (via Stratum's schema):
 - `pruning_logs` — what context was kept vs. dropped
 - `billing_records` — append-only HMAC-signed cost ledger
 - Fact tables: `function_changes`, `tech_decisions`, `policy_updates`,
-  `todos`, `variable_changes`
+  `todos`, `variable_changes`, `operational_references` (registered in
+  `FACT_TABLES`, `stratum/src/memory/warm/tier2.ts`)
 - `audit_conflicts` — when stated facts disagree with git history
-- `api_keys` — vaulted secrets
+- `api_keys` — SHA-256 hashes of issued API keys; the raw key is never stored
 
-Wire via env var:
+Wire via env var, set in the shell that starts the agent and never in the
+proxy's environment (there the same variable names the proxy's upstream):
 ```bash
 export ANTHROPIC_BASE_URL=http://localhost:4080
 ```
@@ -45,7 +50,7 @@ export ANTHROPIC_BASE_URL=http://localhost:4080
 Pros: structured, queryable, cryptographically audited, per-tenant scoped.
 Cons: requires running the Stratum proxy.
 
-Status: Phase 0 (capture) works today. Phase 2 (pruning) is in progress.
+Status: `plan.md` §3 (pruning) and §4 (memory) track what runs.
 
 ## When to use which
 

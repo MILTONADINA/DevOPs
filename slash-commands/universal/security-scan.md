@@ -5,7 +5,9 @@ description: Run the tiered security scan stack appropriate for current lifecycl
 
 # /security-scan
 
-Invokes the `security` subagent. Tier inferred from the active lifecycle phase
+Runs the `security` role per `subagents/universal/security.md`: spawn it as a
+subagent where that agent type is registered, otherwise follow the brief
+directly. Tier inferred from the active lifecycle phase
 (see `.workflow/state/lifecycle.txt`):
 
 - discovery/design → Tier 1 only

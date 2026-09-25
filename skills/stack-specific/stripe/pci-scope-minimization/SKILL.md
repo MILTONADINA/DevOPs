@@ -26,7 +26,8 @@ audit checklist.
 ## Why this matters
 
 PCI DSS v4.0 (released March 2022; v4.0.1 minor revision June 2024)
-defines four merchant-level SAQs (Self-Assessment Questionnaires):
+has several SAQs (Self-Assessment Questionnaires); the four that decide
+scope for a Stripe integration are:
 
 - **SAQ-A**: e-commerce merchants who fully outsource cardholder-data
   handling to a PCI-DSS-validated third party. Smallest scope.
@@ -37,7 +38,7 @@ defines four merchant-level SAQs (Self-Assessment Questionnaires):
   behalf of others.
 
 Stripe's hosted flows (Checkout, PaymentSheet, Payment Element with
-client-side `confirmCardPayment`) keep most integrations in SAQ-A.
+client-side `stripe.confirmPayment`) keep most integrations in SAQ-A.
 The moment the application reads, stores, or transmits raw card data
 -- even briefly, even in memory -- scope balloons.
 
@@ -62,11 +63,10 @@ const pi = await stripe.paymentIntents.create({
 
 // Client: confirm using Stripe.js (loads from stripe.com -- iframed
 // PCI-scoped UI on Stripe's domain). The page never touches raw PAN.
-const result = await stripe.confirmCardPayment(pi.client_secret, {
-  payment_method: {
-    card: cardElement,  // Stripe.js managed element, scoped to Stripe's domain
-    billing_details: { name: 'NAME REDACTED' },
-  },
+// `elements` was created with pi.client_secret and mounts the Payment Element.
+const result = await stripe.confirmPayment({
+  elements,  // Stripe.js managed Payment Element, scoped to Stripe's domain
+  confirmParams: { return_url: 'https://example.test/checkout/complete' },
 });
 ```
 
@@ -222,8 +222,9 @@ v4.x family:
 
 Concrete checks an SAQ-A integration should pass:
 
-- `grep -ri 'cardNumber\|pan\|cvv' src/` returns no results (no raw card
-  fields in application source).
+- `grep -rniwE 'card_?number|pan|cvc|cvv' src/` returns no results (no
+  raw card fields in application source; `-w` stops `pan` matching
+  words such as `company` or `expand`).
 - Stripe API responses are redacted before reaching any log destination
   -- check via a synthetic-event integration test.
 - Secret key is loaded from vault at boot, not from `.env` or repo

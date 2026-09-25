@@ -13,7 +13,7 @@
 - **Approvers required** — validator subagent + a human
 - **Postmortem within 48h** — not optional
 - **No new dependencies**, **no schema changes** unless the bug IS schema-related
-- **Production write block still applies** — explicit `/approve-prod-deploy`
+- **Production write block still applies** — the user approves each production deploy (constitution/ANTIPATTERNS.md, Antipattern 8)
 
 ## Acceptance gates to exit hotfix
 

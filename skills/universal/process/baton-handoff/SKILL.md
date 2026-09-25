@@ -24,7 +24,12 @@ context loss across tool boundaries.
 
 ## What goes in the baton
 
-The hook `session-end/write-baton.sh` writes `.workflow/state/baton.md` with:
+`.workflow/state/baton.md` holds the fields below. Where the host tool wires
+`hooks/universal/session-end/write-baton.sh`, that hook rewrites the file at
+session end, filling its `## Next action` and `## Open questions for the user`
+sections from `.workflow/state/next-action.txt` and
+`.workflow/state/open-questions.txt`, so put them there; where it is not wired,
+write the baton yourself. It contains:
 
 - `last_updated` timestamp
 - `session_id` and originating tool
@@ -32,16 +37,20 @@ The hook `session-end/write-baton.sh` writes `.workflow/state/baton.md` with:
 - Git state (branch, HEAD, dirty file count)
 - Count of verified claims this session
 - List of open blockers
-- **`next_action`** — the literal next instruction for the next agent
+- **`## Next action` section** — the literal next instruction for the next agent
 - Open questions for the user
 - Files modified this session
 - Recently completed claim refs
 
 ---
 
-## How to write the next_action well
+## How to write the Next action well
 
-The single most important field. Be specific.
+The single most important section. Be specific. Keep one `## Next action`
+heading and replace its text each session, rather than adding a second one or
+a `next_action:` field: the Stratum session-start recall
+(`stratum/scripts/session-start-context.ts`), where it runs, reads its query
+only from the first `## Next action` section, up to the next `## ` heading.
 
 **Bad** (forces the next agent to re-explore):
 > Continue working on auth.
@@ -76,7 +85,9 @@ next session, answers, and the answers go into `specs/` or `decisions.md`.
 ## Where the baton lives
 
 - File: `.workflow/state/baton.md`
-- Committed to git: yes, this is durable handoff state.
+- Committed to git where the project tracks `.workflow/state/`. Where
+  `.gitignore` excludes it (as the DevOPs repository itself does), the baton
+  stays a local file; leave it untracked.
 - Read by: `hooks/universal/session-start/load-baton.sh` on every session start.
 - Max age before "stale": 24 hours (configurable). After that it's informational only.
 
@@ -86,7 +97,8 @@ next session, answers, and the answers go into `specs/` or `decisions.md`.
 
 - Code (the next agent has the repo)
 - Lengthy reasoning (link to a doc instead)
-- Anything secret (PII, keys) — these never go in committed files
+- Anything secret (PII, keys) — not in the baton even where it stays
+  untracked, and never in committed files
 - Past completed work in detail (link to proofs)
 
 ---
@@ -97,7 +109,7 @@ On session start, `load-baton.sh` already prints status. The agent must still
 explicitly:
 
 1. Open `.workflow/state/baton.md`
-2. Read `next_action` and `open_questions`
+2. Read its `## Next action` section and the open questions
 3. Address blockers first
 4. Then resume
 

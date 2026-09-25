@@ -38,4 +38,4 @@ Feeds the self-improvement loop in Phase 6.
 Nothing in this directory should contain client-identifying information,
 secrets, or specific code from any project. Patterns must be abstracted.
 
-The `scripts/scrub-meta-memory.sh` runs nightly to validate.
+No script validates this yet, so scrub before you write.

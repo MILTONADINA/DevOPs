@@ -1,14 +1,24 @@
 # Stratum Memory Backend
 
-DevOPs's wiring **spec** for a future Stratum integration. As of 2026-05-24,
-Stratum is a **single-commit scaffold** — none of the capabilities described
-here run yet. The env vars and config fields below are forward-looking; no
-consumer code currently calls Stratum, because Stratum has no running
-surface to call.
+How DevOPs reaches Stratum. Stratum's code is built and tested (`plan.md` §4,
+`stratum/docs/`). Development runs against a local Supabase-compatible stack,
+and a production deployment topology is still open
+(`stratum/docs/decisions/0020-local-storage-after-hosted-retirement.md`).
+Two integrations exist:
 
-For the canonical inventory of what Stratum actually is today, see
-[`.workflow/state/stratum-audit/01-stratum-state.md`](../../.workflow/state/stratum-audit/01-stratum-state.md).
-Closes the README-vs-reality drift filed as **PB-11** in Session 7's audit.
+- **Session-start recall.** When `stratum/` dependencies are installed, Claude
+  Code's SessionStart hook runs `stratum/scripts/session-start-context.ts`. It
+  prints recalled facts, marked as untrusted data, only when
+  `DEVOPS_STRATUM_PROJECT_ROOT` equals the project root, `DEVOPS_STRATUM_ORG_ID`
+  is set, and `SUPABASE_SERVICE_KEY` and a `SUPABASE_URL` whose host is listed
+  in `.workflow/network-allowlist.txt` are present.
+  `DEVOPS_STRATUM_PROJECT_SCOPE` optionally narrows it to one project.
+- **Proxy.** Model traffic goes through Stratum when the tool's
+  `ANTHROPIC_BASE_URL` points at it (`http://localhost:4080` by default).
+
+No code reads `config.yml` or the `STRATUM_API_KEY` / `STRATUM_TENANT_ID`
+variables below. The sections from "Scaffold reality" on record the May 2026
+audit and wiring spec; for current state read `plan.md` §4.
 
 ---
 

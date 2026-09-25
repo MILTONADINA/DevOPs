@@ -1,7 +1,7 @@
 # Graph role mapping — the "agile team"
 
-Status: **Phase 0 (pilot)**. See `.claude/plans/indexed-launching-cocke.md`
-for the full approved plan and `governance/graph/autonomy-config.yml` for
+Status: **Phase 0 (pilot)**. See `~/.claude/plans/indexed-launching-cocke.md`
+(outside this repository) for the full approved plan and `governance/graph/autonomy-config.yml` for
 the machine-readable gate configuration this document is the source of
 truth for.
 
@@ -9,7 +9,13 @@ This is the durable spec for how DevOPs's existing subagent roster
 (`subagents/universal/*.md`) is composed into a graph-engineered
 development pipeline. It does not introduce new subagents — it assigns
 existing ones to agile-team roles and defines how they hand off to each
-other.
+other. In a `sprint-cycle.js` run, each role's inline prompt governs, together
+with any file that prompt cites (the security prompt cites `security.md`), and
+it wins where a `subagents/universal/*.md` file says otherwise: the tester, not
+the coder, runs the verification and writes the proof claims (coder.md
+describes a test-first loop that emits claims), and the planner returns its
+tasks and ambiguities to the Workflow rather than writing a plan file or
+halting on a gap (planner.md).
 
 ## Model assignment (updated 2026-09-14, user directive)
 
@@ -39,12 +45,11 @@ command and remove `blocked.md`; the next `/sprint --resume` then checks the
 underlying fault with the full preflight. Remaining non-`needs_human` blocks are
 cleared by `/sprint --resume` after preflight passes and Workflow launches.
 
-**Fable is the orchestrator** ("boss/CTO") — the top-level entity running
+**The orchestrator** ("boss/CTO") is the top-level entity running
 `sprint-cycle.js` and interpreting its results, i.e. the main Claude Code
-session. Choosing the session's own model is documentation, not
-enforcement: no config file can switch a running session's own model, so
-the user selects Fable via `/model` for the main session themselves (done
-2026-09-14).
+session, on Claude Opus 5.5 (the owner's `/model` default). Choosing the
+session's own model is documentation, not enforcement: no config file can
+switch a running session's own model, so the user selects it via `/model`.
 
 ## Roles
 
@@ -56,14 +61,17 @@ the user selects Fable via `/model` for the main session themselves (done
 | `reviewer` | Peer review | Full (inner loop) | Spec-anchoring check (real, load-bearing) plus generic diff review. |
 | `security` | Security engineer | Full (inner loop), **never bypassed** | The actual least-privilege gate for the 4 pentest MCP tools; anchors the sealed Phase 2 ASI02 control. The graph does not and cannot route around this subagent's scoping. |
 | `validator` | Release manager | Full (inner loop) | Independent final re-verification; signs the cycle off before a PR is opened. |
-| `integrations-curator` | — | **Parked, out of loop** | Built but unexercised per this session's audit — not part of the sprint cycle. |
+| `integrations-curator` | — | **Parked, out of loop** | Built but not yet exercised — not part of the sprint cycle. |
 | `librarian` | — | **Parked, out of loop** | Confirmed placeholder (not active until Phase 3 ships) per its own file. |
 
 ## What "full autonomy in the inner loop" means
 
 The graph runs `planner → coder → tester → reviewer → security → validator`
-unattended, end to end, for a backlog item, and opens a PR. No human
-approval is required to reach that point.
+unattended, end to end, for a backlog item, and stops at a validated,
+uncommitted result. Staging, committing, pushing and opening a PR are a
+separate human-reviewed step outside the graph (prevented at prompt level
+only; see the known limitation below). No human approval is required to
+reach the validated result.
 
 ## The two gates that are never inner-loop-autonomous
 

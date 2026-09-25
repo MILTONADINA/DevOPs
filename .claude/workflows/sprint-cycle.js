@@ -237,7 +237,7 @@ Backlog item: "${backlogItem}"
 Tasks: ${JSON.stringify(plan.tasks)}
 Build results: ${JSON.stringify(buildResults.map(r => ({ task: r.task.id, coder: r.coderResult, tester: r.testerResult })))}
 
-Check spec-anchoring (does every changed line trace to one of the tasks above, or to the backlog item itself?) and general diff quality. Report any violations plainly -- do not soften a real finding.
+Check spec-anchoring (does every changed line trace to one of the tasks above, or to the backlog item itself?) and general diff quality. List every issue you find in violations, including low-severity ones and ones you are unsure about. Start each with BLOCKER: or CONCERN: and end it with your confidence. The validator and the human reviewer filter the list, so at this stage coverage matters more than precision. A BLOCKER is an untraceable line (drive-by refactoring included), a missing or misleading proof, or a defect that could cause incorrect behavior or a test failure. State each one plainly, and set approved to false if any BLOCKER remains.
 
 ${ENVIRONMENT_RULES}`,
   {
@@ -263,11 +263,11 @@ const securityResult = await workflowAgent(
 Backlog item: "${backlogItem}"
 Build results: ${JSON.stringify(buildResults.map(r => ({ task: r.task.id, coder: r.coderResult })))}
 
-Report findings above threshold plainly, or confirm none were found.
+Report every finding, including low-severity ones and ones you are unsure about, each tagged with its classification from subagents/universal/security.md (TP-critical, TP-warning, FP with the reason, needs-context) and your confidence. Set passed to false if any finding is TP-critical. If you found nothing, say what you scanned.
 
 ${ENVIRONMENT_RULES}
 
-CLAIM-SCHEMA CONSTRAINT (if you record your scan as a claim YAML under .workflow/proofs/): it must validate against verification/claim-schema.yml -- id claim-YYYY-MM-DD-NNN (next free NNN), a specs/ spec_ref (specs/phase-2/A-pentest-stack.md#req-a8 is the real anchor for a secrets/static scan of committed files), files_changed limited to tracked files, a RE-RUNNABLE test_command with no <placeholders> (write a small proof script that re-extracts the changed files at the commit and re-runs the deterministic tiers; keep drifting checks like npm audit informational), and a reproducibility_hash computed with the validator's formula. A scan claim that cannot be re-run is not evidence.`,
+CLAIM-SCHEMA CONSTRAINT (if you record your scan as a claim YAML under .workflow/proofs/): it must validate against verification/claim-schema.yml -- id claim-YYYY-MM-DD-NNN (next free NNN), a specs/ spec_ref (specs/phase-2/A-pentest-stack.md#req-a8 is the real anchor for a secrets/static scan of committed files), files_changed limited to tracked files, a RE-RUNNABLE test_command with no <placeholders> (write a small proof script that re-extracts the changed files at the commit and re-runs the deterministic tiers; keep drifting checks like npm audit informational), and a reproducibility_hash computed with the validator's formula. The proof must fail when a scanner scanned nothing, and must be shown to fail on a planted positive (gitleaks' default config, for example, silently skips files named package-lock.json). A scan claim that cannot be re-run is not evidence.`,
   {
     label: 'security',
     phase: 'Verify',
@@ -286,7 +286,7 @@ CLAIM-SCHEMA CONSTRAINT (if you record your scan as a claim YAML under .workflow
 )
 
 const validatorResult = await workflowAgent(
-  `You are acting as the 'validator' role in the DevOPs graph-engineering pipeline -- independent final re-verification, the last check before this cycle could be considered for a PR. Re-run the tester's proofs yourself rather than trusting the reported output where feasible; recompute exit codes rather than assuming they're accurate.
+  `You are acting as the 'validator' role in the DevOPs graph-engineering pipeline -- independent final re-verification, the last check before this cycle could be considered for a PR. Re-run the tester's proofs yourself instead of trusting the reported output, and recompute exit codes instead of assuming they're accurate. If a proof cannot be re-run here, say which one and why in your reason.
 
 Backlog item: "${backlogItem}"
 Build results: ${JSON.stringify(buildResults.map(r => ({ task: r.task.id, coder: r.coderResult, tester: r.testerResult })))}
@@ -295,7 +295,7 @@ Security result: ${JSON.stringify(securityResult)}
 
 ${ENVIRONMENT_RULES}
 
-Decide whether this cycle is ready for a PR. Do NOT sign off if any task's test failed, the reviewer found violations, or security found findings above threshold. State your reason either way.`,
+Decide whether this cycle is ready for a PR. Do NOT sign off if any task's test failed, the reviewer did not approve or listed a BLOCKER, or security reported a TP-critical finding. Name any needs-context security finding in your reason so the human reviewer sees it. State your reason either way.`,
   {
     label: 'validator',
     phase: 'Verify',

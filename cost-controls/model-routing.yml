@@ -1,13 +1,14 @@
 # cost-controls/model-routing.yml
 #
-# 2026-09-14 (user directive): Fable is the orchestrator ("boss/CTO" -- the
+# 2026-09-14 (user directive): the main session is the orchestrator ("boss/CTO" -- the
 # main Claude Code session running sprint-cycle.js, which the user selects
 # via /model); all graph-engineering subagents route to Sonnet at MAX
 # reasoning effort for workflow runs (`model: 'sonnet', effort: 'max'` per
-# agent() call). See governance/graph/role-mapping.md for the role spec.
+# agent() call; the preflight agent runs at effort low). See
+# governance/graph/role-mapping.md for the role spec.
 #
 # Mechanical note: this file is NOT self-enforcing. The main session's model
-# (intended: Fable) is chosen by the user via /model -- no config file can
+# (intended: Claude Opus 5.5) is chosen by the user via /model -- no config file can
 # switch a running session's own model. Subagent routing IS enforced, via
 # explicit `model:` options on each agent() call in
 # .claude/workflows/sprint-cycle.js.
@@ -23,8 +24,8 @@ models:
 
   sonnet:
     id: claude-sonnet-5
-    cost_per_mtok_input_usd: 3.00
-    cost_per_mtok_output_usd: 15.00
+    cost_per_mtok_input_usd: 2.00
+    cost_per_mtok_output_usd: 10.00
     context_window: 1000000
     use_for:
       - all graph-engineering subagent roles (planner/coder/tester/reviewer/security/validator) in workflow runs, at effort max
@@ -37,10 +38,18 @@ models:
     use_for:
       - not currently used by graph subagent routing (kept for reference/override)
 
+  opus-5-5:
+    id: claude-opus-5-5
+    cost_per_mtok_input_usd: 4.00
+    cost_per_mtok_output_usd: 20.00
+    context_window: 1000000
+    use_for:
+      - orchestrator ("boss/CTO") -- the top-level session running sprint-cycle.js; selected by the user via /model for the main session, not set by this file
+
   fable:
     id: claude-fable-5-1
     use_for:
-      - orchestrator ("boss/CTO") -- the top-level session running sprint-cycle.js; selected by the user via /model for the main session, not set by this file
+      - not currently used by graph routing (kept for reference/override)
 
 # Subagent routing -- all Sonnet at effort max, per user directive 2026-09-14
 subagent_effort: max
@@ -52,17 +61,21 @@ subagents:
   security: sonnet
   validator: sonnet
 
-orchestrator: fable   # the main session; see mechanical note above -- documentation, not enforcement
+orchestrator: opus-5-5   # the main session; see mechanical note above -- documentation, not enforcement
 
 # Advisor strategy retired 2026-09-14: with all subagent roles on a single
-# tier (opus), a plan/implement/review model split no longer applies. Left
+# tier (sonnet), a plan/implement/review model split no longer applies. Left
 # here, disabled, for history -- delete once nobody needs the old context.
 advisor_strategy:
   enabled: false
 
+# The batch_api and prompt_caching blocks below are recommendations for code
+# that calls the Messages API directly, not a configured mechanism: no code
+# reads or applies them.
+
 # Batch API (50% discount for non-real-time work)
 batch_api:
-  enabled: true
+  recommended: true
   use_for:
     - security scans
     - documentation generation
