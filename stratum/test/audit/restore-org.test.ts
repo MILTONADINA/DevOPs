@@ -86,8 +86,11 @@ describe("validateBackup", () => {
     expect(() => validateBackup({ ...valid, tables: { ...valid.tables, api_keys: [] } })).toThrow(/conversation.*key/i);
   });
   test("rejects missing, malformed, or duplicated decision references before restore", () => {
-    const old = { id: "d1", org_id: "o1", project_scope: "orion", created_at: "2026-09-20T00:00:00Z", supersedes_id: null };
+    // Real decision content, so the rows also pass the fact-schema check restore now applies.
+    const content = { session_id: "s1", confidence: 0.9, is_verified: false, is_suppressed: false, decision_text: "run the API on Workers", domain: "deploy" };
+    const old = { ...content, id: "d1", org_id: "o1", project_scope: "orion", created_at: "2026-09-20T00:00:00Z", supersedes_id: null };
     const newer = {
+      ...content,
       id: "d2", org_id: "o1", project_scope: "orion", created_at: "2026-09-21T00:00:00Z", supersedes_id: "d1",
       supersession_reviewer: "operator@example.test",
       supersession_evidence: "Reviewed decision replaces the earlier runtime choice.",
@@ -212,5 +215,26 @@ describe("backup and restore hardening (PB-64, PB-65)", () => {
   test("invoice_send_claims is backed up and restored right after invoices", () => {
     expect(ORG_SCOPED_TABLES).toContain("invoice_send_claims");
     expect(RESTORE_ORDER.indexOf("invoice_send_claims")).toBe(RESTORE_ORDER.indexOf("invoices") + 1);
+  });
+});
+
+// v0.5 gate "Zod validation gates all writes": restore is a fact write, so a backup whose fact rows fail
+// the same schema the reader uses is rejected before anything is written.
+describe("restore validates fact rows (v0.5 Zod gate)", () => {
+  const withFacts = (table: string, rows: unknown[]): BackupFile => ({
+    orgId: "o1",
+    exportedAt: "2026-09-25T00:00:00Z",
+    tables: Object.fromEntries([["organizations", [{ id: "o1" }]], ...ORG_SCOPED_TABLES.map((t) => [t, t === table ? rows : []]), ["pruning_logs", []]]),
+  });
+  const decision = { id: "d1", org_id: "o1", session_id: "s1", confidence: 0.9, is_verified: false, is_suppressed: false, decision_text: "use Workers", domain: "deploy", created_at: "2026-09-25T00:00:00Z" };
+
+  test("accepts valid fact rows, including suppressed ones", () => {
+    expect(() => validateBackup(withFacts("tech_decisions", [decision, { ...decision, id: "d2", is_suppressed: true }]))).not.toThrow();
+  });
+
+  test("rejects a fact row that fails the fact schema, naming the table and row", () => {
+    const { decision_text: _dropped, ...invalid } = decision;
+    expect(() => validateBackup(withFacts("tech_decisions", [invalid]))).toThrow(/tech_decisions row d1 fails fact validation/);
+    expect(() => validateBackup(withFacts("function_changes", [{ id: "f1", org_id: "o1", session_id: "s1", confidence: 7, is_verified: false, is_suppressed: false, old_name: "x", change_type: "renamed" }]))).toThrow(/function_changes row f1 fails fact validation/);
   });
 });
