@@ -1,6 +1,15 @@
-# Known generated test inputs for token-redaction checks; each fingerprint is tied
-# to one historical finding so future secrets in these files still fail CI.
-54c6d828f21ecc0238972b3ae7c341a158510754:stratum/test/observability/pii-redaction.test.ts:jwt:143
-dbfaa747dfa9a2e6797d661f98a133f10979d79e:stratum/test/capture-session/pii-redaction-passthrough.test.ts:jwt:114
-d20e547a95347ddf87af439754ef6f2c7f2f2726:stratum/test/observability/pii-redaction.test.ts:generic-api-key:54
-d20e547a95347ddf87af439754ef6f2c7f2f2726:stratum/test/observability/pii-redaction.test.ts:jwt:42
+# Reviewed deliberate test fixtures that the scheduled full-history secret scan
+# reports (fake credentials committed on purpose). Each entry is an exact
+# gitleaks git-mode fingerprint -- commit:file:rule:line -- so it matches only
+# that historical finding: a new secret anywhere, including a new line in these
+# same files, still fails the scan, and a dir-mode scan (no commit in its
+# fingerprint) still detects the fixtures (REQ-A8). Fingerprints depend on the
+# gitleaks version; .github/workflows/security-scan.yml pins GITLEAKS_VERSION to
+# the one that produced them. Spec: specs/security/history-secret-scan-baseline.md
+18d7135099ae2a11bf1e45300788893bc8c1c15e:stratum/test/capture-session/pii-redaction-passthrough.test.ts:jwt:114
+18d7135099ae2a11bf1e45300788893bc8c1c15e:stratum/test/observability/pii-redaction.test.ts:generic-api-key:70
+18d7135099ae2a11bf1e45300788893bc8c1c15e:stratum/test/observability/pii-redaction.test.ts:jwt:193
+18d7135099ae2a11bf1e45300788893bc8c1c15e:stratum/test/observability/pii-redaction.test.ts:jwt:58
+925de334d9483714dfb8787f63ab27c5cc372c7d:tests/fixtures/security/poisoned-mcp-config.json:aws-access-token:8
+925de334d9483714dfb8787f63ab27c5cc372c7d:tests/fixtures/security/poisoned-mcp-config.json:github-pat:9
+925de334d9483714dfb8787f63ab27c5cc372c7d:tests/fixtures/security/poisoned-mcp-config.json:stripe-access-token:7
