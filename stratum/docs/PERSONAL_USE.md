@@ -29,6 +29,7 @@ export PORT=4080                 # proxy port (default 4080)
 export RATE_LIMIT_MAX=100        # requests/min/IP (default 100)
 export RATE_LIMIT_WINDOW="1 minute"   # rate-limit window (default "1 minute")
 export LOG_LEVEL=info
+export STRATUM_TELEMETRY_OPT_OUT=true  # optional: no per-turn stratum.turn log record (docs/TELEMETRY.md)
 ```
 
 In the proxy's shell, `ANTHROPIC_BASE_URL` is the upstream the proxy forwards

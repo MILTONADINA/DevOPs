@@ -40,8 +40,18 @@ export const defaultTelemetrySink: TelemetrySink = (attrs) => {
   logger.info(attrs, "stratum.turn");
 };
 
-/** Resolve the active sink (real OTLP later; structured log fallback for now). */
-export function resolveTelemetrySink(): TelemetrySink {
+/** Opt-out sink: emits nothing (STRATUM_TELEMETRY_OPT_OUT, docs/TELEMETRY.md). */
+export const noopTelemetrySink: TelemetrySink = () => {};
+
+/**
+ * Resolve the active sink (real OTLP later; structured log fallback for now).
+ * STRATUM_TELEMETRY_OPT_OUT=true (or 1) turns the per-turn record off entirely.
+ *
+ * @param env - environment to read (injected for tests).
+ */
+export function resolveTelemetrySink(env: { STRATUM_TELEMETRY_OPT_OUT?: string | undefined } = process.env): TelemetrySink {
+  const optOut = (env.STRATUM_TELEMETRY_OPT_OUT ?? "").trim().toLowerCase();
+  if (optOut === "true" || optOut === "1") return noopTelemetrySink;
   // When @opentelemetry + OTEL_EXPORTER_OTLP_ENDPOINT are wired, return an
   // OTLP-backed sink here. Until then the structured-log fallback is the
   // soft-dependency behavior (Q7): present, content-free, never crashes.
@@ -53,9 +63,9 @@ export function resolveTelemetrySink(): TelemetrySink {
  * and swallowed (telemetry must never break request handling).
  *
  * @param attrs - the non-PII attribute set.
- * @param sink - the sink (default {@link defaultTelemetrySink}).
+ * @param sink - the sink (default: {@link resolveTelemetrySink}, so an unset sink still honors the opt-out).
  */
-export function emitTurnTelemetry(attrs: TurnTelemetry, sink: TelemetrySink = defaultTelemetrySink): void {
+export function emitTurnTelemetry(attrs: TurnTelemetry, sink: TelemetrySink = resolveTelemetrySink()): void {
   try {
     sink(attrs);
   } catch (e) {
