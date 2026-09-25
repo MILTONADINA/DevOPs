@@ -72,9 +72,9 @@ OR
 
 ## Cost
 
-- LLM spend: $X.XX
-- Per-model breakdown: Haiku $X.XX, Sonnet $X.XX, Opus $X.XX
-- Per-subagent breakdown: planner $X.XX, coder $X.XX, ...
+- LLM spend: $X.XX from `.workflow/state/budget-ledger.jsonl`, or "not
+  measured" when that ledger does not exist
+- Per-model and per-subagent breakdown: from the same ledger, when it has them
 
 ---
 
@@ -87,12 +87,16 @@ The next agent should read it first.
 
 ## Constitution adherence
 
-- Spec-anchoring: ✓ all changes traced
-- Verified claims: ✓ 3/3 verified
-- Surgical edits: ✓ no out-of-scope changes
-- Budget: ✓ within session cap
-- Loop detection: ✓ no loops
-- Client boundary: ✓ no cross-project access
+<!-- One line per check: ✓ or ✗ with the evidence (validator output, ledger
+     total, file). Write "not measured" when nothing this session produced
+     evidence for the check. -->
+
+- Spec-anchoring: <✓/✗ + evidence, or not measured>
+- Verified claims: <✓/✗ + validator result, e.g. 3/3>
+- Surgical edits: <✓/✗ + evidence, or not measured>
+- Budget: <✓/✗ + ledger total, or not measured>
+- Loop detection: <✓/✗ + evidence, or not measured>
+- Client boundary: <✓/✗ + evidence, or not measured>
 ```
 
 ---
@@ -104,8 +108,10 @@ Before marking the session "complete":
 1. Run `claim-validator` on all proofs. Confirm 100% pass.
 2. Check blockers file. If any are unresolved AND the session changed code that
    touches them, flag it.
-3. Recompute the cost from `budget-ledger.jsonl`.
-4. Verify spec-trace-rate is 100%.
+3. Recompute the cost from `.workflow/state/budget-ledger.jsonl` if it exists;
+   otherwise report cost as not measured (that is not a failed check).
+4. Confirm each change this session traces to a spec section. No tool computes
+   a spec-trace rate, so check the diff against the specs you worked from.
 
 If any check fails, the summary is marked **not safe to merge** and the agent
 must escalate to the user.

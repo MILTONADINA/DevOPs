@@ -5,7 +5,9 @@ description: Run gitleaks against the working tree to detect committed secrets, 
 
 # Gitleaks Scan
 
-> Catches secrets before they hit the remote. Wired into the post-tool hook.
+> Catches secrets before they hit the remote, wherever it is wired in: a CI
+> step, the pre-commit hook `init-project.sh` installs, or the post-tool hook
+> script once a harness registers it (nothing registers it by default).
 
 **Tradeoff:** ~2-5s scan time on file change. Worth it: a leaked secret is a
 P0 incident and takes hours to rotate + audit.
@@ -14,7 +16,13 @@ P0 incident and takes hours to rotate + audit.
 
 ## When to invoke
 
-- Post-tool: after any file write (hook auto-runs)
+- After writing a file that may hold a credential: run
+  `gitleaks detect --no-git --source <file> --no-banner` yourself.
+  `hooks/universal/post-tool/gitleaks-scan.sh` runs that command, but only
+  once the harness registers it as a post-tool hook with a wrapper that
+  passes the written file's path as its first argument (for Claude Code, in
+  `.claude/settings.json`); `analyzer/install.ts` copies hooks without
+  registering them.
 - Pre-commit: in `.git/hooks/pre-commit` (installed by `init-project.sh`)
 - Pre-push: in `.git/hooks/pre-push`
 - CI: on every PR
@@ -65,7 +73,9 @@ paths = [
 
 See `docs/SECURITY.md` for the full tiered pentest stack. Gitleaks fits at:
 
-- **Tier 1 (every file write)**: post-tool hook
+- **Tier 1 (every file write)**: post-tool hook, once the harness registers
+  it; until then secrets are caught at commit (pre-commit hook, where
+  installed) or at PR (the CI step)
 - **Tier 2 (every PR)**: CI step blocking merge on findings
 - **Tier 3 (pre-release)**: full history scan with `gitleaks detect`
 
@@ -73,7 +83,8 @@ See `docs/SECURITY.md` for the full tiered pentest stack. Gitleaks fits at:
 
 ## On finding
 
-Post-tool hook hard-fails. The user must:
+The post-tool hook, once registered, exits 2; the pre-commit hook, where
+installed, blocks the commit; the CI step blocks the PR. The user must:
 1. Remove the secret from the file
 2. Rotate it if it was real
 3. Add to a vault (Doppler, 1Password, Vault, Infisical)
