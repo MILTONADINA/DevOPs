@@ -53,7 +53,11 @@ jobs:
         with: { node-version: 22 }
       - run: npm ci
       - run: npm run typecheck
-      - run: npm test
+      - name: npm test, held to its floor (masterpiece REQ-M23)
+        shell: bash
+        run: |
+          npm test 2>&1 | tee "$RUNNER_TEMP/stratum-tests.log"
+          node ../scripts/check-test-floor.mjs stratum "$RUNNER_TEMP/stratum-tests.log"
 
   validate:
     runs-on: ubuntu-latest
@@ -72,9 +76,22 @@ jobs:
         run: npm run lint:renovate
       - name: Lint stack-specific skills (REQ-D2..D7)
         run: npm run lint:stack-specific-skills
-      - name: Test dashboard and test hermeticity (REQ-R12..R13)
+      - name: Test dashboard and test hermeticity (REQ-R12..R13), held to its floor (REQ-M23)
+        shell: bash
         # Preflight checks these directories; they do not require installed packages.
         # Security-tool versions are supplied by the isolated test fixtures.
         run: |
           mkdir -p node_modules/.bin stratum/node_modules/.bin .workflow/proofs
-          npm test
+          npm test 2>&1 | tee "$RUNNER_TEMP/root-tests.log"
+          node scripts/check-test-floor.mjs root "$RUNNER_TEMP/root-tests.log"
+      - name: Test floors only rise; added test files assert (masterpiece REQ-M23)
+        if: github.event_name == 'pull_request'
+        shell: bash
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          git fetch --no-tags --depth=1 origin "$BASE_REF"
+          git show FETCH_HEAD:governance/test-floors.json > "$RUNNER_TEMP/base-floors.json" 2>/dev/null || echo '{}' > "$RUNNER_TEMP/base-floors.json"
+          node scripts/check-test-floor.mjs --ratchet "$RUNNER_TEMP/base-floors.json"
+          mapfile -t added < <(git diff --name-only --diff-filter=A FETCH_HEAD HEAD -- 'tests/**/*.test.mjs' 'stratum/test/**/*.test.ts')
+          if [ "${#added[@]}" -gt 0 ]; then node scripts/check-assertions.mjs "${added[@]}"; else echo "check-assertions: no test files added"; fi

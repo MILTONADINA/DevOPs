@@ -2,7 +2,7 @@
   "name": "devops",
   "displayName": "DevOPs",
   "version": "0.2.0",
-  "description": "Self-configuring, verification-first DevOps workflow for AI coding agents. Universal across Claude Code, Codex, Cursor, Antigravity, Kiro, and local LLMs. Includes constitution, hooks, project analyzer, claim validator, three-tier memory, EARS specs, OWASP ASI 2026 security baseline, and a signed skill library.",
+  "description": "Self-configuring, verification-first DevOps workflow for AI coding agents. Built for Claude Code; its AGENTS.md contract is tool-agnostic (Codex reads it natively), and no adapters for other tools ship yet. Includes constitution, hooks, project analyzer, claim validator, three-tier memory, EARS specs, OWASP ASI 2026 security baseline, and a signed skill library.",
   "author": {
     "name": "Milton Adina",
     "url": "https://github.com/MILTONADINA"
