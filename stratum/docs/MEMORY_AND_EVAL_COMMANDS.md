@@ -165,8 +165,10 @@ run, set `EVAL_LOCAL_BASE_URL=http://127.0.0.1:1234/v1` and
 runner prints the model and labels the result exploratory. Missing provider or
 dataset exits nonzero. All judged runs are sampled, print an upper-bound
 model-call count, and never fabricate a score.
-The default `npm run test:eval` stays nonzero until Tier-A is wired into that
-entry point. Flags other than `--fast` are rejected rather than ignored.
+The default `npm run test:eval` runs Tier-C, then Tier-B, then the full Tier-A
+LoCoMo and LongMemEval runs (`evals/harness/runner.ts:183-190`). It stays
+nonzero while Tier-C fails (29/50 at the defaults) or no judged provider is
+configured. Flags other than `--fast` are rejected rather than ignored.
 
 A bounded local Qwen LoCoMo comparison (one published question, one judge
 sample) found the default per-hour λ=0.97 dropped all gold evidence (39/419
