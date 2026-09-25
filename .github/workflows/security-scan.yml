@@ -151,8 +151,10 @@ jobs:
         # Critical-severity exit gate (REQ-B3) is inherited from the script:
         # scripts/run-redteam.sh exits 1 on >=1 critical finding, 2 on
         # budget brake (REQ-B5), 0 otherwise. GitHub Actions fails the
-        # step on non-zero exit, which fails the workflow, which blocks
-        # the branch-protection gate per REQ-B3.
+        # step on non-zero exit and fails this job. That job is not a required
+        # status check on main (required: validate, stratum-test, setup-linux,
+        # gitleaks, semgrep), and without a provider key the script skips,
+        # so today it gates nothing (masterpiece roadmap MR-7).
         run: bash scripts/run-redteam.sh
 
       # REQ-B4 medium/low surfacing -- non-blocking PR comment.

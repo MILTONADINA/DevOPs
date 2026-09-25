@@ -317,7 +317,9 @@ test('cycleId and cycleOutcome really are hardcoded null with no other assignmen
 
   assert.ok(readme.includes('**`cycleId`**'));
   assert.ok(readme.includes('cycleOutcome') && readme.includes('readyForPR'));
-  assert.ok(includesPhrase(readme, 'not recoverable today'));
+  assert.ok(includesPhrase(readme, 'not shown today'));
+  // run.json (REQ-R10) now records the cycle id; the README must say the dashboard does not read it yet.
+  assert.ok(readme.includes('graph-cycles/<cycleId>/run.json') && includesPhrase(readme, 'does not read it yet'));
   assert.ok(readme.includes('always `null`'));
 });
 

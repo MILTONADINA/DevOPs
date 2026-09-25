@@ -59,7 +59,7 @@ switch a running session's own model, so the user selects it via `/model`.
 | `coder` | Engineer | Full (inner loop) | Implements one atomic task at a time, surgical edits only. |
 | `tester` | QA | Full (inner loop) | Writes/runs tests, produces proof artifacts consumed by `validator`. |
 | `reviewer` | Peer review | Full (inner loop) | Spec-anchoring check (real, load-bearing) plus generic diff review. |
-| `security` | Security engineer | Full (inner loop), **never bypassed** | The actual least-privilege gate for the 4 pentest MCP tools; anchors the sealed Phase 2 ASI02 control. The graph does not and cannot route around this subagent's scoping. |
+| `security` | Security engineer | Full (inner loop), **never bypassed** | Runs the security stage of every cycle; its verdict is read by the validator (masterpiece REQ-M1 makes it count in code). The intended least-privilege scoping of the 4 pentest MCP tools is not enforced: they are not registered in this checkout and no hook limits them to this role (REQ-M27). |
 | `validator` | Release manager | Full (inner loop) | Independent final re-verification; signs the cycle off before a PR is opened. |
 | `integrations-curator` | — | **Parked, out of loop** | Built but not yet exercised — not part of the sprint cycle. |
 | `librarian` | — | **Parked, out of loop** | Confirmed placeholder (not active until Phase 3 ships) per its own file. |

@@ -7,11 +7,14 @@ project's threat model uses `templates/threat-model/STRIDE_ASI_TEMPLATE.md`.
 
 ## Tiered scan stack
 
-| Tier | When | Tools | Gate |
-|------|------|-------|------|
-| 1 | every file write | gitleaks (post-tool hook) | hard block on findings |
-| 2 | every PR | semgrep + npm/pip/cargo audit + axe-core | block merge on critical |
-| 3 | pre-release | full history scan, Trivy, Nuclei, ZAP, DeepTeam | block release on critical |
+This is what runs today (2026-09-25). The design goal is in the "Planned" column; it is not
+enforced until it moves left.
+
+| Tier | When | Runs today | Gate today | Planned, not wired |
+|------|------|------------|------------|--------------------|
+| 1 | every file write | nothing automatic: `hooks/universal/post-tool/gitleaks-scan.sh` exists but is not wired in `.claude/settings.json` | none | wire the post-tool hook (masterpiece roadmap MR-19 adds a staged-diff pre-commit gitleaks) |
+| 2 | every PR | gitleaks (diff) and Semgrep (`p/owasp-top-ten`, `p/r2c-security-audit`, `p/secrets`) in `security-scan.yml` | both are required status checks on `main` and fail on any finding (Semgrep since #178) | npm/pip/cargo audit, axe-core |
+| 3 | daily and pre-release | gitleaks full-history scan (scheduled, `.gitleaksignore` baseline); DeepTeam red-team, which skips when no provider key is set | the history scan fails its run on a leak; DeepTeam gates nothing while it skips | Trivy, Nuclei, ZAP (roadmap MR-21) |
 
 ### Tier-3 LLM-orchestrated pentest
 
@@ -29,11 +32,11 @@ conditions are met (REQ-A5 / AC-A5.1):
 | **Lyrie** | RAG-based vulnerability research assistant | [`mcp-configs/universal/lyrie.json`](../mcp-configs/universal/lyrie.json) | [`lyrie-README.md`](../mcp-configs/universal/lyrie-README.md) |
 | **pentest-ai** | MCP server exposing nmap / nuclei / sqlmap / ZAP CLI | [`mcp-configs/universal/pentest-ai.json`](../mcp-configs/universal/pentest-ai.json) | [`pentest-ai-README.md`](../mcp-configs/universal/pentest-ai-README.md) |
 
-All four are scoped to the `security` subagent per `subagents/universal/security.md`
-— planner/coder subagents are denied at the hook layer (ASI02 +
-ASI03 defense; the dedicated `researcher` subagent was removed 2026-09-14
-as redundant with Claude Code's native Explore agent — the denial no longer
-needs to name it). All four reference credentials by env-var name only — no
+`subagents/universal/security.md` scopes all four to the `security` role, but nothing
+enforces that scoping today: no hook denies them to other roles, the pipeline runs its roles
+as Workflow agents with inline prompts, and none of the four MCP servers is registered in this
+checkout (`specs/graph/M-masterpiece-standard.md` REQ-M27). All four reference credentials by
+env-var name only — no
 inline credentials (REQ-A8, gated by tier-1 gitleaks). Lyrie's output
 specifically MUST pass through area C's `external-content-boundary.ts` before
 re-entering agent context (ASI04 defense).
