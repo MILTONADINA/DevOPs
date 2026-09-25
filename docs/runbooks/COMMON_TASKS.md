@@ -218,12 +218,12 @@ backup ([BACKUP_RESTORE.md](BACKUP_RESTORE.md#what-a-restore-does)).
 Sources: `stratum/package.json:55`, `stratum/scripts/api-keys.ts:1-10`,
 `stratum/scripts/api-keys.ts:58-82`, `stratum/src/proxy/auth.ts:73-83`.
 
-### Exit code 0 is not proof
+### Missing database settings fail loudly
 
-`create-org`, `create-api-key`, and `api-keys` print `SKIPPED` and exit 0
-when `SUPABASE_URL` or `SUPABASE_SERVICE_KEY` is missing, for example when
-run without `db:with-env`. Nothing was created or revoked in that case. Always
-require the success line named above.
+`create-org`, `create-api-key`, and `api-keys` exit 2 when `SUPABASE_URL` or
+`SUPABASE_SERVICE_KEY` is missing, for example when run without `db:with-env`,
+and say that nothing was created, listed or revoked. (Before PB-66 they printed
+`SKIPPED` and exited 0.) Still check for the success line named above.
 
 Sources: `stratum/scripts/create-org.ts:67-71`, `stratum/scripts/create-api-key.ts:59-63`,
 `stratum/scripts/api-keys.ts:50-55`.
