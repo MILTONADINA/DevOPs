@@ -11,7 +11,7 @@ JSON configs for MCP (Model Context Protocol) servers DevOPs uses.
 
 Claude Code:
 ```bash
-claude mcp add-json $(cat mcp-configs/universal/playwright.json)
+claude mcp add-json playwright "$(jq -c 'del(.name, .description)' mcp-configs/universal/playwright.json)"
 ```
 
 Codex CLI: place the JSON in `~/.codex/mcp/`.

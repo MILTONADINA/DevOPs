@@ -1,38 +1,34 @@
 # Subagents
 
-Six universal subagents with distinct roles and least-privilege tool access.
-(A seventh, `researcher`, was removed 2026-09-14 as redundant with Claude
-Code's native Explore agent — use that for read-only investigation instead.)
+Eight role definitions: the six graph-pipeline roles below, plus the parked
+`integrations-curator` and `librarian` (see `governance/graph/role-mapping.md`).
+For read-only investigation, use Claude Code's native Explore agent.
 
-| Subagent | Model | Role | Writes to |
-|----------|-------|------|-----------|
-| planner | opus | Decompose spec into tasks | plans, blockers |
-| coder | sonnet | Implement tasks per plan | src/, tests/, proofs/ |
-| tester | haiku | Write and run tests | tests/, proofs/ |
-| reviewer | sonnet | Diff analysis vs spec | review-comments, blockers |
-| security | sonnet | Tiered scan + interpretation | security-findings, blockers, proofs/ |
-| validator | opus | Final independent verification | validation-report, session-summary |
+| Subagent | Role | Writes to |
+|----------|------|-----------|
+| planner | Decompose spec into tasks | plans, blockers |
+| coder | Implement tasks per plan | src/, tests/, proofs/ |
+| tester | Write and run tests | tests/, proofs/ |
+| reviewer | Diff analysis vs spec | review-comments, blockers |
+| security | Tiered scan + interpretation | security-findings, blockers, proofs/ |
+| validator | Final independent verification | validation-report, session-summary |
+
+Models: `.claude/workflows/sprint-cycle.js` sets the model and effort on each
+`agent()` call (Sonnet for every pipeline role). A file's `model:` field applies
+only when the file is installed as a Claude Code agent. The routing record is
+`cost-controls/model-routing.yml`.
 
 ## Permission model
 
-Each subagent has a `permissions.write_paths` allowlist and a
-`permissions.forbidden_paths` blocklist. The orchestrator enforces these
-mechanically — the subagent cannot write outside its scope even if asked.
+Each subagent file declares a `permissions.write_paths` allowlist and a
+`permissions.forbidden_paths` blocklist. They document each role's intended
+scope, but nothing enforces them today: Workflow `agent()` calls take no path
+allowlist, and Claude Code agent definitions do not read a `permissions:` key.
+The enforced boundaries are the PreToolUse hooks a checkout wires (in this
+repository, `.claude/settings.json`).
 
-This implements OWASP ASI03 (Identity and Privilege Abuse) mitigation:
-least-privilege per subagent.
-
-## Cost model
-
-The 3-tier model routing in `cost-controls/model-routing.yml` matches subagent
-work shape:
-
-- Opus for planning + validation (the bookends): rigorous reasoning where it
-  matters most.
-- Sonnet for the workhorse: coding, review, security interpretation.
-- Haiku for mechanical tasks: research, test execution.
-
-Documented savings: 50-80% vs. all-Sonnet baseline.
+Per-subagent path scoping is the intended OWASP ASI03 (Identity and Privilege
+Abuse) mitigation; it is not yet enforced.
 
 ## Adding a new subagent
 
@@ -40,4 +36,4 @@ Documented savings: 50-80% vs. all-Sonnet baseline.
 2. Define `model`, `tools`, `permissions`
 3. Document responsibilities, output format, and what the subagent does NOT do
 4. Add to `cost-controls/model-routing.yml`
-5. Add to the recommendation rules in `analyzer/recommendation-rules.yml`
+5. Add it to the `subagents` list in `analyzer/scan.ts` if the analyzer should recommend it

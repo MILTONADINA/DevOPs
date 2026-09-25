@@ -24,7 +24,7 @@ Examples:
 
 ## What this command does
 
-Wraps the consistent claim-emission ritual that Sessions 11–13 each repeated manually (~30 min each session):
+Wraps the claim-emission ritual:
 
 ### Step 1 — Authorize spec_ref
 
@@ -44,13 +44,13 @@ Wraps the consistent claim-emission ritual that Sessions 11–13 each repeated m
 
 - Identify what acceptance criteria the claim asserts
 - Author check script at `.workflow/proofs/_checks/req-<slug>.js` (Node ESM)
-- Check assertions must be METHODOLOGY-based (not frozen figures) per PB-19/22 family lessons
+- Check assertions must be METHODOLOGY-based (not frozen figures), because a frozen figure breaks on the next legitimate refresh
 - Per `verification/claim-schema.yml`, check exits 0 = pass, 1 = fail
 
 ### Step 4 — Run check + capture log
 
 ```bash
-node .workflow/proofs/_checks/req-<slug>.js > .workflow/proofs/claim-2026-05-22-<NNN>-test.log 2>&1
+node .workflow/proofs/_checks/req-<slug>.js > .workflow/proofs/claim-YYYY-MM-DD-<NNN>-test.log 2>&1
 echo "EXIT=$?"
 ```
 
@@ -70,11 +70,11 @@ console.log('sha256:' + crypto.createHash('sha256').update(input).digest('hex'))
 "
 ```
 
-Write the YAML to `.workflow/proofs/claim-2026-05-22-<NNN>.yml` matching `verification/claim-schema.yml`:
+Write the YAML to `.workflow/proofs/claim-YYYY-MM-DD-<NNN>.yml` matching `verification/claim-schema.yml`:
 
 ```yaml
 claim:
-  id: claim-2026-05-22-<NNN>
+  id: claim-YYYY-MM-DD-<NNN>
   type: implementation
   spec_ref: specs/...
   description: '...'
@@ -84,10 +84,10 @@ claim:
       - ...
     test_command: node .workflow/proofs/_checks/req-<slug>.js
     test_exit_code: 0
-    test_output_path: .workflow/proofs/claim-2026-05-22-<NNN>-test.log
+    test_output_path: .workflow/proofs/claim-YYYY-MM-DD-<NNN>-test.log
   confidence: high
   reproducibility_hash: sha256:<HASH>
-  timestamp: '2026-MM-DDTHH:MM:SSZ'
+  timestamp: 'YYYY-MM-DDTHH:MM:SSZ'
 ```
 
 ### Step 6 — Validator run + close
@@ -96,30 +96,30 @@ claim:
 npm run validate:claims -- --all
 ```
 
-Target: total_emitted/total_emitted valid (or N-1/N with documented PB-21 exception).
+Target: every emitted claim valid, or each failing claim named with the exception recorded for it in `.workflow/state/polish-backlog.md` or `plan.md`.
 
 If validator regresses → STOP + surface (per AP-5 Reflexive Patch discipline).
 
 ## Conventions enforced by this command
 
-- **Claim ID date prefix** is `claim-2026-05-22-NNN` (legacy convention, retained across sessions). NNN auto-increments from highest existing.
+- **Claim ID** is `claim-YYYY-MM-DD-NNN`: the emission date plus the next free NNN in `.workflow/proofs/` (the pattern `verification/claim-schema.yml` enforces).
 - **`spec_ref` MUST start with `specs/`** per claim-validator gate.
 - **`files_changed` MUST be in `git show --name-only <git_sha>`** per validator gate. Use `git_sha` of the squash-merged main SHA after PR merge for portability.
 - **`reproducibility_hash`** uses the canonical algo from `verification/reproducibility-check.ts`: `sha256({test_command}\n---\n{sortedEnv}\n---\n{git_sha})` where `sortedEnv` is empty when no `claim.proof.environment` is set.
-- **Check scripts MUST use methodology assertions** not frozen-figure assertions (lesson learned: PB-19, PB-20, PB-22 family — frozen-figure checks rot on every refresh).
+- **Check scripts MUST use methodology assertions** not frozen-figure assertions (frozen-figure checks rot on every refresh).
 
 ## Anti-patterns this command prevents
 
-- **Manual sequencing errors**: forgetting to update the YAML's `git_sha` after squash-merge → validator fails on `files_changed not in commit`. Common in Sessions 11–13.
-- **Hand-computed hash mistakes**: wrong env algorithm → validator says `hash mismatch`. Sessions 11+12 hit this.
-- **Frozen-figure check rot**: hardcoding "v0.2.0 = 90%" in a check means the check breaks on every LR refresh. PB-19 fix established methodology-based assertions as the binding pattern.
+- **Manual sequencing errors**: forgetting to update the YAML's `git_sha` after squash-merge → validator fails on `files_changed not in commit`.
+- **Hand-computed hash mistakes**: wrong env algorithm → validator says `hash mismatch`.
+- **Frozen-figure check rot**: hardcoding "v0.2.0 = 90%" in a check means the check breaks on every LR refresh; assert the methodology instead.
 - **Forgetting the test log**: validator requires `test_output_path` exists + matches the run output. Easy to miss.
 
 ## When to use vs not use
 
 **Use `/emit-claim`** when:
-- Closing a Phase (claim 095 Session 13)
-- Closing a major feature within a phase (Q8.1 amendment Session 13)
+- Closing a Phase
+- Closing a major feature within a phase
 - Closing a sub-area acceptance (P0-A target tier complete)
 
 **Don't use `/emit-claim`** for:

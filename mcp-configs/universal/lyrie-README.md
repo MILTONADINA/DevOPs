@@ -49,13 +49,16 @@ Lyrie's response carries the wrapper that area C's boundary applies:
 ```
 
 Without the boundary wrapping (or with an invalid HMAC), the pre-tool hook
-`hooks/universal/pre-tool/external-content-boundary.sh` halts any downstream
-tool call. This is the cryptographic gate that closes the ASI04 path.
+`hooks/universal/pre-tool/external-content-boundary.sh` is built to halt any
+downstream tool call, but it does so only where it is wired as a blocking
+pre-tool hook in the project's settings; confirm that before treating it as the
+cryptographic gate that closes the ASI04 path.
 
 ## Upstream
 
-Forward-looking integration. Upstream confirmation at v0.2.0 release via the
-upstream-maintenance cadence (task A.12). DevOPs-side MCP wrapper package
+Forward-looking integration. The upstream is not yet confirmed; the
+upstream-maintenance cadence (task A.12, `.workflow/maintenance/upstream-verify.md`)
+tracks it. DevOPs-side MCP wrapper package
 `@miltonadina/lyrie-mcp` is reserved.
 
 Threat-model context (ASI04 Indirect Prompt Injection — primary; ASI01 Goal

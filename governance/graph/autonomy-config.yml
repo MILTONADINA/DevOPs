@@ -2,7 +2,7 @@
 #
 # Machine-readable gate configuration for the graph-engineering pipeline.
 # See governance/graph/role-mapping.md for the human-readable rationale and
-# .claude/plans/indexed-launching-cocke.md for the full approved plan.
+# ~/.claude/plans/indexed-launching-cocke.md (outside this repository) for the full approved plan.
 #
 # hooks/universal/pre-tool/deploy-gate.sh reads billing_paths from THIS file
 # conceptually -- if you change the list here, update the hook's
@@ -70,7 +70,7 @@ resilience:
 # and gates.billing_path_change required has been made. User deferred to
 # recommendation ("for all questions I will go by your best recommendation");
 # recommendation is KEEP both gates permanently -- see the "RESOLVED" section
-# at the top of .claude/plans/indexed-launching-cocke.md for full reasoning.
+# at the top of ~/.claude/plans/indexed-launching-cocke.md (outside this repository) for full reasoning.
 # This is not provisional: phase_2_entry_criteria below governs
 # merge_to_main.phase_2 ONLY. production_deploy and billing_path_change do
 # not have an entry-criteria path to loosening at all anymore -- reopening

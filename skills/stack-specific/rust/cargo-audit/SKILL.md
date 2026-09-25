@@ -65,11 +65,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: rustsec/audit-check@v2.0.0
+      # Pin to a full commit SHA (AST08 defense on the auditor action
+      # itself); the trailing tag comment is for humans.
+      - uses: rustsec/audit-check@<full-commit-sha>  # v2.x
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          # Or pin to a specific commit SHA for AST08 defense on the
-          # auditor action itself.
 ```
 
 The `audit-check` action reads `Cargo.lock`, consults the RustSec
@@ -96,19 +96,17 @@ appropriate for CI gates where the policy is "block on any finding".
 
 ```toml
 # deny.toml
+# Field names follow current cargo-deny; regenerate with `cargo deny init`
+# when upgrading, since the config schema has changed across releases.
 [advisories]
-db-path = "~/.cargo/advisory-db"
 db-urls = ["https://github.com/RustSec/advisory-db"]
-vulnerability = "deny"
-unmaintained = "warn"
-unsound = "warn"
+unmaintained = "all"   # scope: "all" | "workspace" | "transitive" | "none"
+unsound = "all"
 yanked = "deny"
-notice = "warn"
 
 [licenses]
-unlicensed = "deny"
+# Allow-list only: any license not listed here is denied.
 allow = ["MIT", "Apache-2.0", "BSD-3-Clause", "ISC"]
-deny = ["GPL-3.0", "AGPL-3.0"]  # if your project's license is incompatible
 
 [bans]
 multiple-versions = "warn"
@@ -141,10 +139,11 @@ rather than a semver range:
 serde = "1"
 tokio = "1.40"
 
-# Security-critical: exact version pin
-ring = "=0.17.8"
-rustls = "=0.23.13"
-sqlx = { version = "=0.8.2", features = ["postgres", "runtime-tokio-rustls"] }
+# Security-critical: exact version pin. Placeholders, not recommendations:
+# pin the newest release that `cargo audit` passes today.
+ring = "=<audited-version>"
+rustls = "=<audited-version>"
+sqlx = { version = "=<audited-version>", features = ["postgres", "runtime-tokio-rustls"] }
 ```
 
 The `=` prefix forces exact match. `cargo update` cannot move these
@@ -243,8 +242,9 @@ defenses operate in a non-crashing process.
 Verification an audit-gated Rust project should pass:
 
 - `cargo audit` exits 0 on the current `Cargo.lock` (no open advisories).
-- A test-fixture PR that adds `serde_yaml = "0.8.0"` (a yanked
-  crate with a known advisory) fails CI as expected -- proves the
+- A test-fixture PR that pins `serde_yaml = "=0.8.0"` (a version
+  with a known RustSec vulnerability advisory; without the `=`, Cargo
+  resolves it to a patched 0.8.x) fails CI as expected -- proves the
   gate works.
 - `cargo deny check` exits 0 with the project's `deny.toml`.
 - The CI workflow file pins the `rustsec/audit-check` action to a

@@ -35,9 +35,9 @@ fewer rewrites.
 - If something is unclear, stop. Name what's confusing. Ask.
 
 **Working when:** Clarifying questions come *before* implementation, not after
-mistakes. Track in `governance/telemetry/clarifications.jsonl`. The ratio of
-pre-implementation questions to post-implementation rewrites should trend
-upward over time.
+mistakes. The ratio of pre-implementation questions to post-implementation
+rewrites should trend upward over time. The ratio is measurable from session
+transcripts; no sink records it yet.
 
 ---
 
@@ -59,9 +59,9 @@ abstractions almost always solve the wrong problem.
 **The senior engineer test:** Ask yourself: "Would a senior engineer say this is
 overcomplicated?" If yes, simplify before submitting.
 
-**Working when:** Fewer rewrites due to over-engineering. Track diff size per
-feature in `governance/telemetry/diff-size.jsonl`. Median diff size should
-trend down for similar feature shapes.
+**Working when:** Fewer rewrites due to over-engineering. Diff size per feature
+is measurable from `git log --shortstat`; no sink records it yet. Median diff
+size should trend down for similar feature shapes.
 
 ---
 
@@ -85,8 +85,11 @@ introduces risk that compounds.
 - Don't remove pre-existing dead code unless asked.
 
 **The traceability test:** Every changed line must trace directly to the user's
-request or to a spec line. This is enforced by `verification/claim-validator.ts`,
-which rejects diffs containing lines that cannot be traced.
+request or to a spec line. No tool checks this line by line
+(`verification/claim-validator.ts` checks that a claim's files were changed in
+its commit and re-runs its proof, not what each line says), so it rests on you
+and on review: the sprint-cycle reviewer role flags changed lines that trace
+to no task or backlog item.
 
 **Working when:** Diffs contain only changes traceable to the active spec. PR
 review comments asking "why did you change this?" trend toward zero.
@@ -133,8 +136,9 @@ Strong success criteria let you loop independently. Weak criteria ("make it
 work") require constant clarification.
 
 **Working when:** Sessions reach `done` state through verification, not
-through assertion. Track `verified_done / claimed_done` ratio in
-`governance/telemetry/done-ratio.jsonl`. Target: > 0.95.
+through assertion. The `verified_done / claimed_done` ratio is measurable
+from the `N/M claims valid` line that `npm run validate:claims` prints; no
+sink records it yet. Target: > 0.95.
 
 ---
 
@@ -143,7 +147,8 @@ through assertion. Track `verified_done / claimed_done` ratio in
 **Every claim ships with cryptographic-grade proof. No claim, no merge.**
 
 **Tradeoff:** Per-task output is larger (proofs add ~200-500 tokens). Worth it:
-hallucination rate drops to ~zero on verifiable categories (tests, diffs, scans).
+on verifiable categories (tests, diffs, scans) a hallucinated result fails
+`claim-validator` instead of passing as done.
 
 **Rules:**
 
@@ -215,7 +220,8 @@ to baton). Worth it: zero context loss across tool boundaries.
   LLM. The baton works for all of them because it is plain markdown.
 
 **Working when:** The user can type `continue` in any tool and the agent picks
-up correctly. Track resume success in `governance/telemetry/resume-success.jsonl`.
+up correctly. Resume success is measurable from session transcripts; no sink
+records it yet.
 
 ---
 
@@ -234,8 +240,9 @@ forbidden. Worth it: GDPR, COPPA, HIPAA, SOC 2, attorney-client privilege.
   - Data classes present (PII, PHI, PCI, children's data, financial, etc.)
   - Compliance scope (COPPA, GDPR, HIPAA, SOC 2, PCI DSS, etc.)
   - Authorized pentest scope (specific domains/IPs, with written authorization)
-- Pre-tool hooks enforce that no file read or write occurs outside the project
-  root.
+- No file read or write occurs outside the project root.
+  `hooks/universal/pre-tool/client-boundary.sh` enforces this where the host
+  tool wires it (the tool's adapter file says whether it is wired).
 - No agent operation may use a different client's data, code, or credentials.
 - Secrets are vaulted (Doppler, 1Password CLI, Infisical, HashiCorp Vault) —
   never in `.env` files, never in code, never in memory beyond session scope.
@@ -253,8 +260,8 @@ to data boundary violations.
 **Every commit traces to a section of `/specs/`. No speccable work, no work.**
 
 **Tradeoff:** More upfront design effort. Worth it: catches intent drift before
-code exists; LLMs without specs generate vulnerable code 9.8-42.1% of the time
-(multiple 2025-2026 academic benchmarks).
+code exists; academic benchmarks find that LLMs working without specs
+generate vulnerable code.
 
 **Rules:**
 
@@ -263,22 +270,25 @@ code exists; LLMs without specs generate vulnerable code 9.8-42.1% of the time
   implementation derives from it.
 - Every commit references the spec section it implements via the commit
   message: `feat(auth): implement refresh token rotation (specs/auth/tokens.md#ac-3)`.
-- The `verify-claims` slash command checks that every diff traces to a spec line.
+- `/verify-claims` re-validates each claim (schema, a `specs/` spec_ref, files
+  changed in the claimed commit, re-run proof); tracing each diff to a spec
+  line is the reviewer's job.
 - For requests that arrive without a spec, the agent's first action is to
   invoke `spec-extraction` skill to author one. Refuse to proceed without a
   spec for anything non-trivial.
 
 **Working when:** `git log --grep "specs/"` matches 100% of feature commits.
-Track in `governance/telemetry/spec-trace-rate.jsonl`.
+The rate is measurable from that command; no sink records it yet.
 
 ---
 
 ## Meta-rule: this constitution is itself measurable
 
-Each principle above states an observable "working when" signal. The governance
-layer (`governance/skill-evals/`) periodically measures these signals against
-real session data in `governance/telemetry/`. Principles that consistently fail
-to demonstrate their working signal are reviewed and either revised or removed.
+Each principle above states an observable "working when" signal. Nothing
+measures them automatically yet: `governance/skill-evals/registry.yml` has no
+runner, and nothing writes `governance/telemetry/`, so check them by hand.
+Principles that consistently fail to demonstrate their working signal are
+reviewed and either revised or removed.
 
 A principle without a measurable signal is a slogan. Slogans don't ship.
 

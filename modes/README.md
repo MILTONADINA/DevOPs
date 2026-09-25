@@ -1,7 +1,8 @@
 # Modes
 
 Different operational rule sets per task type. The active mode is recorded in
-`.workflow/state/active-mode.txt` and read by the session-start hook.
+`.workflow/state/active-mode.txt`. The session-start hook does not read it:
+the agent does (AGENTS.md → Modes) and then follows `modes/<mode>/MODE.md`.
 
 | Mode | When to use |
 |------|-------------|
@@ -24,4 +25,5 @@ Switch modes via:
 echo "hotfix" > .workflow/state/active-mode.txt
 ```
 
-The next session-start hook picks it up.
+Then read `modes/<mode>/MODE.md` and follow it from that point; later
+sessions pick the mode up from the file (AGENTS.md → Modes).

@@ -22,9 +22,10 @@ changes during local development.
 
 ## Why this matters
 
-Next.js App Router generates `RouteHandlerConfig` types at build time
-based on the file system shape (`app/posts/[slug]/route.ts` produces a
-typed `{ params: { slug: string } }` argument). When those generated
+Next.js App Router generates route types from the file system shape
+during `next dev` and `next build` (and `next typegen` on 15.5+):
+`app/posts/[slug]/route.ts` produces a typed
+`{ params: Promise<{ slug: string }> }` context argument. When those generated
 types are stale (e.g., a new dynamic segment added but `next dev` hasn't
 re-generated), the handler signature reverts to a permissive default and
 runtime arguments flow through unchecked. Reviewers see "the types pass"
@@ -35,7 +36,8 @@ This is a footgun across the entire surface area:
 - `app/api/**/route.ts` handlers with implicit-`any` parameters.
 - `app/[slug]/page.tsx` route segments with un-narrowed param types.
 - `searchParams` accessed without runtime validation.
-- Middleware (`middleware.ts`) reading headers without typing them.
+- Proxy (`proxy.ts`; `middleware.ts` before Next.js 16) reading headers
+  without typing them.
 
 None of these are security failures on their own. They're conditions
 under which a separate runtime-validation gap (the actual security
@@ -112,10 +114,10 @@ RouteContext types with the new param name. UNTIL that happens, the
 handler still compiles against the old generated types.
 
 Discipline: after any file-system rename inside `app/`, run
-`next build --no-lint` (or stop and restart `next dev`) to force a
-type-generation refresh BEFORE committing. CI's `tsc --noEmit` will
-catch the drift, but local commits should not depend on CI as the
-first signal.
+`next typegen && tsc --noEmit` (Next.js 15.5+; on older versions,
+`next build`) before committing. Run the same pair in CI: plain
+`tsc --noEmit` does not generate route types, so on its own it checks
+against stale or missing `.next/types` and can pass.
 
 ---
 
@@ -188,8 +190,8 @@ Skills that DO cover the runtime side of route safety:
 
 ## When this skill is working
 
-- `tsc --noEmit` passes cleanly in CI on every PR, no `any`-typed route
-  handlers in the diff.
+- `next typegen && tsc --noEmit` passes cleanly in CI on every PR, no
+  `any`-typed route handlers in the diff.
 - Route-segment renames are paired with type-regeneration in the same
   commit.
 - `searchParams` access goes through a Zod (or equivalent) parser at the

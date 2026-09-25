@@ -1,9 +1,14 @@
+---
+name: launch-readiness
+description: Produce the canonical launch-readiness tables derived only from blueprint.md, plan.md, docs/LAUNCH_READINESS.md, .workflow/state files and live git/gh output. Use when the user asks for status, launch readiness, where the project stands, or a progress report. --short gives the version roadmap and headline summary; --diff adds what changed since the last LR refresh.
+---
+
 # /launch-readiness
 
 **Type**: Universal slash command
 **Purpose**: Generate the canonical launch-readiness table set from markdown source-of-truth. Never fabricate; always derive.
 **Source-of-truth**: `blueprint.md` §11.1 (anti-fabrication rule)
-**Invocation**: `/launch-readiness` (no args) — produces full table set; `/launch-readiness --short` produces just the version-roadmap table.
+**Invocation**: `/launch-readiness` (no args) — produces full table set; the `--short` and `--diff` variants are described under Examples below.
 
 ---
 
@@ -96,8 +101,8 @@ Three short paragraphs:
 
 - **If a number isn't in the .md sources, surface that gap explicitly** ("not yet recorded in LR — refresh required"). Never invent.
 - **Effort estimates** cite their source line in `plan.md`.
-- **Validator counts** cite either live `validate:claims --all` output OR the documented exception (PB-21 coupled to PB-13, claim 076 invalid by design).
-- **Polish-backlog status** cites `.workflow/state/polish-backlog.md` even though gitignored (local-truth-of-record per Session 9 design).
+- **Validator counts** cite either live `validate:claims --all` output OR, for a claim that fails, the exception recorded for it in `.workflow/state/polish-backlog.md` or `plan.md` (name the claim and cite that entry).
+- **Polish-backlog status** cites `.workflow/state/polish-backlog.md` even though gitignored (it is the local record of truth).
 - **Branch matrix** cites `git rev-parse` / `git ls-remote` outputs, not memory.
 - **PR history** cites `gh pr list` / `gh pr view` outputs, not memory.
 
@@ -149,9 +154,9 @@ Produces the canonical tables + a "What changed since last LR refresh" diff sect
 
 ## Why this exists
 
-Session 14 user feedback: "you will always track that from md. add the tracking to this projects development workflow."
+The user's standing instruction: "you will always track that from md. add the tracking to this projects development workflow."
 
-The launch-readiness reporting was previously informal — different sessions produced different tables. This slash command formalizes the format AND the discipline (anti-fabrication, source-of-truth derivation). Future sessions inherit it automatically; future contributors (friends installing the plugin) see a consistent status format.
+This command fixes both the format and the discipline (anti-fabrication, derivation from the markdown sources), so every session and every contributor who installs the plugin produces the same status tables.
 
 Companion docs:
 - `blueprint.md` §11.1 — strategic framing
