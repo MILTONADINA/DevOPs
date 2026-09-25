@@ -219,7 +219,7 @@ test('graph-halt alone forces needs_human and survives preflight', () => {
 
 // A copy of the preflight in its own project directory, whose root node_modules is a symlink to a
 // directory outside it: the usual layout of a worktree that shares an install.
-function linkedDependenciesProject() {
+function linkedDependenciesProject({ linkStratum = false } = {}) {
   const outside = mkdtempSync(path.join(tmpdir(), 'preflight-shared-deps-'));
   // Real path: on macOS tmpdir() is under /var, a symlink to /private/var, and the preflight compares real paths.
   const project = realpathSync(mkdtempSync(path.join(tmpdir(), 'preflight-linked-root-')));
@@ -228,7 +228,10 @@ function linkedDependenciesProject() {
     mkdirSync(path.dirname(path.join(project, file)), { recursive: true });
     copyFileSync(path.join(ROOT, file), path.join(project, file));
   }
-  mkdirSync(path.join(project, 'stratum', 'node_modules', '.bin'), { recursive: true });
+  if (linkStratum) {
+    mkdirSync(path.join(project, 'stratum'), { recursive: true });
+    symlinkSync(outside, path.join(project, 'stratum', 'node_modules'));
+  } else mkdirSync(path.join(project, 'stratum', 'node_modules', '.bin'), { recursive: true });
   mkdirSync(path.join(project, '.workflow', 'state'), { recursive: true });
   symlinkSync(outside, path.join(project, 'node_modules'));
   const runPreflight = (extraEnv = {}) => spawnSync('bash', [path.join(project, 'scripts', 'graph-preflight.sh'), '--check-only'], {
@@ -259,5 +262,26 @@ test('a dependency override that redirects outside the project still aborts', ()
     const result = fixture.runPreflight({ GRAPH_PREFLIGHT_DEPS_ROOT_DIR: link });
     assert.equal(result.status, 2, result.stdout);
     assert.match(result.stderr, /Root dependencies redirect outside the project root/);
+  } finally { fixture.cleanup(); }
+});
+
+test('check-only also reports a stratum/node_modules symlinked outside the project', () => {
+  const fixture = linkedDependenciesProject({ linkStratum: true });
+  try {
+    const result = fixture.runPreflight();
+    assert.notEqual(result.status, 2, result.stderr);
+    const report = JSON.parse(readFileSync(path.join(fixture.project, '.workflow', 'state', 'preflight.json'), 'utf8'));
+    assert.equal(report.checks.find((check) => check.id === 'deps.stratum')?.status, 'pass');
+  } finally { fixture.cleanup(); }
+});
+
+test('a Stratum dependency override that redirects outside the project still aborts', () => {
+  const fixture = linkedDependenciesProject();
+  try {
+    const link = path.join(fixture.project, '.workflow', 'state', 'stratum-deps-link');
+    symlinkSync(fixture.outside, link);
+    const result = fixture.runPreflight({ GRAPH_PREFLIGHT_DEPS_STRATUM_DIR: link });
+    assert.equal(result.status, 2, result.stdout);
+    assert.match(result.stderr, /Stratum dependencies redirect outside the project root/);
   } finally { fixture.cleanup(); }
 });

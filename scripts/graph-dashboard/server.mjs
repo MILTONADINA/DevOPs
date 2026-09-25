@@ -483,8 +483,8 @@ async function buildRunModel({ sessionId, workflowId, runDir, journalPath, recor
   const expectedLabels = deriveExpectedLabels(labelStates);
   const nodes = buildNodes(labelStates, expectedLabels);
   // Stale: a node still "running" by its journal, with no agent-file activity for
-  // STALE_AFTER_MS, in a run whose run record does not say it is running. A node with
-  // no agent files (no timing) is left as the journal says.
+  // STALE_AFTER_MS, or for RECORD_RUNNING_STALE_AFTER_MS when its run record says it is
+  // running. A node with no agent files (no timing) is left as the journal says.
   const recordSaysRunning = Boolean(record && record.status === 'running');
   const staleAfterMs = recordSaysRunning ? RECORD_RUNNING_STALE_AFTER_MS : STALE_AFTER_MS;
   for (const node of nodes) {

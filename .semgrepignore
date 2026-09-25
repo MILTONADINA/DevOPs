@@ -1,22 +1,28 @@
 # Semgrep scope for the CI `semgrep` job (specs/security/ci-semgrep-scan.md REQ-4).
 # Without this file Semgrep applies its built-in default list, which also skips
-# every test/ and tests/ directory. This file keeps the rest of that default list
-# and scans test code too.
+# every test/ and tests/ directory. This file is that built-in list, copied from
+# Semgrep 1.167.0's binary, with only its "Common test paths" block removed
+# (test/, tests/, testsuite/, *_test.go), so test code is scanned too.
 
-# Semgrep's default: common large and generated paths
-node_modules/
+# Administrative folder or file used by popular version control systems
+.git
+.svn
+_darcs
+# Paths to files and folders that are typically large and ignorable
 build/
-dist/
 vendor/
-.env/
-.venv/
-.tox/
+dist/
 *.min.js
+.env/
+.tox/
+# Package managers
+node_modules/
 .npm/
 .yarn/
-*_test.go
-.semgrep
-.semgrep_logs/
+.venv/
+_opam/
+_build/
+_cargo/
 
 # A deliberately poisoned fixture: gitleaks MUST trip on its credential-shaped
 # strings (REQ-A8, AC-A8.1), so Semgrep's p/secrets would too. Excluded by exact

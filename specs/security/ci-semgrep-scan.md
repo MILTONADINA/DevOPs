@@ -27,7 +27,7 @@ refuses to report a pass.
 ## REQ-4 — Test code is in scope
 
 THE REPOSITORY SHALL carry a root `.semgrepignore` whose only exclusions are:
-- the large and generated paths from Semgrep's built-in default list;
+- the entries of Semgrep's built-in default list other than its "Common test paths" block: version-control folders and large or generated paths;
 - files named individually, each with a comment giving the reason.
 
 Without that file, Semgrep's default list also skips every `test/` and `tests/`
@@ -50,7 +50,7 @@ files.
 
 ### AC-2 (REQ-4)
 **Given** the repository **When** the job's scan runs **Then** its scanned
-paths include files under `tests/` and `stratum/test/`, and exclude
+paths include files under both `tests/` and `stratum/test/` (the job fails if either tree is missing), and exclude
 `tests/fixtures/security/poisoned-mcp-config.json`. **Given** the
 `.semgrepignore` removed **Then** the scanned-file count falls by the number
 of test files. Measured locally with Semgrep 1.167.0: 985 files scanned, 250 of

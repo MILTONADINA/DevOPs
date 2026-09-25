@@ -653,6 +653,20 @@ test('observer: a non-sprint workflow is labelled as such, and goes stale after 
   assert.ok(later.nodes.every((n) => n.status === 'stale'));
 });
 
+// A run with its own record keeps it, even when another cycle's record names it in resumedFrom, whichever
+// cycle directory is read first.
+for (const [label, olderName, liveName] of [['older cycle read first', 'a-older', 'z-live'], ['live cycle read first', 'z-older', 'a-live']]) {
+  test(`observer: a direct record wins over another cycle's resumedFrom (${label})`, async () => {
+    const stateDir = path.join(fixtureRoot, 'precedence-' + olderName, 'state');
+    await mkdir(path.join(stateDir, 'graph-cycles', olderName), { recursive: true });
+    await mkdir(path.join(stateDir, 'graph-cycles', liveName), { recursive: true });
+    await writeFile(path.join(stateDir, 'graph-cycles', olderName, 'run.json'), JSON.stringify({ cycleId: olderName, runId: 'wf_other', resumedFrom: 'wf_live', status: 'failed' }));
+    await writeFile(path.join(stateDir, 'graph-cycles', liveName, 'run.json'), JSON.stringify({ cycleId: liveName, runId: 'wf_live', status: 'running' }));
+    const records = await reader.readRunRecords(stateDir);
+    assert.deepStrictEqual(records.get('wf_live'), { cycleId: liveName, status: 'running' });
+  });
+}
+
 test('observer: a malformed or runId-less run.json is not joined and never throws', async () => {
   const { root, stateDir } = await observerFixture('bad-record', { labels: ['planner'], record: null });
   await mkdir(path.join(stateDir, 'graph-cycles', 'broken'), { recursive: true });
