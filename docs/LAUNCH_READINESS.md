@@ -46,7 +46,7 @@ passed and verified the 17 universal skill bundles and manifest.
 | v0.3.0 release gate | Evidence | Result |
 |---|---|---|
 | Version and dated changelog | `package.json`, `package-lock.json`, `CHANGELOG.md` | Passed |
-| Reviewed preparation on `main` | PRs #30, #31, #32; CI, Gitleaks, Semgrep, DeepTeam, claim validation green | Passed |
+| Reviewed preparation on `main` | PRs #30, #31, #32; CI, Gitleaks, Semgrep, DeepTeam, claim validation green (correction 2026-09-25: the Semgrep job crashed on the registry packs and reported success without scanning, fixed with `specs/security/ci-semgrep-scan.md`; the CI claim step finds no claims because `.workflow/proofs/` is gitignored, PB-60) | Passed |
 | Cryptographically signed tag | `git tag -v v0.3.0`; tag commit `250f90a` | Passed |
 | Skill provenance at tag | Release-sign run `35883804367` | Passed |
 | Published release | GitHub Release linked above | Passed |

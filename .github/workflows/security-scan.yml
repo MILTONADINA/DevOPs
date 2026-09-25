@@ -54,15 +54,39 @@ jobs:
           GITLEAKS_ENABLE_COMMENTS: "false"
 
   semgrep:
+    # The deprecated returntocorp/semgrep-action bundled a Semgrep that crashed on the
+    # registry packs' MEDIUM severity ("ValueError: invalid rule severity value") and
+    # still reported success, so this check scanned nothing for weeks. Run a pinned
+    # current Semgrep directly; fail on findings, on fatal errors, and on an empty scan.
     runs-on: ubuntu-latest
+    container:
+      image: semgrep/semgrep:1.167.0@sha256:06938c1f365d3f67b8cedd8bc117607ae64253f88a0e768e9da9408548927dd6
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
-      - uses: returntocorp/semgrep-action@713efdd345f3035192eaa63f56867b88e63e4e5d  # v1
-        with:
-          config: >-
-            p/owasp-top-ten
-            p/r2c-security-audit
-            p/secrets
+      - name: Semgrep (owasp-top-ten, r2c-security-audit, secrets)
+        shell: bash
+        run: |
+          set -euo pipefail
+          semgrep scan --config p/owasp-top-ten --config p/r2c-security-audit --config p/secrets \
+            --metrics=off --error --json --output semgrep.json . || rc=$?
+          rc=${rc:-0}
+          python3 - "$rc" <<'PY'
+          import json, sys
+          rc = int(sys.argv[1])
+          d = json.load(open("semgrep.json"))
+          scanned = len(d.get("paths", {}).get("scanned", []))
+          fatal = [e for e in d.get("errors", []) if str(e.get("level", "")).lower() not in ("warn", "warning", "info")]
+          print(f"semgrep: exit {rc}, {scanned} files scanned, {len(d.get('results', []))} findings, {len(d.get('errors', []))} errors ({len(fatal)} fatal)")
+          for r in d.get("results", []):
+              print(f"FINDING {r['extra'].get('severity')} {r['check_id']} {r['path']}:{r['start']['line']}")
+          for e in fatal:
+              print(f"ERROR {e.get('type')} {str(e.get('message'))[:200]}")
+          if scanned == 0:
+              sys.exit("semgrep scanned no files: refusing to report a pass")
+          if fatal:
+              sys.exit("semgrep reported fatal errors")
+          sys.exit(rc)
+          PY
 
   # ---------------------------------------------------------------------
   # DeepTeam OWASP_ASI_2026() red-team gate (spec phase-2/B-deepteam-ci.md).
