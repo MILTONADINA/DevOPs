@@ -297,7 +297,8 @@ THE SYSTEM SHALL make `scripts/graph-dashboard/server.mjs`:
 - join each run to `graph-cycles/*/run.json` by `runId`;
 - display the run.json `status` and `cycleId` (replacing the hard-coded `null` at `:454`);
 - label a run with no run record `observed: false, state: NOT_OBSERVED`;
-- mark a node `stale` when its last journal event is more than 18 minutes old and run.json is not `running` (PB-57; `:438`);
+- mark a node `stale` when its last journal event is more than 18 minutes old and run.json is not `running` (PB-57; `:438`), or more than 3 hours old when run.json still says `running`. An orchestrator that dies leaves its record at `running`, and live agents have been measured silent for up to 74 minutes (amended 2026-09-25 after review `wf_6e861584-e0b`);
+- join the earlier run named in a record's `resumedFrom` to that cycle as `superseded`, never as `running`;
 - label non-sprint Workflow runs as such.
 
 It SHALL remain read-only and loopback-only.

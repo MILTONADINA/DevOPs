@@ -235,6 +235,12 @@ describe("restore validates fact rows (v0.5 Zod gate)", () => {
   test("rejects a fact row that fails the fact schema, naming the table and row", () => {
     const { decision_text: _dropped, ...invalid } = decision;
     expect(() => validateBackup(withFacts("tech_decisions", [invalid]))).toThrow(/tech_decisions row d1 fails fact validation/);
-    expect(() => validateBackup(withFacts("function_changes", [{ id: "f1", org_id: "o1", session_id: "s1", confidence: 7, is_verified: false, is_suppressed: false, old_name: "x", change_type: "renamed" }]))).toThrow(/function_changes row f1 fails fact validation/);
+  });
+
+  test("rejects an out-of-range confidence on an otherwise valid row", () => {
+    // The valid row passes first, so the only thing that makes the second call throw is confidence.
+    const change = { id: "f1", org_id: "o1", session_id: "s1", confidence: 0.8, is_verified: false, is_suppressed: false, old_name: "x", change_type: "renamed", created_at: "2026-09-25T00:00:00Z" };
+    expect(() => validateBackup(withFacts("function_changes", [change]))).not.toThrow();
+    expect(() => validateBackup(withFacts("function_changes", [{ ...change, confidence: 7 }]))).toThrow(/function_changes row f1 fails fact validation/);
   });
 });

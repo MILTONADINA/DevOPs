@@ -28,7 +28,8 @@
     /* Exactly five node states exist -- queued/running/done/errored/stale -- and
        nothing else ever reads/writes a sixth color here. `stale` is a node the
        journal still calls running but whose agent files have been silent for
-       18 minutes in a run whose run record is not running (masterpiece REQ-M24). */
+       18 minutes, or for 3 hours when its run record says running (masterpiece
+       REQ-M24). */
     --state-queued: #94a3b8;
     --state-running: #2563eb;
     --state-done: #16a34a;

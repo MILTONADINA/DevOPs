@@ -180,12 +180,16 @@ permanent design constraint, not a gap slated to be filled in later.
     from `journal.jsonl`'s `started` / `result` / `failed` events, joined back
     to a label via each event's own `key`. A node the journal still calls
     running is shown **stale** when its agent files have been silent for 18
-    minutes and its run's record (below) does not say `running`; a stale node
-    does not make its run active (masterpiece REQ-M24, PB-57).
+    minutes and its run's record (below) does not say `running`, or for 3
+    hours when the record does. Live agents have gone quiet for up to 74
+    minutes, but an orchestrator that dies leaves its record at `running`. A
+    stale node does not make its run active (masterpiece REQ-M24, PB-57).
   - **Cycle id and run state** — joined by `runId` from
-    `.workflow/state/graph-cycles/<cycleId>/run.json` (REQ-R10). A sprint run
-    with no run record is labelled `NOT_OBSERVED`; a Workflow run that is not
-    a sprint cycle is labelled as such. Nothing here is guessed.
+    `.workflow/state/graph-cycles/<cycleId>/run.json` (REQ-R10). The earlier
+    run of a resumed cycle, named in the record's `resumedFrom`, is joined to
+    the same cycle as `superseded`. A sprint run with no run record is
+    labelled `NOT_OBSERVED`; a Workflow run that is not a sprint cycle is
+    labelled as such. Nothing here is guessed.
   - **Elapsed time**, per node and per run — derived entirely from
     filesystem mtimes/birthtimes (a node's own `agent-<id>.jsonl` +
     `agent-<id>.meta.json`; every file in the run directory for the run's

@@ -123,3 +123,24 @@ test("an unset sink still honors STRATUM_TELEMETRY_OPT_OUT", async () => {
   }
 });
 
+// The request path never uses emitTurnTelemetry's default parameter: it passes deps.telemetry, which the
+// production deps resolve once at start (src/proxy/default-deps.ts). This covers that wiring.
+test("production message deps honor STRATUM_TELEMETRY_OPT_OUT", async () => {
+  const { createDefaultMessagesDeps } = await import("../../src/proxy/default-deps");
+  const { defaultTelemetrySink, noopTelemetrySink } = await import("../../src/proxy/telemetry");
+  const { mkdtempSync, rmSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const path = await import("node:path");
+  const captureDir = mkdtempSync(path.join(tmpdir(), "telemetry-deps-"));
+  try {
+    vi.stubEnv("CQ_LOCAL_BASE_URL", "http://127.0.0.1:1/v1"); // any configured provider lets the deps build
+    vi.stubEnv("CQ_CAPTURE_DIR", captureDir);
+    vi.stubEnv("STRATUM_TELEMETRY_OPT_OUT", "true");
+    expect(createDefaultMessagesDeps().telemetry).toBe(noopTelemetrySink);
+    vi.stubEnv("STRATUM_TELEMETRY_OPT_OUT", "");
+    expect(createDefaultMessagesDeps().telemetry).toBe(defaultTelemetrySink);
+  } finally {
+    vi.unstubAllEnvs();
+    rmSync(captureDir, { recursive: true, force: true });
+  }
+});

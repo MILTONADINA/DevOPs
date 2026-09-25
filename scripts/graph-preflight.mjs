@@ -271,14 +271,19 @@ function main() {
   nodeVersion();
   npmRuns();
   // Test overrides (GRAPH_PREFLIGHT_DEPS_ROOT_DIR, _DEPS_STRATUM_DIR, _PROOFS_DIR) must stay inside the
-  // project root, so a fixture can stand in for gitignored directories a fresh checkout lacks.
-  const rootDependencies = path.resolve(process.env.GRAPH_PREFLIGHT_DEPS_ROOT_DIR || path.join(ROOT, 'node_modules'));
+  // project root, so a fixture can stand in for gitignored directories a fresh checkout lacks; a
+  // dependency override must not redirect out of it either. The default node_modules may be a symlink
+  // to a shared install (a worktree): checking it only reads, and a repair still refuses any launcher
+  // whose real path leaves the root (dependencyDirectory).
+  const rootOverride = process.env.GRAPH_PREFLIGHT_DEPS_ROOT_DIR;
+  const rootDependencies = path.resolve(rootOverride || path.join(ROOT, 'node_modules'));
   if (!insideRoot(rootDependencies)) throw new Error('Root dependencies leave the project root');
-  if (existsSync(rootDependencies) && !insideRoot(realpathSync(rootDependencies))) throw new Error('Root dependencies redirect outside the project root');
+  if (rootOverride && existsSync(rootDependencies) && !insideRoot(realpathSync(rootDependencies))) throw new Error('Root dependencies redirect outside the project root');
   dependencyDirectory('deps.root', rootDependencies, checkOnly, registry);
-  const stratumDependencies = path.resolve(process.env.GRAPH_PREFLIGHT_DEPS_STRATUM_DIR || path.join(ROOT, 'stratum', 'node_modules'));
+  const stratumOverride = process.env.GRAPH_PREFLIGHT_DEPS_STRATUM_DIR;
+  const stratumDependencies = path.resolve(stratumOverride || path.join(ROOT, 'stratum', 'node_modules'));
   if (!insideRoot(stratumDependencies)) throw new Error('Stratum dependencies leave the project root');
-  if (existsSync(stratumDependencies) && !insideRoot(realpathSync(stratumDependencies))) throw new Error('Stratum dependencies redirect outside the project root');
+  if (stratumOverride && existsSync(stratumDependencies) && !insideRoot(realpathSync(stratumDependencies))) throw new Error('Stratum dependencies redirect outside the project root');
   dependencyDirectory('deps.stratum', stratumDependencies, checkOnly, registry);
   for (const name of ['gitleaks', 'semgrep', 'cosign']) {
     toolVersion(name);
