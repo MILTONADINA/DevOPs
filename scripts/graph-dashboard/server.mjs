@@ -423,6 +423,11 @@ function labelStatesToObject(labelStates) {
 // REQ-M24). 18 minutes is the tester stall budget (3 min x 6), the Workflow tool's own
 // kill threshold.
 const STALE_AFTER_MS = 18 * 60 * 1000;
+// A record that says `running` is trusted for longer, because live agents do go quiet:
+// the longest gap between messages in 447 real agent transcripts was 74 minutes
+// (2026-09-25). But if the orchestrator session dies, nothing moves the record off
+// `running`, so after 3 silent hours its nodes are shown as stale too (REQ-M24).
+const RECORD_RUNNING_STALE_AFTER_MS = 3 * 60 * 60 * 1000;
 
 // Reads <stateDir>/graph-cycles/*/run.json (REQ-R10) into a Map keyed by runId. A cycle
 // directory with no or a malformed run.json is simply not joined; nothing is guessed.
@@ -440,10 +445,16 @@ async function readRunRecords(stateDir) {
     try {
       const record = JSON.parse(await readFile(path.join(cyclesDir, name, 'run.json'), 'utf-8'));
       if (record && typeof record.runId === 'string' && record.runId) {
-        records.set(record.runId, {
-          cycleId: typeof record.cycleId === 'string' && record.cycleId ? record.cycleId : name,
-          status: typeof record.status === 'string' ? record.status : null,
-        });
+        const cycleId = typeof record.cycleId === 'string' && record.cycleId ? record.cycleId : name;
+        records.set(record.runId, { cycleId, status: typeof record.status === 'string' ? record.status : null });
+        // A resumed cycle's record describes the new run; the earlier run it names in
+        // resumedFrom is joined to the same cycle as `superseded` and never inherits the
+        // new run's status. A record matched by its own runId always takes precedence.
+        for (const earlier of [record.resumedFrom].flat()) {
+          if (typeof earlier === 'string' && earlier && earlier !== record.runId && !records.has(earlier)) {
+            records.set(earlier, { cycleId, status: 'superseded' });
+          }
+        }
       }
     } catch {
       // no run.json in this cycle directory, or unreadable: not joined
@@ -475,8 +486,9 @@ async function buildRunModel({ sessionId, workflowId, runDir, journalPath, recor
   // STALE_AFTER_MS, in a run whose run record does not say it is running. A node with
   // no agent files (no timing) is left as the journal says.
   const recordSaysRunning = Boolean(record && record.status === 'running');
+  const staleAfterMs = recordSaysRunning ? RECORD_RUNNING_STALE_AFTER_MS : STALE_AFTER_MS;
   for (const node of nodes) {
-    if (node.status === 'running' && !recordSaysRunning && typeof node.lastEventAtMs === 'number' && now - node.lastEventAtMs > STALE_AFTER_MS) {
+    if (node.status === 'running' && typeof node.lastEventAtMs === 'number' && now - node.lastEventAtMs > staleAfterMs) {
       node.status = 'stale';
     }
   }

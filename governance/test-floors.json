@@ -1,5 +1,5 @@
 {
-  "_comment": "Minimum passing tests per suite (masterpiece REQ-M23). Floors may only rise: scripts/check-test-floor.mjs --ratchet refuses a lower value than main's. Set 2026-09-25 from CI run 36185462921 (root 339 passed of 356, 17 skipped; stratum 1092 passed of 1099). Raised 2026-09-25: stratum 1095 with the telemetry opt-out tests. Raised again: 1098 with the PB-66 operator-script tests. Raised again: 1101 with the PB-64/PB-65 restore tests. Raised again: 1103 with the restore fact-validation tests.",
-  "root": 339,
-  "stratum": 1103
+  "_comment": "Minimum passing tests per suite (masterpiece REQ-M23). Floors may only rise: scripts/check-test-floor.mjs --ratchet refuses a lower value than main's. Set 2026-09-25 from CI run 36185462921 (root 339 passed of 356, 17 skipped; stratum 1092 passed of 1099). Raised 2026-09-25: stratum 1095 with the telemetry opt-out tests. Raised again: 1098 with the PB-66 operator-script tests. Raised again: 1101 with the PB-64/PB-65 restore tests. Raised again: 1103 with the restore fact-validation tests. Raised again: root 348 (CI run 36190568777 passed 344; this change adds 4 preflight and dashboard tests) and stratum 1105 (review wf_6e861584-e0b fixes).",
+  "root": 348,
+  "stratum": 1105
 }

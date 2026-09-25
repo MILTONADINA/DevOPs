@@ -83,6 +83,9 @@ jobs:
               print(f"ERROR {e.get('type')} {str(e.get('message'))[:200]}")
           if scanned == 0:
               sys.exit("semgrep scanned no files: refusing to report a pass")
+          paths = d.get("paths", {}).get("scanned", [])
+          if not any(p.startswith(("tests/", "stratum/test/")) for p in paths):
+              sys.exit("semgrep scanned no test files: the .semgrepignore scope was lost (spec REQ-4)")
           if fatal:
               sys.exit("semgrep reported fatal errors")
           sys.exit(rc)

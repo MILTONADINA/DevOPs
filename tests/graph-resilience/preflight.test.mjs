@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, chmodSync, statSync, rmSync, copyFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, chmodSync, statSync, rmSync, copyFileSync, existsSync, symlinkSync, realpathSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
@@ -214,4 +215,49 @@ test('graph-halt alone forces needs_human and survives preflight', () => {
     });
     assert.equal(cleared.status, 0, cleared.stderr || cleared.stdout);
   } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+// A copy of the preflight in its own project directory, whose root node_modules is a symlink to a
+// directory outside it: the usual layout of a worktree that shares an install.
+function linkedDependenciesProject() {
+  const outside = mkdtempSync(path.join(tmpdir(), 'preflight-shared-deps-'));
+  // Real path: on macOS tmpdir() is under /var, a symlink to /private/var, and the preflight compares real paths.
+  const project = realpathSync(mkdtempSync(path.join(tmpdir(), 'preflight-linked-root-')));
+  mkdirSync(path.join(outside, '.bin'));
+  for (const file of ['scripts/graph-preflight.sh', 'scripts/graph-preflight.mjs', 'governance/graph/preflight-remediations.yml', 'package.json']) {
+    mkdirSync(path.dirname(path.join(project, file)), { recursive: true });
+    copyFileSync(path.join(ROOT, file), path.join(project, file));
+  }
+  mkdirSync(path.join(project, 'stratum', 'node_modules', '.bin'), { recursive: true });
+  mkdirSync(path.join(project, '.workflow', 'state'), { recursive: true });
+  symlinkSync(outside, path.join(project, 'node_modules'));
+  const runPreflight = (extraEnv = {}) => spawnSync('bash', [path.join(project, 'scripts', 'graph-preflight.sh'), '--check-only'], {
+    cwd: project,
+    env: { ...process.env, PATH: `${fakeSecurityTools(mkdtempSync(path.join(project, 'tools-')))}:${process.env.PATH}`, GRAPH_PREFLIGHT_REPORT: path.join(project, '.workflow', 'state', 'preflight.json'), ...extraEnv },
+    encoding: 'utf8', timeout: 30_000,
+  });
+  const cleanup = () => { rmSync(project, { recursive: true, force: true }); rmSync(outside, { recursive: true, force: true }); };
+  return { project, outside, runPreflight, cleanup };
+}
+
+test('check-only reports a root node_modules symlinked outside the project instead of aborting', () => {
+  const fixture = linkedDependenciesProject();
+  try {
+    const result = fixture.runPreflight();
+    assert.notEqual(result.status, 2, result.stderr);
+    assert.doesNotMatch(result.stderr, /redirect outside the project root/);
+    const report = JSON.parse(readFileSync(path.join(fixture.project, '.workflow', 'state', 'preflight.json'), 'utf8'));
+    assert.equal(report.checks.find((check) => check.id === 'deps.root')?.status, 'pass');
+  } finally { fixture.cleanup(); }
+});
+
+test('a dependency override that redirects outside the project still aborts', () => {
+  const fixture = linkedDependenciesProject();
+  try {
+    const link = path.join(fixture.project, '.workflow', 'state', 'deps-link');
+    symlinkSync(fixture.outside, link);
+    const result = fixture.runPreflight({ GRAPH_PREFLIGHT_DEPS_ROOT_DIR: link });
+    assert.equal(result.status, 2, result.stdout);
+    assert.match(result.stderr, /Root dependencies redirect outside the project root/);
+  } finally { fixture.cleanup(); }
 });

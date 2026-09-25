@@ -184,6 +184,8 @@ before(async () => {
   const openTagCount = (rawHtml.match(/<script\b/g) || []).length;
   assert.equal(openTagCount, 1, `expected exactly one <script> tag, found ${openTagCount}`);
   const startIdx = rawHtml.indexOf('<script>');
+  // startIdx is a number from indexOf on the dashboard's own file, and nothing here renders HTML.
+  // nosemgrep: javascript.lang.security.audit.unknown-value-with-script-tag.unknown-value-with-script-tag
   assert.notEqual(startIdx, -1, 'expected a bare "<script>" tag (no src/type attributes) -- literal match not found');
   const bodyStart = startIdx + '<script>'.length;
   const endIdx = rawHtml.indexOf('</script>', bodyStart);
