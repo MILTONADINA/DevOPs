@@ -383,6 +383,7 @@ Status text is copied from each file's status line.
 | 0021 | Session erasure needs a separate financial retention boundary | Proposed; technical inventory complete, policy and implementation open | |
 | 0022 | Versioned client encryption primitive before TEE integration | accepted for offline implementation; request-path activation is gated. | |
 | 0023 | Provenance-gated exchange selection, and what Tier-C gates | proposed (2026-09-25). The owner delegated these decisions to the orchestrator's recommendation and may override any of them. | |
+| 0024 | Tier-2 long-history recall assembly (option A), gated | proposed (2026-09-25). The owner delegated this to the orchestrator's recommendation and may override it. | |
 
-Sources: `stratum/docs/decisions/0001-*.md` through `0023-*.md`, line 1 (title)
+Sources: `stratum/docs/decisions/0001-*.md` through `0024-*.md`, line 1 (title)
 and lines 3-5 (status).

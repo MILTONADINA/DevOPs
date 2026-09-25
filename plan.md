@@ -399,25 +399,25 @@ Anthropic's reasoning-based security scanner (GA Feb 2026) reads code "the way a
 - [ ] **`npm run setup`** (~15h). The root command detects macOS/Linux/WSL2, installs missing Stratum dependencies, starts project-local Supabase Compose, and smoke-tests the real proxy/database listener without `.env` access. A fresh Ubuntu 24.04 hosted runner installed 402 packages, applied 29 migrations, and passed the real loopback proxy/database smoke in 67 seconds (CI run `35949731799`). A project-local fresh macOS clone with no Stratum dependencies or database volume passed the same setup in 53 seconds using an isolated Compose instance; its teardown left the primary stack running. Docker images were cached on that Mac. Clean macOS and WSL2 laptops, provider-backed message traffic, and real-data recovery remain unverified.
 - [ ] **PERSONAL_USE.md v2** — full polish (~5h). Daily workflow, env vars, troubleshooting common errors, FAQ.
 - [x] **DEVELOPER_GUIDE.md** (~6h). Contributor checkout setup, current root/Stratum tests and lint/typecheck, PR review flow, and owner signing procedure are documented; clean-machine and real-data release gates remain open.
-- [ ] **ARCHITECTURE.md** (~6h). System design overview. Diagrams. Component responsibilities. Data flow. Cross-reference to ADRs.
+- [x] **ARCHITECTURE.md** (~6h). `stratum/docs/ARCHITECTURE.md` (#185) covers the system design, component responsibilities and data flow, with two Mermaid diagrams and an index of every ADR. Each statement cites the code it describes.
 
 ### 7b. Observability + ops
 
 - [ ] **Sentry error tracking integration** (~4h). DSN configurable via env. PII-redaction wrap on error events. Free tier OK for personal use.
 - [ ] **Grafana / Langfuse dashboards** (~6h). OTel → Grafana for proxy metrics; Langfuse for LLM observability. Dashboards exported as JSON in `observability/dashboards/`.
 - [ ] **Performance benchmark suite** (~5h). Latency p50/p99 tracked per release. Regression detection on PR (>20% slower = fail).
-- [ ] **Runbooks** (~5h). Incident response, backup/restore, common operational tasks. In `docs/runbooks/`.
+- [x] **Runbooks** (~5h). `docs/runbooks/` has INCIDENT_RESPONSE, BACKUP_RESTORE and COMMON_TASKS, plus an index (#185). #187 updated BACKUP_RESTORE when restored keys started coming back inactive. The runbooks are written from the code; no real incident has exercised them yet.
 
 ### 7c. Data + config
 
 - [ ] **Multi-environment config** (~4h). `config.dev.yml` / `config.prod.yml` overrides. Document in PERSONAL_USE.md.
 - [ ] **Versioned schema + migration scripts** (~4h). `stratum/scripts/migrate-session-schema.ts` (already in Phase 0 spec). Test v0.1.0 → v0.2.0 round trip.
 - [ ] **Backup + restore** (~5h). The local Compose check now backs up, deletes, and restores a disposable audited organization, including suppression, status, and alert evidence. Paged export prevents silent truncation under a REST row cap. The local operator runbook is in `docs/runbooks/LOCAL_STRATUM.md`. Clean-machine and real-data recovery remain open.
-- [ ] **Telemetry policy + opt-out** (~3h). What does Stratum emit? Where? Where's `STRATUM_TELEMETRY_OPT_OUT=true`? Documented in PERSONAL_USE.md + new `TELEMETRY.md`.
+- [x] **Telemetry policy + opt-out** (~3h). `stratum/docs/TELEMETRY.md` lists what Stratum emits and where it goes. `STRATUM_TELEMETRY_OPT_OUT=true` (or `1`) suppresses the per-turn `stratum.turn` record (`stratum/src/proxy/telemetry.ts` `resolveTelemetrySink`, with tests). `stratum/docs/PERSONAL_USE.md` documents the variable (#185).
 
 ### 7d. Distribution polish
 
-- [ ] **Plugin marketplace metadata** (~2h). Verify `.claude-plugin/marketplace.json` is current.
+- [x] **Plugin marketplace metadata** (~2h). `.claude-plugin/marketplace.json` no longer claims support for tools that have no adapter (#184 changed plugin.json and package.json; #191 changed the marketplace entry). It is checked against the plugin manifest, not a published marketplace listing.
 - [ ] **License clarity** (~2h). MIT vs Apache vs custom. Decide. Update LICENSE + headers if needed.
 - [x] **CONTRIBUTING.md polish** (~3h). The contributor checklist links to DEVELOPER_GUIDE.md and reflects current proof, CI, and conditional Claude review behavior.
 

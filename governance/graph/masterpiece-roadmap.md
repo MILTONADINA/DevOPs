@@ -83,3 +83,13 @@ The owner delegated these to the orchestrator's recommendation ("i will go with 
 9. **DeepTeam and Claude Security Review.** Keep both. They skip visibly while unfunded and are never cited as passing. Funding is the owner's decision.
 10. **MR-0.** Approved as a hand edit.
 11. **Protected paths (MR-4).** Wait for signed approvals (MR-5), then allow edits to protected paths only with a signed marker.
+12. **What the orchestrator lands without a graph cycle.** The orchestrator is the main session that runs `sprint-cycle.js`. It may open and merge a PR directly only when the change meets all four conditions:
+    - It is low-risk and reversible infrastructure: CI jobs, docs, script exit codes and messages, the read-only dashboard, test fixtures, or a fix for a defect found on `main`.
+    - It is tested red first.
+    - It passes the required checks.
+    - Its `approvals.jsonl` record names the PR and its full head SHA.
+
+    Spec-driven product changes go through a graph cycle, and so do changes to the pipeline itself (`sprint-cycle.js`, `graph-run-record.mjs`, the hooks). Direct PRs never touch `stratum/src/billing/**`, invoice paths or anything else behind the deploy or billing gates.
+
+    A direct PR that touches a security or data path (authentication, API keys, backup and restore, erasure, CI security gates) gets an independent refute-by-default review, and the orchestrator fixes whatever that review confirms. The review may run after the merge, in a batch. It must finish before the next release tag. The first batch covered #176, #178, #182–#187 and #190 (Workflow `wf_6e861584-e0b`). It confirmed 6 distinct defects, fixed in #192, and refuted 8. That result is why the review is required and not optional.
+13. **`gh pr merge` in the deploy gate (REQ-M16).** Deferred to the owner. Matching it would require a human marker on every merge, which contradicts the owner's standing instruction to merge without asking. Until the owner decides, MR-3 leaves `gh pr merge` out. Merges stay mechanically gated by decision 2's required checks.
