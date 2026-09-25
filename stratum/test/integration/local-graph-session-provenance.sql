@@ -66,7 +66,11 @@ BEGIN
       current_setting('devops_test.prov_entity_a')::uuid,
       current_setting('devops_test.prov_session_b')::uuid);
     RAISE EXCEPTION 'cross-organization provenance link unexpectedly succeeded';
-  EXCEPTION WHEN foreign_key_violation THEN NULL;
+  EXCEPTION
+    WHEN foreign_key_violation THEN NULL;
+    -- Since 20260924080000 the BEFORE INSERT trigger rejects the link first.
+    WHEN raise_exception THEN
+      IF SQLERRM <> 'graph provenance session missing' THEN RAISE; END IF;
   END;
 END;
 $$;

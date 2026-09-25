@@ -4,7 +4,7 @@
 import { describe, test, expect, vi } from "vitest";
 vi.unmock("node:fs");
 vi.unmock("fs");
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { BuildProxyOptions } from "../../src/proxy/app";
@@ -47,6 +47,7 @@ describe("resolveListenHost", () => {
 
 describe("buildStartOptions", () => {
   test("commercial billing wires a project-local outbox and rejects ephemeral Vercel runtime", async () => {
+    mkdirSync(join(process.cwd(), "data"), { recursive: true }); // gitignored: absent in a fresh checkout
     const dir = mkdtempSync(join(process.cwd(), "data", "usage-start-test-"));
     const env = { CQ_COMMERCIAL: "true", SUPABASE_URL: "u", SUPABASE_SERVICE_KEY: "k", CQ_BILLING_SIGNING_SECRET: "test-secret", CQ_USAGE_OUTBOX_DIR: dir };
     try {
