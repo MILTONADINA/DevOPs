@@ -19,15 +19,3 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-
----
-
-## Attribution
-
-DevOPs includes content from:
-
-- multica-ai/andrej-karpathy-skills (MIT) — the Karpathy guidelines skill is
-  vendored in `skills/universal/process/karpathy-guidelines/` with attribution
-  preserved.
-- Stratum / CQ (developed by the DevOPs maintainer) — the persistent memory
-  backend integration uses the Stratum Supabase schema.
