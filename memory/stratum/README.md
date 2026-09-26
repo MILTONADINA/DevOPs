@@ -26,7 +26,7 @@ audit and wiring spec; for current state read `plan.md` §4.
 
 | Metric | Value |
 |---|---|
-| Upstream repo | https://github.com/MILTONADINA/Stratum.git |
+| Upstream repo | https://github.com/MILTONADINA/Stratum.git (archived 2026-09-26: DevOps is one platform, ADR-0026) |
 | Merged into DevOPs | `stratum-merge` branch at `stratum/` (subtree, no `--squash`) |
 | Commits in upstream history | **1** (`89457997…`, 2026-04-06) |
 | Tracked file count | 101 |
