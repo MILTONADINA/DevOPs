@@ -20,10 +20,14 @@ export const meta = {
 
 const backlogItem = args && args.backlogItem
 const cycleId = (args && args.cycleId) || 'unnamed-cycle'
+// REQ-M4: the only fault classes a blocked_by_environment result may carry.
+// Shared by BLOCKED_SCHEMA's enum (schema-side) and stopIfBlocked's allow-list
+// check (runtime-side) below, so the two can never drift apart.
+const FAULT_CLASSES = ['environment', 'api', 'transient', 'needs_human']
 const BLOCKED_SCHEMA = {
   type: 'object',
   properties: {
-    class: { type: 'string' },
+    class: { type: 'string', enum: FAULT_CLASSES },
     check_ids: { type: 'array', items: { type: 'string' } },
     evidence: { type: 'string' },
     classified_by: { type: 'string' },
@@ -45,13 +49,30 @@ function stopIfBlocked(result, stage, taskId) {
     cycleId,
     stage,
     ...(taskId ? { taskId } : {}),
-    class: blocked.class || 'api',
+    // REQ-M4: a null result or a missing class defaults to needs_human (not
+    // api), and any class value present but outside FAULT_CLASSES is also
+    // mapped to needs_human rather than passed through -- the schema enum
+    // above does not coerce a value a fake/misbehaving agent still returns
+    // at runtime, so this allow-list check is explicit in code.
+    class: FAULT_CLASSES.includes(blocked.class) ? blocked.class : 'needs_human',
     check_ids: blocked.check_ids || [],
     evidence: blocked.evidence || (result === null ? 'agent() returned null' : ''),
     classified_by: blocked.classified_by || (result === null ? 'signature' : 'agent'),
   }
   log(`Cycle blocked at ${stage}: ${JSON.stringify(fault)}`)
   throw new Error(`BLOCKED_BY_ENVIRONMENT:${JSON.stringify(fault)}`)
+}
+
+// REQ-M3: a stage's effective outcome is INDETERMINATE when its boolean
+// disagrees with `outcome`, when `outcome` is itself 'INDETERMINATE', or when
+// `outcome` is absent (a resumed/prior result carried forward from before
+// this field existed). Never read as a plain FAIL, let alone as clean.
+function stageOutcome(result, boolKey) {
+  const bool = !!(result && result[boolKey])
+  const outcome = result && result.outcome
+  if (outcome !== 'PASS' && outcome !== 'FAIL') return 'INDETERMINATE'
+  if (bool !== (outcome === 'PASS')) return 'INDETERMINATE'
+  return outcome
 }
 
 async function workflowAgent(prompt, options) {
@@ -125,6 +146,18 @@ HARD CONSTRAINT: do not include any task whose job is to stage, commit, or push 
           },
         },
         ambiguities: { type: 'array', items: { type: 'string' } },
+        // REQ-M7: source conflicts the planner notices (e.g. a spec/ADR
+        // clause disagreeing with plan.md) get this typed shape alongside
+        // free-text ambiguities, so the block below -- replacing the old
+        // log-only line after this schema -- can act on them the same way.
+        conflicts: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: { higher: { type: 'string' }, lower: { type: 'string' }, clause: { type: 'string' } },
+            required: ['higher', 'lower', 'clause'],
+          },
+        },
         blocked_by_environment: BLOCKED_SCHEMA,
       },
       required: ['tasks'],
@@ -136,7 +169,36 @@ if (!plan || !plan.tasks || plan.tasks.length === 0) {
   throw new Error(`planner produced no tasks for backlog item "${backlogItem}" -- cycle cannot proceed`)
 }
 
-log(`Planner produced ${plan.tasks.length} task(s)` + (plan.ambiguities && plan.ambiguities.length ? `, ${plan.ambiguities.length} ambiguity(ies) flagged -- see result.plan.ambiguities` : ''))
+log(`Planner produced ${plan.tasks.length} task(s)` + (plan.ambiguities && plan.ambiguities.length ? `, ${plan.ambiguities.length} ambiguity(ies) flagged` : '') + (plan.conflicts && plan.conflicts.length ? `, ${plan.conflicts.length} conflict(s) flagged` : ''))
+
+// REQ-M7: material ambiguity and source conflicts stop the cycle before
+// Build starts (replaces the old log-only line above). This sits after
+// `plan` is finalized either way, so it runs whether `plan` was just
+// returned by the planner above or carried forward via args.plan on a
+// resumed cycle (the `let plan = (args && args.plan) || null` branch near
+// the top of Plan) -- the check is not skippable just because the planner
+// itself did not re-run this time.
+//
+// A plain ambiguities[] string is acknowledged when it appears verbatim in
+// args.acknowledgedAmbiguities (REQ-M7's text). REQ-M7 defines no separate
+// acknowledged-conflicts channel, so a conflicts[] object's acknowledgement
+// form uses the recommended default: compare JSON.stringify(item) against
+// the same list. One comparator covers both shapes -- JSON.stringify('X')
+// is '"X"', so a plain string still matches by the same rule, and no
+// object's stringified form can collide with a quoted string.
+//
+// The thrown payload is the offending (unacknowledged) items only, not the
+// full ambiguities/conflicts lists -- a flat list mirrors the
+// `acknowledgements: [{item, answer, at}]` shape REQ-M7 gives the /sprint
+// runbook (one record per item, item-shape-agnostic; populating it from the
+// owner's answer is that runbook's job, out of scope here).
+const acknowledgedAmbiguities = (args && Array.isArray(args.acknowledgedAmbiguities)) ? args.acknowledgedAmbiguities : []
+const isAcknowledged = (item) => acknowledgedAmbiguities.some((ack) => JSON.stringify(ack) === JSON.stringify(item))
+const offendingItems = [...(plan.ambiguities || []), ...(plan.conflicts || [])].filter((item) => !isAcknowledged(item))
+if (offendingItems.length > 0) {
+  log(`Cycle blocked before Build: ${offendingItems.length} unacknowledged ambiguity/conflict item(s) -- see AMBIGUITY_BLOCK below`)
+  throw new Error(`AMBIGUITY_BLOCK:${JSON.stringify(offendingItems)}`)
+}
 
 phase('Build')
 // Sequential per task, not parallel: tasks from the same backlog item may
@@ -213,10 +275,11 @@ CLAIM-SCHEMA CONSTRAINT (if you write a claim YAML under .workflow/proofs/): it 
           command: { type: 'string' },
           exit_code: { type: 'number' },
           passed: { type: 'boolean' },
+          outcome: { type: 'string', enum: ['PASS', 'FAIL', 'INDETERMINATE'] },
           output_tail: { type: 'string' },
           blocked_by_environment: BLOCKED_SCHEMA,
         },
-        required: ['task_id', 'passed'],
+        required: ['task_id', 'passed', 'outcome'],
       },
     }
   )
@@ -277,10 +340,11 @@ CLAIM-SCHEMA CONSTRAINT (if you record your scan as a claim YAML under .workflow
       type: 'object',
       properties: {
         passed: { type: 'boolean' },
+        outcome: { type: 'string', enum: ['PASS', 'FAIL', 'INDETERMINATE'] },
         findings: { type: 'array', items: { type: 'string' } },
         blocked_by_environment: BLOCKED_SCHEMA,
       },
-      required: ['passed'],
+      required: ['passed', 'outcome'],
     },
   }
 )
@@ -305,16 +369,51 @@ Decide whether this cycle is ready for a PR. Do NOT sign off if any task's test 
       type: 'object',
       properties: {
         signed_off: { type: 'boolean' },
+        outcome: { type: 'string', enum: ['PASS', 'FAIL', 'INDETERMINATE'] },
         reason: { type: 'string' },
         blocked_by_environment: BLOCKED_SCHEMA,
       },
-      required: ['signed_off', 'reason'],
+      required: ['signed_off', 'outcome', 'reason'],
     },
   }
 )
 
 phase('Release')
-const readyForPR = !!(validatorResult && validatorResult.signed_off) && failedTasks.length === 0
+// REQ-M3: INDETERMINATE is first-class and never counts as clean -- any
+// tester (per task), security or validator result whose boolean disagrees
+// with its outcome, or whose outcome is itself 'INDETERMINATE' or absent
+// (e.g. a resumed/prior result from before this field existed), holds the
+// whole cycle to INDETERMINATE regardless of what its own boolean says.
+const indeterminateTesterTasks = buildResults
+  .filter(r => stageOutcome(r.testerResult, 'passed') === 'INDETERMINATE')
+  .map(r => r.task.id)
+const securityOutcome = stageOutcome(securityResult, 'passed')
+const validatorOutcome = stageOutcome(validatorResult, 'signed_off')
+const anyIndeterminate = indeterminateTesterTasks.length > 0 || securityOutcome === 'INDETERMINATE' || validatorOutcome === 'INDETERMINATE'
+
+// REQ-M1: readyForPR is the structural AND of every verdict, computed here
+// in code -- no verdict counts only because a prompt tells another agent to
+// weigh it. validator/security read the disagreement-checked outcome from
+// task 2's stageOutcome above (already INDETERMINATE-safe); every task's
+// tester is checked the same way. The reviewer gate additionally requires no
+// BLOCKER: entry in violations -- the existing BLOCKER:/CONCERN: prefix
+// convention from the reviewer's own prompt above (there is no separate
+// structured severity field); an absent violations array counts as empty,
+// never as a failure. !anyIndeterminate is kept as its own conjunct -- it is
+// implied by the four PASS checks, but REQ-M3 lists it as a separate clause
+// and a 1:1 spec-to-code mapping is worth the redundancy.
+const allTestersPassed = buildResults.every(r => stageOutcome(r.testerResult, 'passed') === 'PASS')
+const reviewerHasBlocker = (reviewResult?.violations || []).some(v => /^\W*blocker\s*:/i.test(v))
+const readyForPR = validatorOutcome === 'PASS'
+  && reviewResult?.approved === true && !reviewerHasBlocker
+  && securityOutcome === 'PASS'
+  && allTestersPassed
+  && !anyIndeterminate
+const indeterminateReasons = [
+  indeterminateTesterTasks.length > 0 ? `tester (${indeterminateTesterTasks.join(', ')})` : null,
+  securityOutcome === 'INDETERMINATE' ? 'security' : null,
+  validatorOutcome === 'INDETERMINATE' ? 'validator' : null,
+].filter(Boolean)
 
 const cycleOutcome = {
   cycleId,
@@ -324,10 +423,16 @@ const cycleOutcome = {
   reviewApproved: !!(reviewResult && reviewResult.approved),
   securityPassed: !!(securityResult && securityResult.passed),
   validatorSignedOff: !!(validatorResult && validatorResult.signed_off),
+  // Never "not approved" when the reason is really an unresolved outcome:
+  // say INDETERMINATE outright (REQ-M3). Non-INDETERMINATE mirrors
+  // readyForPR, which is now (REQ-M1, above) the structural conjunction of
+  // every verdict -- reviewer/security/every tester/validator -- not just
+  // the validator's own signed_off.
+  outcome: anyIndeterminate ? 'INDETERMINATE' : (readyForPR ? 'PASS' : 'FAIL'),
   readyForPR,
 }
 
-log(`Cycle "${cycleId}" outcome: ${readyForPR ? 'READY for PR (pending human review)' : 'NOT ready'}`)
+log(`Cycle "${cycleId}" outcome: ${readyForPR ? 'READY for PR (pending human review)' : anyIndeterminate ? `INDETERMINATE (not ready -- ${indeterminateReasons.join(', ')} disagreed with its own outcome or reported none)` : 'NOT ready'}`)
 if (!readyForPR) {
   log(`Validator reason: ${validatorResult ? validatorResult.reason : 'validator did not return a result'}`)
 }
