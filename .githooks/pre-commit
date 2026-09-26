@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# Pre-commit: scan the staged changes for secrets (quality plan QW-5).
+# `npm run setup` points core.hooksPath at this directory. The scan uses the
+# same config as CI's required gitleaks check (governance/gitleaks-ci.toml).
+set -uo pipefail
+
+if ! command -v gitleaks >/dev/null 2>&1; then
+  echo "pre-commit: gitleaks is not installed, so the staged changes were not scanned for secrets." >&2
+  echo "pre-commit: install it from https://github.com/gitleaks/gitleaks; CI's gitleaks check still scans every pull request." >&2
+  exit 0
+fi
+
+# Exit code 99 means gitleaks found something; any other non-zero code means it could not run.
+status=0
+gitleaks git --pre-commit --staged --redact --no-banner --verbose --exit-code 99 --config governance/gitleaks-ci.toml || status=$?
+if [ "$status" -eq 99 ]; then
+  echo "pre-commit: commit blocked. gitleaks reported a possible secret above (file, line and rule; the value is redacted)." >&2
+  echo "pre-commit: remove it from the staged changes. For a false positive, add an inline 'gitleaks:allow' comment on that line; baseline entries follow specs/security/history-secret-scan-baseline.md." >&2
+elif [ "$status" -ne 0 ]; then
+  echo "pre-commit: commit blocked. gitleaks could not run (exit $status); see its error above." >&2
+fi
+exit "$status"
