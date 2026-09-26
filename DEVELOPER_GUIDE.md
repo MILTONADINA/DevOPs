@@ -66,8 +66,10 @@ claims refer to external systems or an earlier environment.
 2. Review the diff for correctness and security. Claude Code contributors
    can use `/code-review` and `/security-review` before pushing. Other tools
    can perform the same review against the changed files.
-3. Check the PR's `validate`, `setup-linux`, `gitleaks`, `semgrep`, and
-   `deepteam` jobs. The Claude semantic security job reports a skip when
+3. Check the six required checks: `validate`, `stratum-test`, `setup-linux`,
+   `gitleaks`, `semgrep` and `dependency-audit`. The
+   [CI checks table](CONTRIBUTING.md#ci-checks-run-on-pull-requests) lists
+   the optional ones too. The Claude semantic security job reports a skip when
    `CLAUDE_API_KEY` is unset; a green skipped job is not an AI review.
 4. Address review findings, verify the checks on the final head commit, and
    merge through the protected PR flow. See the full

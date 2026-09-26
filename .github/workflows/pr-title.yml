@@ -1,0 +1,30 @@
+name: PR title
+
+# The repository squash-merges with the PR title as the commit subject
+# (squash_merge_commit_title=PR_TITLE), so the title must follow Conventional
+# Commits (CONTRIBUTING.md rule 2). Inline check: no third-party action and no
+# token. Not a required check on main.
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+
+permissions: {}
+
+jobs:
+  conventional-title:
+    name: Conventional Commits title
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - name: Check the title
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          pattern='^(feat|fix|docs|refactor|perf|test|chore|security|spec|ci|build|evals|fixture|audit|revert)(\([^()]+\))?!?: [^[:space:]]'
+          if printf '%s\n' "$TITLE" | grep -Eq "$pattern"; then
+            echo "PR title follows Conventional Commits."
+          else
+            echo "::error::PR title must be '<type>(<scope>): <subject>' with a type from CONTRIBUTING.md rule 2."
+            exit 1
+          fi
