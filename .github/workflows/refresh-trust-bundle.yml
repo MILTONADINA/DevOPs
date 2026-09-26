@@ -133,8 +133,9 @@ jobs:
             "- artifact: $RUN_URL (\`trust-bundle-*\`, kept 30 days)" \
             "" \
             "To apply it: run \`cosign initialize\` locally, copy the resulting \`trusted_root.json\` to \`.workflow/sigstore/trust-bundle.json\`, check that its sha256 matches the one above, and open a normal pull request. No bot opens branches in this repository.")
-          # Only issues this workflow opened (author app/github-actions).
-          number=$(gh issue list --app github-actions --state open --limit 100 --json number,title --jq ".[] | select(.title == \"$title\") | .number" | head -1)
+          # Only issues this workflow opened (author app/github-actions), checked in jq: `--app` and
+          # `--author` go through search, which does not match this bot's issues.
+          number=$(gh issue list --state open --limit 100 --json number,title,author --jq ".[] | select(.title == \"$title\" and .author.login == \"app/github-actions\" and .author.is_bot) | .number" | head -1)
           if [ -n "$number" ]; then gh issue edit "$number" --body "$body"; else gh issue create --title "$title" --body "$body"; fi
 
       - name: Close the trust-bundle issue when nothing changed
@@ -145,5 +146,5 @@ jobs:
         run: |
           set -euo pipefail
           title='Sigstore trust bundle changed'
-          number=$(gh issue list --app github-actions --state open --limit 100 --json number,title --jq ".[] | select(.title == \"$title\") | .number" | head -1)
+          number=$(gh issue list --state open --limit 100 --json number,title,author --jq ".[] | select(.title == \"$title\" and .author.login == \"app/github-actions\" and .author.is_bot) | .number" | head -1)
           if [ -n "$number" ]; then gh issue close "$number" --comment "The committed trust bundle matches the current Sigstore root."; fi
