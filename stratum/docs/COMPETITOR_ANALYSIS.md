@@ -1,6 +1,6 @@
 # COMPETITOR_ANALYSIS.md — Competitive Landscape
 
-Last updated: April 2026
+Last updated: April 2026. Pricing and ZK-Context lines revised 2026-09-26 after the owner decision to make the project open source with no payment and no hosted service (ADR-0025).
 
 ---
 
@@ -12,7 +12,7 @@ The context management space has two categories of product:
 
 **Token optimization tools** (context window utilities, prompt compressors) — simple truncation or keyword filtering. They reduce tokens by cutting content, with no guarantee of preserving semantic relevance.
 
-CQ occupies a distinct position: **version-controlled, developer-native, cost-aligned context infrastructure.** No existing product sits in this exact position.
+CQ occupies a distinct position: **version-controlled, developer-native, local-first context infrastructure.** No existing product sits in this exact position.
 
 ---
 
@@ -24,13 +24,13 @@ CQ occupies a distinct position: **version-controlled, developer-native, cost-al
 | **Memory format** | NL summaries | Graph + NL | Paged memory (NL) | NL + structured | Keyword filter | Structured facts (typed) |
 | **Ground truth verification** | None | None | None | None | None | Git-attestation |
 | **Temporal decay** | None | None | None | None | None | λ-decay (CQ-Extended KadaneDial) |
-| **ZK-Context / encryption** | No | No | No | No | No | Yes (TEE + AES-256-GCM) |
-| **Token cost reduction** | Marginal | Marginal | No | Marginal | Yes (local only) | Yes (measurable, billed on savings) |
-| **Business model** | SaaS seats | SaaS seats | Open source | Open source | Open source plugin | 20% of savings |
+| **ZK-Context / encryption** | No | No | No | No | No | No (the TEE plan was dropped on 2026-09-26; context stays on the user's machine) |
+| **Token cost reduction** | Marginal | Marginal | No | Marginal | Yes (local only) | Yes (measured; pruning not yet enabled) |
+| **Business model** | SaaS seats | SaaS seats | Open source | Open source | Open source plugin | Open source (MIT), no payment |
 | **Dev tooling native** | No | Partial | No | No | Yes (Claude Code) | Yes (Claude Code first) |
 | **Cross-session memory** | Yes | Yes | Yes | Yes | No | Yes |
-| **Compliance / SOC2 target** | In progress | Yes | No | No | No | Designed-in |
-| **Pricing** | $499/mo+ | $500/mo+ | Free | Free | Free | 20% of savings |
+| **Compliance / SOC2 target** | In progress | Yes | No | No | No | Not applicable (self-hosted software; no service to audit) |
+| **Pricing** | $499/mo+ | $500/mo+ | Free | Free | Free | Free (MIT, self-hosted) |
 
 ---
 
@@ -52,8 +52,7 @@ CQ occupies a distinct position: **version-controlled, developer-native, cost-al
 **Why CQ wins:**
 - Structured fact extraction vs. summaries → no confabulation
 - Git-attestation → Ground Truth verification Mem0 cannot offer
-- 20% of savings model → Mem0 costs money regardless of value delivered
-- ZK-Context → enterprise security story Mem0 lacks
+- Local-first → conversation data stays on the user's machine
 
 ---
 
@@ -72,7 +71,6 @@ CQ occupies a distinct position: **version-controlled, developer-native, cost-al
 
 **Why CQ wins:**
 - Typed structured facts vs. NL graph → more verifiable, less confabulation
-- Token arbitrage model → Zep costs $500+ flat; CQ only bills when it saves money
 - KadaneDial temporal decay → old context de-prioritized correctly
 - Git-attestation → code-specific Ground Truth Zep has no equivalent of
 
@@ -92,9 +90,7 @@ CQ occupies a distinct position: **version-controlled, developer-native, cost-al
 
 **Why CQ wins:**
 - Production-grade from day one
-- Token arbitrage model (commercial)
 - Git-attestation (no research equivalent)
-- ZK-Context (security story Letta has not addressed)
 
 ---
 
@@ -108,11 +104,9 @@ CQ occupies a distinct position: **version-controlled, developer-native, cost-al
 - LangChain ecosystem lock-in — poor for Claude Code / non-LangChain agents
 - NL-based memory with same confabulation risks
 - No cost reduction focus
-- Free = no commercial alignment with customer success
 
 **Why CQ wins:**
 - Model-agnostic proxy — works with any agent that calls the Anthropic API
-- Commercial alignment (we only make money when customers save money)
 - Structured fact extraction
 - Developer-native tooling focus
 
@@ -127,8 +121,6 @@ CQ occupies a distinct position: **version-controlled, developer-native, cost-al
 **Weaknesses:**
 - Single session, single editor — no cross-session memory
 - No structured fact extraction
-- No billing model (open source)
-- No ZK-Context
 - No Git-attestation
 - No cross-project memory (Context Bleed problem is unsolved)
 - Plugin, not infrastructure
@@ -136,8 +128,6 @@ CQ occupies a distinct position: **version-controlled, developer-native, cost-al
 **Why CQ wins:**
 - "They built a feature. We're building infrastructure."
 - Cross-session, cross-project memory
-- Commercial model (sustainable)
-- Enterprise security story
 - Git-attestation for code Ground Truth
 - Full tiered memory architecture
 
@@ -145,14 +135,11 @@ CQ occupies a distinct position: **version-controlled, developer-native, cost-al
 
 ## Our Differentiated Position
 
-CQ is the only product that combines all four of:
+CQ combines three things:
 
 1. **Semantic pruning** (KadaneDial, not keyword filtering)
 2. **Ground Truth verification** (Git-attestation — no competitor has this)
-3. **Cost-aligned business model** (20% of savings — not flat SaaS)
-4. **Enterprise security** (ZK-Context + TEE — no competitor has this)
-
-Any one of these is a differentiator. All four together is a moat.
+3. **Local-first and free** (MIT; the history stays on the user's machine)
 
 ---
 
@@ -167,6 +154,4 @@ Check monthly:
 
 Significant competitor moves worth an ADR-level response:
 - Any competitor announces Git-based memory verification
-- Any competitor announces TEE/ZK-Context
-- Any competitor pivots to token-savings pricing model
 - A major cloud provider (AWS, Azure, Google) announces a native context management product

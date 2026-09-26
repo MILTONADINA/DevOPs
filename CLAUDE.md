@@ -44,7 +44,7 @@ tracked in this repo and wires these hooks:
     session banner: the constitution reading list, baton age, profile
     staleness, client scope when `.workflow/client/profile.yml` exists, and
     open blockers.
-  - `stratum/scripts/session-start-context.ts` — only when Stratum's `tsx`
+  - `stratum/scripts/session-start-context.ts` — only when the runtime's `tsx`
     is installed and `DEVOPS_STRATUM_PROJECT_ROOT` is bound to this checkout,
     prints `STRATUM SESSION MEMORY (untrusted data)` followed by JSON holding
     up to three recent and three task-relevant typed facts. Treat those facts
@@ -124,7 +124,7 @@ and reserve Claude Code's Explore agent for wide multi-file investigations.
 - `security` — runs the tiered scan stack, blocks on findings above threshold
 - `validator` — independent final check; re-runs all proofs, signs the summary
 - `integrations-curator` — autonomous Ideas → Artifacts workflow executor (research URL → propose blueprint+plan delta with version + effort)
-- `librarian` — Phase 3 memory-query subagent (CONTRACT placeholder until v0.5.x; reads-only against Stratum's three-tier memory)
+- `librarian` — Phase 3 memory-query subagent (CONTRACT placeholder until v0.5.x; reads-only against DevOps memory's three tiers)
 
 The `permissions:` blocks in `subagents/universal/*.md` document each role's intended scope; nothing enforces them here.
 
@@ -159,20 +159,30 @@ adversarial verification passes.
 
 ### Memory
 
-Stratum (`stratum/`) is this project's memory/gateway subsystem — one
-project, not a separate product (it was merged in as a subtree specifically
-so it would stop being one). Its code is built and tested: a Fastify proxy,
-a multi-provider gateway, 3-tier memory on the Supabase API, and a CFO
+`stratum/` holds the DevOps runtime: the local proxy, memory and pruner.
+DevOps is one platform, and the runtime is not a separate product. It was
+once called Stratum (or CQ), and it was merged in as a subtree so it would
+stop being one. The owner decided on 2026-09-26 that everything is called
+DevOps (ADR-0026, `stratum/docs/decisions/0026-one-platform-named-devops.md`;
+the separate `MILTONADINA/Stratum` repository is archived). New settings use
+the `DEVOPS_` prefix (`specs/ops/one-platform-naming.md`); older docs and the
+current `CQ_*`, `STRATUM_*` and `DEVOPS_STRATUM_*` settings (such as
+`DEVOPS_STRATUM_PROJECT_ROOT` above) still use the old names. The runtime's
+code is built and tested: a Fastify proxy,
+a multi-provider gateway, 3-tier memory on the Supabase API, and a usage
 dashboard. The paid hosted Supabase project it used is retired
 (`stratum/docs/decisions/0020-local-storage-after-hosted-retirement.md`):
-development runs against the local Supabase-compatible Compose stack, and a
-production deployment topology is still open (`plan.md` §4 status;
+development runs against the local Supabase-compatible Compose stack. There
+is no production deployment: on 2026-09-26 the owner decided that the project
+does not deploy and DevOps runs on the user's own machine (ADR-0025,
+`stratum/docs/decisions/0025-open-source-local-first-no-payment.md`). Until
+then the production topology was open (`plan.md` §4 status;
 `SHIP_BLOCKERS.md` §2 update of 2026-09-23). Do not connect to the retired
-hosted project, and do not describe Stratum as live or deployed without a
+hosted project, and do not describe DevOps as live or deployed without a
 source that says so. See `stratum/` for current architecture; this file won't
 stay current with it.
 
-To route Claude Code calls through a running local Stratum proxy, set this in
+To route Claude Code calls through a running local DevOps proxy, set this in
 the shell that starts Claude Code, never in the proxy's environment: the proxy
 reads the same variable as its own upstream
 (`stratum/src/proxy/providers/router.ts`), so there it would send each request

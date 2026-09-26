@@ -3,15 +3,16 @@
 **Owner**: Milton Adina
 **Authored**: 2026-05-28 — recalibrated from initial-draft scope-cut error.
 **Status**: BINDING from Session 14 forward.
-**Quality bar**: **Best-of-the-best, no compromises, no shortcuts.** Same standard as Session 13's "production-grade" framing. The "personal use" framing means "no Stripe billing yet" — it does NOT mean lower quality, looser tests, or less rigor.
-**Distribution model** (drives every design decision):
-- **Today (v0.2.x → v0.3.x)**: public repo. Solo dev. Building the foundation.
-- **Tomorrow (v0.4.x → v0.9.x)**: shareable with friends. They clone, install, and run their own instance. They contribute via PR. Their data stays theirs.
-- **Eventually (v1.0.x+)**: commercial-ready foundation. SaaS-mode or self-hosted-pro options. Stripe layer wires in via existing HMAC-signed billing schema.
+**Quality bar**: **Best-of-the-best, no compromises, no shortcuts.** Same standard as Session 13's "production-grade" framing. Open source with no payment (owner decision 2026-09-26, ADR-0025) does NOT mean lower quality, looser tests, or less rigor.
+**Distribution model** (drives every design decision; owner decision 2026-09-26, `stratum/docs/decisions/0025-open-source-local-first-no-payment.md`):
+- **Open source, no payment.** MIT-licensed. Nobody pays the project. A user who chooses a paid third-party service (an LLM provider, TypeSafe's Jev) pays that provider directly with their own key.
+- **Local-first, no deployment.** The goal (the v1.0.0 ship gate) is that a user points their AI agent at this repository, and the agent configures DevOPs and Stratum on the user's own machine (macOS, Linux or WSL2); this is not yet verified. The project runs no hosted service. The conversation history stays on the user's machine.
+- **Self-hosted teams.** A team can run Stratum's team mode (organizations, API keys, usage estimates) on its own machines. Contributions come via PR.
 
-The owner approved a public repo on 2026-09-23. Every line of code, every test,
-every signed skill, every threat model entry is built as if a paying customer
-will run it; credentials and client data remain outside the public repository.
+The owner approved a public repo on 2026-09-23 and open source with no payment
+on 2026-09-26. Every line of code, every test, every signed skill, every threat
+model entry is built as if a stranger will install it and rely on it;
+credentials and client data remain outside the public repository.
 
 ---
 
@@ -30,28 +31,30 @@ Reversed in this draft:
 
 What stays cut: nothing of substance. Just the commercial-transaction layer of Phase 6 (the schema stays).
 
+**2026-09-26 recalibration (owner decision, ADR-0025).** The project is open source with no payment and no deployment. Two entries above no longer hold. Phase 4 (ZK-Context + AWS Nitro TEE) is dropped: it protected context on a server the project would host, and there is no such server. Phase 6 billing is removed rather than deferred: v0.9 becomes payment removal plus self-hosted team features (`specs/ops/payment-removal.md`). The rest of this record stands.
+
 ---
 
 ## 1. Purpose
 
-Build a verification-first agent operating system (DevOPs) paired with a token-aware memory + observability proxy (Stratum) that, together, make daily Claude Code use disciplined, cheap, persistent across sessions, and cryptographically auditable. The result is a tool I use every day; that my friends install and use; that becomes a defensible commercial product once feature-complete and battle-tested.
+Build a verification-first agent operating system (DevOPs) paired with a token-aware memory + observability proxy (Stratum) that, together, make daily Claude Code use disciplined, cheap, persistent across sessions, and cryptographically auditable. The result is a tool I use every day, that anyone can install on their own machine by pointing their AI agent at this repository, and that stays open source with no payment. DevOPs's graph-engineering pipeline is meant to work as a full-lifecycle agile team that adapts to any software-engineering task, security included, and picks open-source or commercial tools per task.
 
 Two pieces, one product:
 1. **DevOPs** — Claude Code plugin providing constitution, hooks, skills, subagents, claim-validator (the anti-hallucination floor), and lifecycle/mode scaffolding.
-2. **Stratum** — local middleware proxy that intercepts every LLM call to count tokens, redact PII, prune context, persist structured facts, audit those facts against Git history, and (eventually) optionally encrypt context end-to-end into a TEE.
+2. **Stratum** — local middleware proxy that intercepts every LLM call to count tokens, redact PII, prune context, persist structured facts, and audit those facts against Git history. The full history stays on the user's machine; Jev, an optional third-party judge, may be used over it where a measurement shows it saves tokens or reduces drift (plan.md §4).
 
 ---
 
 ## 2. End-state vision (v1.0.x — the goalpost)
 
-A user (me, then a friend, then a paying customer) experiences this:
+A user (me, then anyone who clones the repository) experiences this:
 
-1. **Install in <5 minutes.** `gh repo clone MILTONADINA/DevOPs && cd DevOPs && npm run setup`. Setup script: installs the Claude Code plugin, brings up Supabase local, configures the Stratum proxy on `localhost:4080`, writes the env-var stub.
+1. **Install in <5 minutes.** The user points their AI agent at this repository, and the agent runs `gh repo clone MILTONADINA/DevOPs && cd DevOPs && npm run setup`. Setup script: installs the Claude Code plugin, brings up Supabase local, configures the Stratum proxy on `localhost:4080`, writes the env-var stub.
 2. **One env var to activate.** `export ANTHROPIC_BASE_URL=http://localhost:4080`. Now every Claude Code call flows through Stratum.
-3. **Visible savings.** Dashboard at `http://localhost:4080/dashboard` shows real-time: tokens consumed, tokens pruned, $ saved, top waste patterns, fact-extraction count, top facts surfaced this session.
+3. **Visible savings.** Dashboard at `http://localhost:4080/dashboard` shows real-time: tokens consumed, tokens pruned, $ saved (an estimate, for information), top waste patterns, fact-extraction count, top facts surfaced this session.
 4. **Persistent memory.** Open a Claude Code session in a project I worked on last week. The session-start hook queries Stratum's Tier-2 facts (functions changed, decisions made, policies set) and injects relevant ones into context. No re-explaining "we use vitest, not jest." Cross-project semantic recall uses Supabase pgvector under ADR-0013.
 5. **Auditable.** Every fact in memory has a `commit_hash` and `confidence_score`. The audit engine cross-checks facts against current Git state; CONFLICTs surface in the dashboard with a developer alert. Llama spot-checks 10% of extractions; Opus escalation triggers below 0.85 confidence.
-6. **Optionally private.** With `ZK_ENABLED=true`, context is AES-256-GCM encrypted client-side with a session-key derived via HKDF from a master key I control. Decryption happens only inside an AWS Nitro Enclave with attested PCR values. Cloudflare logs, Supabase rows, and OTel spans never contain plaintext context.
+6. **Private by locality.** Stratum runs on the user's machine and keeps history in a local database. Context leaves the machine only for the LLM provider the user configured, or for an optional third-party service the user enabled. (The earlier ZK-Context + AWS Nitro Enclave design was dropped on 2026-09-26, ADR-0025.)
 7. **Disciplined agent.** The DevOPs Claude Code plugin: writes EARS specs before non-trivial code; runs proof scripts for every claim; surfaces AP-5 anti-patterns honestly; respects the constitution; runs hooks deterministically.
 8. **Distributable.** Plugin is published as `.claude-plugin/plugin.json`. Releases are signed with cosign + Sigstore. Skills carry `.sig` + `.bundle` files. Git tags are GPG-signed. CHANGELOG follows Keep-a-Changelog. SemVer is enforced.
 
@@ -77,25 +80,24 @@ That is the goalpost. Nothing below it is acceptable.
 | Stratum Phase 1 — Measurement Proxy | Phase 1 | Visible value; cost transparency |
 | Stratum Phase 2 — KadaneDial Pruner | Phase 2 + `stratum/docs/ALGORITHM.md` | Cost optimization; the big-win |
 | Stratum Phase 3 — Three-Tier Memory (Hot/Warm/Cold) | Phase 3 + `stratum/docs/MEMORY_ARCHITECTURE.md` | Cross-session + cross-project persistence; defining feature |
-| Stratum Phase 4 — ZK-Context + AWS Nitro TEE | Phase 4 + `stratum/docs/SECURITY.md` | Trust story for sensitive code |
 | Stratum Phase 5 — Git-Attestation Audit Engine | Phase 5 + `stratum/docs/AUDIT_ENGINE.md` | Fact coherence check; required for memory to be trustworthy |
-| Phase 6 — Billing schema (HMAC-signed `billing_records`, append-only Postgres trigger, GDPR erasure endpoint) | Phase 6 partial | Forward-compat schema for v1.0.x+ commercial; ships in v0.9.x |
+| v0.9 — Payment removal + self-hosted team features (unsigned usage ledger, organizations and API keys, usage estimates, session erasure) | `specs/ops/payment-removal.md` + plan.md §8 | Replaces the Phase 6 billing schema (ADR-0025); ships in v0.9.x |
 
-### Deferred to v1.0.x+ (commercial-ready milestone; foundation in place by v0.9.x)
+### In v1.0.0 (the open-source local-first release)
 
-- **Stripe integration** for token-arbitrage billing
-- **Invoice generation** + CFO dashboard
-- **Per-org pricing tiers** (Starter / Growth / Enterprise)
-- **Multi-tenant authentication + RBAC** (org/developer/api_key tables already in Stratum schema; auth flow + middleware ships in v1.0.x)
-- **Public marketing/landing surfaces**
+- **Agent-driven local install** on clean macOS, Linux and WSL2 machines
 
-These are deferred because there's no customer yet — not because they're low quality. They ship as a coordinated commercial launch in v1.0.x with the same rigor as everything below them.
+RBAC for self-hosted teams is a later, optional item, not part of v1.0.0 (owner decision 2026-09-26). The org/developer/api_key tables and hash-only API-key auth already exist.
+
+The Stripe integration, invoice generation, CFO dashboard, per-org pricing tiers and public marketing surfaces that were listed here are dropped (ADR-0025, owner decision 2026-09-26).
 
 ### Out of scope permanently (or until evidence demands otherwise)
 
 - Multi-LLM-provider abstraction (OpenAI, Gemini, etc.). Claude Code is the only target; SDK is Anthropic-specific. Adding others is a separate product.
 - Mobile clients
-- Hosted SaaS deployment for non-customers (free tier). Self-host only.
+- Any hosted service or deployment run by the project. Self-host only (ADR-0025).
+- Payment of any kind to the project: fees, invoices, pricing tiers (ADR-0025).
+- ZK-Context + AWS Nitro TEE (Phase 4), dropped 2026-09-26 (ADR-0025).
 
 ---
 
@@ -109,12 +111,12 @@ These are deferred because there's no customer yet — not because they're low q
                               │ HTTP / SSE
                               ▼
 ┌────────────────────────────────────────────────────────────────────┐
-│  STRATUM PROXY (Fastify, localhost:4080 or Cloudflare Worker)      │
+│  STRATUM PROXY (Fastify, localhost:4080 on the user's machine)     │
 │                                                                    │
 │  ┌──────────────┐  ┌──────────────┐  ┌────────────┐  ┌──────────┐ │
-│  │ Phase 0:     │  │ Phase 1:     │  │ Phase 2:   │  │ Phase 4: │ │
+│  │ Phase 0:     │  │ Phase 1:     │  │ Phase 2:   │  │ Phase 4  │ │
 │  │ capture      │→ │ count + waste│→ │ KadaneDial │→ │ TEE-gate │ │
-│  │ session.ts   │  │ detect       │  │ prune      │  │ encrypt  │ │
+│  │ session.ts   │  │ detect       │  │ prune      │  │ DROPPED  │ │
 │  └──────────────┘  └──────────────┘  └────────────┘  └──────────┘ │
 │         ↓                ↓                  ↓               ↓     │
 │         PII redaction (always; non-optional)                       │
@@ -122,7 +124,7 @@ These are deferred because there's no customer yet — not because they're low q
 │                       FORWARD to api.anthropic.com                 │
 │                              ↑                                     │
 │  ┌──────────────────────────────────────────────────────────────┐ │
-│  │ Phase 6 schema: HMAC-signed billing_records (append-only)    │ │
+│  │ Usage ledger: token counts per request (no fee, unsigned)    │ │
 │  └──────────────────────────────────────────────────────────────┘ │
 └─────────┬─────────────────────────────┬────────────────────────────┘
           │ writes                       │ writes
@@ -148,10 +150,10 @@ These are deferred because there's no customer yet — not because they're low q
                                             │   - audit_conflicts alert
                                             ▼
 ┌────────────────────────────────────────────────────────────────────┐
-│  AWS Nitro Enclave (Phase 4 — optional, ZK_ENABLED=true)          │
-│  - AES-256-GCM context decryption inside enclave only             │
-│  - PCR-attestation verification before any decrypt operation       │
-│  - HKDF session-key derivation from operator master key            │
+│  AWS Nitro Enclave (Phase 4) — DROPPED 2026-09-26 (ADR-0025)      │
+│  - no hosted server exists for an enclave to protect              │
+│  - context stays on the user's machine                             │
+│  - the offline crypto primitive (ADR-0022) stays as code           │
 └────────────────────────────────────────────────────────────────────┘
                                             ↑
                                             │ session-start hook
@@ -168,7 +170,7 @@ These are deferred because there's no customer yet — not because they're low q
 └────────────────────────────────────────────────────────────────────┘
 ```
 
-Two surfaces (Stratum proxy + DevOPs plugin) connected via the `session-start` hook reading from Stratum's Tier-2 facts table. The proxy stays on `localhost` for personal/friend installs; deployable to Cloudflare Workers for hosted SaaS in v1.0.x+.
+Two surfaces (Stratum proxy + DevOPs plugin) connected via the `session-start` hook reading from Stratum's Tier-2 facts table. The proxy stays on `localhost` on the user's machine; there is no hosted deployment (ADR-0025).
 
 ---
 
@@ -181,16 +183,16 @@ Best-of-best at every milestone. Ship each version as a real release: signed git
 | **v0.2.0** | Foundation + Stratum subtree integration | Already shipped (sealed `aca4982`) | — | Sealed |
 | **v0.3.x** | Phase 0 complete + Phase 1 measurement | Phase 0 corpus (5+ sessions, taxonomy, paper notes); Q4 base-URL wiring; P0-F PII redaction wiring; **Phase 1 full**: Fastify proxy, dashboard, Supabase wiring, exact token counting, waste-detection heuristics, full vitest coverage, integration tests against fixtures, signed release | ~90h | Friend can clone, `npm run setup`, point Claude Code at proxy, see dashboard with real numbers; coverage ≥85%/80%/90%/85% |
 | **v0.4.x** | Phase 2 KadaneDial Pruner | ONNX bi-encoder; KadaneDial algorithm; eval harness (Tier A/B/C); pruner wired into proxy; dashboard shows pruned/saved metrics | ~120h | Eval suite passes: Faithfulness >0.90, Answer Relevancy >0.88 on Tier A; ZERO regressions on Tier C golden queries; 1 week real-use confirms no quality degradation |
-| **v0.5.x** | Phase 3 Three-Tier Memory | Tier 1 rolling window; Tier 2 Supabase typed facts + extractor; Tier 3 Supabase pgvector + graph (ADR-0013); scheduled Tier 2 → Tier 3 promotion; DevOPs session-start hook integration; all five fact-type Zod schemas | Re-estimate open work | Fact survives 50-turn gap; Tier 2 query <50ms p95; Supabase graph/vector release latency target to be set and measured for the chosen deployment; Zod validation gates all writes; session-start retrieval works |
+| **v0.5.x** | Phase 3 Three-Tier Memory | Tier 1 rolling window; Tier 2 Supabase typed facts + extractor; Tier 3 Supabase pgvector + graph (ADR-0013); scheduled Tier 2 → Tier 3 promotion; DevOPs session-start hook integration; all five fact-type Zod schemas | Re-estimate open work | Fact survives 50-turn gap; Tier 2 query <50ms p95; Supabase graph/vector release latency target to be set and measured on the user's machine (ADR-0025); Zod validation gates all writes; session-start retrieval works |
 | **v0.6.x** | Phase 5 Git-Attestation Audit | Git indexer (`<5s` for last 100 commits); attestation checker; Llama spot-check (10%); Opus escalation (`<0.85` confidence); `audit_conflicts` table + dashboard alerts; cost monitor (Opus audit costs `<2%` of usage) | ~60h | Inject contradicting fact → CONFLICT detected within 5s; correct fact → CONFIRMED; Opus escalation rate <1% across 1000-fact test |
-| **v0.7.x** | Phase 4 ZK-Context + AWS Nitro TEE | Client-side AES-256-GCM + HKDF; Nitro Enclave deployment; PCR attestation; `zk_enabled` per-org toggle; TEE Gateway in proxy; raw plaintext audit (grep Cloudflare logs → zero results); attestation rejection test | ~80h | Modified-PCR enclave rejected; latency impact <15ms; raw context appears nowhere in any log/table; independent security reviewer signoff on `SECURITY.md` |
-| **v0.8.x** | Polish + operator-readiness | Onboarding flow (`npm run setup` end-to-end in <5 min); operator dashboards (Grafana / Langfuse); error tracking (Sentry); runbooks (incident response, backup/restore); migration scripts (versioned + reversible); performance benchmarks (p99 latency tracked); telemetry policy + opt-out; License + CONTRIBUTING polish; full ADR set | ~50h | Cold-clone-to-running in <5 min on a fresh laptop; backups + restore tested |
-| **v0.9.x** | Phase 6 billing **schema** (no Stripe yet) | HMAC-signed `billing_records` writes; append-only Postgres trigger (UPDATE/DELETE rejected); BillingRecord type + recorder; GDPR erasure endpoint (anonymize while keeping financial record); CFO dashboard skeleton (no real billing data yet) | ~30h | Cannot modify a billing record (Postgres trigger test); GDPR erasure runs <30s on 1-year history; schema ready for Stripe wiring |
-| **v1.0.0** | Commercial-ready foundation | Stripe integration; invoice generation; per-org pricing tiers; multi-tenant auth + RBAC middleware; public CHANGELOG; release notes; landing surfaces optional | ~40h | First real invoice sent + paid by a design partner; CFO dashboard shows revenue |
+| **v0.7.x** | Phase 4 ZK-Context + AWS Nitro TEE — **DROPPED** (owner decision 2026-09-26, ADR-0025) | None; the project hosts no server for an enclave to protect | — | None |
+| **v0.8.x** | Polish + operator-readiness | Onboarding flow (`npm run setup` end-to-end in <5 min); operator dashboards (Grafana / Langfuse); error tracking (Sentry); runbooks (incident response, backup/restore); migration scripts (versioned + reversible); performance benchmarks (p99 latency tracked); telemetry policy + opt-out; License + CONTRIBUTING polish; full ADR set; Claude Code Security release-gate scan (moved from v0.7.x) | ~50h + ~4h | Cold-clone-to-running in <5 min on a fresh laptop; backups + restore tested |
+| **v0.9.x** | Payment removal + self-hosted team features | Remove the payment layer (Stripe, invoices, fee, CFO page, signed ledger) in graph cycles C1–C4; unsigned usage ledger; organizations and API keys on a local install; token and USD usage estimates as information; session erasure without a financial ledger | not estimated | `specs/ops/payment-removal.md` met; team mode works on a local install; session erasure runs <30s on 1-year history |
+| **v1.0.0** | Open-source local-first release | Agent-driven local install on macOS, Linux and WSL2; public CHANGELOG; release notes (RBAC is a later, optional item, not in v1.0.0) | not estimated | A user's AI agent, pointed at this repository, produces a working local setup on clean macOS, Linux and WSL2; real-use criterion (proposed, owner to confirm) |
 
-**Total remaining envelope to v1.0.0**: ~570h.
+**Total remaining envelope to v1.0.0**: withdrawn (2026-09-26). v0.5.x and v0.6.x were never recalculated, v0.7.x is dropped, and v0.9.x and v1.0.0 were redefined without estimates, so the earlier ~570h figure and its 14-18 month projection no longer apply.
 
-That's roughly 14-18 months of part-time evenings/weekends. Ship every version. Don't accumulate half-done work across versions — that's how masterpieces become tech-debt graveyards.
+Ship every version. Don't accumulate half-done work across versions — that's how masterpieces become tech-debt graveyards.
 
 ---
 
@@ -222,11 +224,10 @@ These are not negotiable for any version. Every PR is gated.
 - OWASP ASI 2026 threat model entries for every area (templates exist; populate as features ship).
 - Secret-scanning (gitleaks) in pre-commit + CI.
 - AES-256-GCM + HKDF for any encryption at rest where applicable (Phase 4).
-- AWS Nitro PCR attestation verified BEFORE any decryption (Phase 4).
-- No plaintext context outside TEE boundary once Phase 4 ships.
+- Context stays on the user's machine except what goes to the LLM provider the user configured or to an optional third-party service the user enabled (ADR-0025).
 - Threat model lint runs on every PR touching `governance/` or `skills/universal/security/`.
 - **Claude Code Security Review integration** (Anthropic first-party): `anthropics/claude-code-security-review` GitHub Action wired on every PR to `main` from v0.3.x forward. Posts inline comments for SQL injection, XSS, auth flaws, insecure data handling, and dependency vulnerabilities. Composes with our existing security stack (does not replace it).
-- **Claude Code Security (reasoning-based, Feb 2026)** wired in v0.7.x+ for release-gate scans. Reads code the way a human security researcher would — traces data flow, catches complex vulnerabilities pattern-matchers miss. Particularly valuable around the Phase 4 TEE boundary + Phase 3 fact-extraction paths.
+- **Claude Code Security (reasoning-based, Feb 2026)** wired in v0.8.x+ for release-gate scans. Reads code the way a human security researcher would — traces data flow, catches complex vulnerabilities pattern-matchers miss. Particularly valuable around the Phase 3 fact-extraction paths.
 - **Code-review skill integration**: Anthropic's built-in `/code-review` command is part of the PR review flow. Our existing `slash-commands/universal/verify-claims.md` + `slash-commands/universal/security-scan.md` complement it (claim re-runs verify behavior; code-review catches diff bugs).
 
 ### Observability
@@ -235,7 +236,7 @@ These are not negotiable for any version. Every PR is gated.
 - PII redactor wraps every OTel exporter (already exists in `observability/pii-redaction.ts`).
 - Grafana / Langfuse dashboards in v0.8.x.
 - Sentry for error tracking in v0.8.x.
-- Cost monitor: Opus audit costs <2% of revenue (Phase 5 acceptance criterion).
+- Cost monitor: Opus audit costs <2% of usage (Phase 5 acceptance criterion, plan.md §5b; there is no revenue). What that 2% is measured against is still an open decision.
 
 ### Documentation
 
@@ -277,14 +278,14 @@ These are not negotiable for any version. Every PR is gated.
 | What's the highest-risk path? | **Phase 2 KadaneDial Pruner.** Eval thresholds (Faithfulness >0.90, Answer Relevancy >0.88) are unforgiving. If pruning degrades AI quality, the whole pruner has to be tuned or abandoned. **Mitigation**: Phase 2 ships behind a feature flag (`prune_enabled: false` by default); 1 week of design-partner-shadow-mode (compute prune decision but don't apply) before flipping on. |
 | What's the most underestimated cost? | **Documentation + onboarding for friends.** "Setup in <5 min" requires hours of polish. v0.8.x exists specifically to address this. Don't skimp. |
 | What's the biggest risk to "best of the best"? | **Half-built features across versions.** Stratum has 7 phases; if I jump from Phase 1 to Phase 4 mid-build, I'll have neither done well. **Discipline**: every version 100% done (acceptance criteria met, coverage held, eval passing, threat model entry written, ADR captured) before the next version starts. |
-| What's the riskiest direction-change still possible? | **Phase 4 TEE complexity.** AWS Nitro Enclave + PCR attestation is genuinely hard. If it slips, ZK-Context becomes a roadmap risk. **Mitigation**: build Phase 4 LAST (v0.7.x) so the rest of the system is mature; have a fallback "encryption-at-rest only, no TEE" mode that ships if TEE proves unworkable. |
+| What's the riskiest direction-change still possible? | **Phase 4 TEE complexity** was the answer until 2026-09-26, when the owner dropped Phase 4 (ADR-0025): with no hosted server, there is nothing for an enclave to protect. |
 | Phase 2 (pruner) vs Phase 3 (memory) — which first? | **Phase 2 first** (per original Stratum spec order). Reason: pruner produces cleaner sessions → cleaner fact extraction → higher-quality Phase 3 memory. Reversed order leaves Phase 3 extracting facts from noisy data. Also: cost is a higher-urgency pain point than productivity. |
 | Phase 5 (audit) vs Phase 4 (TEE) — which first? | **Phase 5 first** (v0.6.x before v0.7.x). Reason: audit engine is required before facts can be trusted; once facts are trustworthy, adding TEE makes sensitive-context use safe. TEE before audit = encrypted lies. |
 | Do I need to support non-Anthropic LLMs? | **No.** Out of scope permanently. Claude Code is the only target; adding OpenAI/Gemini is a separate product. |
 | What happens if Anthropic changes its API? | The proxy is at the SDK boundary. SDK version pinning + integration tests against canned fixtures + a thin abstraction layer (already in `stratum/src/lib/anthropic.ts` stub) hedge this. |
 | What's the killer "wow" feature that gets friends excited? | **Phase 3 cross-session memory.** "Stratum knows what we decided last week" beats "Stratum saved you $5 today" emotionally. But Phase 2 ships first per the spec-author's wisdom (clean data → clean facts). |
 | What about the Anthropic SDK version pin `^0.39.0`? | **Verify and bump.** Current SDK has had major changes since 0.39. Add to v0.3.x checklist: confirm capture-session.ts works against latest SDK; bump pin; tests against new fixtures. |
-| Should there be a public marketing page? | **No, until v1.0.x.** Private repo + friends-distribution doesn't need marketing. Build the product; the product is the marketing. |
+| Should there be a public marketing page? | **No.** The project does not deploy (ADR-0025), so there is no hosted page. Build the product; the product is the marketing. |
 | What about local LLM rotation (Codex / Ollama)? | **Out of scope.** `skills/universal/process/multi-tool-failover/SKILL.md` covers agent-orchestration failover, not LLM-provider failover. Defer indefinitely; not part of the masterpiece. |
 | What about the streaming-response support (P0-B)? | **Build it in v0.3.x as part of Phase 1.** Claude Code uses streaming in many flows. Treat it as Phase 1 work, not Phase 0 work (the prior re-scope was correct on this). |
 
@@ -331,9 +332,9 @@ Identified during the deep dive; flagged for action in plan.md.
 
 ## 9. Definition of "v1.0.0 shipped"
 
-When I can answer YES to all of these, v1.0.0 ships and the repo can go public if I choose:
+When I can answer YES to all of these, v1.0.0 ships (the repository is already public and MIT-licensed):
 
-- [ ] A friend can `gh repo clone` and have a working Stratum + DevOPs setup in <5 minutes on a clean laptop.
+- [ ] A user can point their AI agent at this repository and have a working Stratum + DevOPs setup in <5 minutes on a clean macOS, Linux or WSL2 machine.
 - [ ] The dashboard at `localhost:4080/dashboard` shows live token usage, prune savings, fact-extraction count, top facts surfaced, audit-conflict alerts.
 - [ ] When I open Claude Code in a project I worked on last week, prior decisions surface automatically. No re-explaining.
 - [ ] PII never appears in any capture artifact, Supabase row, OTel span, or log.
@@ -344,7 +345,7 @@ When I can answer YES to all of these, v1.0.0 ships and the repo can go public i
 - [ ] Threat model entries (STRIDE + OWASP ASI 2026) exist for every Phase + every Area.
 - [ ] ADRs exist for every load-bearing decision.
 - [ ] An independent security reviewer has signed off on SECURITY.md.
-- [ ] One real invoice has been sent and paid by a design partner (Phase 6 working).
+- [ ] The payment layer is removed per `specs/ops/payment-removal.md`, and a self-hosted team can use organizations and API keys on a local install.
 - [ ] Backup + restore have been tested at least once on real data.
 - [ ] If I were hit by a bus tomorrow, a competent dev could read README + blueprint.md + plan.md + ARCHITECTURE.md + PERSONAL_USE.md and resume meaningful work within 1 day.
 
@@ -360,7 +361,7 @@ We integrate with first-party tools rather than re-implementing them. We borrow 
 |---|---|---|---|
 | `anthropics/claude-code-security-review` GitHub Action | **v0.3.x** | PR-gated pattern-based security scan (SQL injection, XSS, auth flaws, dep vulns). Inline comments. | New workflow `.github/workflows/claude-security-review.yml`. SHA-pinned per AST08. Runs on every PR to main. Composes with our gitleaks + semgrep + threat-model-lint. |
 | Claude Code `/code-review` slash command | **v0.3.x onward** | Diff-correctness review per PR | Part of the PR-review flow. Complements our claim-validator re-runs (which prove behavior) — code-review catches diff bugs the validator can't see. |
-| Claude Code Security (reasoning-based, Feb 2026 GA) | **v0.7.x** | Data-flow tracing security analysis — reads code "the way a human security researcher would." Catches complex vulns rule-based scanners miss. | Release-gate scan before any v0.x → v0.(x+1) tag. Especially load-bearing around the Phase 4 TEE boundary + Phase 3 fact-extraction paths where data flow is the threat. |
+| Claude Code Security (reasoning-based, Feb 2026 GA) | **v0.8.x** (moved from v0.7.x on 2026-09-26) | Data-flow tracing security analysis — reads code "the way a human security researcher would." Catches complex vulns rule-based scanners miss. | Release-gate scan before any v0.x → v0.(x+1) tag. Especially load-bearing around the Phase 3 fact-extraction paths where data flow is the threat. |
 | Claude Code Plugin Marketplace (`/plugin install`) | **v0.8.x → v1.0.x** | Distribution channel | Publish DevOPs via `.claude-plugin/plugin.json` (already exists) once docs + onboarding are polished in v0.8.x. |
 
 ### Borrowed patterns (idea-level, not copy-paste; we keep our own implementations)
@@ -463,4 +464,4 @@ The launch-readiness output is ALWAYS derived from markdown source-of-truth. Nev
 
 ## 13. The standing rule
 
-> Best-of-the-best at every layer, every version, every PR. No exceptions for "it's just personal." It's personal NOW because the market timing is private. It will not be personal forever. Every decision is made as if a paying customer will run it tomorrow.
+> Best-of-the-best at every layer, every version, every PR. No exceptions for "it's just personal" or "it's free." Every decision is made as if a stranger will install it on their own machine tomorrow and rely on it.

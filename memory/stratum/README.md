@@ -61,9 +61,9 @@ and Session-7.5 application
   - DevOPs ↔ Stratum integration wiring + operational deployment
 - **Deferred to post-v0.3.0** (re-scope hook when Phase 0+1+3 production telemetry surfaces):
   - Stratum **Phase 2** — CQ-Extended KadaneDial Pruner
-  - Stratum **Phase 4** — ZK-Context + AWS Nitro TEE
+  - Stratum **Phase 4** — ZK-Context + AWS Nitro TEE (dropped 2026-09-26, ADR-0025)
   - Stratum **Phase 5** — Git-Attestation Audit Engine
-  - Stratum **Phase 6** — Token Arbitrage Billing
+  - Stratum **Phase 6** — Token Arbitrage Billing (replaced 2026-09-26 by payment removal plus self-hosted team features, ADR-0025)
 
 Decision rationale (per user, 2026-05-24): Option B preserves the trajectory
 toward Option C without committing ~1,179h upfront. Option A
@@ -100,13 +100,14 @@ markers reflect Option B (locked 2026-05-24).
 | 1 | **Measurement Proxy** | Cloudflare Worker / Fastify + exact token counting + Supabase persistence + dashboard | ⬜ scaffold (`stratum/src/proxy/worker.ts` returns `"not yet implemented"`) |
 | 2 | **CQ-Extended KadaneDial Pruner** | ONNX bi-encoder + algorithm + eval suite | ⏸ **deferred post-v0.3.0** |
 | 3 | **Three-Tier Memory Schemas** | Tier 1 (hot/Durable Objects) + Tier 2 (warm/Postgres + Llama extractor) + Tier 3 (cold/Pinecone + Neo4j) | ⬜ scaffold (`stratum/src/memory/warm/tier2.ts` is 10 LOC; no Tier 1/3 implementations) |
-| 4 | **ZK-Context + TEE** | AES-256-GCM client-side encryption + AWS Nitro Enclave + attestation | ⏸ **deferred post-v0.3.0** |
+| 4 | **ZK-Context + TEE** | AES-256-GCM client-side encryption + AWS Nitro Enclave + attestation | ✖ **dropped** 2026-09-26 (ADR-0025: no hosted server to protect) |
 | 5 | **Git-Attestation Audit Engine** | Git indexer + Llama spot-check + Opus escalation + `audit_conflicts` table | ⏸ **deferred post-v0.3.0** |
-| 6 | **Token Arbitrage Billing** | HMAC-signed records + monthly invoice + Stripe integration + CFO dashboard | ⏸ **deferred post-v0.3.0** |
+| 6 | **Token Arbitrage Billing** | HMAC-signed records + monthly invoice + Stripe integration + CFO dashboard | ✖ **removed from the roadmap** 2026-09-26 (ADR-0025: open source, no payment); replaced by payment removal plus self-hosted team features (`plan.md` §8) |
 
 Legend:
 - ⬜ — scaffold present, Option-B-targeted, not started
 - ⏸ — deferred to post-v0.3.0, re-scope candidate
+- ✖ — dropped from the roadmap by owner decision (2026-09-26, `stratum/docs/decisions/0025-open-source-local-first-no-payment.md`)
 
 ---
 
@@ -136,7 +137,7 @@ Supabase project:
 
 - `organizations` / `developers` / `org_config` — tenancy + per-org tunables
 - `sessions` — per-session metadata (session_id, tenant_id, started_at, ended_at, total_tokens, total_cost_usd)
-- `billing_records` — append-only ledger (HMAC signing is **Phase 6**, not Phase 1)
+- `billing_records` — per-request usage ledger (it was planned as the Phase 6 signed billing ledger; the payment removal in `specs/ops/payment-removal.md` makes it unsigned, with no fee)
 - `audit_conflicts` — git-attestation conflict log (Phase 5; not Phase 1)
 - `api_keys` — Stratum API key hash storage (Phase 1+)
 

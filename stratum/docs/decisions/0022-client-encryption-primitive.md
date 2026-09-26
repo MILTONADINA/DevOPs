@@ -1,6 +1,6 @@
 # ADR-0022: Versioned client encryption primitive before TEE integration
 
-Status: accepted for offline implementation; request-path activation is gated.
+Status: accepted for offline implementation; request-path activation is gated. Superseded in part by ADR-0025 (2026-09-26): the TEE integration this primitive was built for is dropped; this record still describes the offline code.
 
 The v0.7 client primitive derives a 256-bit session key with HKDF-SHA256 from a
 customer-held 256-bit master key. A fixed `cq-zk-context-hkdf-v1` salt separates

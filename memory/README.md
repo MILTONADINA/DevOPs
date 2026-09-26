@@ -34,7 +34,7 @@ Location: `memory/stratum/` (config only — real data in Stratum's Supabase)
 What it stores (via Stratum's schema):
 - `sessions` — every agent session captured
 - `pruning_logs` — what context was kept vs. dropped
-- `billing_records` — append-only HMAC-signed cost ledger
+- `billing_records` — per-request usage ledger (token counts, USD estimates). It is HMAC-signed and append-only today; the planned payment removal makes it an unsigned usage ledger with no fee (`specs/ops/payment-removal.md`)
 - Fact tables: `function_changes`, `tech_decisions`, `policy_updates`,
   `todos`, `variable_changes`, `operational_references` (registered in
   `FACT_TABLES`, `stratum/src/memory/warm/tier2.ts`)
@@ -47,7 +47,7 @@ proxy's environment (there the same variable names the proxy's upstream):
 export ANTHROPIC_BASE_URL=http://localhost:4080
 ```
 
-Pros: structured, queryable, cryptographically audited, per-tenant scoped.
+Pros: structured, queryable, attested against git history, per-tenant scoped.
 Cons: requires running the Stratum proxy.
 
 Status: `plan.md` §3 (pruning) and §4 (memory) track what runs.
@@ -58,7 +58,7 @@ Status: `plan.md` §3 (pruning) and §4 (memory) track what runs.
 |------|---------|
 | "What was the auth decision?" | file-based (decisions.md) |
 | "What did we change in auth.ts in this session?" | Stratum (function_changes) |
-| "Show me the audit trail for client X's spend" | Stratum (billing_records) |
+| "How many tokens did client X's sessions use?" | Stratum (billing_records usage rows) |
 | "What's the project glossary entry for 'session'?" | file-based (glossary.md) |
 | "Has anyone in any session ever discussed X?" / "what did the user say N weeks ago?" | **unsupported** — was Zep's job, removed; no current backend covers open-ended semantic-temporal recall |
 

@@ -570,19 +570,33 @@ after the owner retired the paid project; production latency and storage gates
 still need a deployed topology. See the updated v0.5 section of `plan.md` for
 itemized state.
 
+**Update 2026-09-26 — no deployment (ADR-0025,
+`stratum/docs/decisions/0025-open-source-local-first-no-payment.md`).** The
+owner decided that the project does not deploy: Stratum runs on the user's own
+machine. The latency and storage gates above no longer wait for a deployed
+topology; they are measured on the user's machine against the local stack.
+This changes where the gates are measured, not whether they have passed.
+
 ---
 
 ## 3. Unproven in the real world
 
-### 3.1 Stratum's commercial flow has never run end-to-end
+### 3.1 Stratum's team mode has never run end-to-end on a real install
 
-`docs/COMMERCIAL_ONBOARDING.md`'s full 6-step pilot flow (deploy → org/key
-provisioning → partner integrates → usage visible → invoice generated →
-payment collected) is fully built in code but has never been exercised with
-a real paying partner. Two literal blockers remain: a container-host account
-(step 1) and a live Stripe key (step 5). Zero real-world proof the billing
-math, invoice generation, and payment collection actually work together
-under real conditions.
+**Rewritten 2026-09-26 after the owner decision in ADR-0025** (open source,
+no payment, no deployment). This item used to track the six-step commercial
+pilot flow in `stratum/docs/COMMERCIAL_ONBOARDING.md` (deploy, org/key
+provisioning, partner integrates, usage visible, invoice generated, payment
+collected), blocked on a container-host account and a live Stripe key. Steps
+5 and 6 and the Stripe key are dropped with the payment layer
+(`specs/ops/payment-removal.md`), and "deploy" becomes a local install on the
+user's own machine.
+
+What remains unproven: team mode (`CQ_COMMERCIAL=true`) with organization
+and API-key provisioning, an agent routed through a key, and usage visible
+through the API has been exercised in tests and short local checks, but has
+never run end-to-end on a real install that a team used over time. This is
+the `plan.md` §8b item "Organizations and API keys on a local install".
 
 ### 3.2 No re-verification of the Phase 2 sealed security posture since the CI regression
 

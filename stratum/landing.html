@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Stratum — cut the context tax</title>
-<meta name="description" content="A drop-in, Anthropic-compatible LLM gateway across Anthropic, OpenAI, Gemini, OpenRouter and local models. It measures the redundant context you re-send every turn, prunes it, and bills you just 20% of what it saves." />
+<meta name="description" content="A drop-in, Anthropic-compatible LLM gateway across Anthropic, OpenAI, Gemini, OpenRouter and local models. It runs on your own machine, measures the redundant context you re-send every turn, and is free and open source (MIT)." />
 <meta name="color-scheme" content="light" />
 <style>
   /* ---- Roboto (embedded, Apache-2.0) — Material 3 type ---- */
@@ -164,33 +164,32 @@
   <a class="brand" href="/"><span class="logo">S</span><span class="nm">Stratum</span></a>
   <div class="nl">
     <a class="btn text hide" href="#how">Method</a>
-    <a class="btn text hide" href="#pricing">Pricing</a>
+    <a class="btn text hide" href="#open">Open source</a>
     <a class="btn text" href="/docs">Docs</a>
-    <a class="btn filled" href="/billing">Dashboard</a>
+    <a class="btn filled" href="/dashboard">Dashboard</a>
   </div>
 </div></nav>
 
 <div class="hero"><div class="wrap">
   <div>
-    <span class="chip live rev" style="animation-delay:.04s"><span class="d"></span> Gateway live · pruning in calibration</span>
-    <h1 class="display-l rev" style="animation-delay:.08s">Cut the context tax.<br><span class="accent">Keep 80%.</span></h1>
-    <p class="lede rev" style="animation-delay:.16s">Every API call re-sends the whole conversation — so you pay for tokens the model never needed. Stratum is a <b>drop-in, Anthropic-compatible gateway</b> that measures the waste, prunes it, and bills you <b>just 20% of what it saves</b>.</p>
+    <span class="chip live rev" style="animation-delay:.04s"><span class="d"></span> Runs locally · pruning off until its gate passes</span>
+    <h1 class="display-l rev" style="animation-delay:.08s">Cut the context tax.<br><span class="accent">On your own machine.</span></h1>
+    <p class="lede rev" style="animation-delay:.16s">Every API call re-sends the whole conversation — so you pay for tokens the model never needed. Stratum is a <b>drop-in, Anthropic-compatible gateway</b> that measures the waste and, once pruning passes its quality gate, cuts it. It runs on <b>your own machine</b> and is <b>free and open source (MIT)</b>.</p>
     <div class="cta rev" style="animation-delay:.24s">
-      <a class="btn filled lg" href="/billing">Open the dashboard</a>
+      <a class="btn filled lg" href="/dashboard">Open the dashboard</a>
       <a class="btn outlined lg" href="/docs">Read the API</a>
     </div>
   </div>
 
   <div class="card scard rev" style="animation-delay:.2s" aria-label="Illustrative savings">
     <div class="hd"><span class="title-m">Savings this month</span><span class="chip" style="height:26px;font-size:12px;padding:0 10px">illustrative</span></div>
-    <div class="big"><span class="amt">$<span id="count">362</span></span><span class="per">/ mo · you keep 80%</span></div>
+    <div class="big"><span class="amt">$<span id="count">453</span></span><span class="per">/ mo · estimated saving</span></div>
     <div class="keep body-m">36% of your context was redundant — pruned.</div>
     <div class="prog"><span class="bar"></span></div>
     <div class="rows">
       <div class="lrow"><span>Provider cost (before)</span><span class="v">$1,260.00</span></div>
-      <div class="lrow"><span>You saved</span><span class="v pos">$453.00</span></div>
-      <div class="lrow"><span>Stratum fee (20%)</span><span class="v">−$90.60</span></div>
-      <div class="lrow"><span>You keep</span><span class="v pos">$362.40</span></div>
+      <div class="lrow"><span>Provider cost (after)</span><span class="v">$807.00</span></div>
+      <div class="lrow"><span>You saved (estimate)</span><span class="v pos">$453.00</span></div>
     </div>
   </div>
 </div></div>
@@ -207,9 +206,9 @@
     <p>Stratum speaks the Anthropic API, so your tools and SDKs don't change — point them at it once.</p>
   </div>
   <div class="grid3">
-    <div class="fcard"><div class="num">1</div><h3>Redirect the base URL</h3><p>Set <code>ANTHROPIC_BASE_URL</code> to your Stratum endpoint and authenticate with your key. Every request now routes through the gateway — no code change.</p></div>
+    <div class="fcard"><div class="num">1</div><h3>Redirect the base URL</h3><p>Set <code>ANTHROPIC_BASE_URL</code> to your local Stratum at <code>http://localhost:4080</code>. Every request now routes through the gateway — no code change.</p></div>
     <div class="fcard"><div class="num">2</div><h3>Count, then cut</h3><p>Each turn is metered with the provider's exact usage; the re-sent, irrelevant context is identified and pruned behind a published &lt;5% quality gate.</p></div>
-    <div class="fcard"><div class="num">3</div><h3>Pay 20% of savings</h3><p>Your provider bill falls; Stratum invoices a fifth of the measured drop. No savings, no fee — every figure signed and reconcilable.</p></div>
+    <div class="fcard"><div class="num">3</div><h3>Keep it local</h3><p>Usage, memory and facts stay in a database on your machine. Token counts are exact; dollar figures are estimates for your information. Nothing is billed.</p></div>
   </div>
 </div></section>
 
@@ -222,32 +221,30 @@
   <div class="grid3">
     <div class="ocard"><div class="ic"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M11 21v-6H7l6-12v6h4z"/></svg></div><h3>Drop-in compatible</h3><p>Speaks the Anthropic Messages API. Claude Code, the SDKs, and any Anthropic-shaped client work unchanged — a new base URL is the whole integration.</p></div>
     <div class="ocard"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/></svg></div><h3>Run anywhere</h3><p>One endpoint routes by model id to Anthropic, OpenAI, Gemini, OpenRouter, or a local server — request, response, and streaming translated faithfully.</p></div>
-    <div class="ocard"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1" fill="currentColor"/></svg></div><h3>Exact token accounting</h3><p>Billing uses the upstream-confirmed input/output counts — never an estimate. Provable, HMAC-signed, dispute-proof.</p></div>
+    <div class="ocard"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1" fill="currentColor"/></svg></div><h3>Exact token accounting</h3><p>Usage records use the upstream-confirmed input/output counts — never an estimate. Dollar figures are labelled as estimates.</p></div>
     <div class="ocard"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8l6 6 4-4 8 8"/><path d="M21 18v-4h-4"/></svg></div><h3>Context pruning</h3><p>The KadaneDial engine ranks and removes the redundant re-sent context, gated behind a faithfulness eval so quality never silently degrades.</p></div>
-    <div class="ocard"><div class="ic"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l8 3v6c0 5-3.4 8.6-8 10-4.6-1.4-8-5-8-10V5z" opacity=".25"/><path d="M12 2l8 3v6c0 5-3.4 8.6-8 10-4.6-1.4-8-5-8-10V5z" fill="none" stroke="currentColor" stroke-width="1.6"/></svg></div><h3>Security-hardened</h3><p>Row-level security on every table, an append-only financial ledger, PII redaction, and multiple adversarial audits plus a full penetration test.</p></div>
-    <div class="ocard"><div class="ic"><svg viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="13" width="3.4" height="7" rx="1"/><rect x="10.3" y="9" width="3.4" height="11" rx="1"/><rect x="16.6" y="5" width="3.4" height="15" rx="1"/></svg></div><h3>Transparent settlement</h3><p>A CFO dashboard and signed audit trail show exactly what was saved and what was charged — auth, invoice, paid, reconciled, down to the session.</p></div>
+    <div class="ocard"><div class="ic"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l8 3v6c0 5-3.4 8.6-8 10-4.6-1.4-8-5-8-10V5z" opacity=".25"/><path d="M12 2l8 3v6c0 5-3.4 8.6-8 10-4.6-1.4-8-5-8-10V5z" fill="none" stroke="currentColor" stroke-width="1.6"/></svg></div><h3>Security-hardened</h3><p>Row-level security on every table, PII redaction, and multiple adversarial audits plus a full penetration test.</p></div>
+    <div class="ocard"><div class="ic"><svg viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="13" width="3.4" height="7" rx="1"/><rect x="10.3" y="9" width="3.4" height="11" rx="1"/><rect x="16.6" y="5" width="3.4" height="15" rx="1"/></svg></div><h3>Yours to run</h3><p>MIT-licensed and self-hosted. The goal is that you point your AI agent at the repository and it sets Stratum up on your machine, and that a team can run organizations and API keys on its own hardware. Neither is verified yet.</p></div>
   </div>
 
   <div class="codewrap rev">
     <div class="h">your environment · drop-in</div>
 <pre><span class="c"># point any Anthropic-compatible client at Stratum — nothing else changes</span>
-<span class="k">export</span> ANTHROPIC_BASE_URL=<span class="u">https://your-stratum.vercel.app</span>
-<span class="k">export</span> ANTHROPIC_API_KEY=<span class="s">cq_live_••••••••••••</span>
+<span class="k">export</span> ANTHROPIC_BASE_URL=<span class="u">http://localhost:4080</span>
 
 curl <span class="u">$ANTHROPIC_BASE_URL</span>/v1/messages \
-  -H <span class="s">"x-api-key: $ANTHROPIC_API_KEY"</span> \
   -d <span class="s">'{"model":"claude-opus-4-8","max_tokens":256,</span>
 <span class="s">      "messages":[{"role":"user","content":"hello"}]}'</span></pre>
   </div>
 </div></section>
 
-<section id="pricing" class="alt"><div class="wrap">
+<section id="open" class="alt"><div class="wrap">
   <div class="deal">
-    <div class="label-s" style="text-transform:uppercase;opacity:.7">The arrangement</div>
-    <h2 class="display-s">You keep 80%. We earn only when you save.</h2>
-    <p>No seat fees, no markup on tokens, no charge if there's nothing to cut. Stratum is paid a fifth of the savings it proves — and not a cent more.</p>
+    <div class="label-s" style="text-transform:uppercase;opacity:.7">Open source</div>
+    <h2 class="display-s">Free and open source. Nothing to pay us.</h2>
+    <p>MIT-licensed. No fee, no account, no hosted service: Stratum runs on your machine. If you use a paid LLM provider or an optional service such as Jev, you pay that provider directly.</p>
     <div class="cta">
-      <a class="btn filled lg" href="/billing">Open the dashboard</a>
+      <a class="btn filled lg" href="/dashboard">Open the dashboard</a>
       <a class="btn outlined lg" href="/docs" style="border-color:rgba(0,33,15,.3);color:var(--on-primary-container)">Read the API</a>
     </div>
   </div>
@@ -256,7 +253,7 @@ curl <span class="u">$ANTHROPIC_BASE_URL</span>/v1/messages \
 <footer><div class="wrap">
   <a class="brand" href="/"><span class="logo">S</span><span class="nm">Stratum</span></a>
   <div class="fl">
-    <a class="btn text" href="/billing">Dashboard</a>
+    <a class="btn text" href="/dashboard">Dashboard</a>
     <a class="btn text" href="/docs">Docs</a>
     <a class="btn text" href="/openapi.json">OpenAPI</a>
     <a class="btn text" href="/health">Status</a>
@@ -267,7 +264,7 @@ curl <span class="u">$ANTHROPIC_BASE_URL</span>/v1/messages \
   (function(){
     var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     var el = document.getElementById('count'); if(!el) return;
-    var target = 362; if(reduce){ el.textContent = target; return; }
+    var target = 453; if(reduce){ el.textContent = target; return; }
     var start=null, dur=1300;
     function step(t){ if(!start)start=t; var p=Math.min((t-start)/dur,1); var e=1-Math.pow(1-p,3);
       el.textContent = Math.round(e*target); if(p<1) requestAnimationFrame(step); }

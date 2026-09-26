@@ -11,11 +11,42 @@ Versions follow [Semantic Versioning](https://semver.org/).
 Phase 3 (Memory & observability — Stratum closeout, Option B: Stratum
 Phase 0 + 1 + 3 locked per session 7.5 audit) is underway on
 `main`. Stratum has grown from the Phase 0 capture-proxy
-scaffold described below into a live, deployed subsystem of this same
-project (Fastify proxy, multi-provider gateway, Supabase-backed 3-tier
-memory, CFO dashboard) — one project, not a separate product. See
-`docs/LAUNCH_READINESS.md` for current, frequently-updated status — this
-file intentionally does not duplicate that detail while the phase is open.
+scaffold described below into a subsystem of this same project (Fastify
+proxy, multi-provider gateway, 3-tier memory on the Supabase API, run
+against a local Supabase-compatible stack) — one project, not a separate
+product. See `docs/LAUNCH_READINESS.md` for current, frequently-updated
+status — this file intentionally does not duplicate that detail while the
+phase is open.
+
+### Changed — open source, no payment, local-first (owner decision 2026-09-26)
+
+Recorded in `stratum/docs/decisions/0025-open-source-local-first-no-payment.md`.
+
+- The roadmap no longer ends in a commercial product. `plan.md` §9 and
+  `blueprint.md` redefine v1.0 as: a user points their AI agent at this
+  repository and gets a working local setup on macOS, Linux and WSL2.
+  `plan.md` §8 redefines v0.9 as payment removal plus self-hosted team
+  features (organizations, API keys, usage estimates, session erasure).
+- v0.7 (ZK-Context + AWS Nitro TEE) is dropped: the project hosts no server
+  for an enclave to protect. Its Claude Code Security release-gate scan moves
+  to v0.8.
+- Release gates that waited for a deployment topology are measured on the
+  user's machine instead. No gate changed its pass/fail state.
+- The hour totals in `plan.md` §11, `blueprint.md` §5 and
+  `docs/LAUNCH_READINESS.md` are withdrawn rather than recomputed.
+- Token and USD figures stay, as information only. There is no fee and no
+  invoice.
+- New spec `specs/ops/payment-removal.md` holds the requirements for the
+  graph cycles that will remove the payment code. That code (Stripe,
+  invoices, the fee calculator, the signed ledger, the CFO page) is still in
+  the tree until those cycles land.
+- Positioning and pricing copy is rewritten in `README.md`,
+  `stratum/README.md`, `stratum/landing.html` and the Stratum business and
+  roadmap docs. The Stratum business documents are deleted:
+  `stratum/docs/BUSINESS_MODEL.md`,
+  `stratum/docs/INFRASTRUCTURE_AND_COST_PLAN.{md,html,pdf}`,
+  `stratum/docs/PITCH.md` and `stratum/docs/DESIGN_PARTNER.md`, plus three hosted-era QA screenshots
+  in `stratum/.workflow/` (including the CFO billing dashboard and the API docs page).
 
 ### Changed — open-source readiness, docs only (2026-09-26)
 

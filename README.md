@@ -16,6 +16,17 @@ It is built to deliver the full DevOps cycle — from a vague client brief throu
 spec, design, build, harden, launch, operate, evolve — autonomously where it can be
 verified, and with explicit human checkpoints where it cannot.
 
+DevOPs is open source (MIT) with no payment and no hosted service. The goal
+for v1.0 is that you point your AI agent at this repository and it configures
+DevOps on your own machine, including its local proxy and memory; that is not yet verified. Optional third-party services, such as an LLM provider or
+TypeSafe's Jev, are paid by you directly if you choose to use them
+(`stratum/docs/decisions/0025-open-source-local-first-no-payment.md`).
+
+DevOps is one platform. The workflow (constitution, hooks, skills, subagents
+and the graph pipeline) and the local runtime (the proxy, memory and pruner,
+whose code lives in `stratum/`) ship together from this repository
+(`stratum/docs/decisions/0026-one-platform-named-devops.md`).
+
 ---
 
 ## What's actually differentiated
@@ -29,16 +40,14 @@ tool:**
 - The claim/proof-of-work verification system (`verification/claim-validator.ts`)
   — reproducibility hashes, exit-code re-verification, refusal to accept
   self-reported "done."
-- Stratum's context-pruning eval gate (KadaneDial) — semantic-retrieval +
+- The pruner's eval gate (KadaneDial) — semantic-retrieval +
   LLM-judge + quality gate before a prune is trusted. Still shadow-mode,
   pending a live judged eval — the design addresses a genuinely unsolved
   problem (long-context hallucination/cost), it just isn't proven yet.
-- Stratum's multi-provider gateway — deliberately *not* built on LiteLLM;
-  needs exact per-provider token counts for billing accuracy that LiteLLM's
+- The DevOps proxy's multi-provider gateway — deliberately *not* built on LiteLLM;
+  needs exact per-provider token counts for usage measurement that LiteLLM's
   response normalization doesn't guarantee (see `stratum/docs/decisions/0019-multi-provider-gateway.md`).
-- Stratum's billing/invoice engine — a real Stripe revenue mechanism tied to
-  measured token savings, not a generic cost dashboard.
-- Stratum's typed Tier-2 memory (server-trusted FK injection, fail-closed
+- DevOps memory's typed Tier-2 facts (server-trusted FK injection, fail-closed
   validation) — architecturally different from generic memory products
   (mem0/Letta/Zep store blobs or embeddings, not typed multi-tenant facts).
 - The project analyzer's compliance/risk classification (PCI/GDPR/COPPA/HIPAA
@@ -55,7 +64,7 @@ something the platform can't do." Don't oversell this part.
 `CHANGELOG.md`): the Zep memory backend, three process skills that
 duplicated Claude Code's native behavior (`ask-dont-assume`,
 `karpathy-guidelines`, `surgical-edits`), the `researcher` subagent
-(duplicates the native Explore agent), and Stratum's vanilla cost dashboard
+(duplicates the native Explore agent), and the proxy's vanilla cost dashboard
 (duplicates Langfuse/Helicone).
 
 ---
@@ -102,7 +111,7 @@ DevOPs is layered. Each layer constrains the layer above it.
                 │  Budget brakes, loop detection       │
                 │  Pre/post-tool, session-start/end    │
                 ├──────────────────────────────────────┤
-                │  Memory: Stratum + file-based        │ ← Persistence
+                │  Memory: local DB + file-based       │ ← Persistence
                 │  Verification: claim-validator       │
                 │  Observability: Langfuse + OTel      │
                 └──────────────────────────────────────┘
@@ -170,10 +179,10 @@ isolation.
 
 ### Memory (two-tier, both wired)
 - **File-based** — `.workflow/memory/` git-committed durable facts (works today)
-- **Stratum** — your own context-pruning proxy with structured fact tables, audit_conflicts, billing_records (Phase 0+1 ready, advanced phases incoming)
+- **DevOps memory** — the local proxy's structured fact tables, audit_conflicts and per-request usage records, on your own machine (code in `stratum/`; Phase 0+1 ready, advanced phases incoming)
 
 (A third backend, Zep, was removed 2026-09-14 as redundant dead weight — zero
-call sites ever wired it in, and Stratum's own ADR-0004 argues its approach
+call sites ever wired it in, and the proxy's own ADR-0004 argues its approach
 is inferior to the structured facts above. Semantic-temporal recall across
 sessions is currently unsupported.)
 
@@ -209,7 +218,7 @@ its own skill bundle and acceptance gates.
 ### Security (OWASP ASI 2026 throughout)
 - Threat model template per project (STRIDE + OWASP ASI 2026)
 - Goal-hijacking defense (sanitization of all external content entering context)
-- Memory poisoning detection (git-attestation via Stratum)
+- Memory poisoning detection (git-attestation in DevOps memory)
 - Identity/privilege scoping per subagent
 - Skill signing + provenance (against AST10 supply-chain attacks)
 - Pentest stack: gitleaks, semgrep, Nuclei, ZAP, Playwright, pnpm-audit, jwt-cli + Shannon, PentAGI, pentest-ai integrations
@@ -231,7 +240,7 @@ AI coding agent and ask it to follow this section.
 - `git` and `bash`
 - Node.js 22.12 or later. The analyzer runs its TypeScript with `tsx` when it
   is on your PATH, and otherwise with Node's `--experimental-strip-types`.
-- Optional, only for the local Stratum database and proxy: Docker with
+- Optional, only for the local DevOps database and proxy: Docker with
   Compose, and a running Docker engine
 - Optional: `cosign`, to verify skill signatures during install. Without it,
   the installer falls back to the manifest's SHA-256 check.
@@ -272,7 +281,7 @@ top of this file about which adapters exist.
 
 See `docs/PLAYBOOK.md` for the full operational guide.
 
-For the optional local Stratum database and proxy smoke check, install Docker
+For the optional local DevOps database and proxy smoke check, install Docker
 Compose and run `npm run setup` from this repository root. See
 `stratum/README.md` for provider setup and proxy startup.
 
@@ -303,7 +312,7 @@ The `.sh` hooks require a POSIX shell (bash/zsh) and can be invoked with
 | `docs/LIFECYCLE.md` | State transitions and acceptance gates |
 | `docs/FAILOVER.md` | Multi-tool session handoff (Claude Code → Codex → local) |
 | `docs/VERIFICATION.md` | The proof-of-work protocol |
-| `docs/MEMORY.md` | Two-tier memory: Stratum + file-based |
+| `docs/MEMORY.md` | Two-tier memory: local database + file-based |
 | `docs/COST_OPTIMIZATION.md` | Model routing, batching, brakes |
 | `docs/OBSERVABILITY.md` | OTel + Langfuse + Laminar setup |
 | `docs/SECURITY.md` | OWASP ASI 2026 threat model and defenses |
@@ -323,7 +332,7 @@ release history, and `governance/changelog/ROADMAP.md` for what's coming.
 |-------|--------|-------------|
 | 1 | shipped (v0.1.0) | Foundation: constitution, hooks, core skills, analyzer, claim validator |
 | 2 | shipped (v0.2.0) | Security depth: full pentest stack, OWASP ASI red-team integration, prompt-injection defense |
-| 3 | **in progress** | Memory & observability: Stratum closeout (Option B locked), Langfuse, cross-project meta-memory |
+| 3 | **in progress** | Memory & observability: memory closeout (Option B locked), Langfuse, cross-project meta-memory |
 | 4 | planned | Design phase skills: threat modeling, ADRs, OpenAPI-first, ERD, C4, perf/a11y budgets |
 | 5 | planned | SRE & operate: SLOs, runbooks, incidents, cost attribution dashboards |
 | 6 | planned | Self-improvement loop: telemetry-driven recommendations, skill self-evaluation |

@@ -5,8 +5,14 @@ their usage appears → send the invoice → collect payment. This is the path t
 invoice sent + paid by a design partner"). Every command/endpoint below is implemented + tested; the
 only steps that need an external account are flagged **[needs: …]**.
 
-The business side (finding/qualifying/running a partner) is in `DESIGN_PARTNER.md`. This doc is the
-technical "how", current as of the v1.0.0 commercial build.
+This doc is the technical "how", current as of the v1.0.0 commercial build. The design-partner
+program document it used to point to was deleted on 2026-09-26.
+
+> **Owner decision (2026-09-26, ADR-0025, `docs/decisions/0025-open-source-local-first-no-payment.md`):**
+> the project is open source with no payment and no deployment. The invoice and payment steps
+> below describe code that graph cycles C1–C4 will remove (`../specs/ops/payment-removal.md`);
+> v1.0.0 no longer requires a paid invoice. The organization, key and integration steps stay as
+> self-hosted team mode. This runbook changes with the cycles that change the code.
 
 > **Current deployment boundary (2026-09-24):** the paid Supabase project is
 > retired. Local PostgreSQL runs through the project-local Compose stack.
@@ -139,11 +145,8 @@ verifies the signature → marks the invoice **paid** in the `invoices` table.
 
 ## Decision to settle before step 5: free pilot vs. paid pilot
 
-`DESIGN_PARTNER.md` frames a 90-day FREE pilot with payment "when we launch billing". The **v1.0.0**
-milestone requires a *paid* invoice. Reconcile these explicitly with the partner: either the pilot
-includes a paid subscription minimum from day one (e.g. the growth plan's $99/mo — the first invoice is
-that minimum, billable now without pruning), or "first paid invoice" is scheduled for the end of the
-free period. The technical pipeline supports either; this is a commercial decision, not a code gap.
+Settled on 2026-09-26: there is no paid pilot and no payment of any kind (ADR-0025). v1.0.0 is
+redefined as a working local setup on macOS, Linux and WSL2 (root `plan.md` §9).
 
 ---
 

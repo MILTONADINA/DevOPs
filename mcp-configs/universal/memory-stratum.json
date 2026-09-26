@@ -7,5 +7,5 @@
     "STRATUM_API_KEY": "${STRATUM_API_KEY}",
     "STRATUM_TENANT_ID": "${STRATUM_TENANT_ID}"
   },
-  "description": "Stratum memory MCP: structured facts, billing ledger, audit conflicts"
+  "description": "Stratum memory MCP: structured facts, usage ledger, audit conflicts"
 }

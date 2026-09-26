@@ -6,7 +6,7 @@ This file tells Claude Code how to work inside the Startum (CQ) codebase. Read t
 
 ## Project Summary
 
-Startum is a TypeScript/Rust middleware proxy that intercepts LLM API calls, prunes irrelevant context using the CQ-Extended KadaneDial algorithm, and stores memory in a three-tier architecture (Hot/Warm/Cold). The business model charges 20% of token savings.
+Startum is a TypeScript/Rust middleware proxy that intercepts LLM API calls, prunes irrelevant context using the CQ-Extended KadaneDial algorithm, and stores memory in a three-tier architecture (Hot/Warm/Cold). It is open source (MIT) with no payment, and it runs on the user's own machine; the project hosts nothing (ADR-0025, `docs/decisions/0025-open-source-local-first-no-payment.md`).
 
 **You are building infrastructure, not a plugin.** Every decision has production implications. Do not take shortcuts on schema design, token counting accuracy, or eval coverage.
 
@@ -27,14 +27,13 @@ startum/
 │   ├── AUDIT_ENGINE.md        ← Git-attestation logic
 │   ├── EVAL_FRAMEWORK.md      ← how to test pruning accuracy
 │   ├── API_REFERENCE.md       ← proxy endpoint contracts
-│   ├── BUSINESS_MODEL.md      ← billing logic
 │   └── ROADMAP.md             ← phase gates and acceptance criteria
 ├── src/
 │   ├── proxy/                 ← proxy core: Fastify server (index.ts); Cloudflare Worker adapter (worker.ts) is the unverified edge target
 │   ├── pruner/                ← KadaneDial + ONNX client
 │   ├── memory/                ← tier 1/2/3 storage adapters
 │   ├── audit/                 ← Git-attestation + model audit
-│   ├── billing/               ← token delta calculation + invoicing
+│   ├── billing/               ← token delta calculation + invoicing (payment parts scheduled for removal: ../specs/ops/payment-removal.md)
 │   ├── dashboard/             ← waste reporting UI
 │   └── types/                 ← shared TypeScript interfaces
 ├── rust/                      ← Rust crates for hot-path ops
@@ -57,9 +56,9 @@ Each phase has explicit acceptance criteria. Phases have overlapped in practice:
 | 1 | Measurement proxy — count tokens, log waste, no pruning |
 | 2 | Client-side KadaneDial pruner with ONNX |
 | 3 | Three-tier memory schemas and adapters |
-| 4 | ZK-Context + AWS Nitro TEE integration |
+| 4 | ZK-Context + AWS Nitro TEE integration (dropped 2026-09-26, ADR-0025) |
 | 5 | Git-attestation audit engine |
-| 6 | Token arbitrage billing and CFO dashboard |
+| 6 | Token arbitrage billing and CFO dashboard (replaced 2026-09-26 by payment removal plus self-hosted team features, ADR-0025) |
 
 ---
 
@@ -67,7 +66,7 @@ Each phase has explicit acceptance criteria. Phases have overlapped in practice:
 
 ### Token Counting
 - **Never use `tiktoken` for Anthropic token counts.** Count with the SDK's `countTokens` endpoint (`src/proxy/token-count.ts`); `@anthropic-ai/tokenizer` is unpublished, so do not add it.
-- Billing depends on provable numbers. The exact counts are the response's `usage` (the billing basis) and the `countTokens` endpoint. When `countTokens` fails, the pre-flight count falls back to a chars/4 estimate flagged `token_count_method: "estimated"`, which billing must treat as non-provable. Never report an estimate as exact.
+- Usage measurement depends on provable numbers. The exact counts are the response's `usage` (the basis of the usage record) and the `countTokens` endpoint. When `countTokens` fails, the pre-flight count falls back to a chars/4 estimate flagged `token_count_method: "estimated"`, which usage measurement must treat as non-provable. Never report an estimate as exact.
 - Log both input tokens and output tokens for every proxied request.
 
 ### Schema Design

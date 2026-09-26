@@ -26,7 +26,6 @@ startum/
 │   ├── AUDIT_ENGINE.md
 │   ├── EVAL_FRAMEWORK.md
 │   ├── API_REFERENCE.md
-│   ├── BUSINESS_MODEL.md
 │   ├── ROADMAP.md
 │   ├── decisions/                 ← Architecture Decision Records (ADRs)
 │   │   └── 0001-supabase-over-sqlite.md
