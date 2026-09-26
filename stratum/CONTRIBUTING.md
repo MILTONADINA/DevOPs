@@ -266,4 +266,4 @@ Before opening a PR:
 
 ## Security Vulnerabilities
 
-Report to `security@startum.com`. Do not open a public GitHub issue.
+Report through GitHub private vulnerability reporting (<https://github.com/MILTONADINA/DevOPs/security/advisories/new>). Do not open a public GitHub issue. See [`../docs/SECURITY.md`](../docs/SECURITY.md#reporting-a-vulnerability).

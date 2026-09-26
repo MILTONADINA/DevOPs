@@ -99,7 +99,7 @@ Never use `console.log`. Always use the `pino` logger instance from `src/lib/log
 
 ### Operator Dashboard (internal, Cloudflare Analytics + custom)
 
-Accessible at `https://internal.startum.com/ops` (not public).
+No hosted instance exists (ADR-0020), so there is no operator dashboard URL.
 
 Panels:
 - Request volume by org (last 24h, 7d, 30d)
@@ -110,7 +110,7 @@ Panels:
 - Top 10 orgs by token delta (our biggest revenue sources)
 - Error rate by endpoint
 
-### Customer Dashboard (public, at `proxy.startum.com/dashboard`)
+### User Dashboard (local, at `http://localhost:4080/dashboard`)
 
 Panels:
 - Today's sessions, token counts, savings

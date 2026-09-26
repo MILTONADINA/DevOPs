@@ -17,6 +17,21 @@ memory, CFO dashboard) — one project, not a separate product. See
 `docs/LAUNCH_READINESS.md` for current, frequently-updated status — this
 file intentionally does not duplicate that detail while the phase is open.
 
+### Changed — open-source readiness, docs only (2026-09-26)
+
+- Added a root `CODE_OF_CONDUCT.md` (moved from `stratum/`; contact through
+  GitHub issues, or GitHub private vulnerability reporting for sensitive
+  reports) and a root `.github/pull_request_template.md`.
+- `docs/SECURITY.md` now names GitHub private vulnerability reporting as the
+  reporting channel. The repository owner still has to enable that setting.
+- README Quick start: the install script path is `./scripts/install.sh`, and
+  the prerequisites are listed.
+- Stratum docs: the URLs of a hosted proxy that does not exist and the unverified
+  project email addresses are replaced by `http://localhost:4080` or GitHub
+  links;
+  `.env.example` uses the local database default and comments out unused
+  hosted services; "proprietary" and "customer" wording is reworded.
+
 ### Removed — redundancy audit (2026-09-14)
 
 A deliberate audit asked, per component: "does a good solution already
