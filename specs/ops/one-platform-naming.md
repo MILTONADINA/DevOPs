@@ -21,7 +21,6 @@ The code is already in one repository. `stratum/` was added as a subtree (ed73c0
 - **Records.** CHANGELOG entries for released versions, ADRs, `specs/meta/`, dated audit reports and `.workflow/` records stay as written. They are history.
 - **Payment settings.** `CQ_BILLING_SIGNING_SECRET` and the other payment settings are removed by `specs/ops/payment-removal.md` and get no new name.
 - **The `@miltonadina/stratum-mcp` config.** `mcp-configs/universal/memory-stratum.json` and its `STRATUM_API_KEY`, `STRATUM_TENANT_ID` and `STRATUM_BASE_URL` are removed with the other unpublished MCP configs (quality plan O-10).
-- **Deleting the archived repository.** That is the owner's call.
 
 ## Requirements
 
@@ -95,12 +94,12 @@ Renaming the compose project, the containers or the directory SHALL NOT orphan a
 
 The CI setup job SHALL check the volume by the name the compose file resolves.
 
-### REQ-5 (Event-driven): the directory and package move after the proof policy and the payment removal
-WHEN `stratum/` is renamed, the move SHALL land after both of these:
-- MR-10, which implements the proof policy that lets claims survive moves (quality plan RS-01);
-- C4, the last payment-removal cycle, which removes a large part of `stratum/`.
+### REQ-5 (Event-driven): the directory becomes runtime/
+WHEN `stratum/` is renamed, it SHALL become `runtime/`, and its package SHALL be named `@miltonadina/devops-runtime`. The owner chose both on 2026-09-26 and asked for the move to be done (ADR-0026).
 
-The package name SHALL NOT be `startum` or `stratum`. ADR-0026 records the chosen directory and package names.
+The move SHALL land right after the graph cycle that retires the billing four-eyes gate, whose path patterns still match `stratum/src/billing/`, and before the cycles that edit runtime paths: QW-1, QW-9, S1 and C1 to C4. Claims written to the current proof template re-run in a detached worktree at their `git_sha` and survive the move. Older claims go to the claim-retirement step planned after C4.
+
+The move SHALL NOT rename the compose project, container or volume names (REQ-4 governs those), and SHALL NOT rename the settings (REQ-2 and REQ-3, in the naming cycle).
 
 Checks keyed on the name SHALL be renamed in the same pull request, with branch protection updated in lockstep:
 - the `stratum-test` required check;
@@ -110,7 +109,7 @@ Checks keyed on the name SHALL be renamed in the same pull request, with branch 
 The floor SHALL carry over by a declared rename that the ratchet accepts, never by a lowering.
 
 ### REQ-6 (Ubiquitous): no second repository
-THE PROJECT SHALL keep exactly one active repository for the platform. `MILTONADINA/Stratum` stays archived, with a description pointing to `MILTONADINA/DevOPs`. Any doc that points at the archived repository as a live upstream SHALL say it is archived.
+THE PROJECT SHALL keep exactly one repository for the platform. The owner asked on 2026-09-26 for `MILTONADINA/Stratum` to be deleted. Until the deletion is done it stays archived, with a description pointing to `MILTONADINA/DevOPs`. Any doc that points at the old repository as a live upstream SHALL say it is archived or deleted.
 
 ## Acceptance criteria
 
@@ -129,9 +128,9 @@ THE PROJECT SHALL keep exactly one active repository for the platform. `MILTONAD
   **Verified by:** a test with an allowlist of the history paths, and a ratchet baseline that may only shrink until REQ-5 lands.
 - **AC-4** (REQ-4). A user whose database volume `devops-stratum-compose_db-data` holds data runs the new `npm run setup` and finds their data served.
   **Verified by:** the CI setup job. It seeds a row, applies the renamed compose file, and reads the row back. `docker volume ls` shows no second, empty database volume. An isolated instance started with `DEVOPS_LOCAL_INSTANCE` and `DEVOPS_LOCAL_PORT` mounts its own volume, named `devops-stratum-isolated-<instance>_db-data` as before, not the default one.
-- **AC-5** (REQ-5). After the move: `git ls-files stratum/` is empty; the package name is the one ADR-0026 records; branch protection requires the renamed check; and the ratchet accepts the renamed floor key while refusing a lower value under the new key.
+- **AC-5** (REQ-5). After the move: `git ls-files stratum/` is empty; `runtime/package.json` is named `@miltonadina/devops-runtime`; branch protection requires the renamed check; and the ratchet accepts the renamed floor key while refusing a lower value under the new key.
   **Verified by:** the move PR's CI, and `gh api .../branches/main/protection` in its proof.
-- **AC-6** (REQ-6). `gh api repos/MILTONADINA/Stratum --jq .archived` prints `true`, and its description names `MILTONADINA/DevOPs`.
+- **AC-6** (REQ-6). `gh api repos/MILTONADINA/Stratum` returns 404 (deleted). Until then, it reports `archived: true` with a description naming `MILTONADINA/DevOPs`.
   **Verified by:** a claim, checked by hand at each release.
 
 ## Falsified by
@@ -143,8 +142,8 @@ THE PROJECT SHALL keep exactly one active repository for the platform. `MILTONAD
 
 ## Order of work
 
-1. Now (this spec's PR): ADR-0026, this spec, and the S1 spec amendment, so the new S1 settings are born `DEVOPS_PROXY_*`. `memory/stratum/README.md` says the old repository is archived.
-2. PR-2, the roadmap rewrite, uses "DevOps" for the platform in the READMEs it rewrites.
-3. The S1 cycle implements the S1 settings under their canonical names.
-4. After C4: a naming cycle for REQ-1 to REQ-4, which covers the settings module, the aliases, the docs and the compose volume.
-5. After MR-10: the move cycle for REQ-5.
+1. Done (#206): ADR-0026, this spec, and the S1 spec amendment, so the new S1 settings are born `DEVOPS_PROXY_*`.
+2. Done (#207): PR-2, the roadmap rewrite, uses "DevOps" for the platform in the READMEs it rewrites.
+3. After the cycle that retires the billing four-eyes gate: the move cycle for REQ-5, `stratum/` to `runtime/` (owner decision).
+4. The S1 cycle implements the S1 settings under their canonical names, on the moved paths.
+5. After C4: a naming cycle for REQ-1 to REQ-4, which covers the settings module, the aliases, the docs and the compose volume.

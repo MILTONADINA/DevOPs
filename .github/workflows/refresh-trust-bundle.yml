@@ -8,10 +8,10 @@ name: Refresh Sigstore trust bundle
 # rotation is historically low-frequency, but the bundle should track
 # it. Operators wanting tighter freshness can shorten the cron.
 #
-# Auto-PR on change: if the upstream bundle has changed since the last
-# refresh, this workflow opens a PR to commit the updated bundle. A
-# reviewer can spot-check the diff (rare in practice but worth the
-# human gate) before merging.
+# On change: no bot branches (owner decision 2026-09-26). If the upstream
+# bundle changed since the last refresh, this workflow uploads the
+# TUF-verified bundle as an artifact and opens or updates ONE issue. A
+# maintainer spot-checks it and commits it in a normal pull request.
 #
 # AST08 defense: tag-pinned actions throughout. SHAs verified via
 # git ls-remote pattern from session 5 + B.10 sweep.
@@ -30,10 +30,12 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
-      contents: write
-      pull-requests: write
+      contents: read
+      issues: write
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
+        with:
+          persist-credentials: false
 
       - name: Install cosign (same pin as release-sign.yml's E.06)
         uses: sigstore/cosign-installer@f713795cb21599bc4e5c4b58cbad1da852d7eeb9  # v3
@@ -84,29 +86,64 @@ jobs:
         id: drift
         run: |
           set -euo pipefail
-          if git diff --quiet .workflow/sigstore/trust-bundle.json; then
+          # An untracked bundle counts as a change: `git diff` alone ignores untracked files, which
+          # left this check reporting "unchanged" while no bundle was committed at all.
+          if git ls-files --error-unmatch .workflow/sigstore/trust-bundle.json >/dev/null 2>&1 \
+            && git diff --quiet -- .workflow/sigstore/trust-bundle.json; then
             echo "no_change=true" >> "$GITHUB_OUTPUT"
-            echo "Trust bundle unchanged -- no PR needed."
+            echo "Trust bundle unchanged -- nothing to report."
           else
             echo "no_change=false" >> "$GITHUB_OUTPUT"
-            echo "Trust bundle changed -- opening PR."
+            echo "Trust bundle changed -- reporting it in an issue."
           fi
 
-      - name: Open PR with refreshed trust bundle
+      - name: Upload the refreshed trust bundle
         if: steps.drift.outputs.no_change == 'false'
-        uses: peter-evans/create-pull-request@22a9089034f40e5a961c8808d113e2c98fb63676  # v7
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4  # v5.0.0
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          branch: chore/refresh-trust-bundle
-          title: 'chore(sigstore): refresh trust-bundle.json (weekly cadence)'
-          body: |
-            Automated refresh of `.workflow/sigstore/trust-bundle.json`,
-            fetched via `cosign initialize` (full TUF client verification
-            against cosign's embedded Sigstore root of trust -- not a raw,
-            unverified fetch).
+          name: trust-bundle-${{ github.run_id }}
+          path: .workflow/sigstore/trust-bundle.json
+          retention-days: 30
 
-            Per `docs/SKILL_SIGNING.md` E.05 weekly refresh cadence.
-            Spot-check the diff against the upstream Sigstore TUF
-            repository before merging.
-          commit-message: 'chore(sigstore): refresh trust-bundle.json'
-          delete-branch: true
+      - name: Open or update the trust-bundle issue
+        if: steps.drift.outputs.no_change == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          title='Sigstore trust bundle changed'
+          new_sha=$(sha256sum .workflow/sigstore/trust-bundle.json | cut -d' ' -f1)
+          if git cat-file -e HEAD:.workflow/sigstore/trust-bundle.json 2>/dev/null; then
+            old_sha=$(git show HEAD:.workflow/sigstore/trust-bundle.json | sha256sum | cut -d' ' -f1)
+          else
+            old_sha='none (no bundle is committed)'
+          fi
+          if [ "$old_sha" = 'none (no bundle is committed)' ]; then
+            headline="No trust bundle is committed yet. The weekly refresh fetched one with \`cosign initialize\` (full TUF verification)."
+          else
+            headline="The weekly refresh found a new Sigstore trust root (fetched with \`cosign initialize\`, full TUF verification)."
+          fi
+          body=$(printf '%s\n' \
+            "$headline" \
+            "" \
+            "- committed bundle sha256: \`$old_sha\`" \
+            "- refreshed bundle sha256: \`$new_sha\`" \
+            "- artifact: $RUN_URL (\`trust-bundle-*\`, kept 30 days)" \
+            "" \
+            "To apply it: run \`cosign initialize\` locally, copy the resulting \`trusted_root.json\` to \`.workflow/sigstore/trust-bundle.json\`, check that its sha256 matches the one above, and open a normal pull request. No bot opens branches in this repository.")
+          # Only issues this workflow opened (author app/github-actions).
+          number=$(gh issue list --app github-actions --state open --limit 100 --json number,title --jq ".[] | select(.title == \"$title\") | .number" | head -1)
+          if [ -n "$number" ]; then gh issue edit "$number" --body "$body"; else gh issue create --title "$title" --body "$body"; fi
+
+      - name: Close the trust-bundle issue when nothing changed
+        if: steps.drift.outputs.no_change == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          title='Sigstore trust bundle changed'
+          number=$(gh issue list --app github-actions --state open --limit 100 --json number,title --jq ".[] | select(.title == \"$title\") | .number" | head -1)
+          if [ -n "$number" ]; then gh issue close "$number" --comment "The committed trust bundle matches the current Sigstore root."; fi
