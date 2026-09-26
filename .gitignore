@@ -61,6 +61,7 @@ analyzer/.cache/
 # Local override (per-machine, never committed)
 AGENTS.override.md
 .claude/local.md
+**/.claude/settings.local.json
 CLAUDE.local.md
 .claude/scheduled_tasks.lock
 
