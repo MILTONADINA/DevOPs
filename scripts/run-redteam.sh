@@ -21,6 +21,11 @@
 
 set -euo pipefail
 
+# DeepTeam and DeepEval send usage telemetry from `import deepteam` onward.
+# Opt out before the first import unless the caller has already chosen.
+export DEEPTEAM_TELEMETRY_OPT_OUT="${DEEPTEAM_TELEMETRY_OPT_OUT:-YES}"
+export DEEPEVAL_TELEMETRY_OPT_OUT="${DEEPEVAL_TELEMETRY_OPT_OUT:-1}"
+
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo .)"
 BUDGET_YAML="${REPO_ROOT}/cost-controls/budget.yml"
 ARTIFACT_DIR="${REPO_ROOT}/.workflow/proofs/red-team"
