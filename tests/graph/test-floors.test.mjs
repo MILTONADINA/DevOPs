@@ -1,6 +1,10 @@
 // Tests for scripts/check-test-floor.mjs and scripts/check-assertions.mjs (masterpiece REQ-M23, AC-M23.1).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { parseCounts, checkFloor, checkRatchet } from '../../scripts/check-test-floor.mjs';
 import { hasAssertion } from '../../scripts/check-assertions.mjs';
 
@@ -39,4 +43,21 @@ test('a test file with no assertion is caught; comments do not count as assertio
   assert.equal(hasAssertion("test('x', () => { assert(ok); });"), true);
   assert.equal(hasAssertion("test('x', () => { /* expect(1) */ run(); });\n// assert.equal(1, 1)"), false);
   assert.equal(hasAssertion("test('x', () => { run(); });"), false);
+});
+
+test('both scripts still run when invoked through a symbolic link, so CI never gets a silent exit 0', () => {
+  const dir = realpathSync(mkdtempSync(path.join(tmpdir(), 'floor-link-')));
+  try {
+    const scripts = path.join(import.meta.dirname, '..', '..', 'scripts');
+    symlinkSync(path.join(scripts, 'check-test-floor.mjs'), path.join(dir, 'floor.mjs'));
+    symlinkSync(path.join(scripts, 'check-assertions.mjs'), path.join(dir, 'assertions.mjs'));
+    writeFileSync(path.join(dir, 'failing.log'), ROOT_OUT.replace('fail 0', 'fail 1'));
+    writeFileSync(path.join(dir, 'empty.test.mjs'), "import { test } from 'node:test';\ntest('x', () => {});\n");
+    const floor = spawnSync(process.execPath, [path.join(dir, 'floor.mjs'), 'root', path.join(dir, 'failing.log')], { encoding: 'utf8' });
+    assert.equal(floor.status, 1, floor.stderr);
+    const assertions = spawnSync(process.execPath, [path.join(dir, 'assertions.mjs'), path.join(dir, 'empty.test.mjs')], { encoding: 'utf8' });
+    assert.equal(assertions.status, 1, assertions.stderr);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

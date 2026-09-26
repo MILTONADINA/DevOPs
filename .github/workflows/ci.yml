@@ -90,6 +90,17 @@ jobs:
           node scripts/check-test-floor.mjs --ratchet "$RUNNER_TEMP/base-floors.json"
           mapfile -t added < <(git diff --name-only --diff-filter=A FETCH_HEAD HEAD -- ':(glob)tests/**/*.test.mjs' ':(glob)stratum/test/**/*.test.ts')
           if [ "${#added[@]}" -gt 0 ]; then node scripts/check-assertions.mjs "${added[@]}"; else echo "check-assertions: no test files added"; fi
+      - name: Spec status lint (masterpiece REQ-M8; quality plan MR-11(A))
+        run: node scripts/lint-spec-status.mjs
+      - name: Spec-status baseline only shrinks (quality plan MR-11(A))
+        if: github.event_name == 'pull_request'
+        shell: bash
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          git fetch --no-tags --depth=1 origin "$BASE_REF"
+          git show FETCH_HEAD:governance/traceability-baseline.json > "$RUNNER_TEMP/base-traceability.json" 2>/dev/null || echo '{}' > "$RUNNER_TEMP/base-traceability.json"
+          node scripts/lint-spec-status.mjs --ratchet "$RUNNER_TEMP/base-traceability.json"
       - name: Validate all claims
         run: npx --no-install tsx verification/claim-validator.ts --all --no-rerun
         # --no-rerun: re-running proofs needs the local environment. .workflow/proofs/ is
