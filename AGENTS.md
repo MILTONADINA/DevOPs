@@ -281,3 +281,5 @@ file, write that file from this one so it points back here
 (`docs/FAILOVER.md` lists each tool's entry file).
 
 If you find conflicting instructions, `AGENTS.md` wins.
+
+Precedence order: owner decision > law/safety > approved spec > ADR/AC > plan > code.
