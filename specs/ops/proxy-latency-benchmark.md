@@ -1,6 +1,6 @@
 # Proxy latency benchmark and PR regression gate (v0.8)
 
-**Status:** draft (2026-09-25). This is a graph backlog item, and the orchestrator does not land it directly (masterpiece roadmap decision 12).
+**Status:** draft (2026-09-25; a graph backlog item that the orchestrator does not land directly, per masterpiece roadmap decision 12)
 
 **Scope:** `plan.md` §7b says "Performance benchmark suite (~5h). Latency p50/p99 tracked per release. Regression detection on PR (>20% slower = fail)." Today nothing measures what the proxy adds to a request:
 - `bench:tiers` measures the memory tiers.
