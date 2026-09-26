@@ -19,7 +19,7 @@ npm run setup
 `npm run setup` runs `scripts/setup-local.mjs`, which:
 
 1. Detects macOS, Linux, or WSL2. Native Windows is refused.
-2. Requires Node 20.11 or later.
+2. Requires Node 22.12 or later.
 3. Requires `docker compose` and a running Docker engine.
 4. Runs `npm ci` in `stratum/` only if `stratum/node_modules/.bin/tsx` is
    missing.

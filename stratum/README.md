@@ -50,7 +50,7 @@ Full operator + API surface: [`docs/MEMORY_AND_EVAL_COMMANDS.md`](docs/MEMORY_AN
 ```bash
 git clone https://github.com/MILTONADINA/DevOPs.git
 cd DevOPs
-npm run setup                 # requires Node >=20.11 and Docker Compose
+npm run setup                 # requires Node >=22.12 and Docker Compose
 cd stratum
 # Configure a provider in your process environment or secret manager first.
 npm run dev

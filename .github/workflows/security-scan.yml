@@ -7,6 +7,9 @@ on:
   schedule:
     - cron: '0 6 * * *'
 
+permissions:
+  contents: read
+
 # All `uses:` actions in this workflow are SHA-pinned per REQ-B8 / AC-B8.1
 # (AST08 defense -- a malicious tag move on an upstream action would
 # otherwise compromise the security-scan layer itself). SHAs verified via
@@ -16,7 +19,7 @@ on:
 
 jobs:
   gitleaks:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # gitleaks-action's ScanPullRequest enumerates PR commits via the GitHub
     # API, which requires pull-requests:read (the 403 error's
     # x-accepted-github-permissions header names exactly this). The default
@@ -58,7 +61,7 @@ jobs:
     # registry packs' MEDIUM severity ("ValueError: invalid rule severity value") and
     # still reported success, so this check scanned nothing for weeks. Run a pinned
     # current Semgrep directly; fail on findings, on fatal errors, and on an empty scan.
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     container:
       image: semgrep/semgrep:1.167.0@sha256:06938c1f365d3f67b8cedd8bc117607ae64253f88a0e768e9da9408548927dd6
     steps:
@@ -95,7 +98,7 @@ jobs:
   dependency-audit:
     # specs/security/ci-dependency-audit.md (masterpiece REQ-M22). Reads the lockfiles;
     # fails on a high or critical advisory and when a lockfile resolves no dependencies.
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444  # v5.0.0
@@ -139,7 +142,7 @@ jobs:
   # All `uses:` here SHA-pinned per REQ-B8 / AST08 defense.
   # ---------------------------------------------------------------------
   deepteam:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20  # NFR-B1 hard wall-clock cap (ASI07 defense)
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
@@ -189,7 +192,8 @@ jobs:
         # python-version across both steps in this job, so this isn't a
         # cache-staleness or version-drift issue -- it's pip/python3 PATH
         # divergence.)
-        run: python3 -m pip install deepteam
+        # Hash-locked (.github/requirements/deepteam.in says how to regenerate it).
+        run: python3 -m pip install --require-hashes -r .github/requirements/deepteam.txt
 
       - name: Run DeepTeam OWASP_ASI_2026 red-team
         if: steps.path-filter.outputs.should_run == 'true'
@@ -199,8 +203,12 @@ jobs:
         # budget brake (REQ-B5), 0 otherwise. GitHub Actions fails the
         # step on non-zero exit and fails this job. That job is not a required
         # status check on main (required: validate, stratum-test, setup-linux,
-        # gitleaks, semgrep), and without a provider key the script skips,
-        # so today it gates nothing (masterpiece roadmap MR-7).
+        # gitleaks, semgrep, dependency-audit), and without a provider key the
+        # script skips, so today it gates nothing (masterpiece roadmap MR-7).
+        # DeepTeam and DeepEval send usage telemetry by default; CI opts out.
+        env:
+          DEEPTEAM_TELEMETRY_OPT_OUT: 'YES'
+          DEEPEVAL_TELEMETRY_OPT_OUT: '1'
         run: bash scripts/run-redteam.sh
 
       # REQ-B4 medium/low surfacing -- non-blocking PR comment.

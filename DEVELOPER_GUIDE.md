@@ -7,7 +7,7 @@ of the behavior it changes.
 
 ## Start a local checkout
 
-Use macOS, Linux, or WSL2 with Node 20.11 or newer, npm, Docker Engine, and
+Use macOS, Linux, or WSL2 with Node 22.12 or newer, npm, Docker Engine, and
 Docker Compose. Start Docker before setup. Native Windows is unsupported.
 
 ```sh

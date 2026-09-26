@@ -24,12 +24,12 @@ function run(command, args, failure) {
 
 export function main(argv = process.argv.slice(2)) {
   if (argv.includes("--help")) {
-    process.stdout.write("Usage: npm run setup\nRequires Node >=20.11, Docker Compose and a running Docker engine on macOS, Linux, or WSL2.\nStarts local Supabase and smoke-tests the proxy. Configure a provider before sending messages.\nFor an isolated checkout, set DEVOPS_LOCAL_INSTANCE and DEVOPS_LOCAL_PORT together.\n");
+    process.stdout.write("Usage: npm run setup\nRequires Node >=22.12, Docker Compose and a running Docker engine on macOS, Linux, or WSL2.\nStarts local Supabase and smoke-tests the proxy. Configure a provider before sending messages.\nFor an isolated checkout, set DEVOPS_LOCAL_INSTANCE and DEVOPS_LOCAL_PORT together.\n");
     return;
   }
   const system = detectPlatform(platform(), release());
   const [major, minor] = process.versions.node.split(".").map(Number);
-  if (major < 20 || (major === 20 && minor < 11)) throw new Error("Node >=20.11 is required.");
+  if (major < 22 || (major === 22 && minor < 12)) throw new Error("Node >=22.12 is required.");
   process.stdout.write(`Local setup on ${system}\n`);
   run("docker", ["compose", "version"], "Docker Compose is required. Install/start Docker Desktop or Docker Engine with Compose.");
   run("docker", ["info", "--format", "{{.ServerVersion}}"], "Docker is not running. Start Docker and rerun npm run setup.");

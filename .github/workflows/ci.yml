@@ -5,6 +5,9 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
   setup-linux:
     runs-on: ubuntu-24.04
@@ -60,26 +63,19 @@ jobs:
           node ../scripts/check-test-floor.mjs stratum "$RUNNER_TEMP/stratum-tests.log"
 
   validate:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444  # v5.0.0
         with: { node-version: 22 }
-      - run: npm install -g tsx
-      - name: Validate all claims
-        run: tsx verification/claim-validator.ts --all --no-rerun
-        # --no-rerun: re-running proofs needs the local environment. .workflow/proofs/ is
-        # gitignored, so on a CI checkout this finds no claims and passes (PB-60).
-      - name: Check stale proofs
-        run: tsx verification/stale-proof-detector.ts
-      - name: Lint Renovate template (REQ-H1..H6)
-        run: npm run lint:renovate
-      - name: Lint stack-specific skills (REQ-D2..D7)
-        run: npm run lint:stack-specific-skills
+      # tsx comes from the root lockfile, never from an unpinned global install. The
+      # reproducibility-check tests and the claim steps below run it.
+      - run: npm ci
       - name: Test dashboard and test hermeticity (REQ-R12..R13), held to its floor (REQ-M23)
         shell: bash
-        # No directories are created first: the suite must pass in a fresh checkout that has no
-        # node_modules or .workflow/proofs (PB-59). The preflight tests bring their own fixtures.
+        # No directories are created first: the suite must pass in a fresh checkout with no
+        # .workflow/proofs (PB-59). The preflight tests bring their own fixtures.
         run: |
           npm test 2>&1 | tee "$RUNNER_TEMP/root-tests.log"
           node scripts/check-test-floor.mjs root "$RUNNER_TEMP/root-tests.log"
@@ -94,3 +90,38 @@ jobs:
           node scripts/check-test-floor.mjs --ratchet "$RUNNER_TEMP/base-floors.json"
           mapfile -t added < <(git diff --name-only --diff-filter=A FETCH_HEAD HEAD -- ':(glob)tests/**/*.test.mjs' ':(glob)stratum/test/**/*.test.ts')
           if [ "${#added[@]}" -gt 0 ]; then node scripts/check-assertions.mjs "${added[@]}"; else echo "check-assertions: no test files added"; fi
+      - name: Validate all claims
+        run: npx --no-install tsx verification/claim-validator.ts --all --no-rerun
+        # --no-rerun: re-running proofs needs the local environment. .workflow/proofs/ is
+        # gitignored, so on a CI checkout this finds no claims and passes (PB-60).
+      - name: Check stale proofs
+        run: npx --no-install tsx verification/stale-proof-detector.ts
+      - name: Lint Renovate template (REQ-H1..H6)
+        run: npm run lint:renovate
+      - name: Lint stack-specific skills (REQ-D2..D7)
+        run: npm run lint:stack-specific-skills
+
+  node-compat:
+    # The required jobs run on Node 22, the supported floor (engines >=22.12.0). This job
+    # runs the same suites on the newer supported majors. It is not a required check.
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [24, 26]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444  # v5.0.0
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Root tests
+        run: |
+          npm ci
+          npm test
+      - name: Stratum typecheck and tests
+        working-directory: stratum
+        run: |
+          npm ci
+          npm run typecheck
+          npm test
