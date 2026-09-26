@@ -1,6 +1,6 @@
 # Tier-2 long-history recall
 
-**Status**: draft (2026-09-25). The owner decision point below is answered provisionally with option (ii); the owner may override it.
+**Status**: draft (2026-09-25; the owner decision point below is answered provisionally with option ii, and the owner may override it)
 
 **Scope:** this is the Tier-2 recall follow-on that ADR-0023 decision 3 and
 `specs/pruner/provenance-gated-selection.md` "Decisions recorded 2026-09-25"

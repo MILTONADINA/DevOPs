@@ -150,11 +150,11 @@ IF the planner returns a non-empty `ambiguities[]` or `conflicts[]`, THEN `sprin
 
 ### REQ-M8 (Event-driven): Every cycle is bound to an approved, falsifiable spec (all 8 chain links, link 1 included)
 WHEN `graph-run-record.mjs launch` runs, THE SYSTEM SHALL require `--spec-ref specs/<path>.md#<anchor>` and SHALL refuse unless:
-- the spec's `**Status**:` line matches `^approved`;
+- the spec's Status, as `scripts/lint-spec-status.mjs` parses it, is exactly `approved` (a prefix such as "approved for implementation" does not count);
 - the anchor exists;
 - every `REQ-` heading in that spec has at least one `AC-` that references it, and a `Falsified by:` line.
 
-`sprint-cycle.js` SHALL take `args.specRef`. The planner schema SHALL require `tasks[].ac_ids` (non-empty, each present in the spec). The claim schema SHALL require `outcome_ref` (the approved spec anchor) and `decision_ref` (an ADR path or `{na_reason, approver}`) for type `implementation`. It SHALL require `signal {metric, threshold}` and `recovery {mode, doc}` only for types `deploy` and `migration`. `scripts/lint-spec-status.mjs` in `ci.yml` SHALL fail on any Status value outside `draft|approved|superseded`.
+`sprint-cycle.js` SHALL take `args.specRef`. The planner schema SHALL require `tasks[].ac_ids` (non-empty, each present in the spec). The claim schema SHALL require `outcome_ref` (the approved spec anchor) and `decision_ref` (an ADR path or `{na_reason, approver}`) for type `implementation`. It SHALL require `signal {metric, threshold}` and `recovery {mode, doc}` only for types `deploy` and `migration`. `scripts/lint-spec-status.mjs` in `ci.yml` SHALL fail on any spec whose Status is missing or outside `draft|approved|implemented|superseded` (owner decision O-3, 2026-09-26), except the specs listed in `governance/traceability-baseline.json`, a list that may only shrink. It SHALL accept both `**Status**:` and `**Status:**`, and an optional parenthetical note after the status word.
 **Enforced by:** code in `graph-run-record.mjs` and `sprint-cycle.js`; `claim-validator.ts`; the CI lint.
 **Falsified by:** a launch that succeeds against a `draft` spec, or against an approved spec with a REQ that has no AC.
 

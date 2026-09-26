@@ -1,7 +1,7 @@
 # <Feature Name>
 
 **Spec ID**: <domain>/<feature>  (matches file path under `/specs/`)
-**Status**: draft | approved | implemented | deprecated
+**Status**: draft  (one of draft, approved, implemented, superseded; an optional note goes in parentheses after the word)
 **Last updated**: YYYY-MM-DD
 **Owner**: <user>
 **Reviewers**: <users>

@@ -7,7 +7,7 @@
 // The first form parses node --test (root) or vitest (stratum) output and exits 1 when the
 // passed count is below governance/test-floors.json's floor, when any test failed, or when
 // no count can be found. The second exits 1 when any floor is lower than in the base file.
-import { readFileSync } from 'node:fs';
+import { readFileSync, realpathSync } from 'node:fs';
 import path from 'node:path';
 
 const FLOORS = path.join(import.meta.dirname, '..', 'governance', 'test-floors.json');
@@ -43,7 +43,17 @@ export function checkRatchet(base, current) {
   return lowered.length ? `floors may only rise; lowered or removed: ${lowered.map((k) => `${k} ${base[k]} -> ${current[k]}`).join(', ')}` : null;
 }
 
-if (process.argv[1] && import.meta.filename === path.resolve(process.argv[1])) {
+// Compare real paths, so a symlinked invocation runs; an unresolvable argv[1] means "imported".
+function isMain() {
+  if (!process.argv[1]) return false;
+  try {
+    return realpathSync(process.argv[1]) === realpathSync(import.meta.filename);
+  } catch {
+    return false;
+  }
+}
+
+if (isMain()) {
   const floors = JSON.parse(readFileSync(FLOORS, 'utf8'));
   const [first, second] = process.argv.slice(2);
   let problem;
