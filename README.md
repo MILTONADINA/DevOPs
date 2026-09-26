@@ -229,8 +229,8 @@ AI coding agent and ask it to follow this section.
 
 - macOS, Linux, or WSL2 (native Windows is not supported)
 - `git` and `bash`
-- Node.js 20.11 or later. The analyzer runs TypeScript directly, so it also
-  needs either `tsx` (`npm i -g tsx`) or Node.js 22.6 or later.
+- Node.js 22.12 or later. The analyzer runs its TypeScript with `tsx` when it
+  is on your PATH, and otherwise with Node's `--experimental-strip-types`.
 - Optional, only for the local Stratum database and proxy: Docker with
   Compose, and a running Docker engine
 - Optional: `cosign`, to verify skill signatures during install. Without it,

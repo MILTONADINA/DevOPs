@@ -35,7 +35,7 @@ permissions:
 jobs:
   security-review:
     name: Claude semantic security review
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Skip draft PRs. A missing key is reported by the first step below.
     if: ${{ github.event.pull_request.draft == false }}
     timeout-minutes: 25

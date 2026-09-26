@@ -1,0 +1,4 @@
+# PyYAML for the manifest update in .github/workflows/release-sign.yml.
+# Regenerate the hash-locked pyyaml.txt with:
+#   uv pip compile .github/requirements/pyyaml.in --generate-hashes --python-version 3.12 --python-platform x86_64-manylinux_2_28 --no-header -o .github/requirements/pyyaml.txt
+pyyaml

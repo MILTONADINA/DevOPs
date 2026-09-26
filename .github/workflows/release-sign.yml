@@ -31,7 +31,7 @@ permissions:
 
 jobs:
   sign:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
       COSIGN_VERSION: 'v2.4.3'  # E.06 pin -- DO NOT bump without re-running sec-review
@@ -63,8 +63,15 @@ jobs:
           fi
           echo "Cosign $ACTUAL pinned + verified."
 
-      - name: Install PyYAML for manifest update
-        run: pip install --quiet pyyaml
+      # A job-local interpreter, so the hash-locked install never meets the runner
+      # image's Debian-installed PyYAML; later `python3` steps resolve to it.
+      - name: Setup Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
+        with:
+          python-version: '3.12'
+
+      - name: Install PyYAML for manifest update (hash-locked)
+        run: python3 -m pip install --quiet --require-hashes -r .github/requirements/pyyaml.txt
 
       - name: Require a branch for signing dispatch
         if: github.event_name == 'workflow_dispatch'

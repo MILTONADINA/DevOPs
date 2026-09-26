@@ -1,0 +1,7 @@
+# DeepTeam red-team gate (.github/workflows/security-scan.yml, job deepteam).
+# Regenerate the hash-locked deepteam.txt with:
+#   uv pip compile .github/requirements/deepteam.in --generate-hashes --python-version 3.12 --python-platform x86_64-manylinux_2_28 --no-header -o .github/requirements/deepteam.txt
+deepteam
+# deepteam 1.0.9's telemetry.py imports sentry_sdk without declaring it, so
+# `import deepteam` fails without this line.
+sentry-sdk
