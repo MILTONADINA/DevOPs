@@ -148,6 +148,12 @@ gh pr merge <N> --squash --delete-branch
 
 ---
 
+## Dependency updates
+
+No bot opens branches in this repository. `.github/workflows/dependency-report.yml` checks the npm trees and the hash-locked Python files every week, and keeps one issue, "Dependency updates available", up to date. Apply the updates it lists in a normal pull request. Dependabot vulnerability alerts stay on; they appear in the Security tab and open no branches.
+
+---
+
 ## Versioning
 
 DevOPs uses SemVer. Projects can lock to a specific version via
