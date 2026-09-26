@@ -34,7 +34,7 @@ Before sending your request to the Anthropic API, CQ counts the exact tokens in 
 
 ### What happens if CQ is down?
 
-If the CQ proxy is unavailable, your Claude Code requests will fail. We recommend configuring a fallback: if the proxy returns an error, retry directly against `api.anthropic.com`. Your code quality doesn't degrade — you just pay full price for that session. Enterprise plans include an SLA with 99.9% uptime guarantee and a status page at `status.startum.com`.
+If the CQ proxy is unavailable, your Claude Code requests will fail. We recommend configuring a fallback: if the proxy returns an error, retry directly against `api.anthropic.com`. Your code quality doesn't degrade — you just pay full price for that session. There is no hosted service, so there is no SLA or status page: the proxy runs on your machine.
 
 ### Can I use CQ with OpenAI or Gemini?
 
@@ -47,9 +47,7 @@ The MVP targets the Anthropic API specifically, including the exact token counti
 ### How do I point Claude Code at CQ?
 
 ```bash
-export ANTHROPIC_BASE_URL=http://localhost:4080  # local dev
-# or
-export ANTHROPIC_BASE_URL=https://proxy.startum.com  # production
+export ANTHROPIC_BASE_URL=http://localhost:4080  # the proxy on your machine
 ```
 
 Claude Code respects the `ANTHROPIC_BASE_URL` environment variable and will route all API calls through it. No other configuration is required.
@@ -97,7 +95,7 @@ Not yet: no enclave has been built, so there are no PCR values, no attestation e
 
 ```bash
 # Request an attestation document from the enclave
-curl https://proxy.startum.com/v1/attestation/document
+curl http://localhost:4080/v1/attestation/document
 
 # Verify the PCR values match the published release
 # Instructions: docs/SECURITY.md — "Attestation" section
@@ -113,4 +111,4 @@ Not yet. Target: SOC 2 Type II by month 12. The architecture is designed for com
 
 ### How do I report a security vulnerability?
 
-Email `security@startum.com`. Do not open a public GitHub issue. See `SECURITY_POLICY.md` for the full responsible disclosure process and our commitment to response times.
+Use GitHub private vulnerability reporting: <https://github.com/MILTONADINA/DevOPs/security/advisories/new>. Do not open a public GitHub issue. See `docs/SECURITY.md` at the repository root for the full disclosure process.

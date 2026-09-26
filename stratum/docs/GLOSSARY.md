@@ -35,7 +35,7 @@ A specific, detected instance of memory drift: a stored fact that conflicts with
 The algorithm from the DyCP paper (arXiv:2601.07994) that extends Kadane's maximum subarray algorithm to identify contiguous spans of high-relevance dialogue turns. The name combines "Kadane" (the original algorithm's inventor, Joseph Kadane) and "dial" (dialogue).
 
 **CQ-Extended KadaneDial**
-CQ's proprietary extension of KadaneDial that adds a temporal decay factor λ. Turns that are semantically similar to the query but temporally distant are penalized. This is our algorithmic contribution beyond the DyCP paper.
+CQ's extension of KadaneDial that adds a temporal decay factor λ. Turns that are semantically similar to the query but temporally distant are penalized. This is the project's algorithmic contribution beyond the DyCP paper, released under the MIT License.
 
 **Temporal Decay Factor (λ)**
 A scalar between 0 and 1 that controls how quickly older context loses relevance weight. Applied per elapsed hour: `λ^(elapsed_hours)`. At λ=0.97, context from 24 hours ago retains approximately 47% of its weight.
@@ -88,7 +88,7 @@ The Neo4j-based graph database in Tier 3 that stores entities (Functions, Commit
 ## Security Terms
 
 **ZK-Context**
-Zero-Knowledge Context. CQ's security architecture whereby raw session context is encrypted on the client device and only decrypted inside a hardware-attested Trusted Execution Environment (TEE). CQ operators cannot read customer context.
+Zero-Knowledge Context. CQ's security architecture whereby raw session context is encrypted on the client device and only decrypted inside a hardware-attested Trusted Execution Environment (TEE). CQ operators cannot read the user's context.
 
 **TEE (Trusted Execution Environment)**
 AWS Nitro Enclaves — isolated compute environments with no persistent storage, no network access, and no operator access. Provides cryptographic proof (via attestation documents) that the code running inside is exactly the published CQ code.
@@ -100,10 +100,10 @@ The process by which the client verifies the TEE's identity before transmitting 
 Cryptographic measurements of the enclave's boot components, OS, and application code. Changing any line of enclave code changes its PCR values, making it detectable.
 
 **Session Encryption Key (SEK)**
-A per-session AES-256-GCM key derived from the customer's master key via HKDF-SHA256. Transmitted to the TEE encrypted with the enclave's public key. Used to decrypt the context payload inside the enclave.
+A per-session AES-256-GCM key derived from the user's master key via HKDF-SHA256. Transmitted to the TEE encrypted with the enclave's public key. Used to decrypt the context payload inside the enclave.
 
 **HKDF**
-HMAC-based Key Derivation Function. Used to derive session-specific encryption keys from the customer's master key. Compromise of one session's key does not affect other sessions.
+HMAC-based Key Derivation Function. Used to derive session-specific encryption keys from the user's master key. Compromise of one session's key does not affect other sessions.
 
 ---
 

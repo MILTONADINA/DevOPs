@@ -138,7 +138,7 @@ When you change λ, g, or θ via `PATCH /v1/config`, an eval run is triggered au
 
 ## Increasing Limits
 
-Contact `support@startum.com` or your account manager with:
+Open an issue at <https://github.com/MILTONADINA/DevOPs/issues> with:
 
 - Your current plan
 - Your expected usage pattern (requests/min, tokens/min)

@@ -1,5 +1,5 @@
 name: Security
-description: For non-sensitive security improvements ONLY. For vulnerabilities, email maintainer privately.
+description: For non-sensitive security improvements ONLY. Report vulnerabilities through GitHub private vulnerability reporting.
 title: "[Security] "
 labels: [security]
 body:
@@ -7,7 +7,9 @@ body:
     attributes:
       value: |
         **DO NOT FILE THIS FORM FOR VULNERABILITIES.**
-        Email the maintainer privately. See `docs/SECURITY.md`.
+        Report vulnerabilities through GitHub private vulnerability reporting:
+        https://github.com/MILTONADINA/DevOPs/security/advisories/new
+        See `docs/SECURITY.md`.
         This form is for non-sensitive security improvements only.
   - type: textarea
     id: improvement

@@ -41,14 +41,16 @@ Read `constitution/PRINCIPLES.md` for full text, tradeoffs, and working signals.
 2. **Conventional Commits required.** Format: `<type>(<scope>): <subject>`
    - Types: `feat`, `fix`, `docs`, `refactor`, `perf`, `test`, `chore`, `security`
 3. **Every code change must include tests.** No exceptions for "small" changes.
-4. **Every PR must include proof artifacts** in `.workflow/proofs/`:
+4. **Every PR must include proof in its PR description.** `.workflow/proofs/`
+   is gitignored, so do not commit files from it; paste the proof into the
+   PR description instead:
    - Test command run + exit code + output tail
    - Git diff
    - Spec reference
 5. **No skill modifications without an eval pass.** Skills must demonstrate
    the "working when" signal documented in their metadata.
-6. **All security-sensitive changes require a threat-model update** in the
-   relevant `docs/security/` document.
+6. **All security-sensitive changes require a threat-model update** in
+   `docs/SECURITY.md` or the relevant threat model under `docs/threat-models/`.
 
 ---
 
@@ -139,5 +141,10 @@ DevOPs uses SemVer. Projects can lock to a specific version via
 
 ## Security
 
-If you discover a security issue, do NOT open a public issue. Email the
-maintainer directly. See `docs/SECURITY.md` for the disclosure protocol.
+If you discover a security issue, do NOT open a public issue. Report it
+through GitHub private vulnerability reporting
+(<https://github.com/MILTONADINA/DevOPs/security/advisories/new>). See
+`docs/SECURITY.md` for the disclosure protocol, including what to do before
+the repository owner has enabled private reporting.
+
+Conduct in all project spaces is covered by `CODE_OF_CONDUCT.md`.

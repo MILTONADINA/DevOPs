@@ -218,21 +218,57 @@ its own skill bundle and acceptance gates.
 
 ## Quick start
 
+DevOPs runs on your own machine; there is no hosted service. Nothing in this
+Quick start requires a paid account. Tools you choose to connect (an LLM
+provider, for example) may have their own charges, billed by that provider.
+
+These are plain shell commands, so you can also open this repository in your
+AI coding agent and ask it to follow this section.
+
+**Prerequisites**
+
+- macOS, Linux, or WSL2 (native Windows is not supported)
+- `git` and `bash`
+- Node.js 20.11 or later. The analyzer runs TypeScript directly, so it also
+  needs either `tsx` (`npm i -g tsx`) or Node.js 22.6 or later.
+- Optional, only for the local Stratum database and proxy: Docker with
+  Compose, and a running Docker engine
+- Optional: `cosign`, to verify skill signatures during install. Without it,
+  the installer falls back to the manifest's SHA-256 check.
+
 ```bash
-# 1. Clone DevOPs (one-time)
+# 1. Clone DevOPs (one-time). The scripts default to ~/DevOPs.
 git clone https://github.com/MILTONADINA/DevOPs.git ~/DevOPs
 
-# 2. Install globally
-cd ~/DevOPs && ./install.sh
+# 2. Install: marks the hook and script files executable
+cd ~/DevOPs && ./scripts/install.sh
 
 # 3. In any new or existing project:
 cd ~/my-project
-~/DevOPs/scripts/analyze.sh        # detects stack, recommends config
+~/DevOPs/scripts/analyze.sh        # detects stack, writes .workflow/profile.yml
 ~/DevOPs/scripts/init-project.sh   # installs the recommended config
 ```
 
-After installation, every supported coding agent will pick up DevOPs automatically
-the next time you open the project.
+If step 1 clones to `~/DevOPs` as shown, you do not need to set
+`DEVOPS_ROOT`: the scripts default to that path. `DEVOPS_ROOT` matters only
+if you clone somewhere else in step 1. Then set
+`export DEVOPS_ROOT=/path/to/your/clone` before step 2, keep it set in your
+shell rc file, and use your clone path in place of `~/DevOPs` in steps 2 and
+3, because `install.sh` and `init-project.sh` both default to `~/DevOPs`
+(without it, `install.sh` copies the clone there). To call `analyze.sh` and
+`init-project.sh` without the full path, add `export PATH="$DEVOPS_ROOT/scripts:$PATH"`
+to your shell rc file, as `install.sh` prints.
+
+`init-project.sh` copies `AGENTS.md` and `CLAUDE.md` into the project (it
+does not overwrite existing ones), copies the recommended skills, hook
+scripts and subagents into the project's `.claude/` directory, and, in a git
+repository, writes `.git/hooks/pre-commit`. **This overwrites any existing
+pre-commit hook in the project without a backup**, so copy yours aside first
+if you have one. It does not write `.claude/settings.json`,
+so the copied hook scripts run only after you wire them there (this
+repository's own `.claude/settings.json` is a working example; `docs/HOOKS.md`
+lists what each hook does). Other coding agents read `AGENTS.md`; see the note at the
+top of this file about which adapters exist.
 
 See `docs/PLAYBOOK.md` for the full operational guide.
 

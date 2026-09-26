@@ -48,7 +48,7 @@ Pruning log ID:
 
 - [ ] Billing records affected (incorrect token counts)
 - [ ] AI quality degraded (hallucinations or wrong answers)
-- [ ] Security concern — **stop here and email security@startum.com instead**
+- [ ] Security concern — **stop here and report it through GitHub private vulnerability reporting instead: https://github.com/MILTONADINA/DevOPs/security/advisories/new**
 - [ ] Performance regression
 - [ ] Other
 

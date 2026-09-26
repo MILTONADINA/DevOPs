@@ -8,7 +8,7 @@ The base DyCP algorithm and KadaneDial are described in:
 
 > Choi, Zhang, and Choi. [*DyCP: Dynamic Context Pruning for Long-Form Dialogue with LLMs*, arXiv:2601.07994v5](https://arxiv.org/html/2601.07994v5), June 2026.
 
-CQ extends the base algorithm with a **temporal decay factor λ** that penalizes semantically relevant but temporally stale context. This extension is our proprietary contribution and is not present in the original paper.
+CQ extends the base algorithm with a **temporal decay factor λ** that penalizes semantically relevant but temporally stale context. This extension is this project's own contribution, released under the MIT License with the rest of the repository, and is not present in the original paper.
 The paper and Stratum also differ in the scoring unit, gain default, and span-selection implementation. See [paper-notes.md](paper-notes.md) for source results and a measured transfer comparison.
 
 ---
@@ -143,7 +143,7 @@ Turn-count-based decay (`λ^(n-i)`) is broken for developer workloads. A 10-turn
 | `embedding_dim` | int | 384 | — | Output dimension of the encoder |
 | `normalize_embeddings` | bool | true | — | L2-normalize before dot product |
 
-All parameters are stored per-organization in Supabase `org_config` and may be tuned by the customer. Changes trigger an automatic re-run of the org's eval suite.
+All parameters are stored per-organization in Supabase `org_config` and may be tuned by the organization's operator. Changes trigger an automatic re-run of the org's eval suite.
 
 ---
 

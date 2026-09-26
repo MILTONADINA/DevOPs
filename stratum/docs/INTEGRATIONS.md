@@ -22,10 +22,10 @@ export ANTHROPIC_BASE_URL=http://localhost:4080
 claude
 ```
 
-### Production
+### Commercial (multi-tenant) mode
 
 ```bash
-export ANTHROPIC_BASE_URL=https://proxy.startum.com
+export ANTHROPIC_BASE_URL=http://localhost:4080
 export CQ_API_KEY=your-cq-api-key   # set in Claude Code's env
 claude
 ```
@@ -34,7 +34,7 @@ Add to your shell profile (`~/.zshrc` or `~/.bashrc`) to make it permanent:
 
 ```bash
 # Startum proxy
-export ANTHROPIC_BASE_URL=https://proxy.startum.com
+export ANTHROPIC_BASE_URL=http://localhost:4080
 ```
 
 ### Verifying the Integration
@@ -58,7 +58,7 @@ import Anthropic from "@anthropic-ai/sdk";
 
 const client = new Anthropic({
   apiKey: process.env["ANTHROPIC_API_KEY"],
-  baseURL: process.env["CQ_PROXY_URL"] ?? "https://proxy.startum.com",
+  baseURL: process.env["CQ_PROXY_URL"] ?? "http://localhost:4080",
   defaultHeaders: {
     "Authorization": `Bearer ${process.env["CQ_API_KEY"]}`,
   },
@@ -108,7 +108,7 @@ import os
 
 client = anthropic.Anthropic(
     api_key=os.environ["ANTHROPIC_API_KEY"],
-    base_url=os.environ.get("CQ_PROXY_URL", "https://proxy.startum.com"),
+    base_url=os.environ.get("CQ_PROXY_URL", "http://localhost:4080"),
     default_headers={
         "Authorization": f"Bearer {os.environ['CQ_API_KEY']}"
     }
@@ -147,7 +147,7 @@ const model = new ChatAnthropic({
 Any agent that supports a custom Anthropic base URL works with CQ. Set:
 
 ```
-ANTHROPIC_BASE_URL=https://proxy.startum.com
+ANTHROPIC_BASE_URL=http://localhost:4080
 ```
 
 in the agent's environment. If the agent uses a raw HTTP client, add the `Authorization: Bearer <cq-api-key>` header to all requests.
@@ -190,7 +190,7 @@ To measure AI usage in CI pipelines:
 # GitHub Actions example
 - name: Run AI-assisted code generation
   env:
-    ANTHROPIC_BASE_URL: https://proxy.startum.com
+    ANTHROPIC_BASE_URL: http://localhost:4080   # the proxy must run in this job; a CI runner cannot reach your machine
     CQ_API_KEY: ${{ secrets.CQ_API_KEY }}
     ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
   run: |
@@ -201,7 +201,7 @@ To measure AI usage in CI pipelines:
   env:
     CQ_API_KEY: ${{ secrets.CQ_API_KEY }}
   run: |
-    curl -s "https://proxy.startum.com/v1/sessions?since=$(date -d '1 hour ago' -u +%Y-%m-%dT%H:%M:%SZ)" \
+    curl -s "http://localhost:4080/v1/sessions?since=$(date -d '1 hour ago' -u +%Y-%m-%dT%H:%M:%SZ)" \
       -H "Authorization: Bearer $CQ_API_KEY" | jq '.[] | {session_id, token_delta, cq_fee_usd}'
 ```
 
@@ -214,7 +214,7 @@ Connect your repositories to enable Git-Attestation memory verification:
 ### GitHub
 
 ```bash
-curl -X POST https://proxy.startum.com/v1/repos \
+curl -X POST http://localhost:4080/v1/repos \
   -H "Authorization: Bearer <your-api-key>" \
   -H "Content-Type: application/json" \
   -d '{
@@ -229,7 +229,7 @@ The access token requires `repo` scope (read-only is sufficient). CQ clones comm
 ### GitLab
 
 ```bash
-curl -X POST https://proxy.startum.com/v1/repos \
+curl -X POST http://localhost:4080/v1/repos \
   -H "Authorization: Bearer <your-api-key>" \
   -H "Content-Type: application/json" \
   -d '{
@@ -244,13 +244,13 @@ curl -X POST https://proxy.startum.com/v1/repos \
 For real-time Git-Attestation (rather than hourly polling), configure a webhook in your repository:
 
 - **GitHub:** Settings → Webhooks → Add webhook
-  - Payload URL: `https://proxy.startum.com/v1/webhooks/git`
+  - Payload URL: `http://localhost:4080/v1/webhooks/git` (the Git host must be able to reach your proxy; for a proxy on your machine, expose it through a tunnel as described in `WEBHOOKS.md`)
   - Content type: `application/json`
   - Events: Pushes only
   - Secret: Your webhook secret from `GET /v1/config`
 
 - **GitLab:** Settings → Webhooks
-  - URL: `https://proxy.startum.com/v1/webhooks/git`
+  - URL: `http://localhost:4080/v1/webhooks/git` (same reachability note as GitHub)
   - Secret token: Your webhook secret
   - Trigger: Push events only
 

@@ -69,7 +69,63 @@ result = red_team(model_callback=your_agent, framework=OWASP_ASI_2026())
 
 ## Reporting a vulnerability
 
-Email the maintainer directly. Do not open a public issue.
+Do not open a public issue for a vulnerability. Report it through GitHub
+private vulnerability reporting:
+<https://github.com/MILTONADINA/DevOPs/security/advisories/new>. Only the
+maintainer can read the report.
+
+**Owner action required.** Private vulnerability reporting is a repository
+setting, and it was disabled on 2026-09-26. The repository owner must enable
+it (repository Settings → Code security → Private vulnerability reporting)
+before this link accepts reports. Until it is enabled, open an issue at
+<https://github.com/MILTONADINA/DevOPs/issues> that asks for a private channel
+and contains no vulnerability details.
+
+This policy covers the whole repository, including Stratum (`stratum/`).
+`stratum/SECURITY_POLICY.md` points here for the reporting channel.
+
+Include in your report:
+
+- a description of the vulnerability
+- steps to reproduce
+- the potential impact
+- any proof-of-concept code, if you have it
+
+### Scope
+
+DevOPs runs on the user's own machine. There is no hosted service to test.
+
+In scope:
+
+- the Stratum proxy: authentication bypass, API-key handling, token
+  injection, data exfiltration
+- memory stores: access to one organization's data from another organization
+- API endpoints: authorization flaws, IDOR, injection
+- safety hooks and gates in `hooks/` and `.claude/settings.json`: a way to
+  bypass a hook that is wired and claims to block an action
+- the claim validator and proof ledger (`verification/`): a way to get a
+  false claim accepted
+- skill signing and provenance: a way to install a tampered skill without
+  detection
+
+Out of scope:
+
+- vulnerabilities in third-party services or tools (LLM providers, Supabase,
+  Docker, GitHub). Report those to the vendor.
+- vulnerabilities in dependencies. Report those to the dependency's
+  maintainer, and tell us so the dependency can be updated here.
+- hooks that this document or `CLAUDE.md` lists as not wired
+- denial of service by resource exhaustion on your own machine
+- social engineering
+
+### Good-faith research
+
+We will not take legal action against anyone who researches and reports in
+good faith under this policy: who reports promptly, does not access or change
+other people's data beyond what is needed to show the issue, does not exploit
+it for personal gain, and gives the maintainer a reasonable time to fix it
+before disclosing it publicly (90 days from acknowledgement). Reporters are
+credited in the advisory unless they prefer to stay anonymous.
 
 ## See also
 

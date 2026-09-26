@@ -21,27 +21,35 @@ Do not skip any of these. Startum has non-obvious design decisions that will mak
 **Prerequisites:**
 - Node.js 22+ (`node --version`)
 - Rust (`rustc --version`) — for hot-path WASM
-- Docker Desktop (for Supabase local)
+- Docker with Compose (Docker Desktop or Docker Engine) for the local Supabase-compatible stack
 - Git
 
 ```bash
-# Clone
-git clone https://github.com/your-org/startum
-cd startum
+# Clone (Stratum lives in the stratum/ directory of the DevOPs repository)
+git clone https://github.com/MILTONADINA/DevOPs.git
+cd DevOPs/stratum
 
 # Install Node dependencies
-npm install
+npm ci
 
-# Start Supabase locally (requires Docker running)
-npx supabase start
+# Start the local database stack (requires Docker running). This starts the
+# project Compose stack on 127.0.0.1:54321 and applies pending migrations.
+npm run db:start
+# Alternative: `npm run setup` from the repository root installs Stratum's
+# dependencies if needed, starts the database, and runs a proxy startup
+# smoke check in one step.
 
-# Apply database migrations
-npx supabase db push
-
-# Copy and configure environment
+# Copy the environment template
 cp .env.example .env
-# Edit .env — ask the team for development keys
 ```
+
+Use your own LLM provider account. Any usage charges come from that provider,
+not from this project, and a local OpenAI-compatible server (for example
+Ollama, via `CQ_LOCAL_BASE_URL`) needs no paid key. The proxy reads provider
+settings from its process environment, not from `.env`; some operator
+scripts load `.env`. Never put the local service JWT in `.env`: run commands
+that need the database through `npm run db:with-env -- <command>`, which
+supplies it (`docs/runbooks/LOCAL_STRATUM.md` at the repository root).
 
 ### 3. Verify the Setup
 
@@ -167,7 +175,7 @@ These are the non-negotiable rules from `.claude/CLAUDE.md`. Memorize them:
 4. **Encryption:** Raw context never stored or logged outside the TEE.
 5. **Billing records:** Append-only. Never modify after writing. Test this invariant explicitly.
 6. **Eval gate:** Any change to pruning logic must pass the eval suite before merge.
-7. **No SQLite:** Supabase local (Postgres) for development, Supabase hosted for production.
+7. **No SQLite:** the local Supabase-compatible Compose stack (Postgres). There is no hosted database (ADR-0020); Stratum runs on the user's machine.
 8. **No `any` types:** TypeScript strict mode. Zero exceptions.
 
 ---
@@ -197,4 +205,4 @@ By the end of your first week, you should be able to:
 5. Write a Zod schema for a new fact type (without looking at existing ones)
 6. Know which phase is active and what the next acceptance criterion to hit is
 
-If any of these feel shaky, re-read the relevant doc. Ask questions in the team chat — but check the docs first.
+If any of these feel shaky, re-read the relevant doc. Ask questions in a GitHub issue (https://github.com/MILTONADINA/DevOPs/issues) — but check the docs first.

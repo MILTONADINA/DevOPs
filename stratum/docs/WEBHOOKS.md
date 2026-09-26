@@ -11,7 +11,7 @@ CQ sends webhook events to your configured endpoint for important system events.
 Set your webhook endpoint and secret via the API:
 
 ```bash
-curl -X PATCH https://proxy.startum.com/v1/config \
+curl -X PATCH http://localhost:4080/v1/config \
   -H "Authorization: Bearer <your-api-key>" \
   -H "Content-Type: application/json" \
   -d '{
@@ -200,7 +200,7 @@ Fired on the 1st of each month when the monthly invoice is generated.
     "total_savings_usd": 315.20,
     "total_cq_fee_usd": 63.04,
     "due_date": "2026-05-15",
-    "invoice_url": "https://proxy.startum.com/v1/billing/invoices/uuid/pdf"
+    "invoice_url": "http://localhost:4080/v1/billing/invoices/uuid/pdf"
   }
 }
 ```
@@ -246,7 +246,7 @@ In commercial mode, this requires an unbound organization API key; a
 project-bound key receives HTTP 403 before the webhook configuration is read.
 
 ```bash
-curl -X POST https://proxy.startum.com/v1/webhooks/test \
+curl -X POST http://localhost:4080/v1/webhooks/test \
   -H "Authorization: Bearer <your-api-key>" \
   -H "Content-Type: application/json" \
   -d '{"event_type": "conflict.detected"}'
