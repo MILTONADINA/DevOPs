@@ -232,11 +232,14 @@ test('real data: a run whose planner is done with tasks derives the full sprint-
   if (!hasRealData) return t.skip('no real run directories on this machine/checkout');
   const run = realRuns.find((r) => r.labels.planner && r.labels.planner.status === 'done' && r.expectedLabels.length > 0);
   assert.ok(run, 'expected at least one real run with a done planner and a derivable chain');
-  assert.strictEqual(run.expectedLabels[0], 'planner');
+  // The chain starts with preflight when the run observed one (a sprint launched since preflight became a
+  // Workflow stage), and with the planner otherwise (deriveExpectedLabels).
+  const head = run.labels.preflight ? ['preflight', 'planner'] : ['planner'];
+  assert.deepStrictEqual(run.expectedLabels.slice(0, head.length), head);
   assert.ok(['reviewer', 'security', 'validator'].every((l) => run.expectedLabels.includes(l)));
-  // every node's status must be one of the four defined states
+  // every node's status must be one of the five defined states
   for (const node of run.nodes) {
-    assert.ok(['running', 'errored', 'done', 'queued'].includes(node.status), `unexpected status ${node.status}`);
+    assert.ok(['running', 'errored', 'done', 'queued', 'stale'].includes(node.status), `unexpected status ${node.status}`);
   }
 });
 
