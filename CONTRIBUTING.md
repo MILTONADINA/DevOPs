@@ -38,9 +38,15 @@ Read `constitution/PRINCIPLES.md` for full text, tradeoffs, and working signals.
 ## Pull request rules
 
 1. **Every PR must trace to a spec or ADR.** No "while I was here" changes.
-2. **Conventional Commits required.** Format: `<type>(<scope>): <subject>`
-   - Types: `feat`, `fix`, `docs`, `refactor`, `perf`, `test`, `chore`, `security`
+2. **Conventional Commits required** for the PR title, which becomes the
+   squash commit's subject on `main` (the repository squash-merges with the
+   PR title and the PR description). Format: `<type>(<scope>): <subject>`, scope optional.
+   - Types: `feat`, `fix`, `docs`, `refactor`, `perf`, `test`, `chore`,
+     `security`, `spec`, `ci`, `build`, `evals`, `fixture`, `audit`, `revert`
+   - The `PR title` check (`.github/workflows/pr-title.yml`) enforces this.
 3. **Every code change must include tests.** No exceptions for "small" changes.
+   See [docs/TESTING.md](docs/TESTING.md) for the test layers and the
+   flaky-test policy.
 4. **Every PR must include proof in its PR description.** `.workflow/proofs/`
    is gitignored, so do not commit files from it; paste the proof into the
    PR description instead:
@@ -69,13 +75,23 @@ the local pre-flight; CI runs the gating pieces; reviewer confirms.
 | 4 | `cd stratum && npm run lint && npm run typecheck` (for Stratum code) | Lint and typecheck clean. |
 | 5 | Test suite for the touched subtree: `npm test` (root) or `cd stratum && npm test`. | Relevant behavior passes before opening the PR. |
 
-### CI-gated (runs on every `pull_request` to `main`)
+### CI checks (run on pull requests)
 
-| Workflow | What it gates | Failure → |
-|---|---|---|
-| `.github/workflows/ci.yml` | Fresh Linux root setup and smoke; claim, Renovate, skill, and root test validation | merge blocked |
-| `.github/workflows/security-scan.yml` | Gitleaks, Semgrep, and DeepTeam scans | merge blocked |
-| `.github/workflows/claude-security-review.yml` | Conditional Claude semantic review of the PR diff. A missing `CLAUDE_API_KEY` produces a visible skip, not review evidence. See ADR-014. | advisory; inspect findings or skip status before merge |
+Branch protection on `main` requires the six checks marked "yes", and the
+branch must be up to date with `main` before it merges.
+
+| Check | Workflow | What it runs | Required |
+|---|---|---|---|
+| `validate` | `ci.yml` | Root test suite held to its floor; on PRs, the floor ratchet and an assertion check on added test files; claim and stale-proof validation; Renovate and skill lints | yes |
+| `stratum-test` | `ci.yml` | Stratum typecheck and test suite, held to its floor | yes |
+| `setup-linux` | `ci.yml` | Cold `npm run setup` on Linux in under 300 s, then the SQL integration tests against the local database | yes |
+| `gitleaks` | `security-scan.yml` | Secret scan of the PR's commits | yes |
+| `semgrep` | `security-scan.yml` | Semgrep registry rules; fails on findings, fatal errors or an empty scan | yes |
+| `dependency-audit` | `security-scan.yml` | `npm audit` at high severity for the root and `stratum/`; dependency review on PRs | yes |
+| `node-compat (24)`, `node-compat (26)` | `ci.yml` | The root suite and the Stratum typecheck and tests on newer Node majors | no |
+| `deepteam` | `security-scan.yml` | DeepTeam red team when agent-behavior paths change. Without a provider key it skips visibly and gates nothing. | no |
+| `Claude semantic security review` | `claude-security-review.yml` | Claude review of the diff, on non-draft PRs to `main` only. A missing `CLAUDE_API_KEY` produces a visible skip, not review evidence. See ADR-014. | no; inspect findings or skip status before merge |
+| `Conventional Commits title` | `pr-title.yml` | The PR title follows rule 2 | no |
 
 ### Reviewer confirmation (before squash-merge)
 
@@ -91,7 +107,7 @@ the local pre-flight; CI runs the gating pieces; reviewer confirms.
 gh pr merge <N> --squash --delete-branch
 ```
 
-`required_linear_history=true` is enforced by branch protection on `main` (per PB-17 closure). Direct commits to `main` are disallowed; every change lands via PR. The squash commit message uses the PR title; the body is auto-generated from the PR description.
+`required_linear_history=true` is enforced by branch protection on `main` (per PB-17 closure). Direct commits to `main` are disallowed; every change lands via PR. The squash commit takes the PR title as its subject and the PR description as its body (repository settings `squash_merge_commit_title=PR_TITLE`, `squash_merge_commit_message=PR_BODY`).
 
 ---
 

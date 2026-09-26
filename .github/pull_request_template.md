@@ -4,7 +4,9 @@
 
 ## Spec or ADR
 
-<!-- Every PR traces to a spec or ADR (CONTRIBUTING.md). Link it here. -->
+<!-- Every PR traces to a spec or ADR (CONTRIBUTING.md). Link it, and name the
+     REQ and AC ids this PR implements or changes, for example
+     specs/security/stratum-local-network.md REQ-2, AC-2. -->
 
 ## Type of Change
 
@@ -15,7 +17,12 @@
 - [ ] `docs` — documentation only
 - [ ] `test` — tests only
 - [ ] `security` — security fix or hardening
-- [ ] `chore` — build, deps, tooling
+- [ ] `chore` — maintenance with no behavior change
+- [ ] `spec` — a new or changed spec
+- [ ] `ci` / `build` — CI workflows, build or toolchain
+- [ ] `evals` / `fixture` — eval harness or eval fixtures
+- [ ] `audit` — an audit report
+- [ ] `revert` — reverts an earlier change
 
 ## Checklist
 
@@ -51,7 +58,8 @@
 
 ## Testing Notes
 
-<!-- How did you verify this works? What edge cases did you test? -->
+<!-- The tests you added (file and title), each command you ran with its exit
+     code, and the output tail. Name any edge case you checked by hand. -->
 
 ## Related Issues
 

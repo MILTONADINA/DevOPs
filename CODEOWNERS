@@ -1,0 +1,12 @@
+# Code owners (quality plan QW-7): the paths that decide how agents and CI act.
+# GitHub requests the owner's review when a PR touches them. Review from code
+# owners is not a required setting on main.
+/hooks/         @MILTONADINA
+/.claude/       @MILTONADINA
+/.github/       @MILTONADINA
+/governance/    @MILTONADINA
+/specs/         @MILTONADINA
+/constitution/  @MILTONADINA
+/AGENTS.md      @MILTONADINA
+/CLAUDE.md      @MILTONADINA
+/CODEOWNERS     @MILTONADINA
