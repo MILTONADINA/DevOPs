@@ -1,8 +1,9 @@
-# Stratum local network posture
+# Local network posture of the DevOps proxy
 
 **Status**: approved (owner, 2026-09-26, spec batch 1; recorded in .workflow/state/approvals.jsonl as human_approved_spec)
+**Amended**: 2026-09-26, by the owner's directive that DevOps is one platform (ADR-0026; `specs/ops/one-platform-naming.md`). The five new settings are named `DEVOPS_PROXY_*` instead of `STRATUM_*`, and the proxy is called the DevOps proxy. No requirement changed otherwise.
 **Spec ID**: security/stratum-local-network (quality plan cycle S1)
-**Decision context**: DevOPs is open source and local-first, with no hosted service (owner, 2026-09-26; ADR-0025). The Stratum proxy runs on the user's own machine and holds the user's provider keys.
+**Decision context**: DevOPs is open source and local-first, with no hosted service (owner, 2026-09-26; ADR-0025). The DevOps proxy (code under `stratum/`) runs on the user's own machine and holds the user's provider keys.
 
 ## Problem
 
@@ -30,21 +31,21 @@ The default local setup must keep working with no new settings: an AI client on 
 ## Requirements
 
 ### REQ-1 — No cross-origin access without auth
-WHERE no auth is configured, THE PROXY SHALL NOT send an `Access-Control-Allow-Origin` header for any origin, and SHALL answer a CORS preflight (`OPTIONS` with `Origin` and `Access-Control-Request-Method`) with status 403. WHERE auth is configured, THE PROXY SHALL allow only the origins listed in `STRATUM_CORS_ORIGINS` (comma-separated, empty by default).
+WHERE no auth is configured, THE PROXY SHALL NOT send an `Access-Control-Allow-Origin` header for any origin, and SHALL answer a CORS preflight (`OPTIONS` with `Origin` and `Access-Control-Request-Method`) with status 403. WHERE auth is configured, THE PROXY SHALL allow only the origins listed in `DEVOPS_PROXY_CORS_ORIGINS` (comma-separated, empty by default).
 
 ### REQ-2 — Loopback Host only without auth
-WHERE no auth is configured, THE PROXY SHALL refuse with status 403, before routing, every request whose `Host` header is missing or is not a loopback name. WHERE auth is configured, THE PROXY SHALL accept any `Host`, unless `STRATUM_ALLOWED_HOSTS` (comma-separated) is set, in which case only those hosts and the loopback names are accepted.
+WHERE no auth is configured, THE PROXY SHALL refuse with status 403, before routing, every request whose `Host` header is missing or is not a loopback name. WHERE auth is configured, THE PROXY SHALL accept any `Host`, unless `DEVOPS_PROXY_ALLOWED_HOSTS` (comma-separated) is set, in which case only those hosts and the loopback names are accepted.
 
 ### REQ-3 — No unauthenticated remote bind
-- The listen address SHALL be read from `STRATUM_HOST`.
-- `HOST` SHALL still be honoured for one release as a deprecated alias, and the proxy SHALL log a warning that names `STRATUM_HOST` when `HOST` is used.
-- IF the listen address is not a loopback address, AND no auth is configured, AND `STRATUM_ALLOW_REMOTE_UNAUTHENTICATED` is not `1`, THEN THE PROXY SHALL refuse to start. It exits non-zero with a message that names the three ways forward: bind to loopback, configure auth, or set the opt-in.
+- The listen address SHALL be read from `DEVOPS_PROXY_HOST`.
+- `HOST` SHALL still be honoured for one release as a deprecated alias, and the proxy SHALL log a warning that names `DEVOPS_PROXY_HOST` when `HOST` is used.
+- IF the listen address is not a loopback address, AND no auth is configured, AND `DEVOPS_PROXY_ALLOW_REMOTE_UNAUTHENTICATED` is not `1`, THEN THE PROXY SHALL refuse to start. It exits non-zero with a message that names the three ways forward: bind to loopback, configure auth, or set the opt-in.
 
 ### REQ-4 — Numeric settings fail closed
 IF `PORT` is set and is not an integer from 1 to 65535, OR `RATE_LIMIT_MAX` is set and is not a positive integer, THEN THE PROXY SHALL refuse to start. It exits non-zero with a message that names the variable and the value it rejected.
 
 ### REQ-5 — Upstream transport
-- THE PROXY SHALL refuse at startup any provider base URL (`ANTHROPIC_BASE_URL`, `OPENAI_BASE_URL`, `OPENROUTER_BASE_URL`, `GEMINI_BASE_URL`, `CQ_LOCAL_BASE_URL`) that uses plain `http` to a non-loopback host, unless `STRATUM_ALLOW_INSECURE_UPSTREAM` is `1`.
+- THE PROXY SHALL refuse at startup any provider base URL (`ANTHROPIC_BASE_URL`, `OPENAI_BASE_URL`, `OPENROUTER_BASE_URL`, `GEMINI_BASE_URL`, `CQ_LOCAL_BASE_URL`) that uses plain `http` to a non-loopback host, unless `DEVOPS_PROXY_ALLOW_INSECURE_UPSTREAM` is `1`.
 - It SHALL refuse a base URL whose host and port equal its own listen address (a self-loop).
 - Loopback `http` stays allowed, for local model servers such as Ollama.
 
@@ -64,18 +65,18 @@ Tests live in `stratum/test/proxy/local-network.test.ts` unless stated. Each tes
   - with no `Host` it returns 403.
 - **AC-3** (REQ-1, REQ-2). Given auth configured:
   - a foreign `Host` is accepted;
-  - an Origin not in `STRATUM_CORS_ORIGINS` gets no `Access-Control-Allow-Origin`;
+  - an Origin not in `DEVOPS_PROXY_CORS_ORIGINS` gets no `Access-Control-Allow-Origin`;
   - a listed Origin gets its own origin back;
-  - with `STRATUM_ALLOWED_HOSTS=proxy.lan`, `Host: other.lan` returns 403 and `Host: proxy.lan` is accepted.
+  - with `DEVOPS_PROXY_ALLOWED_HOSTS=proxy.lan`, `Host: other.lan` returns 403 and `Host: proxy.lan` is accepted.
 - **AC-4** (REQ-3). The following start behaviours hold (a start-options or `start()` test; spawn the entry point where the check lives in `start()`):
-  - `STRATUM_HOST=0.0.0.0` without auth refuses to start and exits non-zero with the message;
-  - the same with `STRATUM_ALLOW_REMOTE_UNAUTHENTICATED=1` starts and logs a warning;
+  - `DEVOPS_PROXY_HOST=0.0.0.0` without auth refuses to start and exits non-zero with the message;
+  - the same with `DEVOPS_PROXY_ALLOW_REMOTE_UNAUTHENTICATED=1` starts and logs a warning;
   - the same with auth configured starts;
-  - `HOST=0.0.0.0` alone behaves like `STRATUM_HOST` and logs the deprecation warning.
+  - `HOST=0.0.0.0` alone behaves like `DEVOPS_PROXY_HOST` and logs the deprecation warning.
 - **AC-5** (REQ-4). Each of `RATE_LIMIT_MAX=abc`, `RATE_LIMIT_MAX=0`, `PORT=0`, `PORT=70000` and `PORT=x` makes startup exit non-zero with a message naming the variable. Unset values keep today's defaults (100 and 4080).
 - **AC-6** (REQ-5). The following base URLs behave as stated:
   - `ANTHROPIC_BASE_URL=http://10.0.0.5:8080` refuses to start;
-  - the same with `STRATUM_ALLOW_INSECURE_UPSTREAM=1` starts;
+  - the same with `DEVOPS_PROXY_ALLOW_INSECURE_UPSTREAM=1` starts;
   - `CQ_LOCAL_BASE_URL=http://127.0.0.1:11434/v1` starts;
   - an `https` URL starts;
   - `ANTHROPIC_BASE_URL=http://127.0.0.1:4080` with the proxy on port 4080 refuses (self-loop).
@@ -105,5 +106,5 @@ Tests live in `stratum/test/proxy/local-network.test.ts` unless stated. Each tes
 - Nothing changes for an AI client on the same machine.
 - A browser app that called the proxy from another origin stops working. None is documented.
 - A setup that exported `HOST` keeps working for one release, with a warning.
-- A user whose model server runs on another LAN host over `http` sets `STRATUM_ALLOW_INSECURE_UPSTREAM=1`.
+- A user whose model server runs on another LAN host over `http` sets `DEVOPS_PROXY_ALLOW_INSECURE_UPSTREAM=1`.
 - Docker users use the Compose stack or run the proxy directly; the image is removed.
