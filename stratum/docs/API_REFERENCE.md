@@ -2,8 +2,7 @@
 
 ## Base URL
 
-Development: `http://localhost:4080`
-Production: `https://proxy.startum.com`
+Local: `http://localhost:4080` (the proxy runs on your machine; there is no hosted instance)
 
 All endpoints require the header `Authorization: Bearer <org_api_key>` except `/health`.
 

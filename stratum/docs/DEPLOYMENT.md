@@ -298,13 +298,13 @@ After every deployment, verify:
 
 ```bash
 # Proxy health
-curl https://proxy.startum.com/health
+curl http://localhost:4080/health
 
 # Expected:
 # {"status":"ok","proxy":"healthy","supabase":"healthy","pinecone":"healthy","neo4j":"healthy","tee":"healthy"}
 
 # Token counting (sanity check)
-curl -X POST https://proxy.startum.com/v1/tokens/count \
+curl -X POST http://localhost:4080/v1/tokens/count \
   -H "Authorization: Bearer <api-key>" \
   -H "Content-Type: application/json" \
   -d '{"model":"claude-opus-4-6","messages":[{"role":"user","content":"hello"}]}'
@@ -336,4 +336,4 @@ Before every production deployment:
 |---|---|---|---|
 | Local dev | `http://localhost:4080` | Local Docker | `npm run dev` |
 | Staging | `https://...-staging.workers.dev` | Staging project | Auto-deploy on `staging` branch |
-| Production | `https://proxy.startum.com` | Production project | Manual deploy only |
+| Production | none: there is no hosted instance (ADR-0020) | none | Not deployed |

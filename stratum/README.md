@@ -129,7 +129,7 @@ npm run db:with-env -- npm run create-api-key -- --org-id <uuid> --name "my key"
 | [`docs/paper-notes.md`](docs/paper-notes.md) | Notes on arXiv:2601.07994 (fill in after reading) |
 | [`docs/waste-taxonomy.md`](docs/waste-taxonomy.md) | Phase 0 waste category template (fill in from data) |
 | [`SECURITY_POLICY.md`](SECURITY_POLICY.md) | Vulnerability disclosure policy |
-| [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) | Community standards |
+| [`CODE_OF_CONDUCT.md`](../CODE_OF_CONDUCT.md) | Community standards (repository root; covers Stratum) |
 
 ### Architecture Decision Records
 | Document | Decision |

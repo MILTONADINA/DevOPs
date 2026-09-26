@@ -236,6 +236,6 @@ If a security vulnerability is discovered:
 4. Notify affected customers within 72 hours (GDPR requirement)
 5. Publish a post-mortem within 30 days
 
-Report security vulnerabilities to: `security@startum.com`
+Report security vulnerabilities through GitHub private vulnerability reporting: <https://github.com/MILTONADINA/DevOPs/security/advisories/new>. See `docs/SECURITY.md` at the repository root for the full policy.
 
 Do not open public GitHub issues for security bugs.
