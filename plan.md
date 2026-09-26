@@ -2,9 +2,9 @@
 
 **Owner**: Milton Adina
 **Authored**: 2026-05-28 (paired with `blueprint.md`)
-**Quality bar**: **Best-of-the-best at every layer.** No exceptions. The "personal use" framing means no Stripe billing yet — it does NOT relax quality, coverage, security, or rigor.
+**Quality bar**: **Best-of-the-best at every layer.** No exceptions. Open source with no payment (owner decision 2026-09-26) does NOT relax quality, coverage, security, or rigor.
 **Format**: GitHub-style `- [ ]` checklist. Group order = recommended execution order.
-**Distribution model**: public repo today (owner decision 2026-09-23) → friends-install tomorrow (v0.4.x+) → commercial v1.0.0+. Every line is built for the friend-install + commercial-future case.
+**Distribution model**: public, MIT-licensed repository (owner decisions 2026-09-23 and 2026-09-26). No payment and no hosted service. The goal, and the v1.0 ship gate (§9), is that a user points their AI agent at this repository and it configures DevOPs and Stratum on the user's own machine; this is not yet verified (ADR-0025, `stratum/docs/decisions/0025-open-source-local-first-no-payment.md`). A user who chooses a paid third-party service, such as an LLM provider or Jev, pays that provider directly; nobody pays the project.
 
 **Status snapshot (2026-09-23)**:
 - v0.3.0 is tagged at `250f90a` and published after release preparation PR #30,
@@ -217,14 +217,16 @@ Borrowed from [obra/superpowers](https://github.com/obra/superpowers). Extends o
 
 **Theme**: "Stratum remembers what we decided. I never re-explain decisions."
 **Ship gate**: fact-survives-50-turn-gap test passes; Tier 2 <50ms p95;
-Tier 3 graph/vector latency is measured on the approved Supabase implementation;
+Tier 3 graph/vector latency is measured on the user's machine against the local stack;
 Zod gates all writes; the DevOPs session-start hook retrieves relevant facts.
 **Status (2026-09-23)**: hot, warm, Supabase graph/vector, promotion code,
 memory API, read-only `understand-codebase` CLI, and a scoped Claude
 SessionStart recall bridge exist. The simulated 50-turn survival test passes.
 Live session-start binding/retrieval and the Tier-2 latency gate remain open.
 The paid Supabase project is retired; ADR-0020 selects the free local Compose
-stack for development, not production release readiness.
+stack. Under ADR-0025 (owner decision 2026-09-26) there is no hosted
+deployment: release gates are measured on the user's machine against that
+local stack.
 ADR-0013 replaces Pinecone/Neo4j as v0.5 ship dependencies while keeping
 their adapter interfaces available. The original ~100h estimate is stale and
 must be recalculated after the open gates are reconciled.
@@ -249,8 +251,9 @@ must be recalculated after the open gates are reconciled.
 - [ ] **Tier 2 latency gate**. `npm run bench:tiers` now checks the <50ms p95
   ship target (it used MONITORING's 80ms alert). A local Compose run on
   2026-09-25 measured Tier-2 p95 2.31 ms (Tier-3 graph 1.53 ms, vector
-  1.54 ms, same machine). That is a local sample, not the representative
-  deployment measurement this gate needs; no deployment topology exists yet.
+  1.54 ms, same machine). Under ADR-0025 the gate is measured on the user's
+  machine, not on a deployment. That run was one ad hoc sample; the gate stays
+  open until a release run records the measurement.
 
 ### 4c. Tier 3 — Cold Memory (Supabase pgvector + graph)
 
@@ -262,7 +265,8 @@ must be recalculated after the open gates are reconciled.
   `KnowledgeGraph` seam for a future Neo4j adapter.
 - [x] **Tier 3 latency measurement**. `npm run bench:tiers` measured the
   Supabase graph/vector paths within its recorded 200ms p95 monitoring target.
-  Recheck against a binding release target after deployment topology is chosen.
+  Recheck against a binding release target measured on the user's machine
+  (ADR-0025: no deployment topology will be chosen).
 
 ### 4d. Promotion + integration
 
@@ -280,6 +284,18 @@ must be recalculated after the open gates are reconciled.
 - [ ] **Live session-start binding and recall**. Configure a trusted project/org
   mapping and local database credentials, then measure retrieval/injection in
   a real Claude session. Other tools' session-start adapters remain open.
+- [ ] **Local retrieval with an optional Jev judge** (planned; not estimated).
+  The full conversation history stays on the user's machine, and retrieval
+  over it runs locally, alongside the Tier-2 recall work (ADR-0024,
+  `specs/memory/tier2-long-history-recall.md`). Jev, TypeSafe's System One
+  judge model (its documentation lists only Jev 1.13.0), is an optional judge
+  over that history: the user enables it with their own TypeSafe key and pays
+  TypeSafe directly. It is used only where a measurement against the
+  local-only path shows fewer tokens or less drift, and the setup works
+  without it. Sending history content to Jev takes it off the machine, so
+  this needs its own spec, threat-model entry and ADR before any code
+  (`specs/graph/J-jev-judgments.md` keeps Stratum's request path out of scope
+  today).
 - [x] **50-turn survival test**: `stratum/test/memory/manager.test.ts` proves a
   decision evicted from hot memory is extracted, persisted, and recalled after
   50 unrelated turns using a fake model and database. A separate live memory
@@ -317,8 +333,8 @@ dashboard landed; the historical ~60h estimate is stale.
 
 - [x] **`stratum/src/audit/git-indexer.ts`**. Indexes recent Git history into
   structured code changes. `npm run bench:audit-indexer` measures five real
-  100-commit samples against the <5s p95 local target; deployed representative
-  performance remains a v0.6 release check.
+  100-commit samples against the <5s p95 local target; a release-run
+  measurement on the user's machine remains a v0.6 release check (ADR-0025).
 - [x] **Deterministic Git attestation core**. `stratum/src/audit/git-attestation.ts` compares typed code facts against indexed changes and returns CONFIRMED / CONFLICT / UNVERIFIED; `audit-engine.ts` persists the outcomes. It is currently called by `npm run audit:repo`, not the proxy request path. Explicit binding to a fact's claimed `commit_hash` remains open.
 - [x] **Core attestation tests**. `stratum/test/audit/git-attestation.test.ts` covers confirming, contradicting, unverified changes, and exact claimed-commit confirmation. Absence of a confirming indexed change returns UNVERIFIED.
 - [x] **Claimed commit anchor**. A fact's `commit_hash` must match its confirming indexed change; missing or mismatched anchors return UNVERIFIED. A rename's delete/add evidence must share one commit. See `specs/audit/commit-anchor.md`.
@@ -332,13 +348,13 @@ dashboard landed; the historical ~60h estimate is stale.
 
 ### 5c. audit_conflicts table + dashboard alerts
 
-- [x] **Audit schema migrations**. `audit_conflicts` is in the initial schema; the September migrations add atomic conflict suppression and per-fact `audit_statuses`. All 16 migrations applied in the loopback-only local Compose stack; a rolled-back SQL audit write and scoped API read passed. A disposable real-Git `audit:repo --persist` run also verified local suppression, status, and alert. Deployed behavior remains unverified.
+- [x] **Audit schema migrations**. `audit_conflicts` is in the initial schema; the September migrations add atomic conflict suppression and per-fact `audit_statuses`. All 16 migrations applied in the loopback-only local Compose stack; a rolled-back SQL audit write and scoped API read passed. A disposable real-Git `audit:repo --persist` run also verified local suppression, status, and alert. Behavior on a user's own install beyond these disposable runs remains unverified.
 - [ ] **CONFLICT alert pipeline** (~4h). Deterministic audit writes conflicts
   to `audit_conflicts` idempotently. The dashboard now reads the protected,
   organization-scoped conflict API and refreshes every 3s while visible.
   A real local Chrome run rendered an injected scoped conflict in 2,991 ms
   through that API. This measured the browser path with an in-memory store;
-  the <5s deployed insertion-to-render gate remains open.
+  the <5s insertion-to-render gate with the real local store remains open.
 - [x] **Dashboard read surfaces**. Historical Drift conflict panel and per-fact
   CONFIRMED/CONFLICT/UNVERIFIED badges use the scoped status API. Live
   insertion-to-render verification remains open.
@@ -350,41 +366,35 @@ dashboard landed; the historical ~60h estimate is stale.
 
 ---
 
-## 6. v0.7.x — Phase 4 ZK-Context + AWS Nitro TEE
+## 6. v0.7.x — Phase 4 ZK-Context + AWS Nitro TEE — DROPPED
 
-**Theme**: "I can use Stratum with NDA-sensitive code without leaking plaintext."
-**Ship gate**: modified-PCR enclave rejected; latency <15ms added; raw context audit shows zero plaintext in any log/table; independent security reviewer signs off.
-**Effort remaining**: ~80h. **Highest-risk component**; build last so the rest is mature.
+**Dropped by owner decision, 2026-09-26** (ADR-0025). ZK-Context existed to
+protect a user's context on a server the project would host: decryption only
+inside an AWS Nitro Enclave, with an attestation the client verifies. The
+project no longer hosts or deploys anything. Stratum runs on the user's own
+machine, so there is no operator server for an enclave to protect against.
+These planned items are withdrawn, not deferred:
 
-### 6a. Client-side crypto
+- **6a. Client-side crypto.** The offline AES-256-GCM primitive from ADR-0022
+  (`stratum/src/pruner/crypto.ts`) stays in the tree as code; no request-path
+  work is planned on it. The session-key rotation item goes with it.
+- **6b. AWS Nitro Enclave deployment**: the enclave application, the
+  attestation flow and the TEE gateway.
+- **6c. Audit gates**: the modified-enclave test, the plaintext log audit, the
+  <15ms TEE latency benchmark, and the independent reviewer's sign-off on the
+  TEE design.
+- **6e. The v0.7.0 release.**
 
-- [ ] **`stratum/src/pruner/crypto.ts`** (~15h). AES-256-GCM. Per-session key derived via HKDF from operator master key. Authenticated encryption. Tested against NIST vectors.
-- [ ] **Key rotation flow** (~3h). Session-end hook rotates session key. Already in `hooks/universal/session-end/rotate-session-key.sh`; verify.
+The former ~80h estimate for this version is withdrawn. Section 6d below is
+not TEE work; it moves to the v0.8.x release gate.
 
-### 6b. AWS Nitro Enclave deployment
+### 6d. Claude Code Security (reasoning-based) integration at release gate (NEW, ~4h; moved to the v0.8.x release gate)
 
-- [ ] **Enclave application** (~20h). Decryption-only inside enclave. Build + sign + measure PCR values. Publish expected PCRs per release at `stratum/docs/enclave-pcr-values.md` (template already exists).
-- [ ] **Attestation flow** (~12h). Client verifies PCR measurements before any decryption. Reject mismatched PCRs.
-- [ ] **TEE Gateway** (~15h). Proxy routes ZK-enabled requests through enclave. Per-org `zk_enabled` config toggle.
-
-### 6c. Audit gates
-
-- [ ] **Modified-enclave test** (~3h). Build enclave with wrong PCR; attestation MUST reject.
-- [ ] **Log audit** (~2h). Grep all Cloudflare/Supabase/OTel outputs for plaintext context patterns; expect zero matches.
-- [ ] **Latency benchmark** (~3h). TEE overhead must be <15ms p99 on the request path.
-- [ ] **Independent security reviewer** (~ongoing) — reads `stratum/docs/SECURITY.md`; signs off on threat model.
-
-### 6d. Claude Code Security (reasoning-based) integration at release gate (NEW, ~4h)
-
-Anthropic's reasoning-based security scanner (GA Feb 2026) reads code "the way a human security researcher would" — traces data flow, catches complex vulns that pattern-matchers miss. Wire it as a release-gate scan before any v0.x → v0.(x+1) tag from v0.7.x forward. Especially load-bearing around the TEE boundary + Phase 3 fact-extraction paths.
+Anthropic's reasoning-based security scanner (GA Feb 2026) reads code "the way a human security researcher would" — traces data flow, catches complex vulns that pattern-matchers miss. Wire it as a release-gate scan before any v0.x → v0.(x+1) tag from v0.8.x forward. Especially load-bearing around the Phase 3 fact-extraction paths.
 
 - [ ] **Wire Claude Code Security at release gate** (~2h). Run on the full diff between previous release tag and current release candidate. Document the run in release notes. Surface findings (if any) with disposition (fix-before-release / accept-risk-with-ADR / false-positive-with-rationale).
-- [ ] **Data-flow tracing focus areas** documented in `stratum/docs/SECURITY.md` (~1h). Explicitly call out the high-value scan targets: TEE boundary (encrypt/decrypt code paths), Phase 3 fact extractor (LLM-input/output boundary), PII redaction wrapper (any new code touching captured content), proxy forward path (auth header handling).
+- [ ] **Data-flow tracing focus areas** documented in `stratum/docs/SECURITY.md` (~1h). Explicitly call out the high-value scan targets: Phase 3 fact extractor (LLM-input/output boundary), PII redaction wrapper (any new code touching captured content), proxy forward path (auth header handling).
 - [ ] **Threat-model entry update** (~1h) — add reasoning-based scan as a Tier 3 control alongside existing pattern-based scans (gitleaks + semgrep) and our area-A pentest-stack.
-
-### 6e. v0.7.0 release
-
-- [ ] PR + squash-merge + signed tag + release artifacts + threat-model entry + ADR.
 
 ---
 
@@ -418,74 +428,118 @@ Anthropic's reasoning-based security scanner (GA Feb 2026) reads code "the way a
 ### 7d. Distribution polish
 
 - [x] **Plugin marketplace metadata** (~2h). `.claude-plugin/marketplace.json` no longer claims support for tools that have no adapter (#184 changed plugin.json and package.json; #191 changed the marketplace entry). It is checked against the plugin manifest, not a published marketplace listing.
-- [ ] **License clarity** (~2h). MIT vs Apache vs custom. Decide. Update LICENSE + headers if needed.
+- [x] **License clarity** (~2h). MIT: `LICENSE` is the plain MIT text and attribution is in `NOTICE.md` (PR #199). ADR-0025 records the open-source, no-payment decision.
 - [x] **CONTRIBUTING.md polish** (~3h). The contributor checklist links to DEVELOPER_GUIDE.md and reflects current proof, CI, and conditional Claude review behavior.
 
 ### 7e. v0.8.0 release
 
-- [ ] PR + squash-merge + signed tag + release artifacts + full docs landed.
+- [ ] PR + squash-merge + signed tag + release artifacts + full docs landed + the Claude Code Security release-gate scan (§6d).
 
 ---
 
-## 8. v0.9.x — Phase 6 billing schema (no Stripe yet)
+## 8. v0.9.x — Payment removal + self-hosted team features
 
-**Theme**: "Forward-compat for v1.0.x commercial."
-**Ship gate**: cannot modify a billing record (Postgres trigger test passes); GDPR erasure <30s on 1-year data; schema ready for Stripe wiring.
-**Effort remaining**: ~30h.
+**Redefined by owner decision, 2026-09-26** (ADR-0025,
+`stratum/docs/decisions/0025-open-source-local-first-no-payment.md`). This
+version was the Phase 6 billing schema: HMAC-signed records, an append-only
+trigger, a 20% fee calculator, an invoice stub and a CFO dashboard, built as
+preparation for Stripe in v1.0. The project is now open source with no
+payment, so v0.9 removes the payment layer and keeps what a self-hosting team
+needs.
 
-- [ ] **`stratum/src/billing/recorder.ts`** (~10h). HMAC-SHA256-signed `BillingRecord` writes. Append-only.
-- [x] **Append-only Postgres trigger**. The applied local migration raises on
-  UPDATE, UPSERT, DELETE, and TRUNCATE. A rolled-back PostgreSQL fixture
-  verified those rejections, generated fee columns, and the billing-to-session
-  foreign key. The signature verifier now requires explicit credentials,
-  pages through the exact record count, and fails on partial reads; a capped
-  1,001-record fixture found tampering after the first REST page. This does not
-  close the separate erasure or release gates.
-- [ ] **`stratum/src/billing/calculator.ts`** (~5h). Per-record + monthly aggregate calculations. `0.20 × (original - quarantined) × price` formula (placeholder; not active until Stripe).
-- [ ] **`stratum/src/billing/invoice.ts` stub** (~3h). Interface only; no Stripe yet. Implementable when v1.0.x customer arrives.
-- [ ] **Complete invoice read gate**. The invoice, CSV, and developer
-  summary paths now page the exact scoped billing count; the CLI fails when
-  explicit database credentials are absent. A capped 1,001-row fixture
-  verifies full reads. Real partner invoice and payment remain open.
-- [ ] **GDPR erasure endpoint** (~5h). The current immutable billing records
+**Theme**: "A team can self-host Stratum on its own machines, with usage measured and nothing billed."
+**Ship gate**: every requirement of `specs/ops/payment-removal.md` is met (payment surface absent, usage ledger unsigned, USD kept as estimates, backups from before the removal still restore, gateway untouched, test floors lowered only through declared lowerings); organizations and API keys work in team mode on a local install; session erasure runs in <30s on 1-year data without a financial ledger.
+**Effort remaining**: not estimated. The former ~30h estimate covered the billing scope and is withdrawn.
+
+**Current state (code on `main`, 2026-09-26).** The payment layer is still in
+the tree: `stratum/src/billing/` (Stripe client and webhook, invoice
+generation and ledger, fee calculator, HMAC recorder), the `/billing` CFO page
+and `/v1/billing/*` routes, `POST /stripe/webhook`, the invoice tables, and the
+append-only trigger on `billing_records`. That trigger was checked off here
+before 2026-09-26 as "Append-only Postgres trigger"; C2 removes it. Withdrawn
+with the billing scope: the HMAC recorder, fee calculator, invoice stub,
+complete invoice read gate and CFO dashboard skeleton items. The team-mode
+pieces that stay already exist in code: hash-only API-key auth, org-scoped
+`/v1/*` APIs, per-plan rate limits, concurrent-session caps and token budgets
+(`docs/LAUNCH_READINESS.md`, v1.0.0 row history).
+
+### 8a. Payment removal (graph cycles; requirements in `specs/ops/payment-removal.md`)
+
+- [ ] **C1 — Remove the payment HTTP surface.** The CFO page, invoice, audit
+  CSV, invoice-list and Stripe webhook routes, the fee fields and the
+  `invoice.ready` webhook event go; the plan reader moves first; a token-only
+  usage read API stays (REQ-1 to REQ-3).
+- [ ] **C2 — Unsigned usage ledger.** Copy the usage recorder and outbox out
+  of `stratum/src/billing/`; migration M1 drops the signature, the fee column
+  and the append-only enforcement; team mode stops requiring
+  `CQ_BILLING_SIGNING_SECRET` (REQ-4, REQ-5).
+- [ ] **Retire the billing four-eyes gate.** Authorized by the owner on
+  2026-09-26. A separate graph cycle changes `deploy-gate.sh` and
+  `governance/graph/`, and it lands before C1: it also adds the declared
+  test-floor lowering mechanism (REQ-12) that C1 needs. The gateway path
+  (`stratum/src/proxy/providers/`) is not payment code.
+- [ ] **C3 — Delete the payment modules** (`stratum/src/billing/`,
+  `stratum/scripts/invoice.ts`) and their tests (REQ-7).
+- [ ] **C4 — Remove the invoice schema** (migration M2) and the
+  billing-retention erasure blocker, and supersede ADR-0021 (REQ-8, REQ-9).
+- [ ] **Declared test-floor lowerings** for each cycle that removes tests
+  (REQ-12).
+
+### 8b. Self-hosted team features
+
+- [ ] **Organizations and API keys on a local install.** Run team mode
+  (`CQ_COMMERCIAL=true`) end-to-end on a local install: create an
+  organization, issue a key, route an agent through it, and read its usage.
+  The code exists; no team has used it over time.
+- [ ] **Usage estimates.** Exact token counts, plus USD estimates labelled as
+  information only (REQ-6). No fee and no invoice.
+- [ ] **Session erasure endpoint** (~5h). Today the immutable billing records
   have organization/session foreign keys, so in-place session-ID replacement
-  is impossible. `specs/billing/session-erasure.md` and ADR-0021 now define the
+  is impossible; `specs/billing/session-erasure.md` and ADR-0021 define the
   scoped inventory, shared-graph safety, financial retention decision, and
-  one-year benchmark requirements. Establish the applicable legal basis and
-  implement the boundary before an endpoint can report success. A read-only
-  local database RPC now counts session-linked rows and distinguishes complete,
-  shared, and uncertain graph provenance. Two-session promotion and local
-  backup/restore checks preserve recorded graph and File-to-fact source links.
-  Untagged graph rows, RAM,
+  one-year benchmark requirements. With no payment, C2 and C4 remove the
+  financial ledger and its retention boundary (REQ-8), and usage rows become
+  ordinary session-linked data. A read-only local database RPC counts
+  session-linked rows and distinguishes complete, shared, and uncertain graph
+  provenance. Two-session promotion and local backup/restore checks preserve
+  recorded graph and File-to-fact source links. Untagged graph rows, RAM,
   backup deletion, and external copies remain unresolved. No compliance claim
   is made yet.
-- [ ] **CFO dashboard skeleton** (~3h). Read-only view of billing schema; no real billing data yet. Hidden behind `DASHBOARD_CFO_VIEW=true` env var.
 
-### 8a. v0.9.0 release
+### 8c. v0.9.0 release
 
 - [ ] PR + squash-merge + signed tag + release artifacts.
 
 ---
 
-## 9. v1.0.0 — Commercial-ready foundation
+## 9. v1.0.0 — Open-source local-first release
 
-**Theme**: "First paying design partner."
-**Ship gate**: real invoice sent + paid; CFO dashboard shows revenue; multi-tenant auth works; design partner has used 1 week without issues.
-**Effort remaining**: ~40h.
+**Redefined by owner decision, 2026-09-26** (ADR-0025). This version was
+"Commercial-ready foundation": Stripe, invoice generation, per-org pricing
+tiers, a CFO dashboard with revenue, and a first invoice paid by a design
+partner. Those items are withdrawn.
 
-- [ ] **Stripe integration** (~12h). Payment intent creation; webhook handling for payment events; subscription management.
-- [ ] **Invoice generation** (~8h). Monthly invoice PDF generation; emailed to org admin; line items match billing records.
-- [ ] **Per-org pricing tiers** (~5h). Starter / Growth / Enterprise. Config-driven; tier upgrades via Stripe.
-- [ ] **Multi-tenant auth + RBAC** (~10h). Org-level + developer-level + api-key auth. Middleware in proxy enforces tenant isolation. RLS-by-tenant on Supabase.
-- [ ] **CFO dashboard real data** (~5h). Revenue, churn, MRR, token-savings-by-tier metrics.
-- [ ] **First design partner onboarding** (manual).
-- [ ] **First real invoice sent + paid**.
+**Theme**: "I point my AI at this repository and get a working local setup."
+**Ship gate**: on clean macOS, Linux and WSL2 machines, a user's AI agent pointed at this repository produces a working local DevOPs + Stratum setup (the proxy boots against the local stack, the agent routes through it, and the dashboard shows token usage) with no hosted service and no payment to the project; the real-use criterion below is met. RBAC is not part of this gate (a later, optional item in §10a).
+**Effort remaining**: not estimated. The former ~40h estimate covered the commercial scope and is withdrawn.
+
+- [ ] **Agent-driven local install.** A documented entry point that an AI
+  agent follows from a fresh clone (`AGENTS.md` or `CLAUDE.md`, then
+  `npm run setup`), verified on clean macOS, Linux and WSL2 machines. It
+  builds on the v0.8.x `npm run setup` work (§7a).
+- [ ] **Optional paid services stay optional.** Document each third-party
+  service a user may choose (LLM providers, Jev): the user supplies their own
+  key and pays that provider directly, and the setup works without Jev.
+- [ ] **Real-use criterion** (proposed 2026-09-26; not yet confirmed by the
+  owner): the owner uses the local setup for one week of real work with no
+  blocking defect. It replaces "design partner has used 1 week without
+  issues".
 
 ### 9a. v1.0.0 release
 
 - [ ] PR + squash-merge + signed tag + release artifacts.
-- [ ] **Public CHANGELOG.md** ready (decision: open the repo? Or stay private + curated invite?).
-- [ ] Optional: public landing surface.
+- [ ] **Public CHANGELOG.md** and release notes. The repository is public and MIT-licensed (owner decisions 2026-09-23 and 2026-09-26).
+- [ ] No hosted landing surface: the project does not deploy (ADR-0025).
 
 ---
 
@@ -497,8 +551,11 @@ These thread through every version. Track separately.
 
 - [ ] **vitest 2 → vitest 4 / istanbul migration** (~4-8h). Trigger: any vitest 4 feature genuinely needed OR another tooling-asymmetry surface. Until then, the v8+TS source-maps functions-coverage limitation is documented in `stratum/vitest.config.ts`.
 - [ ] **PB-21 justification cleanup** — re-state the real reason (cosign can't re-sign until PB-13 refreshes; verify-blob refactor would also fail) when PB-13 closes.
-- [ ] **Cloudflare Worker deployment path** — defer to v1.0.x decision: hosted SaaS vs self-host-only. Code is already Worker-compatible per Stratum spec (`stratum/src/proxy/worker.ts` stub exists).
+- [x] **Cloudflare Worker deployment path** — decided 2026-09-26: self-host only, no hosted service (ADR-0025). No Worker deployment is planned; the `stratum/src/proxy/worker.ts` stub stays as code.
 - [ ] **Conversation export/import format** — v0.8.x polish: clean way to share a debugged session with a friend.
+- [ ] **Multi-tenant auth + RBAC** (optional, after v1.0.0; moved out of the v1.0.0 ship gate 2026-09-26) (~10h). Org-level + developer-level +
+  api-key auth. Middleware in proxy enforces tenant isolation. RLS-by-tenant
+  on Supabase. Hash-only API-key auth already exists in team mode.
 - [ ] **Karpathy-pattern wiki support** (`/understand-knowledge` slash command from Understand-Anything pattern) — defer to post-v1.0.0 unless a real use case surfaces.
 
 ### 10b. Per-version recurring tasks (do these every version)
@@ -523,15 +580,21 @@ Update after every version ships. Snapshot at last update:
 | Version | Status | Hours done (cumulative) | Hours remaining | Acceptance gate |
 |---|---|---:|---:|---|
 | v0.2.0 (foundation + Stratum subtree) | **SHIPPED** | ~155h | — | Sealed `aca4982` |
-| v0.3.x (Phase 0 + Phase 1 + first-party Anthropic integrations + red/green TDD explicit) | NOT STARTED | 0 | ~115h | Friend can clone + setup + see live dashboard; `/security-review` GitHub Action gates PRs |
-| v0.4.x (Phase 2 pruner + subagent-driven-development autonomous loops) | NOT STARTED | 0 | ~135h | Eval GREEN; zero Tier C regressions; 1 week no degradation; pilot autonomous loop succeeds on one Phase 2 sub-task |
+| v0.3.x (Phase 0 + Phase 1 + first-party Anthropic integrations + red/green TDD explicit) | **SHIPPED** (v0.3.0 tag at `250f90a`, §2h) | not recalculated | not recalculated | Friend can clone + setup + see live dashboard; `/security-review` GitHub Action gates PRs |
+| v0.4.x (Phase 2 pruner + subagent-driven-development autonomous loops) | IN PROGRESS | not recalculated | not recalculated (§3 header says ~120h; this row said ~135h) | Eval GREEN; zero Tier C regressions; 1 week no degradation; pilot autonomous loop succeeds on one Phase 2 sub-task |
 | v0.5.x (Phase 3 memory + knowledge-graph view) | IN PROGRESS | not recalculated | not recalculated | 50-turn survival test; live session-start recall; tier latencies met; `/understand-codebase` works on this repo |
 | v0.6.x (Phase 5 audit) | IN PROGRESS | not recalculated | not recalculated | CONFLICT in <5s; Opus <1% escalation; live request-path audit |
-| v0.7.x (Phase 4 TEE + Claude Code Security reasoning-based release gate) | NOT STARTED | 0 | ~84h | Modified-PCR rejected; <15ms latency; security reviewer signoff; Claude Code Security clean release |
-| v0.8.x (polish + operator-ready) | NOT STARTED | 0 | ~50h | <5min cold-clone-to-running; backup tested |
-| v0.9.x (billing schema) | NOT STARTED | 0 | ~30h | Postgres trigger blocks UPDATE; GDPR <30s |
-| v1.0.0 (commercial-ready) | NOT STARTED | 0 | ~40h | First real invoice paid |
-| **TOTAL to v1.0.0** | — | **~155h done** | **~644h remaining** | — |
+| v0.7.x (Phase 4 ZK-Context + AWS Nitro TEE) | **DROPPED** (owner decision 2026-09-26, ADR-0025) | — | — | None. The §6d Claude Code Security release-gate scan (~4h) moved to v0.8.x |
+| v0.8.x (polish + operator-ready) | IN PROGRESS | not recalculated | ~50h (§7 header, not recalculated) + ~4h (§6d) | <5min cold-clone-to-running on macOS, Linux and WSL2; backup tested; Claude Code Security clean release |
+| v0.9.x (payment removal + self-hosted team features) | NOT STARTED (redefined 2026-09-26) | — | not estimated | `specs/ops/payment-removal.md` met; team mode works on a local install; erasure <30s without a financial ledger |
+| v1.0.0 (open-source local-first release) | NOT STARTED (redefined 2026-09-26) | — | not estimated | A user's AI agent produces a working local setup on clean macOS, Linux and WSL2 |
+| **TOTAL to v1.0.0** | — | not computable | not computable | — |
+
+**Hour totals withdrawn (2026-09-26).** The previous TOTAL (~155h done, ~644h
+remaining) cannot be recomputed from these rows: v0.5.x and v0.6.x were never
+recalculated, v0.7.x is dropped, and v0.9.x and v1.0.0 were redefined without
+estimates. No total is given until those rows have estimates. The Session-14
+adjustments below are kept as history.
 
 **Session-14 envelope adjustments** (vs Session-13-closure baseline of ~570h remaining):
 - v0.3.x: +25h reconciliation (Phase 1 sub-totals more honest at ~83h vs original ~80h estimate; +Anthropic integrations 3.5h; +red/green TDD doc 1h)
@@ -542,7 +605,7 @@ Update after every version ships. Snapshot at last update:
 
 All additions are version-bounded — no scope-creep into other milestones. Math methodology unchanged from prior sessions.
 
-That's ~15-19 months part-time on evenings/weekends. Best-of-best at every milestone. **No half-built features carried across versions.**
+The earlier "~15-19 months part-time" projection rested on the withdrawn total. Best-of-best at every milestone. **No half-built features carried across versions.**
 
 ---
 
@@ -554,7 +617,7 @@ Living list of every third-party integration. Each entry: source repo + version 
 |---|---|---|---|---|
 | `anthropics/claude-code-security-review` GitHub Action | Anthropic (first-party) | SHA-pin per AST08; update via Dependabot PRs | TBD `governance/decisions/ADR-014-claude-security-review-integration.md` | v0.3.x |
 | Claude Code `/code-review` slash command | Anthropic (first-party, built into Claude Code) | N/A (built-in) | TBD `governance/decisions/ADR-015-claude-code-review-in-pr-flow.md` | v0.3.x |
-| Claude Code Security (reasoning-based, Feb 2026 GA) | Anthropic (first-party) | N/A (built-in) | TBD `governance/decisions/ADR-016-claude-code-security-release-gate.md` | v0.7.x |
+| Claude Code Security (reasoning-based, Feb 2026 GA) | Anthropic (first-party) | N/A (built-in) | TBD `governance/decisions/ADR-016-claude-code-security-release-gate.md` | v0.8.x (moved from v0.7.x on 2026-09-26) |
 | Subagent-driven-development pattern (idea borrowed; we keep our impl) | [obra/superpowers](https://github.com/obra/superpowers) (MIT) | Pattern only; no upstream dependency | TBD `governance/decisions/ADR-017-subagent-driven-development.md` | v0.4.x |
 | Knowledge-graph view (idea borrowed; we keep our impl) | [Lum1104/Understand-Anything](https://github.com/Lum1104/Understand-Anything) (MIT) | Pattern only; no upstream dependency | TBD `governance/decisions/ADR-018-knowledge-graph-view.md` | v0.5.x |
 | Anthropic SDK (`@anthropic-ai/sdk`) | Anthropic (first-party) | Caret on minor; verify per release | already present | v0.3.x bumps from `^0.39.0` to current |
@@ -589,4 +652,4 @@ When you bring a new idea (URL, feature request, repo to borrow from, market sig
 
 ## 14. The standing rule (worth restating)
 
-Best-of-the-best at every layer, every version, every PR. The "personal use" framing means: **no Stripe billing yet**. Nothing else. Every decision — every test, every signed skill, every redacted PII pattern, every Pinecone index, every Nitro Enclave PCR — is built as if a paying customer will run it tomorrow. Because eventually one will.
+Best-of-the-best at every layer, every version, every PR. Open source with no payment (ADR-0025) changes nothing about that bar. Every decision — every test, every signed skill, every redacted PII pattern — is built as if a stranger will install it on their own machine tomorrow and rely on it. Because eventually one will.

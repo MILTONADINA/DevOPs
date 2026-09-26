@@ -4,6 +4,8 @@
 
 This document is the authoritative design reference for Startum. Every implementation decision should trace back to a design principle stated here. When in doubt, re-read this document before writing code.
 
+**Update 2026-09-26 (ADR-0025, `docs/decisions/0025-open-source-local-first-no-payment.md`).** The project is open source with no payment and no deployment: Stratum runs on the user's own machine. The billing engine becomes an unsigned usage ledger with no fee, the TEE gateway (section 3) is dropped, and no Cloudflare edge deployment (section 2) is planned. Where this document still describes those designs, it records the original plan, not current direction.
+
 ---
 
 ## Design Principles
@@ -11,8 +13,8 @@ This document is the authoritative design reference for Startum. Every implement
 1. **Determinism over vibes.** Every pruning and memory decision must be reproducible given the same inputs. No "the model decided" — the algorithm decides.
 2. **Measurement before optimization.** We do not prune what we have not measured. Phase 0 and Phase 1 exist for this reason.
 3. **Structured facts over lossy summaries.** We never ask an LLM to "summarize" history. We extract hard data points with defined schemas.
-4. **Zero trust on context.** Raw context never transits the network in plaintext. It is encrypted client-side before transmission.
-5. **Provable savings.** Every dollar we bill maps to a verifiable token delta with an audit trail.
+4. **Context stays local.** Stratum runs on the user's machine. Raw context leaves it only for the LLM provider the user configured.
+5. **Provable savings.** Every reported token saving maps to a verifiable token delta with a pruning log. USD figures are estimates, for information.
 6. **Eval gates everything.** No pruning change ships without running the eval suite and meeting accuracy thresholds.
 
 ---
@@ -58,9 +60,9 @@ This document is the authoritative design reference for Startum. Every implement
                           │ Response
                           ▼
             ┌─────────────────────────┐
-            │  Billing Engine         │
+            │  Usage Ledger           │
             │  delta = orig - pruned  │
-            │  revenue = 0.20 × delta │
+            │  no fee; USD estimate   │
             └─────────────────────────┘
 ```
 
@@ -95,7 +97,7 @@ This document is the authoritative design reference for Startum. Every implement
 - Query Tier 2 and Tier 3 memory for relevant structured facts to inject
 - Pass verified context to the Audit Check
 - Forward to LLM API
-- Record token counts (original and quarantined) for billing
+- Record token counts (original and quarantined) for usage measurement
 
 **Why Cloudflare Workers:** Sub-50ms edge latency globally. Durable Objects provide stateful session management without cold starts.
 
@@ -162,26 +164,25 @@ if claim.type == "code_change":
 
 ---
 
-### 6. Billing Engine
+### 6. Usage Ledger (was: Billing Engine)
 
-**Location:** `src/billing/`
+**Location:** `src/billing/` today; the usage parts move out of it when the payment code is removed (`../specs/ops/payment-removal.md`).
 
 **The core calculation:**
 ```
 original_tokens  = count(raw_context_before_pruning)
 quarantined_tokens = count(pruned_context_sent_to_api)
 token_delta      = original_tokens - quarantined_tokens
-cost_delta       = token_delta × (api_price_per_token)
-cq_fee           = cost_delta × 0.20
+cost_delta       = token_delta × (api_price_per_token)   # a USD estimate, for information
 ```
 
-Every invoice line item must link to:
+There is no fee (ADR-0025). Every usage record must link to:
 - The session ID
 - The original token count (logged before pruning)
 - The quarantined token count (logged after pruning)
-- The pruning log (which turns were removed, and their relevance scores)
+- The pruning log, when pruning is active (which turns were removed, and their relevance scores)
 
-This audit trail is non-negotiable. It is how we prove savings to CFOs and defend disputes.
+This trail is how a user checks the savings Stratum reports.
 
 ---
 
@@ -192,7 +193,7 @@ This audit trail is non-negotiable. It is how we prove savings to CFOs and defen
 2. CQ Client intercepts the request
 3. Client computes embeddings for the new turn (ONNX, <10ms)
 4. Client runs KadaneDial over session history → selects relevant spans
-5. Client logs original token count (for billing baseline)
+5. Client logs original token count (the usage baseline)
 6. Client encrypts selected spans (AES-256-GCM)
 7. Client sends encrypted payload + session metadata to CQ Proxy
 8. Proxy routes to TEE Gateway
@@ -205,7 +206,7 @@ This audit trail is non-negotiable. It is how we prove savings to CFOs and defen
 15. Proxy forwards verified context to Anthropic API
 16. Anthropic returns response
 17. Proxy returns response to client
-18. Billing Engine records delta (original vs quarantined tokens)
+18. Usage ledger records delta (original vs quarantined tokens)
 19. Memory Engine extracts structured facts from the exchange (async)
 20. Facts written to T2 and T3 stores (async, not on critical path)
 ```
@@ -216,11 +217,11 @@ This audit trail is non-negotiable. It is how we prove savings to CFOs and defen
 
 | Threat | Mitigation |
 |---|---|
-| CQ operator reads customer context | TEE attestation — decryption only inside verified enclave |
+| Someone else reads the user's context | Stratum runs on the user's machine; the project runs no server (ADR-0025) |
 | Man-in-the-middle on proxy network | TLS + encrypted payload (double encryption) |
 | Compromised Supabase | Tier 2 stores structured facts only, never raw context |
 | Memory hallucination | Git-attestation rejects conflicting claims |
-| Billing fraud | Immutable token count log signed at proxy ingress |
+| Misreported savings | Exact upstream token counts and a pruning log per usage record |
 | Model audit leaks | Audit samples sent as single-turn calls, no history |
 
 ---
@@ -229,8 +230,8 @@ This audit trail is non-negotiable. It is how we prove savings to CFOs and defen
 
 These must hold at all times. Any code change that would violate these requires an ADR and explicit sign-off:
 
-1. Raw unencrypted context never persists outside the client device or TEE boundary.
+1. Stratum never persists raw context outside machines the user or their team runs.
 2. LLM summarization is never used to compress memory. Structured extraction only.
-3. Every billed token delta has a corresponding signed audit log entry.
+3. Every usage record stores its original and quarantined token counts. When pruning is active, the record also carries the pruning log entry that explains its token delta.
 4. Every code-related memory claim that reaches the LLM has been Git-attested or flagged UNVERIFIED.
 5. The eval suite must pass (< 5% degradation on Faithfulness and Answer Relevancy) before any pruning change ships.

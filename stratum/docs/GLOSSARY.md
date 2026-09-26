@@ -88,10 +88,10 @@ The Neo4j-based graph database in Tier 3 that stores entities (Functions, Commit
 ## Security Terms
 
 **ZK-Context**
-Zero-Knowledge Context. CQ's security architecture whereby raw session context is encrypted on the client device and only decrypted inside a hardware-attested Trusted Execution Environment (TEE). CQ operators cannot read the user's context.
+Zero-Knowledge Context. CQ's planned security architecture, under which raw session context would have been encrypted on the client device and decrypted only inside a hardware-attested Trusted Execution Environment (TEE), so that CQ operators could not read the user's context. It was never built. ADR-0025 (`docs/decisions/0025-open-source-local-first-no-payment.md`) dropped it on 2026-09-26: DevOps runs on the user's own machine, and the project hosts no server for an enclave to protect.
 
 **TEE (Trusted Execution Environment)**
-AWS Nitro Enclaves — isolated compute environments with no persistent storage, no network access, and no operator access. Provides cryptographic proof (via attestation documents) that the code running inside is exactly the published CQ code.
+The TEE was planned for ZK-Context and was dropped with it by ADR-0025 on 2026-09-26; the entries below describe the planned design. AWS Nitro Enclaves — isolated compute environments with no persistent storage, no network access, and no operator access. Provides cryptographic proof (via attestation documents) that the code running inside is exactly the published CQ code.
 
 **Attestation**
 The process by which the client verifies the TEE's identity before transmitting a session key. The Nitro Enclave produces a signed attestation document containing PCR measurements (hashes of the enclave's code). The client verifies these against published values.
@@ -129,28 +129,15 @@ The audit engine's process of routing a fact to a more expensive model when conf
 
 ---
 
-## Business Terms
+## Product Terms
 
-**Token Arbitrage**
-CQ's revenue model: charge 20% of the difference between the customer's original token spend and their quarantined token spend. Revenue is perfectly correlated with value delivered.
+The project is open source with no payment (ADR-0025, `docs/decisions/0025-open-source-local-first-no-payment.md`). The earlier business terms (Token Arbitrage, Design Partner, Fractional CTO Agency, MRR, ARR) were removed on 2026-09-26.
 
 **Token Delta**
-`original_tokens - quarantined_tokens`. The number of tokens eliminated by pruning for a given request. The basis for the billing calculation.
+`original_tokens - quarantined_tokens`. The number of tokens eliminated by pruning for a given request. The basis for the usage record and the estimated saving shown to the user.
 
 **Context-to-Commit Ratio**
 The developer-facing productivity metric: tokens consumed per meaningful code commit. Before CQ: ~50,000. After CQ: ~5,000 (target). This is the metric that resonates with engineering managers.
 
-**Design Partner**
-The first non-founder user of CQ — a Fractional CTO agency that provides real usage data and feedback in exchange for free access. Not a beta user; a co-builder.
-
-**Fractional CTO Agency**
-A small firm that provides CTO-level technical leadership to multiple startups simultaneously. The ideal first customer: high AI usage, multiple codebases, acute pain from context bleed.
-
 **Context Bleed**
-The problem where an AI agent working on Project A inadvertently carries context from Project B into its reasoning, producing incorrect or confusing outputs. Particularly acute for Fractional CTO agencies managing many repos.
-
-**MRR (Monthly Recurring Revenue)**
-Monthly revenue from subscription customers. CQ's target: $20k MRR by end of Year 1.
-
-**ARR (Annual Recurring Revenue)**
-MRR × 12. CQ's Year 1 target: ~$180k. Year 2 target: ~$1.9M.
+The problem where an AI agent working on Project A inadvertently carries context from Project B into its reasoning, producing incorrect or confusing outputs. Particularly acute for developers who work across many repositories.

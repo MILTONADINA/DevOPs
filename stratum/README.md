@@ -1,8 +1,10 @@
-# Startum (CQ)
+# DevOps runtime: proxy, memory and pruner
 
 > **Eliminate AI Slop. Kill the Context Tax. Build Deterministic Intelligence.**
 
-CQ is a high-fidelity middleware proxy that sits between your AI agent (Claude Code, AutoGPT, custom agents) and the LLM API. It prunes irrelevant context using the CQ-Extended KadaneDial algorithm, stores memory in a three-tier architecture, and charges on token savings — not software seats.
+The DevOps proxy is a high-fidelity middleware proxy that sits between your AI agent (Claude Code, AutoGPT, custom agents) and the LLM API. It prunes irrelevant context using the CQ-Extended KadaneDial algorithm and stores memory in a three-tier architecture. It runs on your own machine, is open source (MIT), and charges nothing.
+
+This directory is the local runtime of DevOps, one platform with the workflow at the repository root (`docs/decisions/0026-one-platform-named-devops.md`). It was once a separate product called Stratum, or CQ. Older documents and the current settings (`CQ_*`) still use those names until the naming cycle in `../specs/ops/one-platform-naming.md` renames them; the old names will keep working for one release after that.
 
 ---
 
@@ -21,12 +23,12 @@ As of 2026, the "Long Context" arms race has failed the enterprise:
 
 ## The Solution
 
-CQ acts as a **Semantic Surgeon** — a deterministic proxy that:
+The DevOps proxy acts as a **Semantic Surgeon** — a deterministic proxy that:
 
 1. **Prunes** context using CQ-Extended KadaneDial (extending DyCP, arXiv:2601.07994)
 2. **Stores** history as attested structured facts, not lossy summaries
 3. **Verifies** AI memory against Git commit history in real time
-4. **Charges** 20% of your token savings — never more than you save
+4. **Measures** every call with exact token counts and shows token and USD estimates, for information only; there is no fee
 
 ---
 
@@ -38,10 +40,10 @@ A working build, not a sketch. On the current branch:
 - **Memory** — the three tiers are live on Supabase (hot RAM · warm fact tables · cold pgvector + knowledge graph, per ADR-0013); Pinecone/Neo4j remain swappable seams.
 - **Pruner** — CQ-Extended KadaneDial + a local ONNX encoder, built + eval-harnessed, but **not yet in the request path** (it ships only after a published Tier-A eval passes <5% faithfulness degradation — constitution).
 - **Audit** — deterministic Git-attestation (Tier-1) runs free (`npm run audit:repo`, `audit:conflicts`); the Llama/Opus tiers are gated on credits.
-- **Billing** — the token-arbitrage engine (20% of savings), HMAC-signed append-only records, invoice + CFO dashboard + audit CSV (`npm run invoice` / `verify-billing`). The **Stripe send is implemented** (customer → invoice → finalize behind a seam, dollars→cents tested, a live key refused until verified — `npm run verify-stripe`), the **inbound `invoice.paid` webhook** records payment (`POST /stripe/webhook`, signature-verified), and in local commercial mode the **request path journals signed usage** in a private durable outbox before replaying it to `billing_records`. The local PostgreSQL schema and focused billing paths have been verified; public partner billing remains unverified.
+- **Billing** — the token-arbitrage engine (20% of savings), HMAC-signed append-only records, invoice + CFO dashboard + audit CSV (`npm run invoice` / `verify-billing`). The **Stripe send is implemented** (customer → invoice → finalize behind a seam, dollars→cents tested, a live key refused until verified — `npm run verify-stripe`), the **inbound `invoice.paid` webhook** records payment (`POST /stripe/webhook`, signature-verified), and in local commercial mode the **request path journals signed usage** in a private durable outbox before replaying it to `billing_records`. The local PostgreSQL schema and focused billing paths have been verified; public partner billing remains unverified. **Scheduled for removal:** the project is open source with no payment (ADR-0025, `docs/decisions/0025-open-source-local-first-no-payment.md`); graph cycles C1–C4 remove this layer and keep usage measurement (`../specs/ops/payment-removal.md`).
 - **Deploy + onboard** — a production **`Dockerfile`** (built + run + health-checked against real Docker; commercial entry verified booting against live Supabase) and a command-level **`docs/COMMERCIAL_ONBOARDING.md`** runbook (`create-org` → `create-api-key` → integrate → invoice → `verify-stripe`). Machine-readable contract at `GET /openapi.json`; browsable at `GET /docs`.
 
-Full operator + API surface: [`docs/MEMORY_AND_EVAL_COMMANDS.md`](docs/MEMORY_AND_EVAL_COMMANDS.md); partner onboarding: [`docs/COMMERCIAL_ONBOARDING.md`](docs/COMMERCIAL_ONBOARDING.md). **Gated on external inputs:** Anthropic credits (judged eval ship-decision · audit Tier-2/3 · live ingestion) · AWS Nitro TEE + a security review (ZK-Context crypto) · a single-instance host + a free Stripe `sk_test_` key + a design partner who pays the plan minimum (first paid invoice — pruning is NOT required for it).
+Full operator + API surface: [`docs/MEMORY_AND_EVAL_COMMANDS.md`](docs/MEMORY_AND_EVAL_COMMANDS.md); team-mode onboarding: [`docs/COMMERCIAL_ONBOARDING.md`](docs/COMMERCIAL_ONBOARDING.md). **Gated on external inputs:** Anthropic credits (judged eval ship-decision · audit Tier-2/3 · live ingestion). The ZK-Context (AWS Nitro TEE) plan and the paid-partner path were dropped on 2026-09-26 (ADR-0025).
 
 ---
 
@@ -112,24 +114,22 @@ npm run db:with-env -- npm run create-api-key -- --org-id <uuid> --name "my key"
 | [`docs/WEBHOOKS.md`](docs/WEBHOOKS.md) | Webhook events, payloads, and signature verification |
 | [`docs/RATE_LIMITS.md`](docs/RATE_LIMITS.md) | Rate limits, quotas, and backoff strategies |
 
-### Business & Strategy
+### Positioning
 | Document | Purpose |
 |---|---|
-| [`docs/BUSINESS_MODEL.md`](docs/BUSINESS_MODEL.md) | Token arbitrage pricing and revenue projections |
 | [`docs/COMPETITOR_ANALYSIS.md`](docs/COMPETITOR_ANALYSIS.md) | Mem0, Zep, Letta, LangMem side-by-side |
-| [`docs/DESIGN_PARTNER.md`](docs/DESIGN_PARTNER.md) | How to find and run the design partner program |
-| [`docs/PITCH.md`](docs/PITCH.md) | One-page investor brief |
+| [`docs/decisions/0025-open-source-local-first-no-payment.md`](docs/decisions/0025-open-source-local-first-no-payment.md) | Open source, local-first, no payment (owner decision 2026-09-26) |
 
 ### Reference
 | Document | Purpose |
 |---|---|
 | [`docs/GLOSSARY.md`](docs/GLOSSARY.md) | Authoritative definition of all project terms |
-| [`docs/FAQ.md`](docs/FAQ.md) | Common questions from customers and developers |
-| [`docs/enclave-pcr-values.md`](docs/enclave-pcr-values.md) | Published TEE attestation PCR values |
+| [`docs/FAQ.md`](docs/FAQ.md) | Common questions from users and developers |
+| [`docs/enclave-pcr-values.md`](docs/enclave-pcr-values.md) | Historical: the planned TEE attestation PCR values. No enclave was built, and ADR-0025 dropped the TEE on 2026-09-26 |
 | [`docs/paper-notes.md`](docs/paper-notes.md) | Notes on arXiv:2601.07994 (fill in after reading) |
 | [`docs/waste-taxonomy.md`](docs/waste-taxonomy.md) | Phase 0 waste category template (fill in from data) |
 | [`SECURITY_POLICY.md`](SECURITY_POLICY.md) | Vulnerability disclosure policy |
-| [`CODE_OF_CONDUCT.md`](../CODE_OF_CONDUCT.md) | Community standards (repository root; covers Stratum) |
+| [`CODE_OF_CONDUCT.md`](../CODE_OF_CONDUCT.md) | Community standards (repository root; covers the whole platform) |
 
 ### Architecture Decision Records
 | Document | Decision |
@@ -154,7 +154,7 @@ npm run db:with-env -- npm run create-api-key -- --org-id <uuid> --name "my key"
                  │ HTTP (Anthropic API shape)
                  ▼
 ┌─────────────────────────────────┐
-│       CQ Proxy (Edge)           │
+│       DevOps Proxy (Edge)       │
 │  Cloudflare Workers + D.O.      │
 │  ─ Token measurement            │
 │  ─ CQ-Extended KadaneDial       │
@@ -179,22 +179,22 @@ npm run db:with-env -- npm run create-api-key -- --org-id <uuid> --name "my key"
 | Layer | Technology |
 |---|---|
 | Proxy server | Fastify (Node) today; Cloudflare Workers + Durable Objects is the roadmap edge target |
-| Language | TypeScript (proxy, billing) · Rust (hot-path string ops) |
+| Language | TypeScript (proxy, memory, audit) · Rust (hot-path string ops) |
 | Client pruner | ONNX Runtime (<10ms local inference) |
 | Warm storage | Supabase (Postgres) |
 | Cold storage | Supabase pgvector + a Postgres knowledge graph (ADR-0013; Pinecone/Neo4j are swappable seams) |
 | Audit models | Llama 4-8B (spot-check) · Claude Opus (escalation) |
-| Security | AWS Nitro Enclaves (TEE) · AES-256-GCM (client encryption) |
+| Security | PII redaction · hash-only API keys · row-level security (the AWS Nitro TEE plan was dropped, ADR-0025) |
 
 ---
 
-## Business Model
+## Cost
 
-```
-Revenue = 20% × (Original_Token_Cost − Quarantined_Token_Cost)
-```
-
-The customer never pays more than they save. See [`docs/BUSINESS_MODEL.md`](docs/BUSINESS_MODEL.md).
+The DevOps runtime is free and open source (MIT). The project charges no fee and bills
+nobody; the invoice code still in the tree is scheduled for removal (see
+Status above). The proxy shows token counts and USD estimates so you can see what your own
+provider usage costs; you pay your LLM provider directly. See
+[`docs/decisions/0025-open-source-local-first-no-payment.md`](docs/decisions/0025-open-source-local-first-no-payment.md).
 
 ---
 

@@ -1,7 +1,7 @@
 # ADR-0018: The Upstream Anthropic Key in Commercial Mode — Per-Deployment for the Pilot, Per-Request Pass-Through to Scale
 
 **Date:** 2026-05-30
-**Status:** Accepted (per-deployment key for the first design partner; per-request pass-through is the documented scale path, default-OFF until taken up)
+**Status:** Accepted (per-deployment key for the first design partner; per-request pass-through is the documented scale path, default-OFF until taken up). Superseded in part by ADR-0025 (2026-09-26): its commercial and billing parts (the paying-partner pilot, the reseller and savings-arbitrage analysis, the partner-contract trigger) no longer apply; the technical finding about the single upstream key stands.
 
 ## Context
 
