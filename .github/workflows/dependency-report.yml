@@ -1,0 +1,63 @@
+name: Dependency report
+
+# Quality plan QW-4, owner decision 2026-09-26: no bot branches. Instead of Dependabot or
+# Renovate pull requests, this job checks the npm trees and the hash-locked Python files
+# weekly and keeps ONE issue, "Dependency updates available", up to date. A maintainer applies
+# the updates in a normal pull request. Dependabot vulnerability alerts stay on.
+
+on:
+  schedule:
+    - cron: '0 7 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  report:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
+        with:
+          # No later step needs git credentials; do not leave the issues:write token on disk
+          # while third-party packages are installed.
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444  # v5.0.0
+        with: { node-version: 22 }
+      - name: Install both npm trees from their lockfiles
+        run: |
+          npm ci --ignore-scripts
+          for lock in */package-lock.json; do (cd "$(dirname "$lock")" && npm ci --ignore-scripts); done
+      - name: Build the report
+        id: report
+        shell: bash
+        run: node scripts/dependency-report.mjs "$RUNNER_TEMP/report.md" | tee -a "$GITHUB_OUTPUT"
+      - name: Open, update or close the issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OUTDATED: ${{ steps.report.outputs.outdated }}
+          ERRORS: ${{ steps.report.outputs.errors }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          title='Dependency updates available'
+          # Only issues this workflow opened (author app/github-actions): anyone can open an issue
+          # with the same title in a public repository.
+          number=$(gh issue list --app github-actions --state open --limit 100 --json number,title --jq ".[] | select(.title == \"$title\") | .number" | head -1)
+          if [ "$OUTDATED" = "0" ] && [ "$ERRORS" = "0" ]; then
+            if [ -n "$number" ]; then gh issue close "$number" --comment "All tracked dependencies are current."; fi
+            echo "All tracked dependencies are current."
+          elif [ -n "$number" ]; then
+            gh issue edit "$number" --body-file "$RUNNER_TEMP/report.md"
+            echo "Updated issue #$number."
+          else
+            gh issue create --title "$title" --body-file "$RUNNER_TEMP/report.md"
+          fi
+          if [ "$ERRORS" != "0" ]; then
+            echo "::error::$ERRORS dependency check(s) could not run; see the issue body."
+            exit 1
+          fi
