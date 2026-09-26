@@ -46,8 +46,9 @@ jobs:
           set -euo pipefail
           title='Dependency updates available'
           # Only issues this workflow opened (author app/github-actions): anyone can open an issue
-          # with the same title in a public repository.
-          number=$(gh issue list --app github-actions --state open --limit 100 --json number,title --jq ".[] | select(.title == \"$title\") | .number" | head -1)
+          # with the same title in a public repository. The author is checked in jq on the plain
+          # issue list: `--app`/`--author` go through search, which does not match this bot's issues.
+          number=$(gh issue list --state open --limit 100 --json number,title,author --jq ".[] | select(.title == \"$title\" and .author.login == \"app/github-actions\" and .author.is_bot) | .number" | head -1)
           if [ "$OUTDATED" = "0" ] && [ "$ERRORS" = "0" ]; then
             if [ -n "$number" ]; then gh issue close "$number" --comment "All tracked dependencies are current."; fi
             echo "All tracked dependencies are current."
