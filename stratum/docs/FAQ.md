@@ -22,19 +22,19 @@ When CQ stores a memory about your codebase — for example, "the `getUser()` fu
 
 ### What is ZK-Context?
 
-ZK-Context is CQ's planned encryption architecture (v0.7). It is not built yet: no enclave has been built or released, and encrypted forwarding is disabled (`docs/enclave-pcr-values.md`). As designed, your raw session context is encrypted on your local machine before it is sent to the CQ proxy, and it is decrypted only inside an AWS Nitro Enclave, a hardware-isolated compute environment that even CQ operators cannot access. The enclave would produce a cryptographic attestation document that you can verify independently, proving the exact code running inside it is the published CQ code. It is planned for Enterprise plans.
+ZK-Context was CQ's planned encryption architecture (v0.7): context encrypted on your machine and decrypted only inside an AWS Nitro Enclave on a server the project would host. The owner dropped it on 2026-09-26 (ADR-0025, `docs/decisions/0025-open-source-local-first-no-payment.md`). The project hosts no server; DevOps runs on your own machine. No enclave was built or released (`docs/enclave-pcr-values.md`).
 
 ### Does CQ store my code?
 
-No. CQ's Tier 2 (Warm Memory) stores structured facts extracted from your sessions — typed records like `FunctionChange`, `TechDecision`, `PolicyUpdate`. It does not store raw conversation content or source code. Tier 3 (Cold Memory) stores embeddings (mathematical representations) of those facts and graph relationships between entities. Embeddings are not reversible to the original text. With ZK-Context enabled, even the structured facts are derived from encrypted inputs that CQ never sees in plaintext.
+No. CQ's Tier 2 (Warm Memory) stores structured facts extracted from your sessions — typed records like `FunctionChange`, `TechDecision`, `PolicyUpdate`. It does not store raw conversation content or source code. Tier 3 (Cold Memory) stores embeddings (mathematical representations) of those facts and graph relationships between entities. Embeddings are not reversible to the original text. All of it is stored in the database on your own machine.
 
-### How does the 20% arbitrage fee work exactly?
+### Does CQ charge a fee?
 
-Before sending your request to the Anthropic API, CQ counts the exact tokens in your original (unpruned) message. After pruning, it counts the quarantined (pruned) message. The difference is the token delta. We multiply that delta by Anthropic's current price per token to get the cost savings in dollars. Your fee is 20% of that dollar savings. Every billing record is signed with HMAC-SHA256 and linked to a pruning log so you can verify the math independently.
+No. DevOps is open source (MIT) and charges nothing (ADR-0025). It counts the exact tokens of your original (unpruned) request and, once pruning is enabled, of the pruned request; the difference is the token delta. It multiplies that delta by the provider's price per token to show an estimated saving in dollars. That figure is information only. You pay your LLM provider directly.
 
 ### What happens if CQ is down?
 
-If the CQ proxy is unavailable, your Claude Code requests will fail. We recommend configuring a fallback: if the proxy returns an error, retry directly against `api.anthropic.com`. Your code quality doesn't degrade — you just pay full price for that session. There is no hosted service, so there is no SLA or status page: the proxy runs on your machine.
+If the CQ proxy is unavailable, your Claude Code requests will fail. We recommend configuring a fallback: if the proxy returns an error, retry directly against `api.anthropic.com`. Your code quality doesn't degrade — you just pay full price for that session. DevOps runs on your machine; there is no hosted service, SLA or status page.
 
 ### Can I use CQ with OpenAI or Gemini?
 
@@ -76,14 +76,17 @@ Yes. Every pruning decision is logged. The `GET /v1/sessions/:id/stats` endpoint
 
 Sessions are scoped to a session ID. Within a session, context from one project cannot bleed into another. For developers working across multiple repos simultaneously, we recommend starting a new CQ session when switching projects. Cross-project memory (Tier 2/3) is scoped to the organization and surfaced only when explicitly queried — it does not auto-inject into unrelated sessions. This directly solves the "Context Bleed" problem.
 
-### What happens to my data if I cancel?
+### How do I delete my data?
 
-The complete cancellation and erasure workflow is not implemented or verified
-yet. The current local database has immutable billing records linked to
-organization and session IDs; it cannot replace those IDs with salted hashes
-in place. Export and deletion timing are also unverified. Do not rely on this
-service for a regulated cancellation workflow until the v0.9 erasure design,
-retention assessment, and one-year/<30-second check are complete.
+There is no account to cancel: DevOps runs on your machine, and its data is
+in a database you control. Session erasure through the API is not implemented
+or verified yet. Today the local database has immutable billing records
+linked to organization and session IDs, so it cannot replace those IDs in
+place; the planned payment removal turns those rows into ordinary
+session-linked usage data (`../specs/ops/payment-removal.md`, REQ-8).
+Export and deletion timing are also unverified. Do not rely on it for a
+regulated erasure workflow until the v0.9 erasure item and its
+one-year/<30-second check are complete.
 
 ---
 
@@ -91,23 +94,15 @@ retention assessment, and one-year/<30-second check are complete.
 
 ### How do I verify the TEE attestation?
 
-Not yet: no enclave has been built, so there are no PCR values, no attestation endpoint and no verifier (`docs/enclave-pcr-values.md`). Once an enclave is released and independently reviewed, its expected PCR values will be published in that file, and the client will verify the attestation document's signature, certificate chain, fresh nonce, enclave public key and PCRs before sending any session key. The planned manual check:
-
-```bash
-# Request an attestation document from the enclave
-curl http://localhost:4080/v1/attestation/document
-
-# Verify the PCR values match the published release
-# Instructions: docs/SECURITY.md — "Attestation" section
-```
+There is nothing to verify. No enclave was built, so there are no PCR values, no attestation endpoint and no verifier (`docs/enclave-pcr-values.md`), and the ZK-Context/TEE plan was dropped on 2026-09-26 (ADR-0025) because DevOps runs on your own machine.
 
 ### Does CQ see my Anthropic API key?
 
-In local development (Phase 1 proxy), yes — the key is in the proxy's environment (`ANTHROPIC_API_KEY`; the proxy does not read `.env`) and the proxy uses it to forward requests to Anthropic. In the planned ZK-Context mode (v0.7, not built), the key would travel only inside the encrypted payload and be reconstructed inside the TEE before the API call. CQ's proxy never logs API keys. The operator dashboard shows only masked keys (`sk-ant-...xxxx`).
+In local development (Phase 1 proxy), yes — the key is in the proxy's environment (`ANTHROPIC_API_KEY`; the proxy does not read `.env`) and the proxy uses it to forward requests to Anthropic. The ZK-Context mode, which would have kept the key inside a TEE, was dropped (ADR-0025). CQ's proxy never logs API keys. The operator dashboard shows only masked keys (`sk-ant-...xxxx`).
 
 ### Is CQ SOC 2 compliant?
 
-Not yet. Target: SOC 2 Type II by month 12. The architecture is designed for compliance from day one — append-only billing records, no raw context storage, encrypted Tier 2/3 stores, role-based access control via Supabase RLS. The audit process begins at month 10.
+No. SOC 2 audits a service provider, and DevOps is open-source software you run yourself; the project runs no service to audit (ADR-0025). The design keeps raw context out of Tier 2/3 storage and restricts table access with Supabase row-level security.
 
 ### How do I report a security vulnerability?
 

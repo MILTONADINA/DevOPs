@@ -1,7 +1,7 @@
 # ADR-0003: Hybrid-Local Pruning for ZK-Context
 
 **Date:** 2026-04-06
-**Status:** Accepted
+**Status:** Accepted. Superseded in part by ADR-0025 (2026-09-26): decryption inside an AWS Nitro Enclave is dropped with the v0.7 TEE plan; client-side (local) pruning stands.
 
 ## Context
 

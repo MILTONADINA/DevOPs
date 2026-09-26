@@ -29,11 +29,6 @@ pruning:
   enabled: false   # set true when Stratum Phase 2 ships
   algorithm: cq-extended-kadanedial
 
-billing:
-  enabled: true
-  hmac_signing: true
-  sign_key_env: STRATUM_BILLING_HMAC_KEY
-
 audit:
   git_attestation: true
   conflict_threshold: 0.8   # cosine similarity below which a conflict is logged

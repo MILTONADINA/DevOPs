@@ -62,7 +62,7 @@
 - [ ] Proxy works end-to-end: `ANTHROPIC_BASE_URL=http://localhost:4080 claude` routes correctly
 - [ ] Token counts match the Anthropic API's own reported counts (±0 — must be exact)
 - [ ] Dashboard is accessible and shows real numbers from a live session
-- [ ] At least one design partner (a developer or small agency) has used the proxy for a week
+- [ ] The proxy has been used for a week of real work (this was "at least one design partner"; the design-partner program was dropped on 2026-09-26 with the payment layer, ADR-0025; the replacement criterion is proposed in the root `plan.md` §9 and not yet confirmed by the owner)
 - [ ] You have at least 20 real sessions in the database
 - [ ] Waste categories from Phase 0 taxonomy are detected and labeled in the dashboard
 
@@ -99,7 +99,7 @@
 - [ ] Zero failures on Tier C critical golden queries
 - [ ] Pruner correctly rejects empty history without crashing
 - [ ] Pruner uses time-based decay (test: sessions spanning > 6 hours)
-- [ ] Design partner confirms AI quality has not noticeably degraded
+- [ ] A week of real use confirms AI quality has not noticeably degraded (this was "design partner confirms"; see the Phase 1 note)
 
 ---
 
@@ -131,16 +131,23 @@ release measurement remain open. See root `plan.md` §4 for the current gate.
 
 - [ ] A `FunctionChange` fact extracted in session A is retrievable in session B (same org)
 - [ ] Tier 2 query latency < 50ms p95
-- [ ] Supabase Tier-3 graph/vector release latency meets a binding target for the chosen deployment (target to be set)
+- [ ] Supabase Tier-3 graph/vector release latency meets a binding target measured on the user's machine (target to be set; there is no deployment, ADR-0025)
 - [ ] Nightly promotion job completes without errors
 - [x] Invalid extracted facts are dropped before persistence (`test/memory/warm-pipeline.test.ts`)
 - [x] All five typed fact tables have `is_verified`, `is_suppressed`, and `commit_hash` columns (`20260406000000_initial_schema.sql`)
 
 ---
 
-## Phase 4 — ZK-Context + TEE (Months 5–8)
+## Phase 4 — ZK-Context + TEE (Months 5–8) — DROPPED
 
-**Goal:** Enterprise-grade encryption with hardware attestation.
+**Dropped by owner decision, 2026-09-26** (ADR-0025,
+`docs/decisions/0025-open-source-local-first-no-payment.md`). The enclave
+protected user context on a server the project would host. The project hosts
+nothing: Stratum runs on the user's machine. The tasks below are kept as a
+record and are not planned. The offline AES-256-GCM primitive (ADR-0022)
+stays in the tree as code.
+
+**Goal (withdrawn):** Enterprise-grade encryption with hardware attestation.
 
 ### Tasks
 
@@ -182,7 +189,7 @@ release measurement remain open. See root `plan.md` §4 for the current gate.
 - [ ] Implement Opus escalation (`src/audit/opus-escalation.ts`) — confidence < 0.85
 - [ ] Implement `CONFLICT` → developer alert pipeline
 - [ ] Build the `audit_conflicts` table and alerts UI on the dashboard
-- [ ] Cost monitoring: Opus audit costs logged and alerting if > 2% of revenue
+- [ ] Cost monitoring: Opus audit costs logged and alerting if > 2% of usage (root `plan.md` §5b; there is no revenue, and the basis for the 2% is still open)
 
 ### Acceptance Criteria
 
@@ -195,34 +202,45 @@ release measurement remain open. See root `plan.md` §4 for the current gate.
 
 ---
 
-## Phase 6 — Token Arbitrage Billing (Month 10+)
+## Phase 6 — Payment removal + self-hosted team features (replaces Token Arbitrage Billing)
 
-**Goal:** A billing system that CFOs trust and can audit.
+**Redefined by owner decision, 2026-09-26** (ADR-0025). This phase was a
+token-arbitrage billing system: HMAC-signed records, an append-only ledger,
+monthly invoices, a CFO dashboard with the fee, Stripe and pricing tiers. The
+project is now open source with no payment. Much of that billing layer was
+built ahead and is still in the tree; graph cycles C1–C4 remove it. The
+requirements are in `../specs/ops/payment-removal.md`, and the root
+`plan.md` §8 is the checklist.
+
+History: before this redefinition, Phase 6 recorded one completed item: "Make
+billing table append-only (local PostgreSQL trigger proof rejects UPDATE, UPSERT,
+DELETE, and TRUNCATE inside a rolled-back transaction)". Cycle C2 removes that
+enforcement, because the usage ledger no longer needs to be tamper-evident for
+billing.
+
+**Goal:** A team can self-host Stratum on its own machines, with usage
+measured and nothing billed.
 
 ### Tasks
 
-- [ ] Implement `BillingRecord` writes with HMAC-SHA256 signing
-- [x] Make billing table append-only (local PostgreSQL trigger proof rejects
-  UPDATE, UPSERT, DELETE, and TRUNCATE inside a rolled-back transaction)
-- [ ] Implement monthly invoice generation
-- [ ] Build the CFO dashboard:
-  - Monthly spend: original vs. quarantined
-  - Savings by project, by developer
-  - CQ fee calculation
-  - Export to CSV/PDF
-- [ ] Implement Stripe integration for payment
-- [ ] Implement per-org pricing tiers (Starter, Growth, Enterprise)
-- [ ] GDPR erasure endpoint and retention design. The current immutable
-  billing row references organization/session IDs and cannot rewrite them in
-  place; no compliant erasure timing proof exists.
+- [ ] Remove the payment HTTP surface: the CFO page, invoice and Stripe
+  routes, and the fee fields (C1)
+- [ ] Make the usage ledger unsigned: no HMAC, no fee column, no append-only
+  enforcement (C2)
+- [ ] Delete the payment modules and their tests (C3)
+- [ ] Remove the invoice tables and the billing-retention erasure blocker (C4)
+- [ ] Keep exact token counts, with token and USD estimates shown as
+  information only
+- [ ] Session erasure endpoint. Today the immutable billing row references
+  organization/session IDs and cannot rewrite them in place; after C2 and C4
+  the usage rows are ordinary session-linked data. No compliant erasure
+  timing proof exists.
 
 ### Acceptance Criteria
 
-- [ ] Billing records cannot be modified after writing (test: attempt UPDATE, expect failure)
-- [ ] Invoice matches manual calculation of `0.20 × (original - quarantined) × price`
-- [ ] GDPR erasure completes within 30 seconds for a 1-year history
-- [ ] CFO dashboard: a non-technical person can understand the savings in < 2 minutes
-- [ ] First real invoice sent and paid by a design partner
+- [ ] Every requirement of `../specs/ops/payment-removal.md` is met
+- [ ] Organizations and API keys work in team mode on a local install
+- [ ] Session erasure completes within 30 seconds for a 1-year history
 
 ---
 
@@ -231,9 +249,9 @@ release measurement remain open. See root `plan.md` §4 for the current gate.
 | Milestone | Target | Deliverable |
 |---|---|---|
 | M0 | Week 2 | Waste taxonomy + paper notes |
-| M1 | Week 6 | Working measurement proxy with design partner |
+| M1 | Week 6 | Working measurement proxy in real use |
 | M2 | Week 14 | Pruning proxy passing eval suite |
 | M3 | Month 4 | Three-tier memory with fact extraction |
-| M4 | Month 8 | ZK-Context with TEE attestation |
+| M4 | Month 8 | Dropped 2026-09-26 (ADR-0025) |
 | M5 | Month 10 | Git-attestation audit engine live |
-| M6 | Month 12 | Billing engine + first paying enterprise customer |
+| M6 | Month 12 | Payment layer removed; self-hosted team features |

@@ -35,8 +35,8 @@ columns — into a CLEAN target. A disposable local backup → delete → restor
 round-trip is referential-integrity-verified; real-data recovery is unverified.
 
 `npm run invoice -- --org-id <uuid> [--since <iso>] [--until <iso>] [--csv <path>] [--send]`
-computes an org's **token-arbitrage invoice** (BUSINESS_MODEL.md: 20% of savings, with the
-plan's monthly-minimum floor) from its append-only `billing_records` and prints the CFO
+computes an org's **token-arbitrage invoice** (20% of savings, with the plan's
+monthly-minimum floor; scheduled for removal under ADR-0025) from its append-only `billing_records` and prints the CFO
 report; `--csv` writes the signed-hash audit trail. **FREE**, read-only. The Stripe **send is
 implemented** (`src/billing/stripe.ts`: customer → invoiceitem → invoice → finalize, behind the
 InvoiceSink seam, fake-fetch-tested incl. dollars→cents; a `sk_live_` key is refused until verified
