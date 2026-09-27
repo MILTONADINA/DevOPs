@@ -6,7 +6,11 @@
 //
 // The first form parses node --test (root) or vitest (stratum) output and exits 1 when the
 // passed count is below governance/test-floors.json's floor, when any test failed, or when
-// no count can be found. The second exits 1 when any floor is lower than in the base file.
+// no count can be found. The second exits 1 when any floor is lower than in the base file,
+// unless the head file's `lowerings` array declares that exact drop with a new (not already
+// on the base file), non-empty {suite, from, to, reason, decision} entry (specs/ops/
+// payment-removal.md REQ-12). Every accepted lowering prints
+// `test floors: LOWERED <suite> <from> -> <to>: <reason>`.
 import { readFileSync, realpathSync } from 'node:fs';
 import path from 'node:path';
 
@@ -38,8 +42,27 @@ export function checkFloor(suite, counts, floors) {
   return null;
 }
 
-export function checkRatchet(base, current) {
-  const lowered = Object.keys(base).filter((k) => typeof base[k] === 'number' && !(typeof current[k] === 'number' && current[k] >= base[k]));
+// specs/ops/payment-removal.md REQ-12: an entry already present in the base file's lowerings
+// (compared field by field, so key order never matters) may not authorize a lowering again.
+const loweringKey = (e) => JSON.stringify([e?.suite, e?.from, e?.to, e?.reason, e?.decision]);
+const nonEmptyString = (s) => typeof s === 'string' && s.trim() !== '';
+
+export function checkRatchet(base, current, log = (line) => console.log(line)) {
+  const alreadyOnBase = new Set((Array.isArray(base.lowerings) ? base.lowerings : []).map(loweringKey));
+  const declared = Array.isArray(current.lowerings) ? current.lowerings : [];
+  const lowered = [];
+  for (const suite of Object.keys(base)) {
+    if (typeof base[suite] !== 'number') continue;
+    if (typeof current[suite] === 'number' && current[suite] >= base[suite]) continue;
+    // A suite with no numeric floor at all in the head file is removed, not lowered to a
+    // value: no entry (however constructed) may authorize that, only a real `to` number.
+    const entry = typeof current[suite] === 'number' && declared.find((e) => e && typeof e === 'object'
+      && e.suite === suite && e.from === base[suite] && e.to === current[suite]
+      && nonEmptyString(e.reason) && nonEmptyString(e.decision)
+      && !alreadyOnBase.has(loweringKey(e)));
+    if (entry) log(`test floors: LOWERED ${suite} ${base[suite]} -> ${current[suite]}: ${entry.reason}`);
+    else lowered.push(suite);
+  }
   return lowered.length ? `floors may only rise; lowered or removed: ${lowered.map((k) => `${k} ${base[k]} -> ${current[k]}`).join(', ')}` : null;
 }
 
@@ -58,8 +81,9 @@ if (isMain()) {
   const [first, second] = process.argv.slice(2);
   let problem;
   if (first === '--ratchet') {
-    problem = checkRatchet(JSON.parse(readFileSync(second, 'utf8')), floors);
-    if (!problem) console.log('test floors: no floor lowered');
+    let lowerings = 0;
+    problem = checkRatchet(JSON.parse(readFileSync(second, 'utf8')), floors, (line) => { lowerings += 1; console.log(line); });
+    if (!problem && lowerings === 0) console.log('test floors: no floor lowered');
   } else {
     const counts = parseCounts(first, readFileSync(second, 'utf8'));
     problem = checkFloor(first, counts, floors);

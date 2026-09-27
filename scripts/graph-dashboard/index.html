@@ -447,7 +447,7 @@
     <div class="panel-subheading">From <span class="mono">.workflow/state/events.jsonl</span>, newest first.</div>
     <div id="gate-events-empty" class="empty-state" hidden>
       <div class="empty-state-title">No gate events recorded yet</div>
-      <div>Deploy/billing gate blocks, approvals, and other governance events will appear here as they happen.</div>
+      <div>Deploy gate blocks, approvals, and other governance events will appear here as they happen.</div>
     </div>
     <div id="gate-events-list" class="gate-events-list"></div>
   </section>
@@ -500,14 +500,15 @@
     lastUpdated: document.getElementById('last-updated')
   };
 
-  // 0 = pilot (full human gate), 1 = inner-loop autonomous (deploy/billing
-  // still gated), 2 = low-risk merge-to-main may loosen -- mirrors
+  // 0 = pilot (full human gate), 1 = inner-loop autonomous (deploy still
+  // gated -- the billing gate was retired 2026-09-26), 2 = low-risk
+  // merge-to-main may loosen -- mirrors
   // governance/graph/autonomy-config.yml's own header comment exactly
   // (server.mjs's readAutonomyPhase() reads that same file). Purely a
   // display label; an unrecognized integer still shows its bare number.
   var AUTONOMY_PHASE_LABELS = {
     0: 'Pilot — full human gate on every step',
-    1: 'Autonomous inner loop — deploy/billing still gated',
+    1: 'Autonomous inner loop — deploy still gated',
     2: 'Low-risk merge-to-main may loosen'
   };
 

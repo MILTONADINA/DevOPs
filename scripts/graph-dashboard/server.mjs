@@ -658,10 +658,11 @@ async function readKillSwitch(haltPath = path.join(STATE_DIR, 'graph-halt')) {
 
 // .workflow/state/graph-approvals/: written by /sprint-approve (see
 // slash-commands/universal/sprint-approve.md) as flat marker files named
-// "<cycle id>.deploy", "<cycle id>.billing-1", "<cycle id>.billing-2". This
-// reader only lists what is currently sitting there -- it does not group by
-// cycle, does not check the two-distinct-approver rule, and does not read
-// any marker's own contents; that interpretation belongs to
+// "<cycle id>.deploy". Older cycles may still carry "<cycle id>.billing-1"
+// / "<cycle id>.billing-2" markers from before the billing four-eyes gate
+// was retired (2026-09-26). This reader lists whatever is currently
+// sitting there regardless of name -- it does not group by cycle, and it
+// does not read any marker's own contents; that interpretation belongs to
 // deploy-gate.sh (the actual gate), not to a read-only lister. Same
 // missing-directory convention as T2's own listSubdirNames above: any
 // failure to list (directory absent, or present but empty) is zero pending
@@ -692,7 +693,7 @@ async function readPendingApprovals(approvalsDir = path.join(STATE_DIR, 'graph-a
 // NAMING COLLISION WARNING: this integer (0/1/2) is the GLOBAL
 // pilot-maturity autonomy phase for the dashboard's top bar -- per that
 // file's own comment: 0 = pilot (full human gate on every step), 1 = inner
-// loop autonomous with deploy/billing still gated, 2 = low-risk
+// loop autonomous with deploy still gated, 2 = low-risk
 // merge-to-main may loosen. It is unrelated to, and must never be merged
 // under the same object key as, T2's per-label `phase` field
 // (Plan/Build/Verify/Release -- one run's own progress through
