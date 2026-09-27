@@ -57,10 +57,39 @@ if (command === 'launch') {
       || !Array.isArray(args.plan?.tasks) || !Array.isArray(args.priorBuildResults) || !Array.isArray(args.priorCoderResults)) {
       throw new Error('resume args are incomplete or do not match the prior run');
     }
+    // D1 (PB-74): args.acknowledgements carries the owner's {item, answer}
+    // decisions through a resume so sprint-cycle.js can put them into the
+    // prompts of the five downstream roles (coder, tester, reviewer, security,
+    // validator; the preflight and planner prompts never carry them). Deliberately a lighter 2-field shape than --ack's
+    // {item, answer, at} isAcknowledgement below -- do not reuse that
+    // validator here, since its `at` requirement would wrongly reject every
+    // valid 2-field entry.
+    const hasItemAndAnswer = (entry) => entry !== null && typeof entry === 'object' && !Array.isArray(entry)
+      && entry.item !== undefined && entry.item !== null
+      && typeof entry.answer === 'string' && entry.answer.length > 0;
+    if (args.acknowledgements !== undefined
+      && (!Array.isArray(args.acknowledgements) || !args.acknowledgements.every(hasItemAndAnswer))) {
+      throw new Error('resume args acknowledgements must be an array of {item, answer} objects');
+    }
     if (!path.isAbsolute(options.journal) || path.basename(options.journal) !== 'journal.jsonl'
       || path.basename(path.dirname(options.journal)) !== options.runId) {
       throw new Error('new journal path must identify the new Workflow run');
     }
+    // D2 (PB-68): resumedFrom only ever names the single most recent prior
+    // run, so a second resume drops the first run's id from run.json.
+    // priorRunIds accumulates every one of them instead, oldest first, so
+    // the dashboard's readRunRecords can join all of them as superseded --
+    // captured here, before the overwrite below, and de-duped in case a
+    // resume ever targets an id already in the list. Mirrors the on-disk
+    // acknowledgements guard above: only an absent field counts as "first
+    // use"; an existing-but-corrupted non-array field is refused, not
+    // silently replaced.
+    const priorRunId = record.runId;
+    if (record.priorRunIds !== undefined && !Array.isArray(record.priorRunIds)) {
+      throw new Error('existing priorRunIds field is not an array');
+    }
+    record.priorRunIds = record.priorRunIds || [];
+    if (!record.priorRunIds.includes(priorRunId)) record.priorRunIds.push(priorRunId);
   }
   if (options.runId) record.runId = options.runId;
   if (options.journal) record.journalPath = options.journal;

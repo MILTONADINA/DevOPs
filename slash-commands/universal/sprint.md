@@ -71,6 +71,75 @@ preflight then verifies the underlying cause on resume. `/sprint` clears
 remaining non-`needs_human` markers only after its preflight passes and
 the Workflow launches successfully.
 
+When resuming a cycle whose `run.json` carries owner-recorded
+acknowledgements — the top-level `acknowledgements: [{item, answer,
+at}]` array that `graph-run-record.mjs update --ack` writes, per
+REQ-M7 — fold those decisions into the relaunch yourself: read
+`run.json`'s `acknowledgements` and route each entry into the
+channel it matches (below), alongside
+`scripts/graph-resume-args.mjs`'s output. That script does
+not read or forward `acknowledgements` today — its printed object is
+only `{backlogItem, cycleId, plan, priorBuildResults,
+priorCoderResults, resumedFrom}` — and nothing carries the
+acknowledgements forward from one resume to the next by itself, so
+this merge repeats on every resume, not just the first.
+
+The two channels take different shapes and are not interchangeable:
+
+- `args.acknowledgements` takes the `{item, answer, at}` entries
+  exactly as `run.json` stores them, with no reshaping.
+  `sprint-cycle.js`'s `isAcknowledged` matches a plan
+  ambiguity/conflict against an entry's `item` field (compared via
+  `JSON.stringify`), so this channel lets a repeat `AMBIGUITY_BLOCK`
+  be skipped for any plan item the owner has already answered. It is
+  also the only channel that reaches downstream prompts:
+  `sprint-cycle.js` renders every entry's item/answer into the OWNER
+  DECISIONS block every downstream role sees (preflight and the
+  planner never do), which `acknowledgedAmbiguities`'s raw items
+  alone do not. `graph-run-record.mjs update`'s `--args`
+  validator only requires `item` and a non-empty `answer`, so the
+  extra `at` field carries through harmlessly. Example, copied
+  straight from `run.json`:
+
+  ```json
+  {
+    "acknowledgements": [
+      { "item": "Which retry backoff strategy?", "answer": "Exponential, 3 tries, cap 30s", "at": "2026-09-26T00:00:00Z" }
+    ]
+  }
+  ```
+
+- `args.acknowledgedAmbiguities` takes the bare plan items (or
+  `conflicts[]` objects) themselves, never the `{item, answer, at}`
+  wrapper. `isAcknowledged` compares each array element against the
+  plan item verbatim (`JSON.stringify(ack) === JSON.stringify(item)`)
+  and never reads an `.item` field here. Populating this channel from
+  `run.json`'s `acknowledgements` therefore means extracting each
+  entry's `.item` first — an unmodified `{item, answer, at}` entry
+  never matches here. Example: one string ambiguity's item and one
+  `conflicts[]` object's item, both extracted from `run.json`'s
+  `acknowledgements` (`jq '[.acknowledgements[].item]' run.json`):
+
+  ```json
+  {
+    "acknowledgedAmbiguities": [
+      "Which retry backoff strategy?",
+      { "higher": "specs/graph/R-resilience.md REQ-R10", "lower": "plan.md §4", "clause": "..." }
+    ]
+  }
+  ```
+
+  When an item is a `conflicts[]` object, the array element must
+  match the planner's emitted object by `JSON.stringify` key order
+  (PB-70): the safe source is the `AMBIGUITY_BLOCK:` payload itself
+  (`JSON.stringify(offendingItems)`), which preserves that order — a
+  hand-typed object with its keys reordered is deep-equal but will
+  not match.
+
+Send the same merged object as `graph-run-record.mjs
+update`'s `--args`, too, so the stored record matches what Workflow
+actually received.
+
 The Workflow pipelines the backlog item through preflight → planner → coder
 → tester → reviewer → security → validator, phase-tagged
 (Preflight/Plan/Build/Verify/Release). The orchestrator records run state in

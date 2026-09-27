@@ -186,10 +186,11 @@ permanent design constraint, not a gap slated to be filled in later.
     stale node does not make its run active (masterpiece REQ-M24, PB-57).
   - **Cycle id and run state** — joined by `runId` from
     `.workflow/state/graph-cycles/<cycleId>/run.json` (REQ-R10). The earlier
-    run of a resumed cycle, named in the record's `resumedFrom`, is joined to
-    the same cycle as `superseded`. A sprint run with no run record is
-    labelled `NOT_OBSERVED`; a Workflow run that is not a sprint cycle is
-    labelled as such. Nothing here is guessed.
+    runs of a resumed cycle — named in the record's `resumedFrom` and, when
+    present, every id in its `priorRunIds` array — are joined to the same
+    cycle as `superseded`. A sprint run with no run record is labelled
+    `NOT_OBSERVED`; a Workflow run that is not a sprint cycle is labelled as
+    such. Nothing here is guessed.
   - **Elapsed time**, per node and per run — derived entirely from
     filesystem mtimes/birthtimes (a node's own `agent-<id>.jsonl` +
     `agent-<id>.meta.json`; every file in the run directory for the run's

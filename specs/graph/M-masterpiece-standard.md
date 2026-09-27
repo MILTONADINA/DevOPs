@@ -140,8 +140,8 @@ It SHALL refuse a caller-supplied status that disagrees with the derived one. It
 **Falsified by:** `update --status completed` accepted for a run whose journal result has `readyForPR: false`, or a second row for the same `cycleId`.
 
 ### REQ-M7 (Unwanted behaviour): Material ambiguity and source conflicts stop the cycle
-IF the planner returns a non-empty `ambiguities[]` or `conflicts[]`, THEN `sprint-cycle.js` SHALL throw `AMBIGUITY_BLOCK:` followed by the items as JSON, before Build. The only exception: every item appears verbatim in `args.acknowledgedAmbiguities`.
-- `/sprint` SHALL populate that list only from the owner's answer, recorded verbatim in `run.json` (`acknowledgements: [{item, answer, at}]`), and SHALL write a `needs_human` blocked record on the throw.
+IF the planner returns a non-empty `ambiguities[]` or `conflicts[]`, THEN `sprint-cycle.js` SHALL throw `AMBIGUITY_BLOCK:` followed by the items as JSON, before Build. The only exception: every item is either matched by an entry's `item` field in `args.acknowledgements` (an array of `{item, answer}` objects), or appears verbatim in `args.acknowledgedAmbiguities`.
+- `/sprint` SHALL populate whichever of `args.acknowledgements` or `args.acknowledgedAmbiguities` it uses only from the owner's answer, recorded verbatim in `run.json` (`acknowledgements: [{item, answer, at}]`): `args.acknowledgements` receives those entries unchanged, and `args.acknowledgedAmbiguities` receives each entry's bare `item` value, extracted from it. It SHALL write a `needs_human` blocked record on the throw.
 - The planner schema SHALL add `conflicts: [{higher, lower, clause}]`.
 - `AGENTS.md` SHALL carry one precedence line: owner decision > law/safety > approved spec > ADR/AC > plan > code.
 
@@ -298,7 +298,7 @@ THE SYSTEM SHALL make `scripts/graph-dashboard/server.mjs`:
 - display the run.json `status` and `cycleId` (replacing the hard-coded `null` at `:454`);
 - label a run with no run record `observed: false, state: NOT_OBSERVED`;
 - mark a node `stale` when its last journal event is more than 18 minutes old and run.json is not `running` (PB-57; `:438`), or more than 3 hours old when run.json still says `running`. An orchestrator that dies leaves its record at `running`, and live agents have been measured silent for up to 74 minutes (amended 2026-09-25 after review `wf_6e861584-e0b`);
-- join the earlier run named in a record's `resumedFrom` to that cycle as `superseded`, never as `running`;
+- join the earlier run named in a record's `resumedFrom`, and every id in its `priorRunIds` array when present, to that cycle as `superseded`, never as `running`;
 - label non-sprint Workflow runs as such.
 
 It SHALL remain read-only and loopback-only.
@@ -374,7 +374,7 @@ THE SYSTEM SHALL correct, at the latest in the cycle that implements the matchin
 **Given** a journal whose final result has `readyForPR: false` **When** `update --status completed` runs **Then** it throws. **Given** a result with `readyForPR: true` and a passing rerun **Then** status becomes `completed` and exactly one dashboard row for that `cycleId` is appended. A second call does not add another row.
 
 ### AC-M7.1 (REQ-M7)
-**Given** a planner result with `ambiguities: ['X']` and no acknowledgement **When** the workflow runs **Then** it throws `AMBIGUITY_BLOCK:` before any `coder:` label is invoked. **Given** `args.acknowledgedAmbiguities: ['X']` **Then** Build runs. The same holds for a non-empty `conflicts[]`.
+**Given** a planner result with `ambiguities: ['X']` and no acknowledgement **When** the workflow runs **Then** it throws `AMBIGUITY_BLOCK:` before any `coder:` label is invoked. **Given** `args.acknowledgedAmbiguities: ['X']` **Then** Build runs. **Given** `args.acknowledgements: [{item: "X", answer: "..."}]` and no `acknowledgedAmbiguities` **Then** Build runs. The same holds for a non-empty `conflicts[]`.
 
 ### AC-M8.1 (REQ-M8)
 **Given** a spec whose Status is `draft` **When** `launch --spec-ref specs/x.md#REQ-X1` runs **Then** it throws. **Given** Status `approved` and a REQ with no AC **Then** it throws. **Given** approved, fully AC-covered and with Falsified-by lines **Then** it succeeds. **Given** a planner task with an empty `ac_ids` **Then** the schema rejects it.
