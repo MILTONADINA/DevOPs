@@ -1,6 +1,6 @@
 ---
 name: graph-resume
-description: Clears the graph-engineering kill switch set by /graph-halt, allowing sprint cycles and gated deploy/billing actions to proceed again.
+description: Clears the graph-engineering kill switch set by /graph-halt, allowing sprint cycles and gated deploy actions to proceed again.
 disable-model-invocation: true
 ---
 

@@ -34,7 +34,7 @@ The owner defines an "absolute masterpiece" as the standard BrightPath sets out 
 - `readyForPR` is `validator.signed_off && failedTasks.length === 0` (`.claude/workflows/sprint-cycle.js:317`). The reviewer and security verdicts count only through the validator prompt (`:298`).
 - A null agent result defaults to fault class `api` (`:47`), and `api` is one of the classes allowed to resume unattended (`governance/graph/autonomy-config.yml:67`).
 - Planner ambiguities are logged and then ignored (`:139`).
-- The ban on commit and push is prompt text (`:106`, `:174`; `governance/graph/role-mapping.md:98-123`).
+- The ban on commit and push is prompt text (`:106`, `:174`; `governance/graph/role-mapping.md`, section "Known limitation: commit/push prevention is currently prompt-level, not hook-enforced").
 - `main` has no required status checks and requires 0 approvals (live `gh api`, 2026-09-25).
 - The Semgrep CI job crashes on every run (`ValueError: invalid rule severity value: MEDIUM`) yet reports success (`.github/workflows/security-scan.yml:56-65`); fixed on 2026-09-25 in PR #178 (`specs/security/ci-semgrep-scan.md`). `docs/LAUNCH_READINESS.md:49` still calls it "green".
 - The claim step in CI validates nothing because `.workflow/proofs/` is gitignored (`.gitignore:5`, PB-60).
@@ -53,7 +53,8 @@ This spec closes those gaps in proportion to the problem. It adopts BrightPath's
 - **Branch protection on `main` has `enforce_admins: false`.** Even with required contexts enabled, an admin token can merge past them.
 - **Two GitHub Actions facts.** Exit code 78 does not produce a neutral result, and a job skipped by an `if:` condition satisfies a required context. A skip must therefore never sit on a required context.
 - **Money.** API spend is de-funded, so no requirement may run a paid judged evaluation or a paid red-team without the owner's explicit approval.
-- **Unchanged from earlier specs.** The production-deploy and billing four-eyes rules and the `graph-halt` kill switch stay as they are (`autonomy-config.yml`, REQ-R15). This spec tightens how they are enforced; it never loosens them.
+- **Unchanged from earlier specs.** The production-deploy rule and the `graph-halt` kill switch stay as they are (`autonomy-config.yml`, REQ-R15). This spec tightens how they are enforced; it never loosens them.
+- **Retired by owner decision.** The billing four-eyes rule was retired on 2026-09-26: DevOps is open source with no payment (ADR-0025).
 - **BrightPath is read-only from this repository.** `engineering_graph.py` refuses any `--root` other than its own (BP `engineering_graph.py:455-456`). Vendored skills must match BrightPath's 14 classified adapters (BP `check-masterpiece-lifecycle.mjs:92-110, 185-205`). Hook commands added to BrightPath's `settings.json` become enforcement paths that need clause citations (BP `check-spec-traceability.mjs:522-531`).
 
 ## Out of scope and explicit omissions
@@ -228,12 +229,11 @@ IF a security scan in CI exits abnormally, reports rule or parse errors, or scan
 **Falsified by:** a Security scan run on `main` that concludes success while its log contains `invalid rule severity value` or `RED-TEAM GATE SKIPPED`.
 
 ### REQ-M15 (Ubiquitous): Human-only approvals are signed out of band
-THE SYSTEM SHALL accept a deploy, billing, halt-lift, blocked-clear or ambiguity-acknowledgement marker only if:
+THE SYSTEM SHALL accept a deploy, halt-lift, blocked-clear or ambiguity-acknowledgement marker only if:
 - it carries a detached signature that `ssh-keygen -Y verify` accepts against committed `governance/graph/allowed_signers`, namespace `devops-graph`;
-- the signed payload is `{cycle, sha, action, approver, ts}` with `sha == HEAD` and `cycle` equal to the running cycle;
-- for billing, two signatures come from distinct keys.
+- the signed payload is `{cycle, sha, action, approver, ts}` with `sha == HEAD` and `cycle` equal to the running cycle.
 
-The signing key SHALL be one an agent cannot use: a FIDO `sk-` key, or a passphrase key not loaded in `ssh-agent`. Free-text approver strings (`deploy-gate.sh:164-173`) and `gh`-posted comments SHALL NOT count as approval.
+The signing key SHALL be one an agent cannot use: a FIDO `sk-` key, or a passphrase key not loaded in `ssh-agent`. Free-text approver strings in marker files and `gh`-posted comments SHALL NOT count as approval.
 **Enforced by:** `deploy-gate.sh`, `graph-run-record.mjs` and `graph-preflight.mjs` (halt), each calling `ssh-keygen -Y verify`; tests with a throwaway test key.
 **Falsified by:** a marker whose content is `{}`, or one with a valid signature over a different `sha`, admitting a deploy-shaped command.
 
@@ -241,8 +241,9 @@ The signing key SHALL be one an agent cannot use: a FIDO `sk-` key, or a passphr
 THE SYSTEM SHALL add `tests/hooks/deploy-gate.test.mjs` and `tests/hooks/block-sealed-refs.test.mjs` to `npm test`. They are built from the 2026-09-25 probe matrix, and each bypass is committed as a failing case before its fix. `deploy-gate.sh` SHALL:
 - check `graph-halt` before its pre-filter (`:99-106`; `graph-halt.md:9`);
 - match `gh pr merge`, `gh release`, `supabase db push`, `git -C <dir> …`, tag pushes by name, and `:ref`/`+ref` refspecs;
-- take `CYCLE_ID` from the single `running` `graph-cycles/*/run.json`, failing closed when there are zero or several (today it falls back to `current`, `:30`);
-- when a push has no upstream, diff against `origin/main`, failing closed if that cannot be resolved (`:148-157`).
+- take `CYCLE_ID` from the single `running` `graph-cycles/*/run.json`, failing closed when there are zero or several (today it falls back to `current`).
+
+The earlier requirement to diff a push with no upstream against `origin/main` served only the billing four-eyes check, and it was dropped when that gate was retired on 2026-09-26 (ADR-0025).
 
 `block-sealed-refs.sh` SHALL match refspec deletions, `update-ref` and `git -C`, and SHALL NOT block inert text such as `echo git tag -d v0.2.0`. The script-file-wrapper bypass SHALL be documented as a known limit.
 **Enforced by:** the hooks plus `tests/hooks/*`.
@@ -288,7 +289,7 @@ SBOM and provenance are deferred until a release artifact exists; `release-sign.
 **Falsified by:** a PR adding a dependency with a known critical advisory that passes, or a staged fake AWS key that commits.
 
 ### REQ-M23 (Unwanted behaviour): An emptied or assertion-free suite never reads as PASS
-IF `npm test` at the root, or in `stratum/`, runs fewer tests than the floor committed in `governance/test-floors.json`, THEN CI SHALL fail. Floors may only rise. `scripts/check-assertions.mjs` SHALL also fail on a new test file with zero `assert`/`expect` calls.
+IF `npm test` at the root, or in `stratum/`, runs fewer tests than the floor committed in `governance/test-floors.json`, THEN CI SHALL fail. Floors may only rise, except by a one-time `lowerings` entry (suite, from, to, reason, decision) that the ratchet checks and prints. `scripts/check-assertions.mjs` SHALL also fail on a new test file with zero `assert`/`expect` calls.
 **Enforced by:** CI floor check plus lint.
 **Falsified by:** deleting a test file and CI staying green.
 
@@ -411,10 +412,10 @@ THE SYSTEM SHALL correct, at the latest in the cycle that implements the matchin
 **Given** a Semgrep JSON fixture with a non-empty `errors[]`, or `paths.scanned` below the floor **When** `node scripts/assert-scan.mjs` runs **Then** it exits non-zero. **Given** `run-redteam.sh` with no key and `GITHUB_EVENT_NAME=push` on `main` **Then** it exits non-zero.
 
 ### AC-M15.1 (REQ-M15)
-**Given** a test key listed in a fixture `allowed_signers` and a marker signed over `{cycle, sha: HEAD, action: 'deploy'}` **When** a deploy-shaped command runs **Then** the gate allows it. **Given** a `{}` marker, an unsigned marker, a signature over another `sha`, or a key not listed **Then** the gate exits 2. **Given** two billing markers signed by the same key **Then** it exits 2.
+**Given** a test key listed in a fixture `allowed_signers` and a marker signed over `{cycle, sha: HEAD, action: 'deploy'}` **When** a deploy-shaped command runs **Then** the gate allows it. **Given** a `{}` marker, an unsigned marker, a signature over another `sha`, or a key not listed **Then** the gate exits 2.
 
 ### AC-M16.1 (REQ-M16)
-**Given** the probe matrix, each case with `graph-halt` present or absent as it specifies (`git -C . commit`, `gh pr merge`, `gh release create`, `supabase db push`, `git push origin v1.0.0`, `git push origin :v0.2.0`, `git push origin :refs/tags/v0.2.0`, `git push origin +HEAD:stratum-merge`, `git -C . tag -d v0.2.0`, `git update-ref refs/tags/v0.2.0 HEAD`, and a push with no upstream touching a billing path) **When** `npm test` runs `tests/hooks/*` **Then** each case exits 2, and `echo git tag -d v0.2.0` exits 0. **Given** zero or two `running` run records **Then** a deploy-shaped command exits 2.
+**Given** the probe matrix, each case with `graph-halt` present or absent as it specifies (`git -C . commit`, `gh pr merge`, `gh release create`, `supabase db push`, `git push origin v1.0.0`, `git push origin :v0.2.0`, `git push origin :refs/tags/v0.2.0`, `git push origin +HEAD:stratum-merge`, `git -C . tag -d v0.2.0`, `git update-ref refs/tags/v0.2.0 HEAD`) **When** `npm test` runs `tests/hooks/*` **Then** each case exits 2, and `echo git tag -d v0.2.0` exits 0. **Given** zero or two `running` run records **Then** a deploy-shaped command exits 2.
 
 ### AC-M17.1 (REQ-M17)
 **Given** a scratch repository and a one-task Workflow whose agent runs `git commit --allow-empty -m probe` while a `running` run record exists **When** it runs **Then** the recorded claim states whether the hook fired (exit 2) or not. If not, the coder and tester `agent()` calls in `sprint-cycle.js` carry `isolation: 'worktree'`, which a test asserts.

@@ -573,7 +573,7 @@ test('client: initial GET /api/snapshot paints the top bar and halt banner', asy
   const sbx = await buildSandbox({ fetchImpl: () => Promise.resolve({ ok: true, json: async () => fixture }) });
   await flushMicrotasks();
 
-  assert.equal(sbx.el['stat-phase-value'].textContent, '1 — Autonomous inner loop — deploy/billing still gated');
+  assert.equal(sbx.el['stat-phase-value'].textContent, '1 — Autonomous inner loop — deploy still gated');
   assert.equal(sbx.el['stat-approvals-value'].textContent, '2');
   assert.equal(sbx.el['stat-skipped-value'].textContent, '4');
   assert.equal(sbx.el['halt-banner'].hidden, false);

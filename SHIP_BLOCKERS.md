@@ -487,6 +487,19 @@ same word-boundary form and verified in a fresh worktree with a staged
 `stratum/src/billing/` file: `cd . && git commit …` is now blocked with
 "needs TWO approval markers".
 
+**Update 2026-09-26 — the billing four-eyes gate was retired.** Everything
+above is left exactly as written: it is the historical record of a real
+bypass found and fixed on 2026-09-14/09-15, while the billing-path
+two-approver check (the "billing four-eyes trigger" named above) still
+existed. That check no longer exists. The owner retired it on 2026-09-26,
+open source with no payment
+(`stratum/docs/decisions/0025-open-source-local-first-no-payment.md`);
+`hooks/universal/pre-tool/deploy-gate.sh` and
+`governance/graph/autonomy-config.yml` no longer treat billing-path
+commits or pushes as a separate gate at all. The production-deploy gate
+and the `graph-halt` kill switch this item also covers are unchanged by
+this retirement.
+
 ### 1.9 Repository visibility decision — resolved 2026-09-23
 
 Found 2026-09-15 while triaging the legacy claim failures:

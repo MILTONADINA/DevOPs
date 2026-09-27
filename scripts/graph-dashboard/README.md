@@ -65,14 +65,14 @@ There is no manual refresh control, and none is needed.
 ### Top bar
 - **Autonomy phase** — the pilot-maturity phase (0, 1, or 2) from
   `governance/graph/autonomy-config.yml`, labeled "Pilot — full human gate
-  on every step" / "Autonomous inner loop — deploy/billing still gated" /
+  on every step" / "Autonomous inner loop — deploy still gated" /
   "Low-risk merge-to-main may loosen". This is a *global* program setting,
   unrelated to any single run's own Plan/Build/Verify/Release progress
   below — the two are never the same field.
 - **Pending approvals** — how many marker files currently sit in
   `.workflow/state/graph-approvals/` (written by `/sprint-approve`). The
-  dashboard just counts them; it does not evaluate the two-distinct-
-  approver / deploy-vs-billing rule — that logic belongs to
+  dashboard just counts them; it does not evaluate any gate's approval
+  rule — that logic belongs to
   `hooks/universal/pre-tool/deploy-gate.sh`, the actual gate.
 - **Skipped malformed events** — how many lines in
   `.workflow/state/events.jsonl` failed to parse as JSON on the most

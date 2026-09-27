@@ -1,4 +1,5 @@
 // Tests for scripts/check-test-floor.mjs and scripts/check-assertions.mjs (masterpiece REQ-M23, AC-M23.1).
+// The declared test-floor lowering mechanism is specs/ops/payment-removal.md REQ-12, AC-11.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -35,6 +36,77 @@ test('floors may only rise: lowering or removing one is refused', () => {
   assert.equal(checkRatchet(floors, { root: 339, stratum: 1100 }), null);
   assert.match(checkRatchet(floors, { root: 338, stratum: 1092 }), /root 339 -> 338/);
   assert.match(checkRatchet(floors, { root: 339 }), /stratum 1092 -> undefined/);
+});
+
+test('a declared lowering with a matching new entry passes and prints the LOWERED line (specs/ops/payment-removal.md#AC-11)', () => {
+  const oldEntry = { suite: 'stratum', from: 1200, to: 1092, reason: 'past cycle', decision: 'ADR-old' };
+  const newEntry = { suite: 'stratum', from: 1092, to: 1050, reason: 'billing tests removed', decision: 'ADR-0025' };
+  const base = { root: 339, stratum: 1092, lowerings: [oldEntry] };
+  // The base file's own (already-spent) entry rides along unchanged; only the new one counts.
+  const current = { root: 339, stratum: 1050, lowerings: [oldEntry, newEntry] };
+  const logs = [];
+  assert.equal(checkRatchet(base, current, (line) => logs.push(line)), null);
+  assert.deepEqual(logs, ['test floors: LOWERED stratum 1092 -> 1050: billing tests removed']);
+});
+
+test('a lowered floor with no lowerings entry is refused, exactly as before (specs/ops/payment-removal.md#AC-11)', () => {
+  const base = { root: 339, stratum: 1092, lowerings: [] };
+  const logs = [];
+  assert.match(checkRatchet(base, { root: 339, stratum: 1050 }, (line) => logs.push(line)), /stratum 1092 -> 1050/);
+  assert.match(checkRatchet(base, { root: 339, stratum: 1050, lowerings: [] }, (line) => logs.push(line)), /stratum 1092 -> 1050/);
+  assert.deepEqual(logs, []);
+});
+
+test('an entry with the wrong suite, from or to does not authorize the lowering (specs/ops/payment-removal.md#AC-11)', () => {
+  const base = { root: 339, stratum: 1092, lowerings: [] };
+  const wrongSuite = [{ suite: 'root', from: 1092, to: 1050, reason: 'r', decision: 'd' }];
+  const wrongFrom = [{ suite: 'stratum', from: 1090, to: 1050, reason: 'r', decision: 'd' }];
+  const wrongTo = [{ suite: 'stratum', from: 1092, to: 1060, reason: 'r', decision: 'd' }];
+  const logs = [];
+  for (const lowerings of [wrongSuite, wrongFrom, wrongTo]) {
+    assert.match(checkRatchet(base, { root: 339, stratum: 1050, lowerings }, (line) => logs.push(line)), /stratum 1092 -> 1050/);
+  }
+  assert.deepEqual(logs, []);
+});
+
+test('an entry already present in the base file cannot authorize a new lowering; no reuse (specs/ops/payment-removal.md#AC-11)', () => {
+  const entry = { suite: 'stratum', from: 1200, to: 1092, reason: 'billing tests removed', decision: 'ADR-0025' };
+  const base = { root: 339, stratum: 1200, lowerings: [entry] };
+  const logs = [];
+  assert.match(checkRatchet(base, { root: 339, stratum: 1092, lowerings: [entry] }, (line) => logs.push(line)), /stratum 1200 -> 1092/);
+  assert.deepEqual(logs, []);
+});
+
+test('an entry with an empty or missing reason or decision does not authorize the lowering (specs/ops/payment-removal.md#AC-11)', () => {
+  const base = { root: 339, stratum: 1092, lowerings: [] };
+  const cases = [
+    { suite: 'stratum', from: 1092, to: 1050, reason: '', decision: 'ADR-0025' },
+    { suite: 'stratum', from: 1092, to: 1050, reason: '   ', decision: 'ADR-0025' },
+    { suite: 'stratum', from: 1092, to: 1050, reason: 'billing tests removed', decision: '' },
+    { suite: 'stratum', from: 1092, to: 1050, reason: 'billing tests removed' },
+  ];
+  const logs = [];
+  for (const entry of cases) {
+    assert.match(checkRatchet(base, { root: 339, stratum: 1050, lowerings: [entry] }, (line) => logs.push(line)), /stratum 1092 -> 1050/);
+  }
+  assert.deepEqual(logs, []);
+});
+
+test('a removed suite (no numeric head floor) is refused even with a same-shaped entry; only a real `to` number authorizes a lowering (specs/ops/payment-removal.md#AC-11)', () => {
+  const base = { root: 339, stratum: 1092, lowerings: [] };
+  const logs = [];
+  assert.match(checkRatchet(base, { root: 339, lowerings: [{ suite: 'stratum', from: 1092, reason: 'r', decision: 'd' }] }, (line) => logs.push(line)), /stratum 1092 -> undefined/);
+  assert.match(checkRatchet(base, { root: 339, stratum: null, lowerings: [{ suite: 'stratum', from: 1092, to: null, reason: 'r', decision: 'd' }] }, (line) => logs.push(line)), /stratum 1092 -> null/);
+  assert.deepEqual(logs, []);
+});
+
+test('a raise needs no lowerings entry, passes and prints nothing extra, even with unrelated entries present (specs/ops/payment-removal.md#AC-11)', () => {
+  const unrelated = { suite: 'stratum', from: 900, to: 1092, reason: 'r', decision: 'd' };
+  const base = { root: 339, stratum: 1092, lowerings: [unrelated] };
+  const logs = [];
+  assert.equal(checkRatchet(base, { root: 340, stratum: 1200, lowerings: [unrelated] }, (line) => logs.push(line)), null);
+  assert.equal(checkRatchet(base, { root: 339, stratum: 1092 }, (line) => logs.push(line)), null);
+  assert.deepEqual(logs, []);
 });
 
 test('a test file with no assertion is caught; comments do not count as assertions', () => {

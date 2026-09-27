@@ -79,7 +79,7 @@ jobs:
         run: |
           npm test 2>&1 | tee "$RUNNER_TEMP/root-tests.log"
           node scripts/check-test-floor.mjs root "$RUNNER_TEMP/root-tests.log"
-      - name: Test floors only rise; added test files assert (masterpiece REQ-M23)
+      - name: Test floors only rise (or fall by a declared lowering); added test files assert (masterpiece REQ-M23)
         if: github.event_name == 'pull_request'
         shell: bash
         env:

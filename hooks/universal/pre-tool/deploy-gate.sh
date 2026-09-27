@@ -2,18 +2,21 @@
 # hooks/universal/pre-tool/deploy-gate.sh
 #
 # Part of the graph-engineering pipeline (see governance/graph/). Blocks any
-# Bash command that would deploy to production, or that would commit/push a
-# change touching the billing path, unless the right human-approval markers
-# exist for the current cycle. Also honors the graph's kill switch.
+# Bash command that would deploy to production, unless the right human-
+# approval marker exists for the current cycle. Also honors the graph's
+# kill switch.
 #
 # Real failure mode this prevents: an autonomous sprint-cycle Workflow (or an
 # agent acting on its behalf) reaching the point of actually running
-# `vercel deploy --prod` / `wrangler deploy` / pushing a release tag, or
-# committing a billing-path change, without a human ever having signed off.
-# Per governance/graph/autonomy-config.yml: production deploy requires ONE
-# human approval marker; billing-path changes require TWO, from distinct
-# approvers. Self-approval by any subagent is not possible — the marker
-# files are written by a human via /sprint-approve, not by this hook.
+# `vercel deploy --prod` / `wrangler deploy` / pushing a release tag, without
+# a human ever having signed off. Per governance/graph/autonomy-config.yml:
+# production deploy requires ONE human approval marker. Approval markers are
+# plain files that a human writes via /sprint-approve, but nothing today
+# stops an agent from creating one directly: the Write/Edit tools have no
+# PreToolUse hook at all, and this hook only inspects Bash commands for
+# deploy/push/tag verbs, not writes into the approvals directory. Signed
+# markers (masterpiece REQ-M15/MR-5) and protected paths for the approvals
+# directory (MR-4) are the planned, not-yet-built fix.
 #
 # References:
 #   .claude/plans/indexed-launching-cocke.md (the approved graph-engineering plan)
@@ -21,23 +24,18 @@
 #   governance/graph/autonomy-config.yml
 
 set -euo pipefail
-# An inherited GIT_DIR/GIT_WORK_TREE would redirect every git call below to
+# An inherited GIT_DIR/GIT_WORK_TREE would redirect any git call below to
 # another repository regardless of the cwd the wrapper set (third adversarial
-# pass, 2026-09-15); the gate must only ever inspect the repo it runs in.
+# pass, 2026-09-15); the gate must only ever inspect the repo it runs in. No
+# git call remains below since the billing check was retired (2026-09-26);
+# the unset stays for MR-5, whose signed-approval check compares the
+# marker's sha with HEAD.
 unset GIT_DIR GIT_WORK_TREE
 
 COMMAND="${1:-}"
 CYCLE_ID="${DEVOPS_GRAPH_CYCLE_ID:-current}"
 APPROVALS_DIR=".workflow/state/graph-approvals"
 HALT_FILE=".workflow/state/graph-halt"
-
-# Billing-path globs (kept in sync with governance/graph/autonomy-config.yml's
-# billing_paths list -- if you change one, change both).
-BILLING_PATH_PATTERNS=(
-    "stratum/src/billing/"
-    "stratum/src/proxy/providers/"
-    "stratum/scripts/invoice"
-)
 
 block() {
     local reason="$1"
@@ -48,16 +46,15 @@ block() {
 ║  Command: $COMMAND
 ║  Reason:  $reason
 ║                                                                     ║
-║  This is a production-deploy or billing-path action. Per the       ║
-║  approved graph-engineering plan, these require explicit human     ║
-║  approval markers -- an autonomous cycle cannot self-approve.      ║
+║  This is a production-deploy action. Per the approved              ║
+║  graph-engineering plan, it requires an explicit human approval    ║
+║  marker, which a human writes with /sprint-approve.                ║
 ║                                                                     ║
 ║  Approval is the user's action, not yours: stop and hand the       ║
 ║  decision to the user. Do not write a marker under                 ║
 ║  .workflow/state/graph-approvals/ or remove                        ║
 ║  .workflow/state/graph-halt yourself. The user approves with       ║
-║  /sprint-approve <cycle-id> [--billing] (1 approval for a deploy,  ║
-║  2 from distinct approvers for billing), following                 ║
+║  /sprint-approve <cycle-id> (1 approval for a deploy), following   ║
 ║  slash-commands/universal/sprint-approve.md where that command is  ║
 ║  not installed.                                                    ║
 ╚═══════════════════════════════════════════════════════════════════╝
@@ -86,10 +83,11 @@ EOF
 # which only catches the literal first-token case. Anything realistic --
 # `cd stratum && vercel deploy --prod`, `npx vercel deploy --prod`,
 # `VERCEL_TOKEN=x vercel deploy --prod` -- bypassed the gate entirely,
-# exiting 0 before any gate logic ran, for BOTH the production-deploy check
-# and the billing-path four-eyes check below (same gate). Fixed to match
-# the verb anywhere it appears as a whole word (preceded by start-of-line,
-# whitespace, or a shell operator; followed by whitespace or end-of-line),
+# exiting 0 before any gate logic ran, for both the production-deploy check
+# and the billing-path four-eyes check (the latter retired 2026-09-26).
+# Fixed to match the verb anywhere it appears as a whole word (preceded by
+# start-of-line, whitespace, or a shell operator; followed by whitespace or
+# end-of-line),
 # not just at position zero. Verified against all three bypass commands
 # above (now exit 2) plus a multi-line-command variant -- see the
 # .claude/settings.json wrapper fix in the same commit, which was the
@@ -131,49 +129,6 @@ if [[ -n "$is_deploy" ]]; then
     mkdir -p .workflow/state
     echo "{\"ts\":$(date -u +%s),\"event\":\"deploy_gate_approved\",\"cycle\":\"$CYCLE_ID\",\"marker\":\"$marker\"}" >> .workflow/state/events.jsonl
     exit 0
-fi
-
-# --- Billing-path four-eyes check (git commit / git push only) ---
-# Word-boundary match, not start-anchored: the 1.8 fix unanchored the
-# quick-exit filter and the deploy patterns above but left this trigger
-# anchored, so `cd x && git commit` of a billing-path change skipped the
-# four-eyes check entirely (found 2026-09-15 while preparing a push).
-if echo "$COMMAND" | grep -qE '(^|[;&|(]|[[:space:]])git[[:space:]]+(commit|push)([[:space:]]|$)'; then
-    touches_billing=""
-    changed_files=""
-    if echo "$COMMAND" | grep -qE '(^|[;&|(]|[[:space:]])git[[:space:]]+commit([[:space:]]|$)'; then
-        changed_files=$(git diff --cached --name-only 2>/dev/null || true)
-    else
-        # git push: check what's outgoing relative to the upstream, if known
-        upstream=$(git rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null || true)
-        if [[ -n "$upstream" ]]; then
-            changed_files=$(git diff "${upstream}..HEAD" --name-only 2>/dev/null || true)
-        fi
-    fi
-
-    if [[ -n "$changed_files" ]]; then
-        for pattern in "${BILLING_PATH_PATTERNS[@]}"; do
-            if echo "$changed_files" | grep -qF "$pattern"; then
-                touches_billing=1
-                break
-            fi
-        done
-    fi
-
-    if [[ -n "$touches_billing" ]]; then
-        marker1="$APPROVALS_DIR/${CYCLE_ID}.billing-1"
-        marker2="$APPROVALS_DIR/${CYCLE_ID}.billing-2"
-        if [[ ! -f "$marker1" || ! -f "$marker2" ]]; then
-            block "billing-path change (matches: ${BILLING_PATH_PATTERNS[*]}) needs TWO approval markers, found: $( [[ -f "$marker1" ]] && echo 1 || echo 0 )/2"
-        fi
-        approver1=$(jq -r '.approver // empty' "$marker1" 2>/dev/null || true)
-        approver2=$(jq -r '.approver // empty' "$marker2" 2>/dev/null || true)
-        if [[ -z "$approver1" || -z "$approver2" || "$approver1" == "$approver2" ]]; then
-            block "billing-path change needs two markers from DISTINCT approvers (got '$approver1' and '$approver2')"
-        fi
-        mkdir -p .workflow/state
-        echo "{\"ts\":$(date -u +%s),\"event\":\"billing_gate_approved\",\"cycle\":\"$CYCLE_ID\",\"approvers\":[\"$approver1\",\"$approver2\"]}" >> .workflow/state/events.jsonl
-    fi
 fi
 
 exit 0
