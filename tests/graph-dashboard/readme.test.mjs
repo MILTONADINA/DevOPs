@@ -204,7 +204,7 @@ test('documents the real top-bar stat labels', () => {
 test('documents the real autonomy-phase labels verbatim (including the real em dash, not a plain hyphen)', () => {
   for (const label of [
     'Pilot — full human gate on every step',
-    'Autonomous inner loop — deploy/billing still gated',
+    'Autonomous inner loop — deploy still gated',
     'Low-risk merge-to-main may loosen',
   ]) {
     assert.ok(indexHtml.includes(label), `index.html no longer uses the exact label "${label}"`);

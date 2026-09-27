@@ -146,10 +146,11 @@ The Workflow pipelines the backlog item through preflight → planner → coder
 `.workflow/state/graph-cycles/<cycleId>/run.json` through
 `scripts/graph-run-record.mjs`; the Workflow script has no filesystem API.
 
-If the cycle reaches a deploy-shaped action or a billing-path change,
+If the cycle reaches a deploy-shaped action,
 `hooks/universal/pre-tool/deploy-gate.sh` will block it and name exactly
-what approval is missing. Use `/sprint-approve` to grant it — the graph
-cannot self-approve.
+what approval is missing. Use `/sprint-approve` to grant it. Approval is
+the human's action; nothing yet stops an agent's file tools from writing a
+marker (signed markers, MR-5, are the planned fix).
 
 ## After running
 

@@ -4,14 +4,18 @@
 # See governance/graph/role-mapping.md for the human-readable rationale and
 # ~/.claude/plans/indexed-launching-cocke.md (outside this repository) for the full approved plan.
 #
-# hooks/universal/pre-tool/deploy-gate.sh reads billing_paths from THIS file
-# conceptually -- if you change the list here, update the hook's
-# BILLING_PATH_PATTERNS array to match (kept in sync manually for now; a
-# future improvement could have the hook parse this YAML directly).
+# hooks/universal/pre-tool/deploy-gate.sh previously read billing_paths from
+# THIS file conceptually. The billing_path_change gate and its billing_paths
+# list were retired 2026-09-26 (see the "gates:" section below); this
+# cross-reference no longer has a list to point at. The hook's billing
+# four-eyes check was removed from deploy-gate.sh on the same date; the
+# hook's comments record the retirement.
 
 phase: 0  # 0 = pilot (fix SHIP_BLOCKERS.md, full human gate on every step)
-          # 1 = inner loop autonomous, deploy + billing gated
-          # 2 = low-risk DevOps-core merge-to-main may loosen (never deploy/billing)
+          # 1 = inner loop autonomous, deploy gated (billing gate retired
+          #     2026-09-26 -- see "gates:" below; billing is no longer a
+          #     gate at all, so it is no longer a phase axis either)
+          # 2 = low-risk DevOps-core merge-to-main may loosen (never deploy)
 
 roles:
   planner: { subagent: planner, autonomy: full_inner_loop }
@@ -39,15 +43,7 @@ gates:
       - "git push .* --tags"
       - "git push .* refs/tags/"
 
-  billing_path_change:
-    approvals_required: 2
-    distinct_approvers_required: true
-    marker_path_template: ".workflow/state/graph-approvals/{cycle_id}.billing-{n}"
-    loosens_in_phase_2: false
-    billing_paths:
-      - "stratum/src/billing/"
-      - "stratum/src/proxy/providers/"
-      - "stratum/scripts/invoice"
+  # Billing four-eyes gate retired 2026-09-26 by owner decision (open source, no payment); see ADR-0025.
 
   merge_to_main:
     phase_0: human_required_every_time
@@ -66,6 +62,18 @@ resilience:
   run_record: ".workflow/state/graph-cycles/{cycleId}/run.json"
   unattended_resume_classes: [api, transient]
 
+# SUPERSEDED IN PART 2026-09-26: every statement below about
+# gates.billing_path_change specifically -- that it was "required," that
+# the recommendation was to "KEEP both gates permanently," and that it does
+# "not have an entry-criteria path to loosening... reopening them requires a
+# new, separately-reasoned decision" -- no longer holds for billing. The
+# owner's 2026-09-26 decision to retire the billing four-eyes gate (open
+# source, no payment; see the "gates:" section above and ADR-0025) IS
+# that new, separately-reasoned decision this block itself said reopening
+# would require. Nothing below is deleted or reworded; it is left intact as
+# the historical record of what was decided on 2026-09-14. The
+# gates.production_deploy half of that record is NOT superseded and still
+# stands unchanged.
 # RESOLVED 2026-09-14: the "separate explicit decision" gates.production_deploy
 # and gates.billing_path_change required has been made. User deferred to
 # recommendation ("for all questions I will go by your best recommendation");
@@ -81,11 +89,18 @@ production_autonomy_decision:
   decision: gates_stay_permanent
   decided: "2026-09-14"
   decided_by: "user, deferred to model recommendation"
+  # ^ This status/decision/decided/decided_by record is left byte-for-byte as
+  #   decided on 2026-09-14, when it covered both gates. As of 2026-09-26,
+  #   "gates_stay_permanent" no longer holds for gates.billing_path_change
+  #   (retired that day; removed from gates: above) -- it holds only for
+  #   gates.production_deploy, which this change does not touch.
 
 phase_2_entry_criteria:
   # ALL must hold before Phase 2 is even considered -- and even then, only
-  # merge_to_main.phase_2 loosens. production_deploy and billing_path_change
-  # stay human-required permanently (see production_autonomy_decision above).
+  # merge_to_main.phase_2 loosens. production_deploy stays human-required
+  # permanently (see production_autonomy_decision above). billing_path_change
+  # is no longer a gate at all (retired 2026-09-26, see gates: above), so
+  # there is nothing left here for it to stay permanent as.
   min_clean_phase_1_cycles: null  # to be set with the user before Phase 1 starts
   claim_validator_pass_rate_healthy: null  # target set once Phase 0 restores it
   change_failure_rate: steady_or_improving

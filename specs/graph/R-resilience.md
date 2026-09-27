@@ -53,8 +53,11 @@ OWASP Agentic Top 10 2026 on kill switches.
   returns `null` from `agent()` on a terminal API error; a subagent that
   makes no tool progress for 3 minutes is killed. The script cannot change
   those policies, only react to their outcomes.
-- The production-deploy and billing four-eyes gates, and the `graph-halt`
-  kill switch, are unchanged (`governance/graph/autonomy-config.yml`).
+- The production-deploy gate and the `graph-halt` kill switch are unchanged
+  (`governance/graph/autonomy-config.yml`). The billing four-eyes gate this
+  constraint used to also name no longer exists: the owner retired it on
+  2026-09-26, open source with no payment
+  (`stratum/docs/decisions/0025-open-source-local-first-no-payment.md`).
 - Nothing in this spec may run `sudo`, accept a license, rotate a credential,
   or spend money on the user's behalf.
 

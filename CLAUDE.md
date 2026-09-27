@@ -53,10 +53,14 @@ tracked in this repo and wires these hooks:
   blocks destructive git operations against sealed refs (the v0.2.0 tag,
   archival branches). Exit 2 with an explanation. References blueprint §3.
 - PreToolUse on `Bash` → `hooks/universal/pre-tool/deploy-gate.sh` — the
-  graph-engineering production/billing gate: deploy-shaped commands need a
-  human approval marker, billing-path commits/pushes need two from distinct
-  approvers, and `.workflow/state/graph-halt` halts everything consequential.
-  See `governance/graph/` and SHIP_BLOCKERS.md 1.8.
+  graph-engineering production-deploy gate: deploy-shaped commands need one
+  human approval marker, and `.workflow/state/graph-halt` halts everything
+  consequential. It used to also require billing-path commits/pushes to
+  carry two approval markers from distinct approvers (four-eyes); the owner
+  retired that check on 2026-09-26, open source with no payment
+  (`stratum/docs/decisions/0025-open-source-local-first-no-payment.md`), so
+  billing-path changes are no longer separately gated. See
+  `governance/graph/` and SHIP_BLOCKERS.md 1.8.
 - PostToolUse on `Write|Edit` → `hooks/universal/post-tool/sync-lr-refined-date.sh`
   — bumps `docs/LAUNCH_READINESS.md`'s "Last refined" date when `plan.md`
   is edited. Date only, never the math sections. References blueprint §11.1.
@@ -69,7 +73,7 @@ session-end `write-baton.sh` and `rotate-session-key.sh`; no hook enforces the
 network whitelist. AGENTS.md → Mandatory checkpoints therefore binds you as
 rules, not as blocks: there is no budget kill, nothing stops a read of
 `.env`/`*.pem`/`*.key`, nothing gates a plain push to `main` beyond
-`deploy-gate.sh`'s deploy, release-tag and billing-path checks, and the baton
+`deploy-gate.sh`'s deploy and release-tag checks, and the baton
 exists only when a session writes it (see
 `slash-commands/universal/checkpoint.md`).
 

@@ -51,7 +51,12 @@ each suite (`root` and `stratum`). CI parses each suite's output with
 - no count can be found in the output, so an emptied suite never reads as a
   pass.
 
-On pull requests CI also runs the ratchet: a floor lower than `main`'s fails.
+On pull requests CI also runs the ratchet: a floor lower than `main`'s
+fails, unless the change adds a one-time `lowerings` entry in
+`governance/test-floors.json` (suite, from, to, reason and decision). The
+ratchet prints each accepted lowering as `LOWERED`, and an entry can be
+used only once. The payment-removal cycles, which delete payment tests,
+will use it.
 When a change adds tests, raise the floor in the same PR to the new passed
 count, and say in the file's `_comment` where the number came from.
 

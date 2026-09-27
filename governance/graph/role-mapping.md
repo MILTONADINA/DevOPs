@@ -73,20 +73,22 @@ separate human-reviewed step outside the graph (prevented at prompt level
 only; see the known limitation below). No human approval is required to
 reach the validated result.
 
-## The two gates that are never inner-loop-autonomous
+## The gate that is never inner-loop-autonomous
 
-1. **Production deploy** — any `vercel deploy --prod`, `wrangler deploy`,
-   `npm publish`, or release-tag push. Enforced mechanically by
-   `hooks/universal/pre-tool/deploy-gate.sh`, not by asking a subagent to
-   "be careful." Requires one human approval marker for the current cycle.
-2. **Billing-path changes** — anything touching `stratum/src/billing/`,
-   the provider gateway (`stratum/src/proxy/providers/`), or
-   `stratum/scripts/invoice*`. Requires **two** human approval markers from
-   **distinct** approvers (four-eyes), also enforced by `deploy-gate.sh`.
-
-Neither gate loosens automatically. See the Phase 2 criteria in the
+**Production deploy** — any `vercel deploy --prod`, `wrangler deploy`,
+`npm publish`, or release-tag push. Enforced mechanically by
+`hooks/universal/pre-tool/deploy-gate.sh`, not by asking a subagent to
+"be careful." Requires one human approval marker for the current cycle.
+This gate does not loosen automatically. See the Phase 2 criteria in the
 approved plan for the only path to changing this, and it explicitly
-excludes these two gates regardless of stability metrics.
+excludes this gate regardless of stability metrics.
+
+**Retired 2026-09-26.** A second gate used to sit here: billing-path
+changes (`stratum/src/billing/`, the provider gateway, or
+`stratum/scripts/invoice*`) needed **two** human approval markers from
+**distinct** approvers (four-eyes), also enforced by `deploy-gate.sh`.
+The owner retired it, open source with no payment; billing paths are
+no longer gated at all. See SHIP_BLOCKERS.md 1.8 for the history.
 
 ## No PM role
 
@@ -103,8 +105,8 @@ executed a real `git commit` with no human checkpoint — despite Phase 0's
 stated rule. The commit itself was clean and correctly scoped, but the
 *process* violated the plan.
 
-Root cause: `deploy-gate.sh` only gates deploy-shaped commands and
-billing-path commits; it has no way to distinguish a graph-initiated commit
+Root cause: `deploy-gate.sh` gated only deploy-shaped commands and (until
+2026-09-26) billing-path commits; it has no way to distinguish a graph-initiated commit
 from a human-initiated one for an ordinary (non-billing) path, so a blanket
 "all commits need approval" hook would also block normal human-directed
 work in this repo. The fix applied is prompt-level: both the planner and
