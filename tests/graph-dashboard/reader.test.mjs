@@ -636,6 +636,117 @@ test('observer: the earlier run of a resumed cycle is joined as superseded and n
   assert.strictEqual(records.get('wf_second-attempt').status, 'running');
 });
 
+// D2 (PB-68): scripts/graph-run-record.mjs's update --resumedFrom overwrote
+// record.resumedFrom on every resume, so run.json lost every run id before
+// the most recent one -- record.priorRunIds now accumulates all of them.
+// readRunRecords must join every id in priorRunIds as superseded, exactly
+// like it already does for resumedFrom, without changing the stored
+// {cycleId, status} shape for the record's own runId.
+test('observer: priorRunIds ids (wf_A, wf_B) are joined as superseded alongside resumedFrom, and wf_C keeps its own status unchanged', async () => {
+  const stateDir = path.join(fixtureRoot, 'priorrunids', 'state');
+  await mkdir(path.join(stateDir, 'graph-cycles', 'cyc-priorrunids'), { recursive: true });
+  await writeFile(path.join(stateDir, 'graph-cycles', 'cyc-priorrunids', 'run.json'),
+    JSON.stringify({ cycleId: 'cyc-priorrunids', runId: 'wf_C', priorRunIds: ['wf_A', 'wf_B'], resumedFrom: 'wf_B', status: 'running' }));
+  const records = await reader.readRunRecords(stateDir);
+  assert.deepStrictEqual(records.get('wf_A'), { cycleId: 'cyc-priorrunids', status: 'superseded' });
+  assert.deepStrictEqual(records.get('wf_B'), { cycleId: 'cyc-priorrunids', status: 'superseded' });
+  assert.deepStrictEqual(records.get('wf_C'), { cycleId: 'cyc-priorrunids', status: 'running' });
+});
+
+// Tester-added coverage (independent of the coder's case above): priorRunIds
+// entries go through the exact same per-id check as resumedFrom (string,
+// non-empty, not the record's own runId, not already in the map) -- but
+// that shared code path has, until now, only ever been exercised with a
+// single well-formed resumedFrom value. A hand-edited or historical
+// run.json could hold junk entries; none of them should be joined, and
+// none should throw or otherwise corrupt the map.
+test('observer: readRunRecords safely ignores non-string, empty, null, and self-referencing entries in priorRunIds', async () => {
+  const stateDir = path.join(fixtureRoot, 'priorrunids-junk', 'state');
+  await mkdir(path.join(stateDir, 'graph-cycles', 'cyc-junk'), { recursive: true });
+  await writeFile(path.join(stateDir, 'graph-cycles', 'cyc-junk', 'run.json'),
+    JSON.stringify({ cycleId: 'cyc-junk', runId: 'wf_C', priorRunIds: ['wf_A', '', 42, null, 'wf_C'], status: 'running' }));
+  const records = await reader.readRunRecords(stateDir);
+  assert.deepStrictEqual(records.get('wf_A'), { cycleId: 'cyc-junk', status: 'superseded' });
+  assert.strictEqual(records.has(''), false);
+  assert.strictEqual(records.size, 2, 'only wf_C (its own record) and wf_A (the one valid prior id) should be present');
+  assert.deepStrictEqual(records.get('wf_C'), { cycleId: 'cyc-junk', status: 'running' });
+});
+
+// Tester-added coverage: mirrors the parameterized "direct record wins"
+// test below (both readdir orderings), but for priorRunIds instead of
+// resumedFrom -- the same ordering-independence property (a direct record
+// is set unconditionally; a superseded join is skipped only by `!records.
+// has`) must hold for every source the join loop reads from, not just the
+// one already pinned.
+// D1 (regression-guard rule, cycle 13): both rendered instances below pass
+// today, unlabeled, against the current source -- labeled per D1 as
+// regression guards because each was independently verified red. They do
+// NOT share one killing mutation:
+//   - '(live cycle read first)': killing mutation is removing the
+//     `!records.has(earlier)` guard from the join loop's condition in
+//     scripts/graph-dashboard/server.mjs (around line 458). Observed: with
+//     live read first ('a-live-pr' before 'z-older-pr' in readdir order),
+//     the live record's own direct `records.set(record.runId, ...)` (around
+//     line 449) sets it correctly first; the older record's priorRunIds join
+//     then runs unguarded and overwrites it with 'superseded'.
+//   - '(older cycle read first)': that same has-guard removal does NOT kill
+//     this instance (confirmed empirically -- it stays green), because here
+//     the live record is read SECOND and its own direct set at line 449
+//     still runs unconditionally, last, regardless of what the older
+//     record's join did. The mutation that does kill it: make that line-449
+//     direct set conditional on `!records.has(record.runId)` first. Observed
+//     red: the older record's priorRunIds join (unmutated, guard intact)
+//     claims the live runId as 'superseded' first, and the now-conditional
+//     direct set is then skipped because the map already has that key.
+// Both mutations applied one at a time, each observed red on only its own
+// instance, then reverted; no behavior change here.
+for (const [label, olderName, liveName] of [
+  ['older cycle read first', 'a-older-pr', 'z-live-pr'],
+  ['live cycle read first', 'z-older-pr', 'a-live-pr'],
+]) {
+  test(`observer: a direct record wins over another cycle's priorRunIds (${label}) (regression guard)`, async () => {
+    const stateDir = path.join(fixtureRoot, 'precedence-priorrunids-' + olderName, 'state');
+    await mkdir(path.join(stateDir, 'graph-cycles', olderName), { recursive: true });
+    await mkdir(path.join(stateDir, 'graph-cycles', liveName), { recursive: true });
+    await writeFile(path.join(stateDir, 'graph-cycles', olderName, 'run.json'),
+      JSON.stringify({ cycleId: olderName, runId: 'wf_other2', priorRunIds: ['wf_live2'], status: 'failed' }));
+    await writeFile(path.join(stateDir, 'graph-cycles', liveName, 'run.json'),
+      JSON.stringify({ cycleId: liveName, runId: 'wf_live2', status: 'running' }));
+    const records = await reader.readRunRecords(stateDir);
+    assert.deepStrictEqual(records.get('wf_live2'), { cycleId: liveName, status: 'running' });
+  });
+}
+
+// Tester-added coverage: without the `Array.isArray(record.priorRunIds)`
+// guard, `[record.resumedFrom, ...record.priorRunIds].flat()` would spread
+// a non-array-but-iterable priorRunIds -- a plain string is iterable
+// per-character in JS -- silently walking 'w', 'f', '_', 'A' as if each
+// were its own run id, rather than throwing or being ignored outright.
+// records.size pins the count so any such leak is caught even though a
+// stray single-character id is unlikely to collide with a real one.
+// D1 (regression-guard rule, cycle 13): passes today, unlabeled, against the
+// current source -- labeled per D1 as a regression guard because it was
+// verified red first. Killing mutation: replace the
+// `Array.isArray(record.priorRunIds) ? record.priorRunIds : []` guard in
+// scripts/graph-dashboard/server.mjs (around line 456) with the bare
+// falsy-fallback `record.priorRunIds || []`. Observed: against this test's
+// fixture (`priorRunIds: 'wf_A'`, a truthy string), the mutated code spreads
+// the string's characters ('w','f','_','A') into the join loop, and the
+// `assert.strictEqual(records.size, 2, ...)` line below fails with `6 !== 2`
+// (direct wf_D + superseded wf_E + the four spread characters). Mutation
+// applied, observed red, then reverted; no behavior change here.
+test('observer: a non-array priorRunIds field is not walked (and never throws); only resumedFrom is joined (regression guard)', async () => {
+  const stateDir = path.join(fixtureRoot, 'priorrunids-nonarray', 'state');
+  await mkdir(path.join(stateDir, 'graph-cycles', 'cyc-nonarray'), { recursive: true });
+  await writeFile(path.join(stateDir, 'graph-cycles', 'cyc-nonarray', 'run.json'),
+    JSON.stringify({ cycleId: 'cyc-nonarray', runId: 'wf_D', priorRunIds: 'wf_A', resumedFrom: 'wf_E', status: 'running' }));
+  const records = await reader.readRunRecords(stateDir);
+  assert.deepStrictEqual(records.get('wf_E'), { cycleId: 'cyc-nonarray', status: 'superseded' });
+  assert.strictEqual(records.has('wf_A'), false);
+  assert.strictEqual(records.size, 2, 'a spread-string leak would inflate this past 2 (one entry per character)');
+  assert.deepStrictEqual(records.get('wf_D'), { cycleId: 'cyc-nonarray', status: 'running' });
+});
+
 test('observer: a sprint run with no run record is NOT_OBSERVED with a null cycle id', async () => {
   const { root, stateDir } = await observerFixture('unrecorded', { labels: ['preflight', 'planner'], record: null });
   const [run] = await reader.readGraphRuns(root, { stateDir, now: Date.now() });

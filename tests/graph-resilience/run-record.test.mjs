@@ -334,6 +334,253 @@ test('update --ack rejects when the existing on-disk acknowledgements field is n
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
+// --- D1 (PB-74): resume args.acknowledgements ({item, answer}) validation --
+// sprint-cycle.js needs the owner's acknowledgement answers to reach the five
+// downstream roles' prompts on a resume (never the preflight or planner), carried
+// through the resume-args block's
+// `args.acknowledgements`. This is a lighter 2-field shape than --ack's own
+// {item, answer, at} `isAcknowledgement` validator above: `at` is not
+// required here. A single combined test, not split accept/reject cases --
+// on the pre-fix tree nothing validates args.acknowledgements at all, so an
+// accept-only test would pass vacuously; only asserting the rejections too
+// makes this red before the fix lands.
+
+test('resume update --args acknowledgements accepts {item, answer} entries and rejects malformed ones without touching the record', () => {
+  const dir = mkdtempSync(path.join(root, '.workflow', 'state', 'graph-d1-ack-test-'));
+  const env = { ...process.env, GRAPH_STATE_DIR: dir };
+  const run = (...args) => spawnSync(process.execPath, [script, ...args], { cwd: root, env, encoding: 'utf8' });
+  try {
+    writeFileSync(path.join(dir, 'preflight.json'), JSON.stringify({ status: 'ready', git_sha: HEAD, ran_at: new Date().toISOString() }));
+    const launched = run('launch', '--cycle', 'd1ack', '--backlog', 'exact backlog text');
+    assert.equal(launched.status, 0, launched.stderr);
+    const file = path.join(dir, 'graph-cycles', 'd1ack', 'run.json');
+
+    const started = run('update', '--cycle', 'd1ack', '--runId', 'A', '--status', 'running');
+    assert.equal(started.status, 0, started.stderr);
+
+    const newJournal = path.join(dir, 'B', 'journal.jsonl');
+    const base = { cycleId: 'd1ack', backlogItem: 'exact backlog text', resumedFrom: 'A',
+      plan: { tasks: [{ id: 'T1' }] }, priorBuildResults: [], priorCoderResults: [] };
+    const resume = (acknowledgements) => run('update', '--cycle', 'd1ack', '--runId', 'B', '--resumedFrom', 'A',
+      '--journal', newJournal, '--status', 'running', '--args', JSON.stringify({ ...base, acknowledgements }));
+
+    // Snapshot right after the last call that is meant to succeed, and before
+    // any of the malformed resume attempts below (which must all leave this
+    // byte-for-byte unchanged). Every rejected variant below reuses --runId B
+    // / --resumedFrom A: record.runId must stay 'A' throughout so each
+    // attempt keeps hitting the same resume-args branch instead of being
+    // skipped as a no-op same-runId update.
+    const before = readFileSync(file, 'utf8');
+
+    const rejects = [
+      ['non-array', { item: 'x', answer: 'y' }],
+      ['entry missing answer', [{ item: 'x' }]],
+      ['entry with empty-string answer', [{ item: 'x', answer: '' }]],
+      ['entry missing item', [{ answer: 'y' }]],
+    ];
+    for (const [label, acknowledgements] of rejects) {
+      const rejected = resume(acknowledgements);
+      assert.notEqual(rejected.status, 0, `expected rejection for ${label}`);
+      assert.match(rejected.stderr, /acknowledgements/, `expected an acknowledgements-specific error for ${label}`);
+      assert.equal(readFileSync(file, 'utf8'), before, `record must be unchanged after rejecting ${label}`);
+    }
+
+    // A conflicts[]-shaped item (an object, not a string) is valid too --
+    // mirrors --ack's own isAcknowledgement, which this validator does not
+    // reuse but agrees with on what counts as a "present" item.
+    const good = [{ item: 'plain string item', answer: 'y' },
+      { item: { higher: 'AGENTS.md precedence line', lower: 'plan.md', clause: 'owner decision > plan' }, answer: 'z' }];
+    const resumed = resume(good);
+    assert.equal(resumed.status, 0, resumed.stderr);
+    const record = JSON.parse(readFileSync(file, 'utf8'));
+    assert.equal(record.runId, 'B');
+    assert.equal(record.journalPath, newJournal);
+    assert.deepEqual(record.args.acknowledgements, good);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+// Tester-added coverage (independent of the coder's combined case above):
+// three properties the case above doesn't exercise, each a plausible
+// regression a future refactor could introduce silently:
+//   1. hasItemAndAnswer checks item's PRESENCE (`!== undefined && !==
+//      null`), not truthiness -- `0` and `false` are legitimate items. A
+//      refactor to `if (!entry.item)` would silently start rejecting these.
+//   2. `entry !== null` is checked before any `entry.item`/`entry.answer`
+//      property read -- without it, a null array entry crashes with an
+//      unrelated "Cannot read properties of null" TypeError instead of the
+//      validator's own message (both are a non-zero exit, so only the
+//      message content -- asserted below -- would catch this guard's
+//      removal).
+//   3. Extra fields on an entry (e.g. `at`) are tolerated, not rejected --
+//      confirms the documented forward-compat intent noted above the
+//      validator: a full {item, answer, at} entry (the same shape --ack's
+//      isAcknowledgement writes onto record.acknowledgements) still passes
+//      this lighter 2-field check.
+test('resume update --args acknowledgements: item presence (not truthiness), a null entry, and extra fields', () => {
+  const dir = mkdtempSync(path.join(root, '.workflow', 'state', 'graph-d1-ack-edge-test-'));
+  const env = { ...process.env, GRAPH_STATE_DIR: dir };
+  const run = (...args) => spawnSync(process.execPath, [script, ...args], { cwd: root, env, encoding: 'utf8' });
+  try {
+    writeFileSync(path.join(dir, 'preflight.json'), JSON.stringify({ status: 'ready', git_sha: HEAD, ran_at: new Date().toISOString() }));
+    const launched = run('launch', '--cycle', 'd1ackedge', '--backlog', 'x');
+    assert.equal(launched.status, 0, launched.stderr);
+    const file = path.join(dir, 'graph-cycles', 'd1ackedge', 'run.json');
+    const started = run('update', '--cycle', 'd1ackedge', '--runId', 'A', '--status', 'running');
+    assert.equal(started.status, 0, started.stderr);
+
+    const newJournal = path.join(dir, 'B', 'journal.jsonl');
+    const base = { cycleId: 'd1ackedge', backlogItem: 'x', resumedFrom: 'A',
+      plan: { tasks: [{ id: 'T1' }] }, priorBuildResults: [], priorCoderResults: [] };
+    const resume = (acknowledgements) => run('update', '--cycle', 'd1ackedge', '--runId', 'B', '--resumedFrom', 'A',
+      '--journal', newJournal, '--status', 'running', '--args', JSON.stringify({ ...base, acknowledgements }));
+
+    const before = readFileSync(file, 'utf8');
+    const rejected = resume([null]);
+    assert.notEqual(rejected.status, 0, 'expected rejection for a null array entry');
+    assert.match(rejected.stderr, /acknowledgements/, "a null entry must fail the validator's own check, not crash with an unrelated TypeError");
+    assert.equal(readFileSync(file, 'utf8'), before, 'record must be unchanged after rejecting a null entry');
+
+    const good = [{ item: 0, answer: 'zero is a legitimate item' },
+      { item: false, answer: 'false is a legitimate item' },
+      { item: 'x', answer: 'y', at: '2026-09-26T00:00:00.000Z' }];
+    const resumed = resume(good);
+    assert.equal(resumed.status, 0, resumed.stderr);
+    const record = JSON.parse(readFileSync(file, 'utf8'));
+    assert.deepEqual(record.args.acknowledgements, good);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+// --- D2 (PB-68): every run id a cycle has resumed through, not just the ----
+// single most recent one resumedFrom already tracks -------------------------
+// scripts/graph-run-record.mjs update --resumedFrom overwrites
+// record.resumedFrom on every resume, so after a second resume the first
+// run's id is gone from run.json -- record.priorRunIds is meant to
+// accumulate every one of them instead. On the pre-fix tree nothing
+// populates priorRunIds at all, so only asserting its full accumulated list
+// (not merely that resumedFrom still names the latest) makes this red.
+// Same complete-resume pattern as the D1 test above: a fresh HEAD-matching
+// preflight.json via readHead, full valid --args on each resume, no
+// --clearBlocked.
+
+test('two successive resume updates accumulate every prior run id onto priorRunIds while resumedFrom keeps only the latest', () => {
+  const dir = mkdtempSync(path.join(root, '.workflow', 'state', 'graph-d2-priorrunids-test-'));
+  const env = { ...process.env, GRAPH_STATE_DIR: dir };
+  const run = (...args) => spawnSync(process.execPath, [script, ...args], { cwd: root, env, encoding: 'utf8' });
+  try {
+    writeFileSync(path.join(dir, 'preflight.json'), JSON.stringify({ status: 'ready', git_sha: HEAD, ran_at: new Date().toISOString() }));
+    const launched = run('launch', '--cycle', 'd2prior', '--backlog', 'exact backlog text');
+    assert.equal(launched.status, 0, launched.stderr);
+    const file = path.join(dir, 'graph-cycles', 'd2prior', 'run.json');
+
+    const started = run('update', '--cycle', 'd2prior', '--runId', 'A', '--status', 'running');
+    assert.equal(started.status, 0, started.stderr);
+
+    const argsFor = (resumedFrom) => ({ cycleId: 'd2prior', backlogItem: 'exact backlog text', resumedFrom,
+      plan: { tasks: [{ id: 'T1' }] }, priorBuildResults: [], priorCoderResults: [] });
+
+    // Resume 1: A -> B.
+    const journalB = path.join(dir, 'B', 'journal.jsonl');
+    const resumedToB = run('update', '--cycle', 'd2prior', '--runId', 'B', '--resumedFrom', 'A',
+      '--journal', journalB, '--status', 'running', '--args', JSON.stringify(argsFor('A')));
+    assert.equal(resumedToB.status, 0, resumedToB.stderr);
+
+    // Resume 2: B -> C.
+    const journalC = path.join(dir, 'C', 'journal.jsonl');
+    const resumedToC = run('update', '--cycle', 'd2prior', '--runId', 'C', '--resumedFrom', 'B',
+      '--journal', journalC, '--status', 'running', '--args', JSON.stringify(argsFor('B')));
+    assert.equal(resumedToC.status, 0, resumedToC.stderr);
+
+    const record = JSON.parse(readFileSync(file, 'utf8'));
+    assert.equal(record.runId, 'C');
+    assert.equal(record.resumedFrom, 'B');
+    assert.deepEqual(record.priorRunIds, ['A', 'B']);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+// Tester-added coverage gap (independent of the coder's case above, and
+// explicitly flagged as untested in the coder's own report): D2's on-disk
+// guard at graph-run-record.mjs's `record.priorRunIds !== undefined &&
+// !Array.isArray(record.priorRunIds)` check has no test. Mirrors the
+// existing acknowledgements corruption-guard test above (same file, same
+// pattern, sibling field): a hand-edited or otherwise corrupted run.json
+// could hold a non-array priorRunIds field, and a resume must refuse to
+// append onto it rather than silently coercing or clobbering.
+test('resume update rejects when the existing on-disk priorRunIds field is not an array, without touching the record', () => {
+  const dir = mkdtempSync(path.join(root, '.workflow', 'state', 'graph-d2-priorrunids-guard-test-'));
+  const env = { ...process.env, GRAPH_STATE_DIR: dir };
+  const run = (...args) => spawnSync(process.execPath, [script, ...args], { cwd: root, env, encoding: 'utf8' });
+  try {
+    writeFileSync(path.join(dir, 'preflight.json'), JSON.stringify({ status: 'ready', git_sha: HEAD, ran_at: new Date().toISOString() }));
+    const launched = run('launch', '--cycle', 'd2guard', '--backlog', 'exact backlog text');
+    assert.equal(launched.status, 0, launched.stderr);
+    const file = path.join(dir, 'graph-cycles', 'd2guard', 'run.json');
+    const started = run('update', '--cycle', 'd2guard', '--runId', 'A', '--status', 'running');
+    assert.equal(started.status, 0, started.stderr);
+
+    const corrupted = { ...JSON.parse(readFileSync(file, 'utf8')), priorRunIds: 'not-an-array' };
+    writeFileSync(file, `${JSON.stringify(corrupted, null, 2)}\n`, { mode: 0o600 });
+    const before = readFileSync(file, 'utf8');
+
+    const journalB = path.join(dir, 'B', 'journal.jsonl');
+    const resumeArgs = { cycleId: 'd2guard', backlogItem: 'exact backlog text', resumedFrom: 'A',
+      plan: { tasks: [{ id: 'T1' }] }, priorBuildResults: [], priorCoderResults: [] };
+    const rejected = run('update', '--cycle', 'd2guard', '--runId', 'B', '--resumedFrom', 'A',
+      '--journal', journalB, '--status', 'running', '--args', JSON.stringify(resumeArgs));
+    assert.notEqual(rejected.status, 0, rejected.stderr);
+    assert.match(rejected.stderr, /priorRunIds/, 'expected a priorRunIds-specific error, not a silent coercion');
+    assert.equal(readFileSync(file, 'utf8'), before, 'record must be unchanged when the existing priorRunIds field is not an array');
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+// Tester-added coverage: the linear A->B->C case above never revisits an id,
+// so it cannot distinguish "append" from "append without checking for a
+// duplicate first" -- it would pass identically even if the `includes`
+// dedup guard were deleted outright. This test hand-seeds priorRunIds with
+// the cycle's OWN current runId before the next resume, so that resume's
+// captured pre-update id is already present in the list: post-fix, that id
+// must be skipped (not duplicated) while the following resume's id is
+// still appended normally, proving the guard skips only true duplicates.
+test('a resume skips appending onto priorRunIds when the pre-update runId is already present, but still appends a genuinely new one', () => {
+  const dir = mkdtempSync(path.join(root, '.workflow', 'state', 'graph-d2-priorrunids-dedup-test-'));
+  const env = { ...process.env, GRAPH_STATE_DIR: dir };
+  const run = (...args) => spawnSync(process.execPath, [script, ...args], { cwd: root, env, encoding: 'utf8' });
+  try {
+    writeFileSync(path.join(dir, 'preflight.json'), JSON.stringify({ status: 'ready', git_sha: HEAD, ran_at: new Date().toISOString() }));
+    const launched = run('launch', '--cycle', 'd2dedup', '--backlog', 'exact backlog text');
+    assert.equal(launched.status, 0, launched.stderr);
+    const file = path.join(dir, 'graph-cycles', 'd2dedup', 'run.json');
+    const started = run('update', '--cycle', 'd2dedup', '--runId', 'A', '--status', 'running');
+    assert.equal(started.status, 0, started.stderr);
+
+    // Hand-seed priorRunIds with 'A' -- the exact id this cycle's runId
+    // already is, and therefore the exact id the next resume's capture
+    // (record.runId, read before the overwrite) will produce.
+    const seeded = { ...JSON.parse(readFileSync(file, 'utf8')), priorRunIds: ['A'] };
+    writeFileSync(file, `${JSON.stringify(seeded, null, 2)}\n`);
+
+    const argsFor = (resumedFrom) => ({ cycleId: 'd2dedup', backlogItem: 'exact backlog text', resumedFrom,
+      plan: { tasks: [{ id: 'T1' }] }, priorBuildResults: [], priorCoderResults: [] });
+
+    // Resume 1: A -> B. Captured priorRunId is 'A', already in the seeded
+    // list -- must be skipped, not duplicated.
+    const journalB = path.join(dir, 'B', 'journal.jsonl');
+    const resumedToB = run('update', '--cycle', 'd2dedup', '--runId', 'B', '--resumedFrom', 'A',
+      '--journal', journalB, '--status', 'running', '--args', JSON.stringify(argsFor('A')));
+    assert.equal(resumedToB.status, 0, resumedToB.stderr);
+    assert.deepEqual(JSON.parse(readFileSync(file, 'utf8')).priorRunIds, ['A'], 'a duplicate id must not be appended');
+
+    // Resume 2: B -> C. Captured priorRunId is 'B', genuinely new -- must
+    // be appended, proving the dedup guard above only skips true duplicates.
+    const journalC = path.join(dir, 'C', 'journal.jsonl');
+    const resumedToC = run('update', '--cycle', 'd2dedup', '--runId', 'C', '--resumedFrom', 'B',
+      '--journal', journalC, '--status', 'running', '--args', JSON.stringify(argsFor('B')));
+    assert.equal(resumedToC.status, 0, resumedToC.stderr);
+    const record = JSON.parse(readFileSync(file, 'utf8'));
+    assert.equal(record.runId, 'C');
+    assert.deepEqual(record.priorRunIds, ['A', 'B']);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
 // --- D1: readHead(root) self-check against graph-preflight.sh's own report -
 
 test('AC-D1.1: readHead(root) agrees with graph-preflight --check-only report git_sha', (t) => {

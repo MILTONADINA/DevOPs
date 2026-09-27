@@ -25,7 +25,13 @@ const cycleId = (args && args.cycleId) || 'unnamed-cycle'
 // check (runtime-side) below, so the two can never drift apart.
 const FAULT_CLASSES = ['environment', 'api', 'transient', 'needs_human']
 const BLOCKED_SCHEMA = {
-  type: 'object',
+  // D2 (PB-84): null is now a valid value -- a role with no real fault to
+  // report should omit this field or send null (see ENVIRONMENT_RULES below),
+  // never a placeholder object. `type: ['object', 'null']` at the top level
+  // (not anyOf/oneOf) so `.required` stays directly readable off this same
+  // object -- wrapping the object shape in anyOf/oneOf would move `required`
+  // inside a branch instead.
+  type: ['object', 'null'],
   properties: {
     class: { type: 'string', enum: FAULT_CLASSES },
     check_ids: { type: 'array', items: { type: 'string' } },
@@ -34,7 +40,7 @@ const BLOCKED_SCHEMA = {
   },
   required: ['class', 'check_ids', 'evidence'],
 }
-const ENVIRONMENT_RULES = `ENVIRONMENT RULES: On any tool or test failure, pass its first 20 error lines to node scripts/graph-classify-fault.mjs (with --exit-code when known). Record its class and classified_by (and confidence when classified_by is jev). Only if it exits 2 (an unrecognized error that Jev could not classify with confidence, or Jev is unavailable) re-run it with --agent-class and explain that judgment. Code failures follow normal review and are never retried as flaky. For an environment or API fault, run bash scripts/graph-preflight.sh once. If it does not report ready/remediated, call bash scripts/graph-blocked.sh with the cycle, stage, task, class, check ids and a project-local evidence file; for needs_human also pass --fix with the exact human action. Return blocked_by_environment with class, check_ids, evidence and classified_by, set passed: false (coder/tester/security) or the role's negative verdict, then stop. A scratchpad check does not make an unrun suite pass.`
+const ENVIRONMENT_RULES = `ENVIRONMENT RULES: On any tool or test failure, pass its first 20 error lines to node scripts/graph-classify-fault.mjs (with --exit-code when known). Record its class and classified_by (and confidence when classified_by is jev). Only if it exits 2 (an unrecognized error that Jev could not classify with confidence, or Jev is unavailable) re-run it with --agent-class and explain that judgment. Code failures follow normal review and are never retried as flaky. For an environment or API fault, run bash scripts/graph-preflight.sh once. If it does not report ready/remediated, call bash scripts/graph-blocked.sh with the cycle, stage, task, class, check ids and a project-local evidence file; for needs_human also pass --fix with the exact human action. Return blocked_by_environment with class, check_ids, evidence and classified_by, set passed: false (coder/tester/security) or the role's negative verdict, then stop. A scratchpad check does not make an unrun suite pass. Otherwise -- when graph-classify-fault.mjs and the preflight reported no real environment, API, or transient fault -- OMIT blocked_by_environment entirely, or set it explicitly to null; never fill it with a placeholder like "not applicable" or "no fault" just because the schema declares the field.`
 
 if (!backlogItem) {
   throw new Error('sprint-cycle requires args.backlogItem -- the backlog item id/description to work (see SHIP_BLOCKERS.md)')
@@ -45,6 +51,36 @@ log(`Starting sprint cycle "${cycleId}" for backlog item: ${backlogItem}`)
 function stopIfBlocked(result, stage, taskId) {
   if (result !== null && !result?.blocked_by_environment) return result
   const blocked = result?.blocked_by_environment || {}
+  // D2 (PB-84): `result` is present (result !== null) but its
+  // blocked_by_environment object carries no actual evidence of a fault --
+  // e.g. {class:'environment', check_ids:[], evidence:''}, or a filler
+  // string like 'Not applicable -- no fault' with no check_ids. That shape
+  // used to halt the cycle unconditionally and did so twice on cycle
+  // phase1-012's T4, whose own text said it was NOT blocked (polish-backlog
+  // PB-84). Judged on emptiness alone, never on the MEANING of the evidence
+  // text -- a non-empty check_ids or non-empty evidence string (even a
+  // claimed 'not applicable') is still a real fault below. This supersedes
+  // PB-84's original 3-part draft, whose point (3) additionally special-cased
+  // classified_by:'agent' with no check_ids/evidence as "malformed" and
+  // mapped it to needs_human -- that branch is deliberately NOT reintroduced
+  // here: empty means absent, full stop, regardless of classified_by. A
+  // `result === null` (agent() itself returned nothing) never reaches this
+  // block -- the early return above only fires when blocked_by_environment
+  // itself is falsy, so a null result always falls through to the
+  // unconditional throw below, exactly as before this change.
+  //
+  // Spec-lag: REQ-R8 (specs/graph/R-resilience.md) currently reads that ANY
+  // result carrying blocked_by_environment halts the cycle, unconditionally.
+  // D2 deliberately narrows that for the evidence-free case here; REQ-R8's
+  // own text is out of this task's scope to edit.
+  if (result !== null) {
+    const hasCheckIds = Array.isArray(blocked.check_ids) && blocked.check_ids.length > 0
+    const hasEvidence = typeof blocked.evidence === 'string' && blocked.evidence.length > 0
+    if (!hasCheckIds && !hasEvidence) {
+      log(`Swallowed a spurious (evidence-free) blocked_by_environment at ${stage}${taskId ? ` (task ${taskId})` : ''} -- not treated as a real fault (D2/PB-84)`)
+      return result
+    }
+  }
   const fault = {
     cycleId,
     stage,
@@ -124,6 +160,8 @@ Backlog item: "${backlogItem}"
 
 Decompose it into a small ordered list of atomic, independently-verifiable tasks. Do not write or edit any code yourself -- this is decomposition only. Do not expand scope beyond what the backlog item actually asks for. If anything about the item is ambiguous or underspecified, report it as an ambiguity rather than guessing at intent.
 
+The same applies to source conflicts: precedence order for the sources you read is owner decision > law/safety > approved spec > ADR/AC > plan > code (AGENTS.md's own rule). If a higher-precedence source contradicts a lower-precedence one on some point -- for example, an approved spec disagreeing with plan.md, or plan.md disagreeing with the code -- do not silently pick a side: report it in the \`conflicts\` field as {higher, lower, clause}, naming which source is higher, which is lower, and the contradicting clause.
+
 HARD CONSTRAINT: do not include any task whose job is to stage, commit, or push a git change, open a pull request, or run any deploy/publish command. This pipeline's scope ends at implementation + verification (coder/tester/reviewer/security/validator) -- committing and pushing are a separate, explicitly human-reviewed step outside this Workflow, never an autonomous task in your plan.`,
   {
     label: 'planner',
@@ -190,10 +228,22 @@ log(`Planner produced ${plan.tasks.length} task(s)` + (plan.ambiguities && plan.
 // The thrown payload is the offending (unacknowledged) items only, not the
 // full ambiguities/conflicts lists -- a flat list mirrors the
 // `acknowledgements: [{item, answer, at}]` shape REQ-M7 gives the /sprint
-// runbook (one record per item, item-shape-agnostic; populating it from the
-// owner's answer is that runbook's job, out of scope here).
+// runbook (one record per item, item-shape-agnostic).
+//
+// T1 (D1 gate): args.acknowledgements is that same `{item, answer, at}`
+// shape -- graph-run-record.mjs's `update --ack` writes it verbatim onto
+// run.json -- read directly, so the orchestrator no longer has to hand-copy
+// its `item` fields into a separate acknowledgedAmbiguities list before a
+// relaunch. An entry acknowledges a plan item when its `item` field
+// JSON-equals that item, by the same comparator as above; a malformed entry
+// with no `item` field never matches (JSON.stringify(undefined) would
+// otherwise equal itself). This is additive: acknowledgedAmbiguities keeps
+// working exactly as it does today, and either channel alone is enough.
 const acknowledgedAmbiguities = (args && Array.isArray(args.acknowledgedAmbiguities)) ? args.acknowledgedAmbiguities : []
-const isAcknowledged = (item) => acknowledgedAmbiguities.some((ack) => JSON.stringify(ack) === JSON.stringify(item))
+const acknowledgements = (args && Array.isArray(args.acknowledgements)) ? args.acknowledgements : []
+const isAcknowledged = (item) =>
+  acknowledgedAmbiguities.some((ack) => JSON.stringify(ack) === JSON.stringify(item))
+  || acknowledgements.some((entry) => entry && typeof entry === 'object' && 'item' in entry && JSON.stringify(entry.item) === JSON.stringify(item))
 const offendingItems = [...(plan.ambiguities || []), ...(plan.conflicts || [])].filter((item) => !isAcknowledged(item))
 if (offendingItems.length > 0) {
   log(`Cycle blocked before Build: ${offendingItems.length} unacknowledged ambiguity/conflict item(s) -- see AMBIGUITY_BLOCK below`)
@@ -201,6 +251,27 @@ if (offendingItems.length > 0) {
 }
 
 phase('Build')
+// T2 (D1 delivery): by the time Build is reached, T1's gate above has
+// already guaranteed every plan.ambiguities/plan.conflicts item is covered
+// by acknowledgedAmbiguities and/or acknowledgements combined -- so every
+// args.acknowledgements entry is rendered here verbatim, for every
+// downstream role to see, with no second JSON.stringify comparison against
+// plan.ambiguities/plan.conflicts to decide which entries "count". Doing
+// that comparison a second time here would just reintroduce, one layer
+// further out, exactly the key-order-sensitive JSON.stringify fragility
+// polish-backlog item PB-70 point 2 already flagged for the gate's own
+// comparator above (a conflict object's keys round-tripping through JSON in
+// a different order than the planner emitted them). Each item is rendered
+// via JSON.stringify and truncated to 300 characters so one large
+// item/conflict object cannot blow out every prompt it is appended to; the
+// answer is rendered in full.
+const ownerDecisionsBlock = acknowledgements.length === 0 ? '' : `\n\nOWNER DECISIONS (acknowledged AMBIGUITY_BLOCK items)\n${acknowledgements.map((entry) => {
+  const item = (entry && typeof entry === 'object') ? entry.item : undefined
+  const answer = (entry && typeof entry === 'object') ? entry.answer : undefined
+  const renderedItem = JSON.stringify(item)
+  const itemStr = (typeof renderedItem === 'string' ? renderedItem : String(renderedItem)).slice(0, 300)
+  return `- item: ${itemStr}\n  answer: ${answer}`
+}).join('\n')}`
 // Sequential per task, not parallel: tasks from the same backlog item may
 // touch overlapping files, and Phase 0 favors safety over throughput (see
 // the approved plan). coder and tester run one after another per task so
@@ -233,7 +304,7 @@ Report what you actually changed (it may differ from "likely files" above).
 
 ${ENVIRONMENT_RULES}
 
-HARD CONSTRAINT: do not run \`git add\`, \`git commit\`, \`git push\`, or any deploy/publish command, even if the task description above seems to call for it. Leave changes uncommitted in the working tree. Committing is a separate, explicitly human-reviewed step outside this pipeline's scope.`,
+HARD CONSTRAINT: do not run \`git add\`, \`git commit\`, \`git push\`, or any deploy/publish command, even if the task description above seems to call for it. Leave changes uncommitted in the working tree. Committing is a separate, explicitly human-reviewed step outside this pipeline's scope.${ownerDecisionsBlock}`,
     {
       label: `coder:${task.id}`,
       phase: 'Build',
@@ -262,7 +333,7 @@ ${ENVIRONMENT_RULES}
 
 STALL RULES (a tester that makes no tool progress for 3 minutes is killed and the whole cycle fails): never run a server or watcher in the foreground of a Bash call -- start it in the background with a bounded wait and kill it before you return; put a timeout on every network call; if a tool you were told to use (for example a Playwright/browser MCP tool) is not available in your tool list, do NOT wait, poll or retry for it -- do the closest verification you can with the tools you have, state explicitly in your report that the browser step was not performed and why, and let passed reflect only the assertions you actually ran.
 
-CLAIM-SCHEMA CONSTRAINT (if you write a claim YAML under .workflow/proofs/): it must validate against verification/claim-schema.yml, or it is proof theater. Concretely: id matches claim-YYYY-MM-DD-NNN using the next free NNN in that directory; spec_ref starts with specs/ (use the nearest real anchor under specs/ and say in caveats when it is nominal -- never invent a path, never use SHIP_BLOCKERS.md or a task id); files_changed lists only tracked files the eventual commit will contain (never gitignored proof/state files); test_command is a re-runnable command with no placeholders; reproducibility_hash = "sha256:" + sha256(test_command + "\\n---\\n" + sorted "key=value" lines of proof.environment (empty string if absent) + "\\n---\\n" + git_sha); and the proof script must not depend on the caller's npm verbosity (unset npm_config_loglevel at the top if it invokes npm) or on HEAD equalling a specific SHA (assert reachability with git merge-base --is-ancestor instead). Confirm with npm run validate:claims -- --no-rerun on your claim before reporting. When the claim is about a commit, assert exact-set invariants against THAT commit's content (git show <git_sha>:<path>), never against the live working tree -- later commits and concurrent cycles legitimately change it -- and check only durable invariants ("X is absent") live. If a scanner is part of the proof, the proof must fail when the scanner scanned nothing, and must be shown to fail on a planted positive (e.g. gitleaks' default config silently skips files named package-lock.json).`,
+CLAIM-SCHEMA CONSTRAINT (if you write a claim YAML under .workflow/proofs/): it must validate against verification/claim-schema.yml, or it is proof theater. Concretely: id matches claim-YYYY-MM-DD-NNN using the next free NNN in that directory; spec_ref starts with specs/ (use the nearest real anchor under specs/ and say in caveats when it is nominal -- never invent a path, never use SHIP_BLOCKERS.md or a task id); files_changed lists only tracked files the eventual commit will contain (never gitignored proof/state files); test_command is a re-runnable command with no placeholders; reproducibility_hash = "sha256:" + sha256(test_command + "\\n---\\n" + sorted "key=value" lines of proof.environment (empty string if absent) + "\\n---\\n" + git_sha); and the proof script must not depend on the caller's npm verbosity (unset npm_config_loglevel at the top if it invokes npm) or on HEAD equalling a specific SHA (assert reachability with git merge-base --is-ancestor instead). Confirm with npm run validate:claims -- --no-rerun on your claim before reporting. When the claim is about a commit, assert exact-set invariants against THAT commit's content (git show <git_sha>:<path>), never against the live working tree -- later commits and concurrent cycles legitimately change it -- and check only durable invariants ("X is absent") live. If a scanner is part of the proof, the proof must fail when the scanner scanned nothing, and must be shown to fail on a planted positive (e.g. gitleaks' default config silently skips files named package-lock.json).${ownerDecisionsBlock}`,
     {
       label: `tester:${task.id}`,
       phase: 'Build',
@@ -302,7 +373,7 @@ Build results: ${JSON.stringify(buildResults.map(r => ({ task: r.task.id, coder:
 
 Check spec-anchoring (does every changed line trace to one of the tasks above, or to the backlog item itself?) and general diff quality. List every issue you find in violations, including low-severity ones and ones you are unsure about. Start each with BLOCKER: or CONCERN: and end it with your confidence. The validator and the human reviewer filter the list, so at this stage coverage matters more than precision. A BLOCKER is an untraceable line (drive-by refactoring included), a missing or misleading proof, or a defect that could cause incorrect behavior or a test failure. State each one plainly, and set approved to false if any BLOCKER remains.
 
-${ENVIRONMENT_RULES}`,
+${ENVIRONMENT_RULES}${ownerDecisionsBlock}`,
   {
     label: 'reviewer',
     phase: 'Verify',
@@ -330,7 +401,7 @@ Report every finding, including low-severity ones and ones you are unsure about,
 
 ${ENVIRONMENT_RULES}
 
-CLAIM-SCHEMA CONSTRAINT (if you record your scan as a claim YAML under .workflow/proofs/): it must validate against verification/claim-schema.yml -- id claim-YYYY-MM-DD-NNN (next free NNN), a specs/ spec_ref (specs/phase-2/A-pentest-stack.md#req-a8 is the real anchor for a secrets/static scan of committed files), files_changed limited to tracked files, a RE-RUNNABLE test_command with no <placeholders> (write a small proof script that re-extracts the changed files at the commit and re-runs the deterministic tiers; keep drifting checks like npm audit informational), and a reproducibility_hash computed with the validator's formula. The proof must fail when a scanner scanned nothing, and must be shown to fail on a planted positive (gitleaks' default config, for example, silently skips files named package-lock.json). A scan claim that cannot be re-run is not evidence.`,
+CLAIM-SCHEMA CONSTRAINT (if you record your scan as a claim YAML under .workflow/proofs/): it must validate against verification/claim-schema.yml -- id claim-YYYY-MM-DD-NNN (next free NNN), a specs/ spec_ref (specs/phase-2/A-pentest-stack.md#req-a8 is the real anchor for a secrets/static scan of committed files), files_changed limited to tracked files, a RE-RUNNABLE test_command with no <placeholders> (write a small proof script that re-extracts the changed files at the commit and re-runs the deterministic tiers; keep drifting checks like npm audit informational), and a reproducibility_hash computed with the validator's formula. The proof must fail when a scanner scanned nothing, and must be shown to fail on a planted positive (gitleaks' default config, for example, silently skips files named package-lock.json). A scan claim that cannot be re-run is not evidence.${ownerDecisionsBlock}`,
   {
     label: 'security',
     phase: 'Verify',
@@ -359,7 +430,7 @@ Security result: ${JSON.stringify(securityResult)}
 
 ${ENVIRONMENT_RULES}
 
-Decide whether this cycle is ready for a PR. Do NOT sign off if any task's test failed, the reviewer did not approve or listed a BLOCKER, or security reported a TP-critical finding. Name any needs-context security finding in your reason so the human reviewer sees it. State your reason either way.`,
+Decide whether this cycle is ready for a PR. Do NOT sign off if any task's test failed, the reviewer did not approve or listed a BLOCKER, or security reported a TP-critical finding. Name any needs-context security finding in your reason so the human reviewer sees it. State your reason either way.${ownerDecisionsBlock}`,
   {
     label: 'validator',
     phase: 'Verify',

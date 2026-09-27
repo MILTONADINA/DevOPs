@@ -450,7 +450,11 @@ async function readRunRecords(stateDir) {
         // A resumed cycle's record describes the new run; the earlier run it names in
         // resumedFrom is joined to the same cycle as `superseded` and never inherits the
         // new run's status. A record matched by its own runId always takes precedence.
-        for (const earlier of [record.resumedFrom].flat()) {
+        // D2 (PB-68): priorRunIds (when present) carries every run id the record has
+        // ever resumed through, not just the single most recent one resumedFrom names --
+        // walked through the exact same per-id checks below.
+        const priorIds = Array.isArray(record.priorRunIds) ? record.priorRunIds : [];
+        for (const earlier of [record.resumedFrom, ...priorIds].flat()) {
           if (typeof earlier === 'string' && earlier && earlier !== record.runId && !records.has(earlier)) {
             records.set(earlier, { cycleId, status: 'superseded' });
           }
