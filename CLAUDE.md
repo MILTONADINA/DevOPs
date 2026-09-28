@@ -168,7 +168,7 @@ DevOps is one platform, and the runtime is not a separate product. It was
 once called Stratum (or CQ), and it was merged in as a subtree so it would
 stop being one. The owner decided on 2026-09-26 that everything is called
 DevOps (ADR-0026, `runtime/docs/decisions/0026-one-platform-named-devops.md`;
-the separate `MILTONADINA/Stratum` repository is archived). New settings use
+the separate `MILTONADINA/Stratum` repository was deleted on 2026-09-27). New settings use
 the `DEVOPS_` prefix (`specs/ops/one-platform-naming.md`); older docs and the
 current `CQ_*`, `STRATUM_*` and `DEVOPS_STRATUM_*` settings (such as
 `DEVOPS_STRATUM_PROJECT_ROOT` above) still use the old names. The runtime's

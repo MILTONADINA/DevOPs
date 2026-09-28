@@ -26,7 +26,7 @@ phase is open.
 
 ### Changed — open source, no payment, local-first (owner decision 2026-09-26)
 
-Recorded in `stratum/docs/decisions/0025-open-source-local-first-no-payment.md`.
+Recorded in `runtime/docs/decisions/0025-open-source-local-first-no-payment.md`.
 
 - The roadmap no longer ends in a commercial product. `plan.md` §9 and
   `blueprint.md` redefine v1.0 as: a user points their AI agent at this
