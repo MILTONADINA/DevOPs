@@ -1,5 +1,6 @@
 // Tests for scripts/check-test-floor.mjs and scripts/check-assertions.mjs (masterpiece REQ-M23, AC-M23.1).
 // The declared test-floor lowering mechanism is specs/ops/payment-removal.md REQ-12, AC-11.
+// The declared rename mechanism is specs/ops/one-platform-naming.md REQ-5, AC-5.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -10,32 +11,32 @@ import { parseCounts, checkFloor, checkRatchet } from '../../scripts/check-test-
 import { hasAssertion } from '../../scripts/check-assertions.mjs';
 
 const ROOT_OUT = 'ℹ tests 356\nℹ suites 0\nℹ pass 339\nℹ fail 0\nℹ cancelled 0\nℹ skipped 17\n';
-const STRATUM_OUT = ' Test Files  126 passed (126)\n      Tests  \x1b[32m1092 passed\x1b[39m | 2 skipped | 5 todo (1099)\n';
-const floors = { root: 339, stratum: 1092 };
+const RUNTIME_OUT = ' Test Files  126 passed (126)\n      Tests  \x1b[32m1092 passed\x1b[39m | 2 skipped | 5 todo (1099)\n';
+const floors = { root: 339, runtime: 1092 };
 
 test('parses node --test and vitest summaries, including ANSI colour codes', () => {
   assert.deepEqual(parseCounts('root', ROOT_OUT), { passed: 339, failed: 0, total: 356 });
   assert.deepEqual(parseCounts('root', ROOT_OUT.replace(/ℹ/g, '#')), { passed: 339, failed: 0, total: 356 });
-  assert.deepEqual(parseCounts('stratum', STRATUM_OUT), { passed: 1092, failed: 0, total: 1099 });
+  assert.deepEqual(parseCounts('runtime', RUNTIME_OUT), { passed: 1092, failed: 0, total: 1099 });
 });
 
 test('a suite at its floor passes; one test fewer fails (a deleted test file drops the count)', () => {
   assert.equal(checkFloor('root', parseCounts('root', ROOT_OUT), floors), null);
   assert.match(checkFloor('root', parseCounts('root', ROOT_OUT.replace('pass 339', 'pass 338')), floors), /below the floor of 339/);
-  assert.match(checkFloor('stratum', parseCounts('stratum', STRATUM_OUT.replace('1092 passed', '1091 passed')), floors), /below the floor/);
+  assert.match(checkFloor('runtime', parseCounts('runtime', RUNTIME_OUT.replace('1092 passed', '1091 passed')), floors), /below the floor/);
 });
 
 test('any failure fails, and output with no count never reads as a pass', () => {
   assert.match(checkFloor('root', parseCounts('root', ROOT_OUT.replace('fail 0', 'fail 1')), floors), /1 test\(s\) failed/);
-  assert.match(checkFloor('stratum', parseCounts('stratum', ' Tests  3 failed | 1092 passed (1095)\n'), floors), /3 test\(s\) failed/);
+  assert.match(checkFloor('runtime', parseCounts('runtime', ' Tests  3 failed | 1092 passed (1095)\n'), floors), /3 test\(s\) failed/);
   assert.match(checkFloor('root', parseCounts('root', 'npm ERR! missing script\n'), floors), /no test count found/);
-  assert.match(checkFloor('stratum', parseCounts('stratum', ''), floors), /no test count found/);
+  assert.match(checkFloor('runtime', parseCounts('runtime', ''), floors), /no test count found/);
 });
 
 test('floors may only rise: lowering or removing one is refused', () => {
-  assert.equal(checkRatchet(floors, { root: 339, stratum: 1100 }), null);
-  assert.match(checkRatchet(floors, { root: 338, stratum: 1092 }), /root 339 -> 338/);
-  assert.match(checkRatchet(floors, { root: 339 }), /stratum 1092 -> undefined/);
+  assert.equal(checkRatchet(floors, { root: 339, runtime: 1100 }), null);
+  assert.match(checkRatchet(floors, { root: 338, runtime: 1092 }), /root 339 -> 338/);
+  assert.match(checkRatchet(floors, { root: 339 }), /runtime 1092 -> undefined/);
 });
 
 test('a declared lowering with a matching new entry passes and prints the LOWERED line (specs/ops/payment-removal.md#AC-11)', () => {
@@ -106,6 +107,91 @@ test('a raise needs no lowerings entry, passes and prints nothing extra, even wi
   const logs = [];
   assert.equal(checkRatchet(base, { root: 340, stratum: 1200, lowerings: [unrelated] }, (line) => logs.push(line)), null);
   assert.equal(checkRatchet(base, { root: 339, stratum: 1092 }, (line) => logs.push(line)), null);
+  assert.deepEqual(logs, []);
+});
+
+test('a declared rename authorizes a base key missing from current when its replacement meets the old floor (specs/ops/one-platform-naming.md#AC-5)', () => {
+  const rename = { from: 'stratum', to: 'runtime', decision: 'ADR-0026' };
+  const base = { root: 339, stratum: 1276, renames: [] };
+  const current = { root: 339, runtime: 1276, renames: [rename] };
+  const logs = [];
+  assert.equal(checkRatchet(base, current, (line) => logs.push(line)), null);
+  assert.deepEqual(logs, ['test floors: RENAMED stratum -> runtime: ADR-0026']);
+});
+
+test('a declared rename whose replacement floor is still below the old value is refused (specs/ops/one-platform-naming.md#AC-5)', () => {
+  const rename = { from: 'stratum', to: 'runtime', decision: 'ADR-0026' };
+  const base = { root: 339, stratum: 1276, renames: [] };
+  const current = { root: 339, runtime: 1275, renames: [rename] };
+  const logs = [];
+  assert.match(checkRatchet(base, current, (line) => logs.push(line)), /stratum 1276 -> undefined/);
+  assert.deepEqual(logs, []);
+});
+
+test('a base key missing from current with no renames entry at all still fails, exactly as before (specs/ops/one-platform-naming.md#AC-5)', () => {
+  const base = { root: 339, stratum: 1276, renames: [] };
+  const logs = [];
+  assert.match(checkRatchet(base, { root: 339 }, (line) => logs.push(line)), /stratum 1276 -> undefined/);
+  assert.match(checkRatchet(base, { root: 339, renames: [] }, (line) => logs.push(line)), /stratum 1276 -> undefined/);
+  assert.deepEqual(logs, []);
+});
+
+test('a rename already present in the base file cannot authorize a new rename; no reuse (specs/ops/one-platform-naming.md#AC-5)', () => {
+  const rename = { from: 'stratum', to: 'runtime', decision: 'ADR-0026' };
+  const base = { root: 339, stratum: 1276, renames: [rename] };
+  const current = { root: 339, runtime: 1276, renames: [rename] };
+  const logs = [];
+  assert.match(checkRatchet(base, current, (line) => logs.push(line)), /stratum 1276 -> undefined/);
+  assert.deepEqual(logs, []);
+});
+
+test('a rename already on the base file stays spent when only its decision wording changes (specs/ops/one-platform-naming.md#AC-5)', () => {
+  const base = { root: 339, stratum: 1276, renames: [{ from: 'stratum', to: 'runtime', decision: 'ADR-0026' }] };
+  const current = { root: 339, runtime: 1276, renames: [{ from: 'stratum', to: 'runtime', decision: 'ADR-0026, reworded' }] };
+  const logs = [];
+  assert.match(checkRatchet(base, current, (line) => logs.push(line)), /stratum 1276 -> undefined/);
+  assert.deepEqual(logs, []);
+});
+
+test('a rename entry whose `from` does not match any base key does not authorize anything (specs/ops/one-platform-naming.md#AC-5)', () => {
+  const base = { root: 339, stratum: 1276, renames: [] };
+  const current = { root: 339, runtime: 1276, renames: [{ from: 'nonexistent', to: 'runtime', decision: 'ADR-0026' }] };
+  const logs = [];
+  assert.match(checkRatchet(base, current, (line) => logs.push(line)), /stratum 1276 -> undefined/);
+  assert.deepEqual(logs, []);
+});
+
+test('a declared rename whose `to` already exists as a base-file key is refused, even though current[to] >= base[from] would otherwise satisfy it (specs/ops/one-platform-naming.md#AC-5)', () => {
+  const rename = { from: 'stratum', to: 'runtime', decision: 'ADR-0026' };
+  // `runtime` already has its own (lower) floor in base; the rename must not be allowed to
+  // absorb `stratum`'s floor onto it, even though `runtime`'s own floor rises fine on its own
+  // and current.runtime (1276) comfortably meets base.stratum (1276) too.
+  const base = { root: 339, stratum: 1276, runtime: 100, renames: [] };
+  const current = { root: 339, runtime: 1276, renames: [rename] };
+  const logs = [];
+  assert.match(checkRatchet(base, current, (line) => logs.push(line)), /stratum 1276 -> undefined/);
+  assert.deepEqual(logs, []);
+});
+
+test('two declared renames that share the same `to` are both refused, even though each individually would satisfy every other condition (specs/ops/one-platform-naming.md#AC-5)', () => {
+  const renameA = { from: 'a', to: 'c', decision: 'ADR-a' };
+  const renameB = { from: 'b', to: 'c', decision: 'ADR-b' };
+  const base = { root: 339, a: 10, b: 20, renames: [] };
+  const current = { root: 339, c: 30, renames: [renameA, renameB] };
+  const logs = [];
+  const result = checkRatchet(base, current, (line) => logs.push(line));
+  assert.match(result, /a 10 -> undefined/);
+  assert.match(result, /b 20 -> undefined/);
+  assert.deepEqual(logs, []);
+});
+
+test('two declared renames that share the same `from` are both refused, even though each individually would satisfy every other condition (specs/ops/one-platform-naming.md#AC-5)', () => {
+  const renameA = { from: 'a', to: 'b', decision: 'ADR-a' };
+  const renameB = { from: 'a', to: 'c', decision: 'ADR-b' };
+  const base = { root: 339, a: 10, renames: [] };
+  const current = { root: 339, b: 10, c: 10, renames: [renameA, renameB] };
+  const logs = [];
+  assert.match(checkRatchet(base, current, (line) => logs.push(line)), /a 10 -> undefined/);
   assert.deepEqual(logs, []);
 });
 

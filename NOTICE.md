@@ -1,6 +1,6 @@
 # Notices
 
-DevOPs is released under the MIT License (see `LICENSE`). Stratum, in `stratum/`, carries its own MIT license (`stratum/LICENSE`).
+DevOPs is released under the MIT License (see `LICENSE`). Stratum, in `runtime/`, carries its own MIT license (`runtime/LICENSE`).
 
 ## Attribution
 

@@ -144,7 +144,7 @@ data stores>
 
 - ASI01 Goal Hijacking → `skills/universal/security/prompt-injection-defense`
 - ASI03 Identity → `subagents/universal/*.md` (per-role permission scoping)
-- ASI05 Memory Poisoning → `memory/stratum/` (git-attestation)
+- ASI05 Memory Poisoning → `memory/runtime/` (git-attestation)
 - ASI07 Resource Exhaustion → `hooks/universal/pre-tool/budget-brake.sh`,
   `loop-detection.sh`
 - ASI09 Trust Exploitation → `hooks/universal/pre-tool/*` (a hook fires

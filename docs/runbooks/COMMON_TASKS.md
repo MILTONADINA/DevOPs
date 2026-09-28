@@ -5,8 +5,8 @@ API keys, and migrations. Starting, checking, and stopping the database stack
 in detail is in [LOCAL_STRATUM.md](LOCAL_STRATUM.md#start-and-check); this
 page links there rather than repeating it.
 
-Stratum commands run from `stratum/`. Commands that need the database go
-through `npm run db:with-env -- ...` (`stratum/scripts/local-compose.ts:157-166`).
+Stratum commands run from `runtime/`. Commands that need the database go
+through `npm run db:with-env -- ...` (`runtime/scripts/local-compose.ts:157-166`).
 
 ## Setup
 
@@ -21,9 +21,9 @@ npm run setup
 1. Detects macOS, Linux, or WSL2. Native Windows is refused.
 2. Requires Node 22.12 or later.
 3. Requires `docker compose` and a running Docker engine.
-4. Runs `npm ci` in `stratum/` only if `stratum/node_modules/.bin/tsx` is
+4. Runs `npm ci` in `runtime/` only if `runtime/node_modules/.bin/tsx` is
    missing.
-5. Runs `npm run db:start` in `stratum/`.
+5. Runs `npm run db:start` in `runtime/`.
 6. Runs the proxy and database smoke check (`tsx scripts/smoke-setup.ts`
    through `db:with-env`).
 
@@ -31,7 +31,7 @@ On success it prints
 `Local database and proxy startup smoke passed.` It does not read or create
 `.env` files, and it does not configure a model provider. Its own last line
 states that this check does not satisfy the clean-machine, cross-platform, or
-real-data recovery release gates. `npm run setup` also works from `stratum/`.
+real-data recovery release gates. `npm run setup` also works from `runtime/`.
 
 To run a second, isolated stack beside the default one, set both
 `DEVOPS_LOCAL_INSTANCE` (lowercase, starts with a letter, up to 20
@@ -39,12 +39,12 @@ characters, not `local`) and `DEVOPS_LOCAL_PORT` (1024-65535, not `54321`) for
 `npm run setup` and for every later `db:*` command. Setting only one is an
 error.
 
-Sources: `package.json:12`, `stratum/package.json:8`, `scripts/setup-local.mjs:11-43`,
-`stratum/scripts/local-compose.ts:10-21`, `stratum/docs/MEMORY_AND_EVAL_COMMANDS.md:22-27`.
+Sources: `package.json:12`, `runtime/package.json:8`, `scripts/setup-local.mjs:11-43`,
+`runtime/scripts/local-compose.ts:10-21`, `runtime/docs/MEMORY_AND_EVAL_COMMANDS.md:22-27`.
 
 ## Teardown
 
-From `stratum/`:
+From `runtime/`:
 
 ```sh
 npm run db:stop
@@ -59,8 +59,8 @@ No repository script deletes the database volume or resets the database
 tools destroys all local organizations. Back up any organization you need
 first ([BACKUP_RESTORE.md](BACKUP_RESTORE.md)).
 
-Sources: `stratum/package.json:57`, `stratum/scripts/local-compose.ts:134-136`,
-`stratum/scripts/local-compose.ts:169`.
+Sources: `runtime/package.json:57`, `runtime/scripts/local-compose.ts:134-136`,
+`runtime/scripts/local-compose.ts:169`.
 
 ## Run tests
 
@@ -73,10 +73,10 @@ Sources: `stratum/package.json:57`, `stratum/scripts/local-compose.ts:134-136`,
 | Claim proofs | `npm run validate:claims -- <claim.yml> --no-rerun` (repository root) | `tsx` through `npx` |
 | Local database checks | `npm run db:verify`, `npm run db:verify-recovery`, and the other `db:verify-*` scripts | A running local stack |
 
-The `db:verify-*` scripts each run one file from `stratum/test/integration/`
+The `db:verify-*` scripts each run one file from `runtime/test/integration/`
 through the stack wrapper. `db:verify` and `db:verify-recovery` create and
 remove their own fixture rows (`docs/runbooks/LOCAL_STRATUM.md:12-13`,
-`stratum/test/integration/local-backup-recovery.mjs:196-202`).
+`runtime/test/integration/local-backup-recovery.mjs:196-202`).
 `db:verify-source-fact-backfill` and `verify:graph-browser` do not go through
 the wrapper.
 
@@ -84,19 +84,19 @@ To hold a test run to its floor, save the full output to a file and run:
 
 ```sh
 node scripts/check-test-floor.mjs root <log-file>
-node scripts/check-test-floor.mjs stratum <log-file>
+node scripts/check-test-floor.mjs runtime <log-file>
 ```
 
 It exits 1 when the passed count is below `governance/test-floors.json`, when
 any test failed, or when it cannot find a count. CI runs both checks and also
-runs `stratum/test/integration/*.sql` against the database container after
+runs `runtime/test/integration/*.sql` against the database container after
 `npm run setup`; no npm script wraps the SQL files.
 
 Do not use `npm run test:all` as a quick check. It ends with `test:eval`,
 which spends provider credits (next section).
 
-Sources: `package.json:15-16`, `stratum/package.json:14-21`,
-`stratum/package.json:60-83`, `scripts/check-test-floor.mjs:1-9`,
+Sources: `package.json:15-16`, `runtime/package.json:14-21`,
+`runtime/package.json:60-83`, `scripts/check-test-floor.mjs:1-9`,
 `.github/workflows/ci.yml:16-38`, `.github/workflows/ci.yml:54-60`,
 `.github/workflows/ci.yml:83-86`, `DEVELOPER_GUIDE.md:42-53`.
 
@@ -105,7 +105,7 @@ Sources: `package.json:15-16`, `stratum/package.json:14-21`,
 The eval gates decide whether pruning may ship. Pruning is not active in
 requests today, so these gates do not affect running traffic. The full
 command table, datasets, and environment variables are in
-[MEMORY_AND_EVAL_COMMANDS.md](../../stratum/docs/MEMORY_AND_EVAL_COMMANDS.md#eval--pruning-gate-commands).
+[MEMORY_AND_EVAL_COMMANDS.md](../../runtime/docs/MEMORY_AND_EVAL_COMMANDS.md#eval--pruning-gate-commands).
 
 Free commands (local ONNX encoder, no model API calls):
 
@@ -142,16 +142,16 @@ Tier-B dataset and a judge; a missing input exits 1, never 0. Only `--fast`
 is accepted as a flag. Full mode also runs the LoCoMo and LongMemEval Tier-A
 gates.
 
-Sources: `stratum/package.json:20`, `stratum/package.json:27-33`,
-`stratum/scripts/eval-tierc.ts:1-24`, `stratum/scripts/eval-locomo-survival.ts:1-21`,
-`stratum/scripts/eval-locomo-survival.ts:66-69`, `stratum/scripts/eval-longmemeval-survival.ts:1-16`, `stratum/scripts/eval-longmemeval-survival.ts:59`,
-`stratum/evals/harness/runner.ts:113-220`, `stratum/evals/harness/metrics.ts:172-183`,
-`stratum/evals/harness/metrics.ts:74-88`, `stratum/evals/harness/metrics.ts:325`,
-`stratum/evals/harness/metrics.ts:348`, `stratum/scripts/eval-dev.ts:18`,
-`stratum/scripts/eval-dev.ts:43-46`, `stratum/scripts/eval-dev.ts:74`,
-`stratum/scripts/eval-tierb.ts:27-30`, `stratum/scripts/eval-locomo.ts:169-183`,
-`stratum/scripts/eval-longmemeval.ts:81-95`,
-`stratum/docs/COMMERCIAL_ONBOARDING.md:100`, `stratum/docs/LOCAL_STORAGE.md:102`.
+Sources: `runtime/package.json:20`, `runtime/package.json:27-33`,
+`runtime/scripts/eval-tierc.ts:1-24`, `runtime/scripts/eval-locomo-survival.ts:1-21`,
+`runtime/scripts/eval-locomo-survival.ts:66-69`, `runtime/scripts/eval-longmemeval-survival.ts:1-16`, `runtime/scripts/eval-longmemeval-survival.ts:59`,
+`runtime/evals/harness/runner.ts:113-220`, `runtime/evals/harness/metrics.ts:172-183`,
+`runtime/evals/harness/metrics.ts:74-88`, `runtime/evals/harness/metrics.ts:325`,
+`runtime/evals/harness/metrics.ts:348`, `runtime/scripts/eval-dev.ts:18`,
+`runtime/scripts/eval-dev.ts:43-46`, `runtime/scripts/eval-dev.ts:74`,
+`runtime/scripts/eval-tierb.ts:27-30`, `runtime/scripts/eval-locomo.ts:169-183`,
+`runtime/scripts/eval-longmemeval.ts:81-95`,
+`runtime/docs/COMMERCIAL_ONBOARDING.md:100`, `runtime/docs/LOCAL_STORAGE.md:102`.
 
 ## Create an organization
 
@@ -164,12 +164,12 @@ anything else. The plan sets the invoice floor. Require the
 `Organization created:` line and record the printed `id`. `--with-key` also
 mints an unbound key in the same step.
 
-`create-org` loads `dotenv/config`, so it also reads a `stratum/.env` if one
+`create-org` loads `dotenv/config`, so it also reads a `runtime/.env` if one
 exists. Values already in the process environment, such as the ones
 `db:with-env` supplies, take precedence.
 
-Sources: `stratum/package.json:53`, `stratum/scripts/create-org.ts:1-12`,
-`stratum/scripts/create-org.ts:26-55`, `stratum/scripts/create-org.ts:75-96`.
+Sources: `runtime/package.json:53`, `runtime/scripts/create-org.ts:1-12`,
+`runtime/scripts/create-org.ts:26-55`, `runtime/scripts/create-org.ts:75-96`.
 
 ## Mint an API key
 
@@ -188,9 +188,9 @@ npm run db:with-env -- npm run create-api-key -- \
 - Require the `API key created` line and record the printed `id`. You need
   the ID to revoke the key.
 
-Sources: `stratum/package.json:54`, `stratum/scripts/create-api-key.ts:1-47`,
-`stratum/scripts/create-api-key.ts:75-93`, `stratum/src/proxy/auth.ts:33-56`,
-`stratum/src/proxy/auth.ts:59-61`.
+Sources: `runtime/package.json:54`, `runtime/scripts/create-api-key.ts:1-47`,
+`runtime/scripts/create-api-key.ts:75-93`, `runtime/src/proxy/auth.ts:33-56`,
+`runtime/src/proxy/auth.ts:59-61`.
 
 ## Revoke an API key
 
@@ -215,8 +215,8 @@ command only matches a key in the given organization. Require
 After a restore from an older backup, repeat any revocation made since that
 backup ([BACKUP_RESTORE.md](BACKUP_RESTORE.md#what-a-restore-does)).
 
-Sources: `stratum/package.json:55`, `stratum/scripts/api-keys.ts:1-10`,
-`stratum/scripts/api-keys.ts:58-82`, `stratum/src/proxy/auth.ts:73-83`.
+Sources: `runtime/package.json:55`, `runtime/scripts/api-keys.ts:1-10`,
+`runtime/scripts/api-keys.ts:58-82`, `runtime/src/proxy/auth.ts:73-83`.
 
 ### Missing database settings fail loudly
 
@@ -225,12 +225,12 @@ Sources: `stratum/package.json:55`, `stratum/scripts/api-keys.ts:1-10`,
 and say that nothing was created, listed or revoked. (Before PB-66 they printed
 `SKIPPED` and exited 0.) Still check for the success line named above.
 
-Sources: `stratum/scripts/create-org.ts:67-71`, `stratum/scripts/create-api-key.ts:59-63`,
-`stratum/scripts/api-keys.ts:50-55`.
+Sources: `runtime/scripts/create-org.ts:67-71`, `runtime/scripts/create-api-key.ts:59-63`,
+`runtime/scripts/api-keys.ts:50-55`.
 
 ## Apply migrations
 
-Migrations are the SQL files in `stratum/supabase/migrations/`. There are no
+Migrations are the SQL files in `runtime/supabase/migrations/`. There are no
 down migrations; a migration cannot be undone by a script.
 
 How the runner works (`npm run db:migrate`, and also during `npm run db:start`):
@@ -249,7 +249,7 @@ To apply migrations safely:
 2. Back up every organization you need and verify each file
    ([LOCAL_STRATUM.md](LOCAL_STRATUM.md#back-up-one-organization),
    [BACKUP_RESTORE.md](BACKUP_RESTORE.md#verify-a-backup)).
-3. With the stack running, from `stratum/`:
+3. With the stack running, from `runtime/`:
 
    ```sh
    npm run db:migrate
@@ -259,18 +259,18 @@ To apply migrations safely:
    the `db:verify-*` checks for the areas the migration changed.
 
 A migration that adds an organization table does not add it to backups. The
-backup table list is fixed in code (`stratum/scripts/backup-org.ts:22-43`), so
+backup table list is fixed in code (`runtime/scripts/backup-org.ts:22-43`), so
 the new table is left out until someone adds it to that list. That is how
 `invoice_send_claims` is outside the backup today
 ([BACKUP_RESTORE.md](BACKUP_RESTORE.md#what-a-backup-does-not-contain)). Once
 the list is changed, restore rejects backups taken before the change, because
-it accepts only the current table list (`stratum/scripts/restore-org.ts:75-84`,
+it accepts only the current table list (`runtime/scripts/restore-org.ts:75-84`,
 [BACKUP_RESTORE.md](BACKUP_RESTORE.md#known-limits)).
 
 If a migration fails, read the error, fix the file or the data, and run
 `npm run db:migrate` again. Do not insert version rows into
 `devops_local.migrations` by hand to skip a file.
 
-Sources: `stratum/package.json:56-58`, `stratum/scripts/local-compose.ts:111-125`,
-`stratum/scripts/local-compose.ts:139-141`, `stratum/scripts/local-compose.ts:170`,
-`stratum/scripts/restore-org.ts:75-84`, `docs/runbooks/LOCAL_STRATUM.md:18-21`.
+Sources: `runtime/package.json:56-58`, `runtime/scripts/local-compose.ts:111-125`,
+`runtime/scripts/local-compose.ts:139-141`, `runtime/scripts/local-compose.ts:170`,
+`runtime/scripts/restore-org.ts:75-84`, `docs/runbooks/LOCAL_STRATUM.md:18-21`.

@@ -19,7 +19,7 @@ Stratum's git-attestation audit cross-references stated facts against git
 history when it runs (`audit:repo` with `--persist`, or the proxy's memory
 recorder when `CQ_AUDIT_REPO_ROOT` is set). A conflicting fact is suppressed,
 so session-start recall no longer returns it, and the conflict is written to
-`audit_conflicts`; `npm --prefix stratum run audit:conflicts` lists the
+`audit_conflicts`; `npm --prefix runtime run audit:conflicts` lists the
 unacknowledged ones. Acknowledging one (`-- --ack <id> --org-id <org-uuid>`)
 takes it off that list; the fact stays suppressed.
 
@@ -28,5 +28,5 @@ takes it off that list; the fact stays suppressed.
 - `memory/README.md` — backend overview
 - `memory/file-based/` — starter files for file-based memory
   (`.workflow/memory/` in a project)
-- `memory/stratum/` — structured facts
+- `memory/runtime/` — structured facts
 - `meta-memory/` — cross-project patterns (PII-scrubbed)

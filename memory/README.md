@@ -29,7 +29,7 @@ Updated by humans + agent with PR.
 
 ### 2. Stratum (structured fact store, recommended)
 
-Location: `memory/stratum/` (config only — real data in Stratum's Supabase)
+Location: `memory/runtime/` (config only — real data in Stratum's Supabase)
 
 What it stores (via Stratum's schema):
 - `sessions` — every agent session captured
@@ -37,7 +37,7 @@ What it stores (via Stratum's schema):
 - `billing_records` — per-request usage ledger (token counts, USD estimates). It is HMAC-signed and append-only today; the planned payment removal makes it an unsigned usage ledger with no fee (`specs/ops/payment-removal.md`)
 - Fact tables: `function_changes`, `tech_decisions`, `policy_updates`,
   `todos`, `variable_changes`, `operational_references` (registered in
-  `FACT_TABLES`, `stratum/src/memory/warm/tier2.ts`)
+  `FACT_TABLES`, `runtime/src/memory/warm/tier2.ts`)
 - `audit_conflicts` — when stated facts disagree with git history
 - `api_keys` — SHA-256 hashes of issued API keys; the raw key is never stored
 
@@ -66,7 +66,7 @@ Status: `plan.md` §3 (pruning) and §4 (memory) track what runs.
 
 Each backend's directory has its own README:
 - `memory/file-based/README.md`
-- `memory/stratum/README.md`
+- `memory/runtime/README.md`
 
 ## Cross-project meta-memory
 

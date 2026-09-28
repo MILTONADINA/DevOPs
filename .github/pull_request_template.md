@@ -32,22 +32,22 @@
 - [ ] Proof for the change is pasted into this PR description under Testing Notes: the test command, its exit code, the output tail and the spec reference. `.workflow/proofs/` is gitignored, so do not commit files from it
 - [ ] New claims validate: `npm run validate:claims -- path/to/claim.yml --no-rerun`
 
-### Required If Stratum Code Changed (`stratum/`)
-- [ ] `cd stratum && npm run typecheck` passes (zero errors)
-- [ ] `cd stratum && npm run lint` passes (zero warnings)
-- [ ] `cd stratum && npm test` passes
+### Required If Stratum Code Changed (`runtime/`)
+- [ ] `cd runtime && npm run typecheck` passes (zero errors)
+- [ ] `cd runtime && npm run lint` passes (zero warnings)
+- [ ] `cd runtime && npm test` passes
 
-### Required If Pruning Logic Changed (`stratum/src/pruner/`)
-- [ ] `cd stratum && npm run test:eval` passes
+### Required If Pruning Logic Changed (`runtime/src/pruner/`)
+- [ ] `cd runtime && npm run test:eval` passes
 - [ ] Zero failures on Tier C critical golden queries
 
 ### Required If Schema Changed
-- [ ] Migration file exists in `stratum/supabase/migrations/`
-- [ ] Migration applied to the local stack (`cd stratum && npm run db:migrate`)
-- [ ] `stratum/docs/TECHNICAL_SPEC.md` updated with the new schema
+- [ ] Migration file exists in `runtime/supabase/migrations/`
+- [ ] Migration applied to the local stack (`cd runtime && npm run db:migrate`)
+- [ ] `runtime/docs/TECHNICAL_SPEC.md` updated with the new schema
 
 ### Required If Architecture Decision Was Made
-- [ ] ADR exists in `governance/decisions/` (or `stratum/docs/decisions/` for Stratum) with status: Accepted
+- [ ] ADR exists in `governance/decisions/` (or `runtime/docs/decisions/` for Stratum) with status: Accepted
 
 ### Required If Security-Sensitive Code Changed
 - [ ] Threat model updated in `docs/SECURITY.md` or `docs/threat-models/`

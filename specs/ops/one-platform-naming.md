@@ -33,7 +33,7 @@ This requirement covers two kinds of setting:
 - every setting added after this spec.
 
 Each SHALL have a canonical name of the form `DEVOPS_<AREA>_<NAME>`:
-- the runtime under `stratum/` uses the areas PROXY, MEMORY, PRUNER, AUDIT, TELEMETRY, LOCAL (the local stack and setup) and LOCAL_MODEL (a local model server), and `DEVOPS_TEAM_MODE` is its one setting with no area;
+- the runtime under `runtime/` uses the areas PROXY, MEMORY, PRUNER, AUDIT, TELEMETRY, LOCAL (the local stack and setup) and LOCAL_MODEL (a local model server), and `DEVOPS_TEAM_MODE` is its one setting with no area;
 - the workflow under `scripts/` and `hooks/` keeps the areas its `DEVOPS_` settings already use: GRAPH, BUDGET, LOOP, SESSION, and `DEVOPS_ROOT`.
 
 Other existing names keep their names:
@@ -120,7 +120,7 @@ THE PROJECT SHALL keep exactly one repository for the platform. The owner asked 
   **Verified by:** a unit test of the settings module, one case per row, whose titles name `specs/ops/one-platform-naming.md#AC-1`.
 - **AC-1b** (REQ-2b). A request with only `x-cq-conversation-id` is grouped under that conversation. A request with both headers uses `x-devops-conversation-id`. During the alias release, every response that carries a conversation id carries both headers with the same value, so a client that reads only the legacy header continues its conversation. An outbound webhook carries both signature headers with the same value.
   **Verified by:** proxy route tests and a webhook signing test, whose titles name `specs/ops/one-platform-naming.md#AC-1b`.
-- **AC-2** (REQ-2). A static check lists every `process.env` and `env` read under `stratum/src`, `stratum/scripts`, `scripts` and `hooks`.
+- **AC-2** (REQ-2). A static check lists every `process.env` and `env` read under `runtime/src`, `runtime/scripts`, `scripts` and `hooks`.
   - It finds no `CQ_`, `STRATUM_` or `DEVOPS_STRATUM_` name outside the settings module (and `GRAPH_PREFLIGHT_DEPS_STRATUM_DIR` until REQ-5 lands).
   - Every name that is neither `DEVOPS_`-prefixed nor vendor-defined is listed, by exact name, in a committed baseline that may only shrink. The keep-list in REQ-2 describes what that baseline starts with. So a new setting outside the `DEVOPS_` prefix fails, including a new `GRAPH_` name.
   **Verified by:** a test that runs the check over the repository, plus negative controls with a planted `CQ_FOO` read and a planted new `FOO_BAR` read.

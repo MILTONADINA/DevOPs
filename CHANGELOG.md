@@ -18,6 +18,12 @@ product. See `docs/LAUNCH_READINESS.md` for current, frequently-updated
 status — this file intentionally does not duplicate that detail while the
 phase is open.
 
+### Changed — `stratum/` is now `runtime/` (owner decision 2026-09-26)
+
+- The runtime (proxy, memory, pruner) moved from `stratum/` to `runtime/`, and its package is `@miltonadina/devops-runtime` (ADR-0026; `specs/ops/one-platform-naming.md` REQ-5). **Breaking** for scripts that use the old path: use `cd runtime` and `npm --prefix runtime`.
+- CI's required check `stratum-test` is now `runtime-test`, the test-floor key `stratum` is `runtime` (a declared rename, never a lowering), and the preflight check `deps.stratum` is `deps.runtime`.
+- Unchanged: the local database's compose, container and volume names (`devops-stratum-*`) and the settings (`CQ_*`, `STRATUM_*`); a later naming cycle renames the settings.
+
 ### Changed — open source, no payment, local-first (owner decision 2026-09-26)
 
 Recorded in `stratum/docs/decisions/0025-open-source-local-first-no-payment.md`.

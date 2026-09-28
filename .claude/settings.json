@@ -15,7 +15,7 @@
           },
           {
             "type": "command",
-            "command": "ROOT=\"${CLAUDE_PROJECT_DIR:-.}\"; if [ -x \"$ROOT/stratum/node_modules/.bin/tsx\" ]; then (cd \"$ROOT\" && stratum/node_modules/.bin/tsx stratum/scripts/session-start-context.ts) || true; fi",
+            "command": "ROOT=\"${CLAUDE_PROJECT_DIR:-.}\"; if [ -x \"$ROOT/runtime/node_modules/.bin/tsx\" ]; then (cd \"$ROOT\" && runtime/node_modules/.bin/tsx runtime/scripts/session-start-context.ts) || true; fi",
             "statusMessage": "Recalling Stratum facts..."
           }
         ]

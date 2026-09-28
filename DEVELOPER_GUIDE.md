@@ -23,7 +23,7 @@ configure an LLM provider. Set a provider in your process environment or
 secret manager, then start the proxy:
 
 ```sh
-cd stratum
+cd runtime
 npm run db:with-env -- npm run dev
 ```
 
@@ -32,7 +32,7 @@ For an independent checkout on the same host, set both
 characters) and `DEVOPS_LOCAL_PORT` (an unused port from 1024 to 65535)
 before setup. Do not use port 54321. Use those same values for later
 `db:with-env` and `db:stop` commands in that checkout. See
-[local storage](stratum/docs/LOCAL_STORAGE.md) for the isolated-stack example.
+[local storage](runtime/docs/LOCAL_STORAGE.md) for the isolated-stack example.
 
 See the [local operations runbook](docs/runbooks/LOCAL_STRATUM.md) for stop,
 migration, disposable verification, backup, and clean-target restore. Setup
@@ -47,9 +47,9 @@ package manifests:
 | Scope | Command | Use |
 | --- | --- | --- |
 | Root | `npm test` | Root CLI, workflow, and dashboard tests |
-| Stratum | `cd stratum && npm test` | Stratum Vitest suite |
-| Stratum | `cd stratum && npm run typecheck` | TypeScript types |
-| Stratum | `cd stratum && npm run lint` | ESLint and Prettier checks |
+| Stratum | `cd runtime && npm test` | Stratum Vitest suite |
+| Stratum | `cd runtime && npm run typecheck` | TypeScript types |
+| Stratum | `cd runtime && npm run lint` | ESLint and Prettier checks |
 | Proof | `npm run validate:claims -- path/to/claim.yml --no-rerun` | Validate a new claim's schema and Git provenance |
 
 Keep proof output under the ignored `.workflow/proofs/` directory. Use the
@@ -66,7 +66,7 @@ claims refer to external systems or an earlier environment.
 2. Review the diff for correctness and security. Claude Code contributors
    can use `/code-review` and `/security-review` before pushing. Other tools
    can perform the same review against the changed files.
-3. Check the six required checks: `validate`, `stratum-test`, `setup-linux`,
+3. Check the six required checks: `validate`, `runtime-test`, `setup-linux`,
    `gitleaks`, `semgrep` and `dependency-audit`. The
    [CI checks table](CONTRIBUTING.md#ci-checks-run-on-pull-requests) lists
    the optional ones too. The Claude semantic security job reports a skip when

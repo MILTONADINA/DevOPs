@@ -221,9 +221,9 @@ test('T2a: stopIfBlocked logs the evidence-free swallow exactly once, naming the
 // package.json (dependencies/devDependencies) and node_modules carry no
 // ajv, zod, or jsonschema at any depth (checked directly, not just by
 // reading package.json), and its package.json has no `workspaces` field
-// linking it to stratum. `stratum/node_modules` does carry ajv
-// transitively (Fastify pulls it in), but stratum is its own separate
-// package (its own package.json names it "startum"), with its own
+// linking it to `runtime/`. `runtime/node_modules` does carry ajv
+// transitively (Fastify pulls it in), but `runtime/` is its own separate
+// package (its own package.json names it "@miltonadina/devops-runtime"), with its own
 // independent install, not a workspace member of this root project (and
 // per project memory, a Windows-origin install at that) -- importing
 // across that boundary from a root-level test would create a real

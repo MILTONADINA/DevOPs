@@ -18,7 +18,7 @@ jobs:
         with: { node-version: 22 }
       - name: Cold checkout to local proxy and database
         run: |
-          test ! -d stratum/node_modules
+          test ! -d runtime/node_modules
           if docker volume inspect devops-stratum-compose_db-data >/dev/null 2>&1; then
             echo "The project database volume already exists on this runner" >&2
             exit 1
@@ -31,7 +31,7 @@ jobs:
       - name: SQL integration tests (specs/ops/ci-product-suites.md REQ-2)
         run: |
           shopt -s nullglob
-          files=(stratum/test/integration/*.sql)
+          files=(runtime/test/integration/*.sql)
           test "${#files[@]}" -gt 0 || { echo "no SQL integration tests found" >&2; exit 1; }
           for f in "${files[@]}"; do
             echo "::group::$f"
@@ -41,15 +41,15 @@ jobs:
           echo "${#files[@]} SQL integration test files passed"
       - name: Stop disposable local stack
         if: always()
-        run: DEVOPS_LOCAL_JWT_SECRET=cleanup docker compose -f stratum/supabase/docker-compose.local.yml -p devops-stratum-compose down
+        run: DEVOPS_LOCAL_JWT_SECRET=cleanup docker compose -f runtime/supabase/docker-compose.local.yml -p devops-stratum-compose down
 
-  stratum-test:
+  runtime-test:
     # specs/ops/ci-product-suites.md REQ-1
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     defaults:
       run:
-        working-directory: stratum
+        working-directory: runtime
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444  # v5.0.0
@@ -59,8 +59,8 @@ jobs:
       - name: npm test, held to its floor (masterpiece REQ-M23)
         shell: bash
         run: |
-          npm test 2>&1 | tee "$RUNNER_TEMP/stratum-tests.log"
-          node ../scripts/check-test-floor.mjs stratum "$RUNNER_TEMP/stratum-tests.log"
+          npm test 2>&1 | tee "$RUNNER_TEMP/runtime-tests.log"
+          node ../scripts/check-test-floor.mjs runtime "$RUNNER_TEMP/runtime-tests.log"
 
   validate:
     runs-on: ubuntu-24.04
@@ -88,7 +88,7 @@ jobs:
           git fetch --no-tags --depth=1 origin "$BASE_REF"
           git show FETCH_HEAD:governance/test-floors.json > "$RUNNER_TEMP/base-floors.json" 2>/dev/null || echo '{}' > "$RUNNER_TEMP/base-floors.json"
           node scripts/check-test-floor.mjs --ratchet "$RUNNER_TEMP/base-floors.json"
-          mapfile -t added < <(git diff --name-only --diff-filter=A FETCH_HEAD HEAD -- ':(glob)tests/**/*.test.mjs' ':(glob)stratum/test/**/*.test.ts')
+          mapfile -t added < <(git diff --name-only --diff-filter=A FETCH_HEAD HEAD -- ':(glob)tests/**/*.test.mjs' ':(glob)runtime/test/**/*.test.ts')
           if [ "${#added[@]}" -gt 0 ]; then node scripts/check-assertions.mjs "${added[@]}"; else echo "check-assertions: no test files added"; fi
       - name: Spec status lint (masterpiece REQ-M8; quality plan MR-11(A))
         run: node scripts/lint-spec-status.mjs
@@ -131,7 +131,7 @@ jobs:
           npm ci
           npm test
       - name: Stratum typecheck and tests
-        working-directory: stratum
+        working-directory: runtime
         run: |
           npm ci
           npm run typecheck

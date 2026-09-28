@@ -17,7 +17,7 @@ permissions:
     - "**/*.js"
     - "**/*.py"
     - "**/*.rs"
-    - "stratum/**"  # never modify the subtree
+    - "runtime/**"  # never modify the subtree
     - "v0.2.0"      # sealed
 ---
 

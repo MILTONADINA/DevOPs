@@ -19,13 +19,13 @@
       "why": "A checkout copied from Windows can lose Unix executable bits on package launchers."
     },
     {
-      "check_id": "deps.stratum",
+      "check_id": "deps.runtime",
       "detect": "non-executable .bin entries",
-      "apply": "chmod +x on the non-executable stratum/node_modules/.bin entries",
-      "revert": "bash scripts/graph-preflight.sh --revert deps.stratum",
+      "apply": "chmod +x on the non-executable runtime/node_modules/.bin entries",
+      "revert": "bash scripts/graph-preflight.sh --revert deps.runtime",
       "reversible": true,
       "needs_sudo": false,
-      "why": "The Stratum test runner needs executable launchers."
+      "why": "The runtime test runner needs executable launchers."
     },
     {
       "check_id": "tool.cosign",

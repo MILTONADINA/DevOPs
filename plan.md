@@ -1,10 +1,12 @@
 # DevOPs + Stratum — Masterpiece Execution Plan
 
+> **Paths.** On 2026-09-27 the `stratum/` directory moved to `runtime/` (ADR-0026). Paths in this document point to where files live now; older entries describe work done while it was `stratum/`.
+
 **Owner**: Milton Adina
 **Authored**: 2026-05-28 (paired with `blueprint.md`)
 **Quality bar**: **Best-of-the-best at every layer.** No exceptions. Open source with no payment (owner decision 2026-09-26) does NOT relax quality, coverage, security, or rigor.
 **Format**: GitHub-style `- [ ]` checklist. Group order = recommended execution order.
-**Distribution model**: public, MIT-licensed repository (owner decisions 2026-09-23 and 2026-09-26). No payment and no hosted service. The goal, and the v1.0 ship gate (§9), is that a user points their AI agent at this repository and it configures DevOPs and Stratum on the user's own machine; this is not yet verified (ADR-0025, `stratum/docs/decisions/0025-open-source-local-first-no-payment.md`). A user who chooses a paid third-party service, such as an LLM provider or Jev, pays that provider directly; nobody pays the project.
+**Distribution model**: public, MIT-licensed repository (owner decisions 2026-09-23 and 2026-09-26). No payment and no hosted service. The goal, and the v1.0 ship gate (§9), is that a user points their AI agent at this repository and it configures DevOPs and Stratum on the user's own machine; this is not yet verified (ADR-0025, `runtime/docs/decisions/0025-open-source-local-first-no-payment.md`). A user who chooses a paid third-party service, such as an LLM provider or Jev, pays that provider directly; nobody pays the project.
 
 **Status snapshot (2026-09-23)**:
 - v0.3.0 is tagged at `250f90a` and published after release preparation PR #30,
@@ -29,7 +31,7 @@
 - **AP-5 surfacing**: Proof Theater, Reflexive Patch, Scheduler-Failure are honest-stop conditions. Surface immediately, don't paper over.
 - **Read-all-first-then-Write** before edit batches.
 - **JS regex no PCRE.** `[\s\S]` for multiline.
-- **Per stratum CLAUDE.md**: TypeScript strict, no `any`, JSDoc on exports, no `.unwrap()` in Rust production paths.
+- **Per runtime/.claude/CLAUDE.md**: TypeScript strict, no `any`, JSDoc on exports, no `.unwrap()` in Rust production paths.
 - **EARS specs before non-trivial code.** Spec → claim → implementation → claim → proof.
 - **Launch readiness is ALWAYS derived from markdown source-of-truth.** When the user asks for "status", "launch readiness", "where are we", "give me a report" — the response is produced by reading `blueprint.md` + `plan.md` + `docs/LAUNCH_READINESS.md` and assembling the canonical table set defined in `blueprint.md §11`. **Never fabricate figures, version-progress numbers, validator counts, or polish-backlog states.** If a number isn't in the .md sources, surface that gap explicitly ("not yet recorded in LR; need to refresh"). The slash command `/launch-readiness` produces the canonical output (see `slash-commands/universal/launch-readiness.md`). Refresh `docs/LAUNCH_READINESS.md` at: (a) every version ship, (b) every PR merge that adds/changes plan.md tasks or effort estimates, (c) every Ideas → Artifacts iteration that adjusts the envelope.
 
@@ -64,16 +66,16 @@ These unblock the trust-chain story. Do these BEFORE starting Phase 0 corpus cap
 
 ### 2a. Phase 0 code-side gaps (~6h)
 
-- [ ] **Q4 base-URL wiring** (~30 min). Edit `stratum/scripts/capture-session.ts:144`. Replace hardcoded `"https://api.anthropic.com/v1/messages"` with `` `${process.env.ANTHROPIC_BASE_URL ?? 'https://api.anthropic.com'}/v1/messages` ``. Verify by running the 2 `test.todo` cases in `stratum/test/capture-session/config-resolution.test.ts` after flipping them to real assertions.
-- [ ] **P0-F PII redaction wiring** (~3h, SECURITY-BEARING). Wire `observability/pii-redaction.ts` into `capture-session.ts`. Redact (a) request body (messages content + system + tool inputs), (b) response body (assistant text), (c) per-message breakdown content before adding to capture artifact. Use FAIL-CLOSED semantics: redactor throws → drop the captured turn from session JSON + log structured stderr error. Flip the 3 `test.todo` cases in `stratum/test/capture-session/pii-redaction-passthrough.test.ts` to passing assertions covering: planted email redacted, planted JWT redacted, redactor-exception drops turn.
-- [ ] **Anthropic SDK version verification** (~1h). The current `@anthropic-ai/sdk` pin is `^0.39.0`. Check current published version. Bump to latest stable; run vitest suite; if breaking changes → fix in capture-session.ts; add ADR `stratum/docs/decisions/0008-sdk-version-pin.md`.
-- [ ] **Adversarial test additions** (~1.5h). Add to `stratum/test/capture-session/`: `injection-resilience.test.ts` (try to inject `[REDACTED-email]` into a message to verify it isn't double-redacted), `partial-response.test.ts` (truncated Anthropic response), `oversized-payload.test.ts` (>1MB request body — must not crash).
+- [ ] **Q4 base-URL wiring** (~30 min). Edit `runtime/scripts/capture-session.ts:144`. Replace hardcoded `"https://api.anthropic.com/v1/messages"` with `` `${process.env.ANTHROPIC_BASE_URL ?? 'https://api.anthropic.com'}/v1/messages` ``. Verify by running the 2 `test.todo` cases in `runtime/test/capture-session/config-resolution.test.ts` after flipping them to real assertions.
+- [ ] **P0-F PII redaction wiring** (~3h, SECURITY-BEARING). Wire `observability/pii-redaction.ts` into `capture-session.ts`. Redact (a) request body (messages content + system + tool inputs), (b) response body (assistant text), (c) per-message breakdown content before adding to capture artifact. Use FAIL-CLOSED semantics: redactor throws → drop the captured turn from session JSON + log structured stderr error. Flip the 3 `test.todo` cases in `runtime/test/capture-session/pii-redaction-passthrough.test.ts` to passing assertions covering: planted email redacted, planted JWT redacted, redactor-exception drops turn.
+- [ ] **Anthropic SDK version verification** (~1h). The current `@anthropic-ai/sdk` pin is `^0.39.0`. Check current published version. Bump to latest stable; run vitest suite; if breaking changes → fix in capture-session.ts; add ADR `runtime/docs/decisions/0008-sdk-version-pin.md`.
+- [ ] **Adversarial test additions** (~1.5h). Add to `runtime/test/capture-session/`: `injection-resilience.test.ts` (try to inject `[REDACTED-email]` into a message to verify it isn't double-redacted), `partial-response.test.ts` (truncated Anthropic response), `oversized-payload.test.ts` (>1MB request body — must not crash).
 
 ### 2b. Phase 0 content corpus (user-side, ~12h)
 
-- [ ] **5+ real session captures** (~1 week of normal Claude Code use). Process: `cd stratum && npm install && npm run capture` in one terminal; in Claude Code terminal `export ANTHROPIC_BASE_URL=http://localhost:4090`; do normal work; Ctrl+C the capture when done. Repeat across ≥5 different projects/contexts (different stacks: web/server, scripts, refactors, debugging). Files land in `stratum/data/sessions/session-<uuid>.json`. NOTE: this is YOUR data, gitignored.
-- [ ] **Fill `stratum/docs/waste-taxonomy.md`** (~3h analysis). Read the 5+ captured JSON files. Identify ≥4 named waste categories (e.g., system prompt repetition, tool output echoes, redundant reasoning traces, full-file re-reads). Fill all 23 `<!--` markers. **Critical**: answer "#1 Waste Type" at line 119 — this is the load-bearing finding driving Phase 2 pruner heuristics.
-- [x] **DyCP paper notes** (~4h reading + writing). Read arXiv:2601.07994 (Dynamic Context Pruning for Long-Form Dialogue with LLMs). Fill `stratum/docs/paper-notes.md` with ≥5 substantive notes covering: algorithm summary, paper thresholds (τ, θ) versus our decay λ, benchmark results on LoCoMo + MT-Bench+, documented failure cases, and CQ-Extended adaptation choices.
+- [ ] **5+ real session captures** (~1 week of normal Claude Code use). Process: `cd runtime && npm install && npm run capture` in one terminal; in Claude Code terminal `export ANTHROPIC_BASE_URL=http://localhost:4090`; do normal work; Ctrl+C the capture when done. Repeat across ≥5 different projects/contexts (different stacks: web/server, scripts, refactors, debugging). Files land in `runtime/data/sessions/session-<uuid>.json`. NOTE: this is YOUR data, gitignored.
+- [ ] **Fill `runtime/docs/waste-taxonomy.md`** (~3h analysis). Read the 5+ captured JSON files. Identify ≥4 named waste categories (e.g., system prompt repetition, tool output echoes, redundant reasoning traces, full-file re-reads). Fill all 23 `<!--` markers. **Critical**: answer "#1 Waste Type" at line 119 — this is the load-bearing finding driving Phase 2 pruner heuristics.
+- [x] **DyCP paper notes** (~4h reading + writing). Read arXiv:2601.07994 (Dynamic Context Pruning for Long-Form Dialogue with LLMs). Fill `runtime/docs/paper-notes.md` with ≥5 substantive notes covering: algorithm summary, paper thresholds (τ, θ) versus our decay λ, benchmark results on LoCoMo + MT-Bench+, documented failure cases, and CQ-Extended adaptation choices.
 
 ### 2c. Phase 0 closure
 
@@ -82,17 +84,17 @@ These unblock the trust-chain story. Do these BEFORE starting Phase 0 corpus cap
 
 ### 2d. Phase 1 measurement proxy buildout (~80h)
 
-- [ ] **Promote capture script to real Fastify proxy** (~15h). Create `stratum/src/proxy/index.ts` with proper route registration, lifecycle hooks (preHandler/onSend/onResponse), graceful shutdown (SIGTERM drains in-flight + flushes captures), `/health` endpoint, error handling middleware.
+- [ ] **Promote capture script to real Fastify proxy** (~15h). Create `runtime/src/proxy/index.ts` with proper route registration, lifecycle hooks (preHandler/onSend/onResponse), graceful shutdown (SIGTERM drains in-flight + flushes captures), `/health` endpoint, error handling middleware.
 - [ ] **Wire `@fastify/rate-limit`** (~2h). Currently in deps but not used. Configure: 100 req/min default per IP for the proxy; configurable via env. Add test.
 - [ ] **Anthropic API retry/backoff** (~3h). 429 → exponential backoff per Anthropic-recommended retry-after header. 5xx → 3 retries with jitter. Network error → 1 retry then surface to client. Test against fixtures.
-- [ ] **Streaming response handling (P0-B work, ~18h)**. Detect `stream: true` in request body OR `Accept: text/event-stream` header. Forward to Anthropic with streaming enabled. Parse SSE events. Forward chunks to client preserving streaming semantics (don't buffer-and-respond). Accumulate full session JSON from event sequence (`message_start` → `content_block_*` × N → `message_delta` → `message_stop`). Handle: network drop mid-stream, malformed chunks, client AbortController, Anthropic-side error events. Use `axios` with `responseType: 'stream'` (per blueprint note: keeps HTTP transport unified). Test fixtures at `stratum/test/fixtures/anthropic-streams/*.sse`: simple-text-stream, tool-use-stream, mixed-content-stream, multi-turn-stream, abort-mid-stream, network-drop, anthropic-error-event, malformed-chunks.
+- [ ] **Streaming response handling (P0-B work, ~18h)**. Detect `stream: true` in request body OR `Accept: text/event-stream` header. Forward to Anthropic with streaming enabled. Parse SSE events. Forward chunks to client preserving streaming semantics (don't buffer-and-respond). Accumulate full session JSON from event sequence (`message_start` → `content_block_*` × N → `message_delta` → `message_stop`). Handle: network drop mid-stream, malformed chunks, client AbortController, Anthropic-side error events. Use `axios` with `responseType: 'stream'` (per blueprint note: keeps HTTP transport unified). Test fixtures at `runtime/test/fixtures/anthropic-streams/*.sse`: simple-text-stream, tool-use-stream, mixed-content-stream, multi-turn-stream, abort-mid-stream, network-drop, anthropic-error-event, malformed-chunks.
 - [ ] **Exact token counting hardening** (~5h). Per Q2: `client.messages.countTokens()` per turn. Cache for repeated identical-message-array counts (hash-keyed). Fallback path if countTokens API errors: use `@anthropic-ai/tokenizer` AND flag `token_count_method: "estimated"` in turn JSON. NEVER silently estimate.
 - [ ] **Waste detection heuristics** (~10h). Implement ≥4 heuristics derived from Phase 0 #1 waste finding + taxonomy. Each heuristic: pure function `detect(session: CapturedSession): WasteFinding[]`. Each finding has type, severity, token_estimate, location. Unit tested.
 - [ ] **Dashboard at `/dashboard`** (~12h). Static HTML + JSON API (no React/Next bloat). Show: today's session count, total tokens consumed, tokens by category (input/output/tool), $ estimate, top-5 waste findings, real-time session-in-progress view. Vanilla CSS, server-side rendered. Mobile-responsive.
-- [ ] **Supabase local wiring** (~6h). `supabase start` from `stratum/`. Apply migration `20260406000000_initial_schema.sql` (already exists). Wire writes from proxy to `sessions` table. Test with `supabase db reset` + capture session + verify row.
+- [ ] **Supabase local wiring** (~6h). `supabase start` from `runtime/`. Apply migration `20260406000000_initial_schema.sql` (already exists). Wire writes from proxy to `sessions` table. Test with `supabase db reset` + capture session + verify row.
 - [ ] **OTel span instrumentation** (~4h). Spans for every proxy request. Attributes: `stratum.input_tokens`, `stratum.output_tokens`, `stratum.model`, `stratum.elapsed_ms`, `session.id`, `turn.number`. NEVER include `messages` content (PII). Soft dep per Q7: empty `OTEL_EXPORTER_OTLP_ENDPOINT` → stderr fallback; no crash.
 - [ ] **Integration tests** (~5h). vitest tests against the real Fastify instance via `app.inject()`. Cover: happy path, all 4 error paths (4xx/5xx/network/malformed), streaming round-trip, rate-limit triggers, OTel emission, Supabase write success/failure.
-- [ ] **Coverage gate enforcement** (~ongoing). Run `npx vitest run --coverage` before every claim emission. All 4 thresholds must hold on `stratum/src/proxy/*` + `stratum/scripts/capture-session.ts`.
+- [ ] **Coverage gate enforcement** (~ongoing). Run `npx vitest run --coverage` before every claim emission. All 4 thresholds must hold on `runtime/src/proxy/*` + `runtime/scripts/capture-session.ts`.
 - [ ] **PERSONAL_USE.md v1** (~3h). Daily workflow: how to start the proxy, env vars, dashboard URL, troubleshooting, where artifacts live, how to clean up.
 
 ### 2f. First-party Anthropic integrations (NEW — Session 14 addition)
@@ -136,22 +138,22 @@ and real-use gates remain open; the runners now fail nonzero without a provider.
 ### 3a. Pre-requisites
 
 - [ ] v0.3.0 shipped and stable.
-- [ ] ≥20 real captured sessions in `stratum/data/sessions/` (for Tier B eval scenarios).
+- [ ] ≥20 real captured sessions in `runtime/data/sessions/` (for Tier B eval scenarios).
 
 ### 3b. Pruner core
 
-- [ ] **ONNX bi-encoder model selection + export** (~6h). Start with `sentence-transformers/all-MiniLM-L6-v2` INT8. Export to `stratum/models/all-MiniLM-L6-v2-int8.onnx`. Benchmark: <10ms p99 on local hardware.
-- [ ] **`stratum/src/pruner/encoder.ts`** (~8h). ONNX inference wrapper using `onnxruntime-node` (already in deps). Async API. Pooled-mean output. Unit tested.
-- [ ] **`stratum/src/pruner/kadanedial.ts`** (~25h). CQ-Extended KadaneDial algorithm per `stratum/docs/ALGORITHM.md`. Time-based decay (`λ^((now - timestamp_i) / 3600)`), not turn-count. Implemented score order: decay raw cosine `R_i = cosine_i * λ^((now - timestamp_i) / 3600)`, then z-normalize `R`, then subtract gain shift `g` for span selection. The current local-run selector and `g=0` differ from the paper's iterative maximum-span method and `τ=0.6`; compare on unchanged Tier-C and published Tier-A before any default change. Log every pruning decision (pruned turns, scores, gain threshold). Unit tested with synthetic + real data.
-- [ ] **`stratum/src/pruner/pruner.ts`** (~6h). Orchestrator combining encoder + KadaneDial. Single-call interface. Integrated logging.
-- [ ] **`stratum/src/pruner/crypto.ts` stub** (~2h). Empty stub for Phase 4 client-side encryption hook-points. Document interface; don't implement yet.
+- [ ] **ONNX bi-encoder model selection + export** (~6h). Start with `sentence-transformers/all-MiniLM-L6-v2` INT8. Export to `runtime/models/all-MiniLM-L6-v2-int8.onnx`. Benchmark: <10ms p99 on local hardware.
+- [ ] **`runtime/src/pruner/encoder.ts`** (~8h). ONNX inference wrapper using `onnxruntime-node` (already in deps). Async API. Pooled-mean output. Unit tested.
+- [ ] **`runtime/src/pruner/kadanedial.ts`** (~25h). CQ-Extended KadaneDial algorithm per `runtime/docs/ALGORITHM.md`. Time-based decay (`λ^((now - timestamp_i) / 3600)`), not turn-count. Implemented score order: decay raw cosine `R_i = cosine_i * λ^((now - timestamp_i) / 3600)`, then z-normalize `R`, then subtract gain shift `g` for span selection. The current local-run selector and `g=0` differ from the paper's iterative maximum-span method and `τ=0.6`; compare on unchanged Tier-C and published Tier-A before any default change. Log every pruning decision (pruned turns, scores, gain threshold). Unit tested with synthetic + real data.
+- [ ] **`runtime/src/pruner/pruner.ts`** (~6h). Orchestrator combining encoder + KadaneDial. Single-call interface. Integrated logging.
+- [ ] **`runtime/src/pruner/crypto.ts` stub** (~2h). Empty stub for Phase 4 client-side encryption hook-points. Document interface; don't implement yet.
 
 ### 3c. Eval harness
 
-- [x] **Tier A dataset loaders**. LoCoMo and LongMemEval loaders and separate judged runners exist; local benchmark files are ignored. `stratum/docs/EVAL_FRAMEWORK.md` records acquisition, license, and why MT-Bench-101/SCM4LLMs are not this long-horizon evidence gate. Full judged runs remain open.
-- [ ] **`stratum/evals/harness/runner.ts`** (~10h). Eval orchestrator: load dataset → run pruner → compute Faithfulness (DeepEval) + Answer Relevancy + Latency. Output JSON results per run.
-- [ ] **Tier A baseline run** (~3h). Full-context (no prune) baseline. Save as `stratum/evals/results/tier-a-baseline.json`.
-- [ ] **Tier A pruner run** (~3h). With pruner enabled. Save as `stratum/evals/results/tier-a-pruner.json`. Verify Faithfulness >0.90 + Answer Relevancy >0.88 vs baseline.
+- [x] **Tier A dataset loaders**. LoCoMo and LongMemEval loaders and separate judged runners exist; local benchmark files are ignored. `runtime/docs/EVAL_FRAMEWORK.md` records acquisition, license, and why MT-Bench-101/SCM4LLMs are not this long-horizon evidence gate. Full judged runs remain open.
+- [ ] **`runtime/evals/harness/runner.ts`** (~10h). Eval orchestrator: load dataset → run pruner → compute Faithfulness (DeepEval) + Answer Relevancy + Latency. Output JSON results per run.
+- [ ] **Tier A baseline run** (~3h). Full-context (no prune) baseline. Save as `runtime/evals/results/tier-a-baseline.json`.
+- [ ] **Tier A pruner run** (~3h). With pruner enabled. Save as `runtime/evals/results/tier-a-pruner.json`. Verify Faithfulness >0.90 + Answer Relevancy >0.88 vs baseline.
 - [ ] **Tier B scenarios** (~12h). ≥4 developer workload scenarios derived from your real Phase 0 corpus: e.g., long debugging session, refactor across 5 files, multi-day project resume, deep stack-trace analysis.
 - [x] **Tier C golden queries**. A 50-case synthetic developer-workload
   corpus with required and forbidden anchors runs through the real cached
@@ -233,20 +235,20 @@ must be recalculated after the open gates are reconciled.
 
 ### 4a. Tier 1 — Hot Memory (rolling window)
 
-- [x] **`stratum/src/memory/hot/tier1.ts`**. In-memory rolling window per
+- [x] **`runtime/src/memory/hot/tier1.ts`**. In-memory rolling window per
   active session, default two-hour window, with eviction into Tier 2.
 - [x] **Tier 1 query API** + tests (`recent()` and `test/memory/memory.test.ts`).
 
 ### 4b. Tier 2 — Warm Memory (Supabase facts + Llama extractor)
 
-- [x] **Five fact-type Zod schemas** in `stratum/src/types/facts.ts` and
-  `stratum/src/memory/warm/schemas.ts`; invalid facts are rejected before write.
+- [x] **Five fact-type Zod schemas** in `runtime/src/types/facts.ts` and
+  `runtime/src/memory/warm/schemas.ts`; invalid facts are rejected before write.
 - [x] **Supabase migration** for five typed fact tables in
-  `stratum/supabase/migrations/20260406000000_initial_schema.sql`. ADR-0012
+  `runtime/supabase/migrations/20260406000000_initial_schema.sql`. ADR-0012
   chose typed tables in place of the older single `facts` table plan.
-- [x] **`stratum/src/memory/warm/extractor.ts`**. Structured extraction over
+- [x] **`runtime/src/memory/warm/extractor.ts`**. Structured extraction over
   an injected model completion; validated facts only. The live smoke used Haiku.
-- [x] **`stratum/src/memory/warm/tier2.ts`** + query API. Trusted org/session
+- [x] **`runtime/src/memory/warm/tier2.ts`** + query API. Trusted org/session
   keys and read validation are covered by unit and live smoke evidence.
 - [ ] **Tier 2 latency gate**. `npm run bench:tiers` now checks the <50ms p95
   ship target (it used MONITORING's 80ms alert). A local Compose run on
@@ -257,10 +259,10 @@ must be recalculated after the open gates are reconciled.
 
 ### 4c. Tier 3 — Cold Memory (Supabase pgvector + graph)
 
-- [x] **Tier 3 vector store**. `stratum/src/memory/cold/vectors.ts` uses
+- [x] **Tier 3 vector store**. `runtime/src/memory/cold/vectors.ts` uses
   Supabase pgvector with content-free embeddings and typed source pointers;
   ADR-0013 retains a `VectorStore` seam for a future Pinecone adapter.
-- [x] **Tier 3 knowledge graph**. `stratum/src/memory/cold/graph.ts` uses
+- [x] **Tier 3 knowledge graph**. `runtime/src/memory/cold/graph.ts` uses
   Supabase entity/edge tables and a supersession query; ADR-0013 retains a
   `KnowledgeGraph` seam for a future Neo4j adapter.
 - [x] **Tier 3 latency measurement**. `npm run bench:tiers` measured the
@@ -280,7 +282,7 @@ must be recalculated after the open gates are reconciled.
   `DEVOPS_STRATUM_PROJECT_SCOPE` filters both before limits; without it the
   bridge selects only legacy unbound facts. A disposable local database check
   covers two projects in one organization. See
-  `stratum/scripts/session-start-context.ts` and PR #42.
+  `runtime/scripts/session-start-context.ts` and PR #42.
 - [ ] **Live session-start binding and recall**. Configure a trusted project/org
   mapping and local database credentials, then measure retrieval/injection in
   a real Claude session. Other tools' session-start adapters remain open.
@@ -296,7 +298,7 @@ must be recalculated after the open gates are reconciled.
   this needs its own spec, threat-model entry and ADR before any code
   (`specs/graph/J-jev-judgments.md` keeps Stratum's request path out of scope
   today).
-- [x] **50-turn survival test**: `stratum/test/memory/manager.test.ts` proves a
+- [x] **50-turn survival test**: `runtime/test/memory/manager.test.ts` proves a
   decision evicted from hot memory is extracted, persisted, and recalled after
   50 unrelated turns using a fake model and database. A separate live memory
   pipeline smoke was recorded; it does not establish a live 50-turn result.
@@ -311,7 +313,7 @@ must be recalculated after the open gates are reconciled.
 
 ### 4f. Borrowed pattern integration — knowledge-graph view (NEW, ~30h)
 
-Borrowed from [Lum1104/Understand-Anything](https://github.com/Lum1104/Understand-Anything). Layers visualization and exploration on the approved local Tier-3 graph/vector stores. `stratum/scripts/understand-codebase.ts` provides a read-only entity/semantic-query CLI with a universal bound slash adapter. Project-local JS/TS/Rust/Python File and Function ingestion, fuzzy and semantic node search, paged dependency tours, exact-path durable Tier-2 links, selectable in-canvas fact nodes, and a real-Chrome dashboard check are implemented. The opt-in source-summary adapter now requests non-thinking output; a real local Qwen sample produced accepted summaries for 11 Files, and a disposable Compose run persisted two File summaries with four embeddings. Representative quality across arbitrary source remains open.
+Borrowed from [Lum1104/Understand-Anything](https://github.com/Lum1104/Understand-Anything). Layers visualization and exploration on the approved local Tier-3 graph/vector stores. `runtime/scripts/understand-codebase.ts` provides a read-only entity/semantic-query CLI with a universal bound slash adapter. Project-local JS/TS/Rust/Python File and Function ingestion, fuzzy and semantic node search, paged dependency tours, exact-path durable Tier-2 links, selectable in-canvas fact nodes, and a real-Chrome dashboard check are implemented. The opt-in source-summary adapter now requests non-thinking output; a real local Qwen sample produced accepted summaries for 11 Files, and a disposable Compose run persisted two File summaries with four embeddings. Representative quality across arbitrary source remains open.
 
 - [ ] **Knowledge-graph extraction pipeline**. Project-local JS/TS/Rust/Python ingestion walks files, extracts top-level functions and local imports/modules, and writes File/Function nodes with DECLARES/DEPENDS_ON edges. A dedicated edge table durably links indexed Files to active, exact-path Tier-2 changes and decisions; the canvas shows those links when a File is selected. An opt-in loopback model summarizes File nodes before offline embedding; real local Qwen passed an 11-File sample and disposable persistence check. Representative source coverage and quality remain open.
 - [x] **`/understand-codebase` slash command**. The universal command invokes the read-only CLI through a trusted project/org adapter; the graph dashboard is available separately.
@@ -331,18 +333,18 @@ dashboard landed; the historical ~60h estimate is stale.
 
 ### 5a. Git indexer + attestation checker
 
-- [x] **`stratum/src/audit/git-indexer.ts`**. Indexes recent Git history into
+- [x] **`runtime/src/audit/git-indexer.ts`**. Indexes recent Git history into
   structured code changes. `npm run bench:audit-indexer` measures five real
   100-commit samples against the <5s p95 local target; a release-run
   measurement on the user's machine remains a v0.6 release check (ADR-0025).
-- [x] **Deterministic Git attestation core**. `stratum/src/audit/git-attestation.ts` compares typed code facts against indexed changes and returns CONFIRMED / CONFLICT / UNVERIFIED; `audit-engine.ts` persists the outcomes. It is currently called by `npm run audit:repo`, not the proxy request path. Explicit binding to a fact's claimed `commit_hash` remains open.
-- [x] **Core attestation tests**. `stratum/test/audit/git-attestation.test.ts` covers confirming, contradicting, unverified changes, and exact claimed-commit confirmation. Absence of a confirming indexed change returns UNVERIFIED.
+- [x] **Deterministic Git attestation core**. `runtime/src/audit/git-attestation.ts` compares typed code facts against indexed changes and returns CONFIRMED / CONFLICT / UNVERIFIED; `audit-engine.ts` persists the outcomes. It is currently called by `npm run audit:repo`, not the proxy request path. Explicit binding to a fact's claimed `commit_hash` remains open.
+- [x] **Core attestation tests**. `runtime/test/audit/git-attestation.test.ts` covers confirming, contradicting, unverified changes, and exact claimed-commit confirmation. Absence of a confirming indexed change returns UNVERIFIED.
 - [x] **Claimed commit anchor**. A fact's `commit_hash` must match its confirming indexed change; missing or mismatched anchors return UNVERIFIED. A rename's delete/add evidence must share one commit. See `specs/audit/commit-anchor.md`.
 
 ### 5b. Llama spot-check + Opus escalation
 
-- [x] **Llama spot-check core**. `stratum/src/audit/llama-check.ts` supplies deterministic ~10% sampling, a bounded untrusted-data prompt, verdict parsing, and a confidence score through an injected completion seam. A real Llama provider and request-path invocation remain open.
-- [x] **Opus escalation core**. `stratum/src/audit/opus-escalation.ts` parses a deeper verdict through an injected completion seam; the spot-check result flags confidence <0.85 for escalation. The two stages are not yet orchestrated in the request path or verified against a real provider.
+- [x] **Llama spot-check core**. `runtime/src/audit/llama-check.ts` supplies deterministic ~10% sampling, a bounded untrusted-data prompt, verdict parsing, and a confidence score through an injected completion seam. A real Llama provider and request-path invocation remain open.
+- [x] **Opus escalation core**. `runtime/src/audit/opus-escalation.ts` parses a deeper verdict through an injected completion seam; the spot-check result flags confidence <0.85 for escalation. The two stages are not yet orchestrated in the request path or verified against a real provider.
 - [ ] **Live staged audit**. Invoke the sampled Llama check and conditional Opus escalation for the trusted organization with real providers; verify the 1000-fact rate and cost limits before activation.
 - [ ] **Cost monitor**: log Opus audit costs; alert if >2% of usage. (~3h)
 
@@ -376,7 +378,7 @@ machine, so there is no operator server for an enclave to protect against.
 These planned items are withdrawn, not deferred:
 
 - **6a. Client-side crypto.** The offline AES-256-GCM primitive from ADR-0022
-  (`stratum/src/pruner/crypto.ts`) stays in the tree as code; no request-path
+  (`runtime/src/pruner/crypto.ts`) stays in the tree as code; no request-path
   work is planned on it. The session-key rotation item goes with it.
 - **6b. AWS Nitro Enclave deployment**: the enclave application, the
   attestation flow and the TEE gateway.
@@ -393,7 +395,7 @@ not TEE work; it moves to the v0.8.x release gate.
 Anthropic's reasoning-based security scanner (GA Feb 2026) reads code "the way a human security researcher would" — traces data flow, catches complex vulns that pattern-matchers miss. Wire it as a release-gate scan before any v0.x → v0.(x+1) tag from v0.8.x forward. Especially load-bearing around the Phase 3 fact-extraction paths.
 
 - [ ] **Wire Claude Code Security at release gate** (~2h). Run on the full diff between previous release tag and current release candidate. Document the run in release notes. Surface findings (if any) with disposition (fix-before-release / accept-risk-with-ADR / false-positive-with-rationale).
-- [ ] **Data-flow tracing focus areas** documented in `stratum/docs/SECURITY.md` (~1h). Explicitly call out the high-value scan targets: Phase 3 fact extractor (LLM-input/output boundary), PII redaction wrapper (any new code touching captured content), proxy forward path (auth header handling).
+- [ ] **Data-flow tracing focus areas** documented in `runtime/docs/SECURITY.md` (~1h). Explicitly call out the high-value scan targets: Phase 3 fact extractor (LLM-input/output boundary), PII redaction wrapper (any new code touching captured content), proxy forward path (auth header handling).
 - [ ] **Threat-model entry update** (~1h) — add reasoning-based scan as a Tier 3 control alongside existing pattern-based scans (gitleaks + semgrep) and our area-A pentest-stack.
 
 ---
@@ -409,7 +411,7 @@ Anthropic's reasoning-based security scanner (GA Feb 2026) reads code "the way a
 - [ ] **`npm run setup`** (~15h). The root command detects macOS/Linux/WSL2, installs missing Stratum dependencies, starts project-local Supabase Compose, and smoke-tests the real proxy/database listener without `.env` access. A fresh Ubuntu 24.04 hosted runner installed 402 packages, applied 29 migrations, and passed the real loopback proxy/database smoke in 67 seconds (CI run `35949731799`). A project-local fresh macOS clone with no Stratum dependencies or database volume passed the same setup in 53 seconds using an isolated Compose instance; its teardown left the primary stack running. Docker images were cached on that Mac. Clean macOS and WSL2 laptops, provider-backed message traffic, and real-data recovery remain unverified.
 - [ ] **PERSONAL_USE.md v2** — full polish (~5h). Daily workflow, env vars, troubleshooting common errors, FAQ.
 - [x] **DEVELOPER_GUIDE.md** (~6h). Contributor checkout setup, current root/Stratum tests and lint/typecheck, PR review flow, and owner signing procedure are documented; clean-machine and real-data release gates remain open.
-- [x] **ARCHITECTURE.md** (~6h). `stratum/docs/ARCHITECTURE.md` (#185) covers the system design, component responsibilities and data flow, with two Mermaid diagrams and an index of every ADR. Each statement cites the code it describes.
+- [x] **ARCHITECTURE.md** (~6h). `runtime/docs/ARCHITECTURE.md` (#185) covers the system design, component responsibilities and data flow, with two Mermaid diagrams and an index of every ADR. Each statement cites the code it describes.
 
 ### 7b. Observability + ops
 
@@ -421,9 +423,9 @@ Anthropic's reasoning-based security scanner (GA Feb 2026) reads code "the way a
 ### 7c. Data + config
 
 - [ ] **Multi-environment config** (~4h). `config.dev.yml` / `config.prod.yml` overrides. Document in PERSONAL_USE.md.
-- [ ] **Versioned schema + migration scripts** (~4h). `stratum/scripts/migrate-session-schema.ts` (already in Phase 0 spec). Test v0.1.0 → v0.2.0 round trip.
+- [ ] **Versioned schema + migration scripts** (~4h). `runtime/scripts/migrate-session-schema.ts` (already in Phase 0 spec). Test v0.1.0 → v0.2.0 round trip.
 - [ ] **Backup + restore** (~5h). The local Compose check now backs up, deletes, and restores a disposable audited organization, including suppression, status, and alert evidence. Paged export prevents silent truncation under a REST row cap. The local operator runbook is in `docs/runbooks/LOCAL_STRATUM.md`. Clean-machine and real-data recovery remain open.
-- [x] **Telemetry policy + opt-out** (~3h). `stratum/docs/TELEMETRY.md` lists what Stratum emits and where it goes. `STRATUM_TELEMETRY_OPT_OUT=true` (or `1`) suppresses the per-turn `stratum.turn` record (`stratum/src/proxy/telemetry.ts` `resolveTelemetrySink`, with tests). `stratum/docs/PERSONAL_USE.md` documents the variable (#185).
+- [x] **Telemetry policy + opt-out** (~3h). `runtime/docs/TELEMETRY.md` lists what Stratum emits and where it goes. `STRATUM_TELEMETRY_OPT_OUT=true` (or `1`) suppresses the per-turn `stratum.turn` record (`runtime/src/proxy/telemetry.ts` `resolveTelemetrySink`, with tests). `runtime/docs/PERSONAL_USE.md` documents the variable (#185).
 
 ### 7d. Distribution polish
 
@@ -440,7 +442,7 @@ Anthropic's reasoning-based security scanner (GA Feb 2026) reads code "the way a
 ## 8. v0.9.x — Payment removal + self-hosted team features
 
 **Redefined by owner decision, 2026-09-26** (ADR-0025,
-`stratum/docs/decisions/0025-open-source-local-first-no-payment.md`). This
+`runtime/docs/decisions/0025-open-source-local-first-no-payment.md`). This
 version was the Phase 6 billing schema: HMAC-signed records, an append-only
 trigger, a 20% fee calculator, an invoice stub and a CFO dashboard, built as
 preparation for Stripe in v1.0. The project is now open source with no
@@ -452,7 +454,7 @@ needs.
 **Effort remaining**: not estimated. The former ~30h estimate covered the billing scope and is withdrawn.
 
 **Current state (code on `main`, 2026-09-26).** The payment layer is still in
-the tree: `stratum/src/billing/` (Stripe client and webhook, invoice
+the tree: `runtime/src/billing/` (Stripe client and webhook, invoice
 generation and ledger, fee calculator, HMAC recorder), the `/billing` CFO page
 and `/v1/billing/*` routes, `POST /stripe/webhook`, the invoice tables, and the
 append-only trigger on `billing_records`. That trigger was checked off here
@@ -470,16 +472,16 @@ pieces that stay already exist in code: hash-only API-key auth, org-scoped
   `invoice.ready` webhook event go; the plan reader moves first; a token-only
   usage read API stays (REQ-1 to REQ-3).
 - [ ] **C2 — Unsigned usage ledger.** Copy the usage recorder and outbox out
-  of `stratum/src/billing/`; migration M1 drops the signature, the fee column
+  of `runtime/src/billing/`; migration M1 drops the signature, the fee column
   and the append-only enforcement; team mode stops requiring
   `CQ_BILLING_SIGNING_SECRET` (REQ-4, REQ-5).
 - [ ] **Retire the billing four-eyes gate.** Authorized by the owner on
   2026-09-26. A separate graph cycle changes `deploy-gate.sh` and
   `governance/graph/`, and it lands before C1: it also adds the declared
   test-floor lowering mechanism (REQ-12) that C1 needs. The gateway path
-  (`stratum/src/proxy/providers/`) is not payment code.
-- [ ] **C3 — Delete the payment modules** (`stratum/src/billing/`,
-  `stratum/scripts/invoice.ts`) and their tests (REQ-7).
+  (`runtime/src/proxy/providers/`) is not payment code.
+- [ ] **C3 — Delete the payment modules** (`runtime/src/billing/`,
+  `runtime/scripts/invoice.ts`) and their tests (REQ-7).
 - [ ] **C4 — Remove the invoice schema** (migration M2) and the
   billing-retention erasure blocker, and supersede ADR-0021 (REQ-8, REQ-9).
 - [ ] **Declared test-floor lowerings** for each cycle that removes tests
@@ -549,9 +551,9 @@ These thread through every version. Track separately.
 
 ### 10a. Carry-forward never-blocking items
 
-- [ ] **vitest 2 → vitest 4 / istanbul migration** (~4-8h). Trigger: any vitest 4 feature genuinely needed OR another tooling-asymmetry surface. Until then, the v8+TS source-maps functions-coverage limitation is documented in `stratum/vitest.config.ts`.
+- [ ] **vitest 2 → vitest 4 / istanbul migration** (~4-8h). Trigger: any vitest 4 feature genuinely needed OR another tooling-asymmetry surface. Until then, the v8+TS source-maps functions-coverage limitation is documented in `runtime/vitest.config.ts`.
 - [ ] **PB-21 justification cleanup** — re-state the real reason (cosign can't re-sign until PB-13 refreshes; verify-blob refactor would also fail) when PB-13 closes.
-- [x] **Cloudflare Worker deployment path** — decided 2026-09-26: self-host only, no hosted service (ADR-0025). No Worker deployment is planned; the `stratum/src/proxy/worker.ts` stub stays as code.
+- [x] **Cloudflare Worker deployment path** — decided 2026-09-26: self-host only, no hosted service (ADR-0025). No Worker deployment is planned; the `runtime/src/proxy/worker.ts` stub stays as code.
 - [ ] **Conversation export/import format** — v0.8.x polish: clean way to share a debugged session with a friend.
 - [ ] **Multi-tenant auth + RBAC** (optional, after v1.0.0; moved out of the v1.0.0 ship gate 2026-09-26) (~10h). Org-level + developer-level +
   api-key auth. Middleware in proxy enforces tenant isolation. RLS-by-tenant

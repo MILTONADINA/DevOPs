@@ -19,5 +19,5 @@ test("root npm analyzer resolves this checkout without DEVOPS_ROOT", () => {
   const profile = readFileSync(new URL("../.workflow/profile.yml", import.meta.url), "utf8");
   assert.ok(profile.includes(`project_root: ${JSON.stringify(fileURLToPath(root).replace(/\/$/, ""))}`));
   assert.ok(statSync(new URL("../.workflow/profile.yml", import.meta.url)).mtimeMs >=
-    statSync(new URL("../stratum/package.json", import.meta.url)).mtimeMs);
+    statSync(new URL("../runtime/package.json", import.meta.url)).mtimeMs);
 });

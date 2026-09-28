@@ -1,6 +1,7 @@
 # Payment removal
 
 **Status**: approved (owner, 2026-09-26, spec batch 1; recorded in .workflow/state/approvals.jsonl as human_approved_spec)
+**Amended**: 2026-09-27: paths follow the move of `stratum/` to `runtime/` (ADR-0026; `specs/ops/one-platform-naming.md` REQ-5), and the floor key `stratum` is `runtime`. No requirement changed.
 **Spec ID**: ops/payment-removal
 
 **Scope:** the owner decision of 2026-09-26 (ADR-0025: open source, no payment,
@@ -25,25 +26,25 @@ REQ-12, which must be on `main` before C1 lowers any test floor.
 WHEN C1 lands, THE PROXY SHALL NOT register `GET /billing`,
 `GET /v1/billing/invoice`, `GET /v1/billing/audit.csv`,
 `GET /v1/billing/invoices` or `POST /stripe/webhook`, in personal or team
-mode. THE OPENAPI DOCUMENT (`stratum/src/proxy/openapi.ts`) SHALL drop the
+mode. THE OPENAPI DOCUMENT (`runtime/src/proxy/openapi.ts`) SHALL drop the
 same paths, the `Invoice` schema and the fee description in the same commit
 as the route removal, so that its paths remain a subset of the registered
 routes. No response, webhook payload or OpenAPI schema SHALL carry a
 `cq_fee_usd` field. The `invoice.ready` and `tee.attestation_failed` webhook
-event types (`stratum/src/webhooks/events.ts:11`; sample payloads at lines
+event types (`runtime/src/webhooks/events.ts:11`; sample payloads at lines
 83 and 92) SHALL be removed together with their sample payloads;
 `tee.attestation_failed` goes because the TEE is dropped (ADR-0025). Tests
 that used either event SHALL switch to a surviving event type so that they do
-not pass on an unknown-event 400. `stratum/api/index.js` is not a committed
+not pass on an unknown-event 400. `runtime/api/index.js` is not a committed
 file: it is a gitignored local build output of `npm run build:vercel`
-(`stratum/.gitignore:9-11`), and the project has no deployment. C1 therefore
+(`runtime/.gitignore:9-11`), and the project has no deployment. C1 therefore
 has no bundle to commit; WHEN a developer regenerates the bundle locally after
 C1, IT SHALL NOT serve the removed routes. Removing the Vercel adapter is a
 separate cleanup (Out of scope).
 
 ## REQ-2 — The plan reader moves before the billing routes go (C1)
 
-WHEN C1 rewrites or deletes `stratum/src/proxy/routes/billing.ts`, THE
+WHEN C1 rewrites or deletes `runtime/src/proxy/routes/billing.ts`, THE
 SYSTEM SHALL read an organization's plan for per-plan rate limits and the
 token budget from the sessions dependencies, not from the billing
 dependencies. Per-plan request limits, concurrent-session caps and token
@@ -56,10 +57,10 @@ fail-open default, SHALL NOT satisfy this requirement.
 WHERE the usage read API is kept (the default), THE SYSTEM SHALL serve an
 organization's monthly usage summary and paginated usage records with token
 totals and effectiveness, and no fee, plan minimum or amount due. It SHALL
-compute these without importing any module under `stratum/src/billing/`, and
+compute these without importing any module under `runtime/src/billing/`, and
 a project-bound API key SHALL receive 403, as it does for the current billing
 read paths. Reads of `cq_fee_usd` and `signed_hash`, here and in
-`stratum/src/proxy/routes/sessions.ts`, SHALL be gone before migration M1
+`runtime/src/proxy/routes/sessions.ts`, SHALL be gone before migration M1
 drops those columns.
 
 ## REQ-4 — The usage ledger is unsigned (C2, migration M1)
@@ -87,8 +88,8 @@ that secret and nothing else. IF usage persistence would be turned off by
 the change (no usage rows, zero session stats), THEN the cycle SHALL NOT
 land. The existing guard that refuses a non-persistent journal location
 SHALL stay while the durable outbox exists. The usage modules SHALL be copied
-out of `stratum/src/billing/` into a new location; C2 SHALL NOT stage any
-path under `stratum/src/billing/`, and no cycle SHALL move files out of it
+out of `runtime/src/billing/` into a new location; C2 SHALL NOT stage any
+path under `runtime/src/billing/`, and no cycle SHALL move files out of it
 with `git mv`.
 
 ## REQ-6 — USD estimates are kept as information (C1 to C4)
@@ -102,13 +103,13 @@ or an amount due.
 
 ## REQ-7 — The payment modules are deleted (C3)
 
-WHEN C3 lands, every file under `stratum/src/billing/` and
-`stratum/scripts/invoice.ts` SHALL be deleted in one commit, together with
+WHEN C3 lands, every file under `runtime/src/billing/` and
+`runtime/scripts/invoice.ts` SHALL be deleted in one commit, together with
 the payment-only tests, the `invoice`, `verify-billing` and `verify-stripe`
 npm scripts that remain, and the payment types in
-`stratum/src/types/billing.ts`. After C3, no module SHALL import from
-`stratum/src/billing/`: the importer check
-`git grep -nE "['\"](\.\.?/)+([^'\"]*/)?billing/" -- stratum/src stratum/scripts stratum/test stratum/vercel-src`
+`runtime/src/types/billing.ts`. After C3, no module SHALL import from
+`runtime/src/billing/`: the importer check
+`git grep -nE "['\"](\.\.?/)+([^'\"]*/)?billing/" -- runtime/src runtime/scripts runtime/test runtime/vercel-src`
 SHALL print nothing, and `npm run typecheck` SHALL pass. The check matches
 relative module specifiers that pass through a `billing/` directory (static
 imports, dynamic imports and `vi.mock` paths), so it does not match the kept
@@ -148,7 +149,7 @@ sort after every migration present on `main` when the cycle starts.
 ## REQ-11 — The gateway is untouched
 
 No cycle under this spec SHALL stage a path under
-`stratum/src/proxy/providers/`, including comment-only rewording. The
+`runtime/src/proxy/providers/`, including comment-only rewording. The
 multi-provider gateway is not payment code.
 
 ## REQ-12 — Test floors fall only through declared lowerings
@@ -180,20 +181,20 @@ removed, which this spec does not plan.
 No cycle SHALL edit these tracked files, even where they mention billing,
 invoices or the signing secret:
 
-- `stratum/evals/datasets/golden/tier-c.jsonl`
-- `stratum/evals/datasets/provenance/pges-fixture.dev.jsonl`
-- `stratum/evals/datasets/provenance/pges-fixture.dev.jsonl.sha256`
-- `stratum/evals/datasets/provenance/pges-fixture.sealed.jsonl`
-- `stratum/evals/datasets/provenance/pges-fixture.sealed.jsonl.sha256`
+- `runtime/evals/datasets/golden/tier-c.jsonl`
+- `runtime/evals/datasets/provenance/pges-fixture.dev.jsonl`
+- `runtime/evals/datasets/provenance/pges-fixture.dev.jsonl.sha256`
+- `runtime/evals/datasets/provenance/pges-fixture.sealed.jsonl`
+- `runtime/evals/datasets/provenance/pges-fixture.sealed.jsonl.sha256`
 
 A repository-wide search-and-replace SHALL exclude them. No imported session
-transcript is tracked (`git ls-files stratum/data` printed nothing on
-2026-09-26, and `stratum/data/sessions/` is gitignored), so none is listed.
+transcript is tracked (`git ls-files runtime/data` printed nothing on
+2026-09-26, and `runtime/data/sessions/` is gitignored), so none is listed.
 
 ## REQ-14 — Each cycle is verified on the running system
 
 Before a cycle lands, THE CYCLE SHALL run the typecheck, the full Stratum
-vitest suite, the root `npm test`, and every `stratum/test/integration/*.sql`
+vitest suite, the root `npm test`, and every `runtime/test/integration/*.sql`
 file against the local stack, and SHALL boot the real proxy: root
 `npm run setup` (which includes the smoke boot) and a team-mode `npm run dev`
 answered by `GET /health`. A green unit suite alone SHALL NOT count as
@@ -223,27 +224,27 @@ after C4.
 `POST /stripe/webhook` return 404, `/openapi.json` lists none of them, and the
 OpenAPI parity test passes.
 
-**Verified by:** C1, a Stratum route test plus the existing OpenAPI parity test (stratum/test/proxy/openapi.test.ts). Test titles name `specs/ops/payment-removal.md#AC-1`.
+**Verified by:** C1, a Stratum route test plus the existing OpenAPI parity test (runtime/test/proxy/openapi.test.ts). Test titles name `specs/ops/payment-removal.md#AC-1`.
 
 ### AC-2 (REQ-2)
 **Given** C1 has landed **When** a starter-plan organization sends its 21st
 request in a minute **Then** it receives 429, as before C1.
 
-**Verified by:** C1, a rate-limit test in stratum/test/proxy/ that reads the plan through the re-homed reader. Test titles name `specs/ops/payment-removal.md#AC-2`.
+**Verified by:** C1, a rate-limit test in runtime/test/proxy/ that reads the plan through the re-homed reader. Test titles name `specs/ops/payment-removal.md#AC-2`.
 
 ### AC-3 (REQ-3)
 **Given** the usage read API is kept **When** an organization key reads its
 monthly summary **Then** the response has token totals and no fee field, and a
 project-bound key receives 403.
 
-**Verified by:** C1, the usage read API route test in stratum/test/proxy/. Test titles name `specs/ops/payment-removal.md#AC-3`.
+**Verified by:** C1, the usage read API route test in runtime/test/proxy/. Test titles name `specs/ops/payment-removal.md#AC-3`.
 
 ### AC-4 (REQ-4)
 **Given** M1 has been applied to the local stack **When** the same usage event
 is written twice **Then** one row exists, it has no `signed_hash` or
 `cq_fee_usd` column, and an UPDATE on it is no longer rejected by a trigger.
 
-**Verified by:** C2, the SQL integration test that replaces stratum/test/integration/local-billing-ledger.sql, run in CI by setup-linux. Test titles name `specs/ops/payment-removal.md#AC-4`.
+**Verified by:** C2, the SQL integration test that replaces runtime/test/integration/local-billing-ledger.sql, run in CI by setup-linux. Test titles name `specs/ops/payment-removal.md#AC-4`.
 
 ### AC-5 (REQ-5)
 **Given** team mode with a database and service key and no
@@ -258,11 +259,11 @@ database.
 usage API are read **Then** token counts and USD estimates are present, and no
 figure is labelled as a fee, charge or amount due.
 
-**Verified by:** C1 and C2, route and dashboard tests in stratum/test/proxy/ that assert USD estimates are present and no fee field exists. Test titles name `specs/ops/payment-removal.md#AC-6`.
+**Verified by:** C1 and C2, route and dashboard tests in runtime/test/proxy/ that assert USD estimates are present and no fee field exists. Test titles name `specs/ops/payment-removal.md#AC-6`.
 
 ### AC-7 (REQ-7)
 **Given** C3 has landed **When** the importer check runs **Then**
-`git grep -nE "['\"](\.\.?/)+([^'\"]*/)?billing/" -- stratum/src stratum/scripts stratum/test stratum/vercel-src`
+`git grep -nE "['\"](\.\.?/)+([^'\"]*/)?billing/" -- runtime/src runtime/scripts runtime/test runtime/vercel-src`
 prints nothing and the typecheck passes.
 
 **Verified by:** C3, the importer grep plus `npm run typecheck`, recorded in the cycle proof (an ops check, verified by the committed claim). Test titles name `specs/ops/payment-removal.md#AC-7`.
@@ -272,7 +273,7 @@ prints nothing and the typecheck passes.
 a session is erased through the API **Then** the coverage guard passes, and the
 erasure preflight reports no billing-retention blocker.
 
-**Verified by:** C4, stratum/test/integration/local-session-erasure-inventory.sql plus the sessions-route test. Test titles name `specs/ops/payment-removal.md#AC-8`.
+**Verified by:** C4, runtime/test/integration/local-session-erasure-inventory.sql plus the sessions-route test. Test titles name `specs/ops/payment-removal.md#AC-8`.
 
 ### AC-9 (REQ-9)
 **Given** a backup exported before C2 that contains `invoices`,
@@ -280,11 +281,11 @@ erasure preflight reports no billing-retention blocker.
 C4 **Then** the restore succeeds, the other tables' rows are present, and its
 output names the skipped tables and stripped columns.
 
-**Verified by:** C4, stratum/test/audit/restore-org.test.ts with a legacy backup fixture. Test titles name `specs/ops/payment-removal.md#AC-9`.
+**Verified by:** C4, runtime/test/audit/restore-org.test.ts with a legacy backup fixture. Test titles name `specs/ops/payment-removal.md#AC-9`.
 
 ### AC-10 (REQ-10, REQ-11, REQ-13)
 **Given** any cycle's diff **When** it is reviewed **Then** it modifies no
-existing migration, no path under `stratum/src/proxy/providers/`, and none of
+existing migration, no path under `runtime/src/proxy/providers/`, and none of
 the files listed in REQ-13.
 
 **Verified by:** every cycle: the reviewer checks the diff (an ops check, verified by the committed claim). Test titles name `specs/ops/payment-removal.md#AC-10`.
@@ -294,7 +295,7 @@ the files listed in REQ-13.
 tests adds a new `lowerings` entry whose `from` is `main`'s Stratum floor, whose
 `to` is the cycle's passing count, and whose `reason` and `decision` are
 non-empty **When** CI runs the ratchet check **Then** it passes and prints
-`test floors: LOWERED stratum <from> -> <to>: <reason>`. The same lowered floor
+`test floors: LOWERED runtime <from> -> <to>: <reason>`. The same lowered floor
 with no entry, with only an entry already on `main`, or with an entry whose
 `suite`, `from` or `to` does not match, is refused.
 

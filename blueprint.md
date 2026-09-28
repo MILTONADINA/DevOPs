@@ -1,10 +1,12 @@
 # DevOPs + Stratum — Masterpiece Blueprint
 
+> **Paths.** On 2026-09-27 the `stratum/` directory moved to `runtime/` (ADR-0026). Paths in this document point to where files live now; older entries describe work done while it was `stratum/`.
+
 **Owner**: Milton Adina
 **Authored**: 2026-05-28 — recalibrated from initial-draft scope-cut error.
 **Status**: BINDING from Session 14 forward.
 **Quality bar**: **Best-of-the-best, no compromises, no shortcuts.** Same standard as Session 13's "production-grade" framing. Open source with no payment (owner decision 2026-09-26, ADR-0025) does NOT mean lower quality, looser tests, or less rigor.
-**Distribution model** (drives every design decision; owner decision 2026-09-26, `stratum/docs/decisions/0025-open-source-local-first-no-payment.md`):
+**Distribution model** (drives every design decision; owner decision 2026-09-26, `runtime/docs/decisions/0025-open-source-local-first-no-payment.md`):
 - **Open source, no payment.** MIT-licensed. Nobody pays the project. A user who chooses a paid third-party service (an LLM provider, TypeSafe's Jev) pays that provider directly with their own key.
 - **Local-first, no deployment.** The goal (the v1.0.0 ship gate) is that a user points their AI agent at this repository, and the agent configures DevOPs and Stratum on the user's own machine (macOS, Linux or WSL2); this is not yet verified. The project runs no hosted service. The conversation history stays on the user's machine.
 - **Self-hosted teams.** A team can run Stratum's team mode (organizations, API keys, usage estimates) on its own machines. Contributions come via PR.
@@ -74,13 +76,13 @@ That is the goalpost. Nothing below it is acceptable.
 | Sigstore skill signing (cosign + Rekor) | `.github/workflows/release-sign.yml` + `governance/skill-manifest.yml` | Trust chain for friend installations |
 | GPG/SSH-signed git tags (PB-16 closure) | future | Tag integrity for releases |
 | PR-flow + branch protection (PB-17 Option β) | `.workflow/state/session-handoff.md` PR-flow doc | Audit trail; friend contributions via PR |
-| Production coverage thresholds (85/80/90/85) | `stratum/vitest.config.ts` | Quality gate; no exceptions for personal-tool framing |
+| Production coverage thresholds (85/80/90/85) | `runtime/vitest.config.ts` | Quality gate; no exceptions for personal-tool framing |
 | AP-5 anti-pattern surfacing | Session 13 lessons-in-force | Real failure modes; surface honestly |
-| Stratum Phase 0 — Observation | `stratum/docs/ROADMAP.md` Phase 0 | Foundation for all later phases |
+| Stratum Phase 0 — Observation | `runtime/docs/ROADMAP.md` Phase 0 | Foundation for all later phases |
 | Stratum Phase 1 — Measurement Proxy | Phase 1 | Visible value; cost transparency |
-| Stratum Phase 2 — KadaneDial Pruner | Phase 2 + `stratum/docs/ALGORITHM.md` | Cost optimization; the big-win |
-| Stratum Phase 3 — Three-Tier Memory (Hot/Warm/Cold) | Phase 3 + `stratum/docs/MEMORY_ARCHITECTURE.md` | Cross-session + cross-project persistence; defining feature |
-| Stratum Phase 5 — Git-Attestation Audit Engine | Phase 5 + `stratum/docs/AUDIT_ENGINE.md` | Fact coherence check; required for memory to be trustworthy |
+| Stratum Phase 2 — KadaneDial Pruner | Phase 2 + `runtime/docs/ALGORITHM.md` | Cost optimization; the big-win |
+| Stratum Phase 3 — Three-Tier Memory (Hot/Warm/Cold) | Phase 3 + `runtime/docs/MEMORY_ARCHITECTURE.md` | Cross-session + cross-project persistence; defining feature |
+| Stratum Phase 5 — Git-Attestation Audit Engine | Phase 5 + `runtime/docs/AUDIT_ENGINE.md` | Fact coherence check; required for memory to be trustworthy |
 | v0.9 — Payment removal + self-hosted team features (unsigned usage ledger, organizations and API keys, usage estimates, session erasure) | `specs/ops/payment-removal.md` + plan.md §8 | Replaces the Phase 6 billing schema (ADR-0025); ships in v0.9.x |
 
 ### In v1.0.0 (the open-source local-first release)
@@ -202,7 +204,7 @@ These are not negotiable for any version. Every PR is gated.
 
 ### Code
 
-- TypeScript strict mode. No `any` types. Per stratum CLAUDE.md.
+- TypeScript strict mode. No `any` types. Per runtime/.claude/CLAUDE.md.
 - Every async function has explicit error handling. No unhandled promise rejections.
 - Every exported function has JSDoc with `@param`, `@returns`, `@throws`.
 - Rust code uses `thiserror`. No `.unwrap()` in production paths.
@@ -210,7 +212,7 @@ These are not negotiable for any version. Every PR is gated.
 
 ### Testing
 
-- vitest for stratum (Q8.1 binding). Coverage thresholds: statements ≥85%, branches ≥80%, functions ≥90%, lines ≥85% on production code paths.
+- vitest for runtime/ (Q8.1 binding). Coverage thresholds: statements ≥85%, branches ≥80%, functions ≥90%, lines ≥85% on production code paths.
 - Integration tests against real fixtures (not synthetic) wherever Phase 0 corpus or later session data exists.
 - Eval suite (Phase 2+): Faithfulness >0.90, Answer Relevancy >0.88 on Tier A datasets (LoCoMo, MT-Bench+, SCM4LLMs); ≥4 Tier B scenarios; ≥30 Tier C golden queries; zero regression tolerance on Tier C.
 - Adversarial tests: PII-leak attempts, injection probes (canonical + variants), malformed input, partial response, network drop.
@@ -245,7 +247,7 @@ These are not negotiable for any version. Every PR is gated.
 - DEVELOPER_GUIDE.md — for friends contributing.
 - ARCHITECTURE.md — system design overview.
 - SECURITY.md — threat model + crypto details.
-- ADRs in `stratum/docs/decisions/` for every load-bearing decision.
+- ADRs in `runtime/docs/decisions/` for every load-bearing decision.
 - LAUNCH_READINESS.md — honest progress math (effort-hours methodology).
 - CHANGELOG.md — Keep-a-Changelog format.
 - THREAT_MODEL.md — STRIDE + OWASP ASI 2026 per area.
@@ -282,7 +284,7 @@ These are not negotiable for any version. Every PR is gated.
 | Phase 2 (pruner) vs Phase 3 (memory) — which first? | **Phase 2 first** (per original Stratum spec order). Reason: pruner produces cleaner sessions → cleaner fact extraction → higher-quality Phase 3 memory. Reversed order leaves Phase 3 extracting facts from noisy data. Also: cost is a higher-urgency pain point than productivity. |
 | Phase 5 (audit) vs Phase 4 (TEE) — which first? | **Phase 5 first** (v0.6.x before v0.7.x). Reason: audit engine is required before facts can be trusted; once facts are trustworthy, adding TEE makes sensitive-context use safe. TEE before audit = encrypted lies. |
 | Do I need to support non-Anthropic LLMs? | **No.** Out of scope permanently. Claude Code is the only target; adding OpenAI/Gemini is a separate product. |
-| What happens if Anthropic changes its API? | The proxy is at the SDK boundary. SDK version pinning + integration tests against canned fixtures + a thin abstraction layer (already in `stratum/src/lib/anthropic.ts` stub) hedge this. |
+| What happens if Anthropic changes its API? | The proxy is at the SDK boundary. SDK version pinning + integration tests against canned fixtures + a thin abstraction layer (already in `runtime/src/lib/anthropic.ts` stub) hedge this. |
 | What's the killer "wow" feature that gets friends excited? | **Phase 3 cross-session memory.** "Stratum knows what we decided last week" beats "Stratum saved you $5 today" emotionally. But Phase 2 ships first per the spec-author's wisdom (clean data → clean facts). |
 | What about the Anthropic SDK version pin `^0.39.0`? | **Verify and bump.** Current SDK has had major changes since 0.39. Add to v0.3.x checklist: confirm capture-session.ts works against latest SDK; bump pin; tests against new fixtures. |
 | Should there be a public marketing page? | **No.** The project does not deploy (ADR-0025), so there is no hosted page. Build the product; the product is the marketing. |
@@ -300,7 +302,7 @@ Identified during the deep dive; flagged for action in plan.md.
 | Gap | Impact | Where addressed |
 |---|---|---|
 | Phase 0 content corpus 0% met (1 session JSON, 23 unfilled markers in waste-taxonomy, paper-notes is a stub) | Phase 0 acceptance criteria require 5+ sessions, ≥4 named waste categories, ≥5 paper notes | plan.md §2 |
-| Q4 base-URL override not wired (`stratum/scripts/capture-session.ts:144` hardcoded) | Cannot layer Phase 1 proxy over Phase 0 capture | plan.md §1 |
+| Q4 base-URL override not wired (`runtime/scripts/capture-session.ts:144` hardcoded) | Cannot layer Phase 1 proxy over Phase 0 capture | plan.md §1 |
 | PII redaction NOT wired into capture-session.ts | Capture artifacts contain raw PII | plan.md §1 (SECURITY-BEARING) |
 | Anthropic SDK pinned at `^0.39.0` (likely stale) | Major SDK changes since 0.39; may not work against current API | plan.md §3 |
 | No `npm run setup` flow at repo root | Friends can't onboard in <5 min | plan.md §8 (v0.8.x polish) |
@@ -377,7 +379,7 @@ We integrate with first-party tools rather than re-implementing them. We borrow 
 ### Specifically not borrowing
 
 - Understand-Anything's multi-tool plugin format wrappers (.copilot-plugin, .cursor-plugin, etc.) — we ship Claude Code first via `.claude-plugin/`; other tools come later when there's demand.
-- Superpowers's pnpm + monorepo structure — we already have a working monorepo-ish layout via stratum/ subtree; no migration needed.
+- Superpowers's pnpm + monorepo structure — we already have a working monorepo-ish layout via runtime/ subtree; no migration needed.
 
 ---
 
@@ -457,7 +459,7 @@ The launch-readiness output is ALWAYS derived from markdown source-of-truth. Nev
 - **`ARCHITECTURE.md`** — system design overview (to be written in v0.8.x)
 - **`.workflow/state/plans/stratum-phase-0-capture.md`** — full Phase 0 spec (unchanged; this blueprint references its open questions)
 - **`docs/LAUNCH_READINESS.md`** — math + status (still authoritative for figures)
-- **`stratum/docs/ROADMAP.md`** — upstream Stratum roadmap (still the source-of-truth for phase scope; this blueprint applies version sequencing on top)
+- **`runtime/docs/ROADMAP.md`** — upstream Stratum roadmap (still the source-of-truth for phase scope; this blueprint applies version sequencing on top)
 - **`governance/changelog/ROADMAP.md`** — DevOPs-side phase roadmap
 
 ---

@@ -20,12 +20,12 @@ DevOPs is open source (MIT) with no payment and no hosted service. The goal
 for v1.0 is that you point your AI agent at this repository and it configures
 DevOps on your own machine, including its local proxy and memory; that is not yet verified. Optional third-party services, such as an LLM provider or
 TypeSafe's Jev, are paid by you directly if you choose to use them
-(`stratum/docs/decisions/0025-open-source-local-first-no-payment.md`).
+(`runtime/docs/decisions/0025-open-source-local-first-no-payment.md`).
 
 DevOps is one platform. The workflow (constitution, hooks, skills, subagents
 and the graph pipeline) and the local runtime (the proxy, memory and pruner,
-whose code lives in `stratum/`) ship together from this repository
-(`stratum/docs/decisions/0026-one-platform-named-devops.md`).
+whose code lives in `runtime/`) ship together from this repository
+(`runtime/docs/decisions/0026-one-platform-named-devops.md`).
 
 ---
 
@@ -46,7 +46,7 @@ tool:**
   problem (long-context hallucination/cost), it just isn't proven yet.
 - The DevOps proxy's multi-provider gateway — deliberately *not* built on LiteLLM;
   needs exact per-provider token counts for usage measurement that LiteLLM's
-  response normalization doesn't guarantee (see `stratum/docs/decisions/0019-multi-provider-gateway.md`).
+  response normalization doesn't guarantee (see `runtime/docs/decisions/0019-multi-provider-gateway.md`).
 - DevOps memory's typed Tier-2 facts (server-trusted FK injection, fail-closed
   validation) — architecturally different from generic memory products
   (mem0/Letta/Zep store blobs or embeddings, not typed multi-tenant facts).
@@ -179,7 +179,7 @@ isolation.
 
 ### Memory (two-tier, both wired)
 - **File-based** — `.workflow/memory/` git-committed durable facts (works today)
-- **DevOps memory** — the local proxy's structured fact tables, audit_conflicts and per-request usage records, on your own machine (code in `stratum/`; Phase 0+1 ready, advanced phases incoming)
+- **DevOps memory** — the local proxy's structured fact tables, audit_conflicts and per-request usage records, on your own machine (code in `runtime/`; Phase 0+1 ready, advanced phases incoming)
 
 (A third backend, Zep, was removed 2026-09-14 as redundant dead weight — zero
 call sites ever wired it in, and the proxy's own ADR-0004 argues its approach
@@ -283,7 +283,7 @@ See `docs/PLAYBOOK.md` for the full operational guide.
 
 For the optional local DevOps database and proxy smoke check, install Docker
 Compose and run `npm run setup` from this repository root. See
-`stratum/README.md` for provider setup and proxy startup.
+`runtime/README.md` for provider setup and proxy startup.
 
 ### Executable bits
 

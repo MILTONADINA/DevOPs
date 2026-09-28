@@ -72,8 +72,8 @@ the local pre-flight; CI runs the gating pieces; reviewer confirms.
 | 1 | Claude Code `/code-review` (in-session) | Diff correctness, style, surgical scope, spec tracing. Author-driven, ad-hoc. Run before pushing the PR branch. |
 | 2 | Claude Code `/security-review` (in-session) | Security-focused diff review. Catches obvious issues before CI does. Optional if the PR is non-security-touching, but cheap insurance. |
 | 3 | `npm run validate:claims -- path/to/claim.yml --no-rerun` | New claim schema, Git provenance, and reproducibility hash. Re-run its recorded test when the required environment is available. |
-| 4 | `cd stratum && npm run lint && npm run typecheck` (for Stratum code) | Lint and typecheck clean. |
-| 5 | Test suite for the touched subtree: `npm test` (root) or `cd stratum && npm test`. | Relevant behavior passes before opening the PR. |
+| 4 | `cd runtime && npm run lint && npm run typecheck` (for Stratum code) | Lint and typecheck clean. |
+| 5 | Test suite for the touched subtree: `npm test` (root) or `cd runtime && npm test`. | Relevant behavior passes before opening the PR. |
 
 ### CI checks (run on pull requests)
 
@@ -83,11 +83,11 @@ branch must be up to date with `main` before it merges.
 | Check | Workflow | What it runs | Required |
 |---|---|---|---|
 | `validate` | `ci.yml` | Root test suite held to its floor; on PRs, the floor ratchet and an assertion check on added test files; claim and stale-proof validation; Renovate and skill lints | yes |
-| `stratum-test` | `ci.yml` | Stratum typecheck and test suite, held to its floor | yes |
+| `runtime-test` | `ci.yml` | Stratum typecheck and test suite, held to its floor | yes |
 | `setup-linux` | `ci.yml` | Cold `npm run setup` on Linux in under 300 s, then the SQL integration tests against the local database | yes |
 | `gitleaks` | `security-scan.yml` | Secret scan of the PR's commits | yes |
 | `semgrep` | `security-scan.yml` | Semgrep registry rules; fails on findings, fatal errors or an empty scan | yes |
-| `dependency-audit` | `security-scan.yml` | `npm audit` at high severity for the root and `stratum/`; dependency review on PRs | yes |
+| `dependency-audit` | `security-scan.yml` | `npm audit` at high severity for the root and `runtime/`; dependency review on PRs | yes |
 | `node-compat (24)`, `node-compat (26)` | `ci.yml` | The root suite and the Stratum typecheck and tests on newer Node majors | no |
 | `deepteam` | `security-scan.yml` | DeepTeam red team when agent-behavior paths change. Without a provider key it skips visibly and gates nothing. | no |
 | `Claude semantic security review` | `claude-security-review.yml` | Claude review of the diff, on non-draft PRs to `main` only. A missing `CLAUDE_API_KEY` produces a visible skip, not review evidence. See ADR-014. | no; inspect findings or skip status before merge |

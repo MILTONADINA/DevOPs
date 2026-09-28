@@ -49,7 +49,7 @@ write the baton yourself. It contains:
 The single most important section. Be specific. Keep one `## Next action`
 heading and replace its text each session, rather than adding a second one or
 a `next_action:` field: the Stratum session-start recall
-(`stratum/scripts/session-start-context.ts`), where it runs, reads its query
+(`runtime/scripts/session-start-context.ts`), where it runs, reads its query
 only from the first `## Next action` section, up to the next `## ` heading.
 
 **Bad** (forces the next agent to re-explore):
