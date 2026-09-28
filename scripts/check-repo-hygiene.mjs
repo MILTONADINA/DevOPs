@@ -61,8 +61,11 @@ export function checkRepo({ entries, startsWithShebang, packageJson, pluginJson,
   ];
 }
 
-function startsWithShebang(file) {
-  const fd = openSync(path.join(ROOT, file), 'r');
+// A file git lists but the working tree has deleted (an unstaged deletion) cannot run, so it is
+// not a script to check; reading it must not crash a local run.
+export function startsWithShebang(root, file) {
+  let fd;
+  try { fd = openSync(path.join(root, file), 'r'); } catch (error) { if (error.code === 'ENOENT') return false; throw error; }
   try { const b = Buffer.alloc(2); return readSync(fd, b, 0, 2, 0) === 2 && b.toString() === '#!'; } finally { closeSync(fd); }
 }
 
@@ -77,7 +80,7 @@ if (isMain()) {
   const entries = parseStage(execFileSync('git', ['-C', ROOT, 'ls-files', '-s', '-z'], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }))
     .filter(({ mode }) => mode === '100644' || mode === '100755');
   const problems = checkRepo({
-    entries, startsWithShebang,
+    entries, startsWithShebang: (file) => startsWithShebang(ROOT, file),
     packageJson: JSON.parse(read('package.json')),
     pluginJson: JSON.parse(read('.claude-plugin/plugin.json')),
     manifestText: read('governance/VERSION.md'),

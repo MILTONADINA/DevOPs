@@ -1,7 +1,10 @@
 // Tests for scripts/check-repo-hygiene.mjs (specs/ops/repo-hygiene.md). The checks are pure, so no git runs here.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseStage, nonExecutableShebangs, versionProblems, unallowedRenders, testScriptProblems, checkRepo, TEST_SCRIPT, RENDER_ALLOWLIST } from '../scripts/check-repo-hygiene.mjs';
+import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { parseStage, nonExecutableShebangs, versionProblems, unallowedRenders, testScriptProblems, checkRepo, startsWithShebang, TEST_SCRIPT, RENDER_ALLOWLIST } from '../scripts/check-repo-hygiene.mjs';
 
 const stage = (...rows) => rows.map(([mode, file]) => `${mode} 0123456789abcdef0123456789abcdef01234567 0\t${file}`).join('\0') + '\0';
 
@@ -38,4 +41,19 @@ test('checkRepo joins every problem, and a clean repo has none (specs/ops/repo-h
   assert.deepEqual(checkRepo(clean), []);
   const dirty = { ...clean, entries: parseStage(stage(['100644', 'scripts/a.sh'], ['100644', 'shot.png'])), pluginJson: { version: '0.9.0' } };
   assert.equal(checkRepo(dirty).length, 3);
+});
+
+test('a file git still lists but the working tree has deleted is not read as a script, so a local run with unstaged deletions does not crash (specs/ops/repo-hygiene.md#req-1--scripts-with-a-shebang-are-executable)', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'repo-hygiene-'));
+  try {
+    writeFileSync(path.join(dir, 'run.sh'), '#!/bin/sh\necho hi\n');
+    writeFileSync(path.join(dir, 'notes.md'), '# notes\n');
+    writeFileSync(path.join(dir, 'one'), '#');
+    assert.equal(startsWithShebang(dir, 'run.sh'), true);
+    assert.equal(startsWithShebang(dir, 'notes.md'), false);
+    assert.equal(startsWithShebang(dir, 'one'), false);
+    assert.equal(startsWithShebang(dir, 'deleted.sh'), false);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
