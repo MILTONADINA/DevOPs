@@ -92,7 +92,11 @@ export function createSupabaseUsageRecorder(opts: UsageRecorderOptions): UsageRe
       // each miss their own cache and would insert DUPLICATE daily buckets, fragmenting a day's billing
       // across many session ids. Try the insert; on a unique-violation (23505) another instance won the
       // race, so re-read its bucket — all instances then converge on the one row.
-      let insert = opts.client.from("sessions").insert({ org_id: orgId, project_scope: projectScope, model, kind: "usage", ...(occurredAt !== undefined ? { created_at: occurredAt } : {}) }).select("id").limit(1);
+      let insert = opts.client
+        .from("sessions")
+        .insert({ org_id: orgId, project_scope: projectScope, model, kind: "usage", ...(occurredAt !== undefined ? { created_at: occurredAt } : {}) })
+        .select("id")
+        .limit(1);
       if (signal) insert = insert.abortSignal(signal);
       const ins = await insert;
       if (!ins.error) {

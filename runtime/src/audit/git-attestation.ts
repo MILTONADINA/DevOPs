@@ -130,7 +130,10 @@ export function attestFact(fact: AnyFact, changes: CodeChange[]): AttestationRes
     if (!confirm && fact.change_type === "renamed" && fact.new_name !== undefined) {
       for (const delOld of confirmingChanges.filter((c) => c.entity === fact.old_name && c.changeType === "deleted")) {
         const addNew = confirmingChanges.find((c) => c.entity === fact.new_name && c.changeType === "added" && c.commitHash === delOld.commitHash);
-        if (addNew) { confirm = addNew; break; }
+        if (addNew) {
+          confirm = addNew;
+          break;
+        }
       }
     }
 

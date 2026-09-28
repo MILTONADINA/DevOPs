@@ -80,31 +80,33 @@ function conflictId(parts: readonly string[]): string {
  * @throws {Error} if suppression or alert persistence fails.
  */
 export async function persistAuditResults(client: SupabaseClient, audited: AuditedFact[], ctx: AuditContext): Promise<number> {
-  const rows = audited
-    .map((a) => {
-      const table = tableForFactType(a.fact.fact_type);
-      if (a.result.status !== "CONFLICT") return {
+  const rows = audited.map((a) => {
+    const table = tableForFactType(a.fact.fact_type);
+    if (a.result.status !== "CONFLICT")
+      return {
         fact_table: table,
         fact_id: a.fact.id,
         status: a.result.status,
         ...(a.result.evidence?.commitHash !== undefined ? { evidence_commit: a.result.evidence.commitHash } : {}),
       };
-      const claimed = factToText(a.fact);
-      const actual = a.result.conflictDetail ?? "conflict";
-      const commit = a.result.conflictCommit ?? "";
-      return {
-        id: conflictId([ctx.orgId, table, a.fact.id, claimed, actual, commit]),
-        fact_table: table,
-        fact_id: a.fact.id,
-        status: "CONFLICT",
-        claimed_state: claimed,
-        actual_state: actual,
-        ...(a.result.conflictCommit !== undefined ? { conflict_commit: a.result.conflictCommit } : {}),
-      };
-    });
+    const claimed = factToText(a.fact);
+    const actual = a.result.conflictDetail ?? "conflict";
+    const commit = a.result.conflictCommit ?? "";
+    return {
+      id: conflictId([ctx.orgId, table, a.fact.id, claimed, actual, commit]),
+      fact_table: table,
+      fact_id: a.fact.id,
+      status: "CONFLICT",
+      claimed_state: claimed,
+      actual_state: actual,
+      ...(a.result.conflictCommit !== undefined ? { conflict_commit: a.result.conflictCommit } : {}),
+    };
+  });
   if (rows.length === 0) return 0;
   const { data, error } = await client.rpc("persist_audit_results", {
-    p_org_id: ctx.orgId, p_session_id: ctx.sessionId, p_rows: rows,
+    p_org_id: ctx.orgId,
+    p_session_id: ctx.sessionId,
+    p_rows: rows,
   });
   if (error) throw new Error(`persistAuditResults failed: ${error.message}`);
   return data as number;
@@ -112,5 +114,9 @@ export async function persistAuditResults(client: SupabaseClient, audited: Audit
 
 /** Compatibility entry point for callers that only persist conflicts. */
 export async function persistConflicts(client: SupabaseClient, audited: AuditedFact[], ctx: AuditContext): Promise<number> {
-  return persistAuditResults(client, audited.filter((a) => a.result.status === "CONFLICT"), ctx);
+  return persistAuditResults(
+    client,
+    audited.filter((a) => a.result.status === "CONFLICT"),
+    ctx,
+  );
 }
