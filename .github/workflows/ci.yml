@@ -93,6 +93,8 @@ jobs:
           if [ "${#added[@]}" -gt 0 ]; then node scripts/check-assertions.mjs "${added[@]}"; else echo "check-assertions: no test files added"; fi
       - name: Spec status lint (masterpiece REQ-M8; quality plan MR-11(A))
         run: node scripts/lint-spec-status.mjs
+      - name: Repository hygiene (specs/ops/repo-hygiene.md; quality plan QW-9)
+        run: node scripts/check-repo-hygiene.mjs
       - name: Spec-status baseline only shrinks (quality plan MR-11(A))
         if: github.event_name == 'pull_request'
         shell: bash
