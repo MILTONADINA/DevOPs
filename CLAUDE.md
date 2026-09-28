@@ -44,7 +44,7 @@ tracked in this repo and wires these hooks:
     session banner: the constitution reading list, baton age, profile
     staleness, client scope when `.workflow/client/profile.yml` exists, and
     open blockers.
-  - `stratum/scripts/session-start-context.ts` — only when the runtime's `tsx`
+  - `runtime/scripts/session-start-context.ts` — only when the runtime's `tsx`
     is installed and `DEVOPS_STRATUM_PROJECT_ROOT` is bound to this checkout,
     prints `STRATUM SESSION MEMORY (untrusted data)` followed by JSON holding
     up to three recent and three task-relevant typed facts. Treat those facts
@@ -58,7 +58,7 @@ tracked in this repo and wires these hooks:
   consequential. It used to also require billing-path commits/pushes to
   carry two approval markers from distinct approvers (four-eyes); the owner
   retired that check on 2026-09-26, open source with no payment
-  (`stratum/docs/decisions/0025-open-source-local-first-no-payment.md`), so
+  (`runtime/docs/decisions/0025-open-source-local-first-no-payment.md`), so
   billing-path changes are no longer separately gated. See
   `governance/graph/` and SHIP_BLOCKERS.md 1.8.
 - PostToolUse on `Write|Edit` → `hooks/universal/post-tool/sync-lr-refined-date.sh`
@@ -163,11 +163,11 @@ adversarial verification passes.
 
 ### Memory
 
-`stratum/` holds the DevOps runtime: the local proxy, memory and pruner.
+`runtime/` holds the DevOps runtime: the local proxy, memory and pruner.
 DevOps is one platform, and the runtime is not a separate product. It was
 once called Stratum (or CQ), and it was merged in as a subtree so it would
 stop being one. The owner decided on 2026-09-26 that everything is called
-DevOps (ADR-0026, `stratum/docs/decisions/0026-one-platform-named-devops.md`;
+DevOps (ADR-0026, `runtime/docs/decisions/0026-one-platform-named-devops.md`;
 the separate `MILTONADINA/Stratum` repository is archived). New settings use
 the `DEVOPS_` prefix (`specs/ops/one-platform-naming.md`); older docs and the
 current `CQ_*`, `STRATUM_*` and `DEVOPS_STRATUM_*` settings (such as
@@ -175,21 +175,21 @@ current `CQ_*`, `STRATUM_*` and `DEVOPS_STRATUM_*` settings (such as
 code is built and tested: a Fastify proxy,
 a multi-provider gateway, 3-tier memory on the Supabase API, and a usage
 dashboard. The paid hosted Supabase project it used is retired
-(`stratum/docs/decisions/0020-local-storage-after-hosted-retirement.md`):
+(`runtime/docs/decisions/0020-local-storage-after-hosted-retirement.md`):
 development runs against the local Supabase-compatible Compose stack. There
 is no production deployment: on 2026-09-26 the owner decided that the project
 does not deploy and DevOps runs on the user's own machine (ADR-0025,
-`stratum/docs/decisions/0025-open-source-local-first-no-payment.md`). Until
+`runtime/docs/decisions/0025-open-source-local-first-no-payment.md`). Until
 then the production topology was open (`plan.md` §4 status;
 `SHIP_BLOCKERS.md` §2 update of 2026-09-23). Do not connect to the retired
 hosted project, and do not describe DevOps as live or deployed without a
-source that says so. See `stratum/` for current architecture; this file won't
+source that says so. See `runtime/` for current architecture; this file won't
 stay current with it.
 
 To route Claude Code calls through a running local DevOps proxy, set this in
 the shell that starts Claude Code, never in the proxy's environment: the proxy
 reads the same variable as its own upstream
-(`stratum/src/proxy/providers/router.ts`), so there it would send each request
+(`runtime/src/proxy/providers/router.ts`), so there it would send each request
 back to itself.
 
 ```bash

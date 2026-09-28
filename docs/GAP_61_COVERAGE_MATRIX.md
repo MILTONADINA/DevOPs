@@ -37,7 +37,7 @@
 | 13 | Context Blindness (31.6%) | `skills/universal/process/ask-dont-assume/SKILL.md`; `memory/file-based/` always loaded | 1 |
 | 14 | Rogue Actions (30.3%) | `hooks/universal/pre-tool/block-prod-write.sh`, `block-rm-rf.sh`, `client-boundary.sh` | 1 |
 | 15 | Silent Degradation (24.9%) | `governance/skill-evals/registry.yml` (weekly eval) | 1 (registry); 6 (auto-run) |
-| 16 | Memory Corruption (8.1%) | `memory/stratum/` (git-attestation); `constitution/ANTIPATTERNS.md` #7 | 1 |
+| 16 | Memory Corruption (8.1%) | `memory/runtime/` (git-attestation); `constitution/ANTIPATTERNS.md` #7 | 1 |
 | 17 | Runaway Execution (5.1%) | `hooks/universal/pre-tool/budget-brake.sh`, `loop-detection.sh` | 1 |
 | 18 | Incident catalog (Kiro / AWS Cost Explorer outage, reported; Claude Code ~27M-token retry loop, user report; $437 overnight `list_files` loop, unverified anecdote) | Sources: `README.md` (Kiro, #15909) and `cost-controls/README.md` (#15909, the $437 anecdote). `constitution/ANTIPATTERNS.md` refers to Kiro and the $437 anecdote | 1 |
 
@@ -153,8 +153,8 @@
 | # | Gap | Location | Phase |
 |---|-----|----------|-------|
 | 56 | File-based memory (always-on) | `memory/file-based/` | 1 |
-| 57 | Stratum structured fact store | `memory/stratum/README.md` + `config.yml`; backend at `stratum/` subtree (scaffold-only per audit 2026-05-24, see `.workflow/state/stratum-audit/`) | 1 (DevOPs-side wiring stub); 3 (build Stratum Phase 0+1+3 from scaffold AND integrate as memory backend — Option B locked) |
-| 58 | Zep semantic temporal memory | **Descoped** (redundancy pass, 2026-09-14): zero call sites ever wired in; Stratum's own ADR-0004 (`stratum/docs/decisions/0004-no-llm-summarization.md`) argues the Zep/Mem0-style approach is inferior to the structured-facts approach already chosen for gap 57. Not currently covered by an alternative — reopen if a semantic-temporal-query need is confirmed. | — |
+| 57 | Stratum structured fact store | `memory/runtime/README.md` + `config.yml`; backend at `runtime/` subtree (scaffold-only per audit 2026-05-24, see `.workflow/state/stratum-audit/`) | 1 (DevOPs-side wiring stub); 3 (build Stratum Phase 0+1+3 from scaffold AND integrate as memory backend — Option B locked) |
+| 58 | Zep semantic temporal memory | **Descoped** (redundancy pass, 2026-09-14): zero call sites ever wired in; Stratum's own ADR-0004 (`runtime/docs/decisions/0004-no-llm-summarization.md`) argues the Zep/Mem0-style approach is inferior to the structured-facts approach already chosen for gap 57. Not currently covered by an alternative — reopen if a semantic-temporal-query need is confirmed. | — |
 | 59 | Cross-project meta-memory (PII-scrubbed) | `meta-memory/README.md` + `personal-preferences.yml` | 1 (scaffold); 6 (auto-learning) |
 
 ## S. Skill supply chain (gap 60)

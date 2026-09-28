@@ -9,22 +9,22 @@ steps; this page does not repeat them.
 
 Both scripts target the project-local Compose stack. The hosted Supabase
 project is retired
-(`stratum/docs/decisions/0020-local-storage-after-hosted-retirement.md`).
+(`runtime/docs/decisions/0020-local-storage-after-hosted-retirement.md`).
 
 ## The two scripts
 
-| Script | npm script (from `stratum/`) | Writes to the database |
+| Script | npm script (from `runtime/`) | Writes to the database |
 | --- | --- | --- |
-| `stratum/scripts/backup-org.ts` | `npm run backup -- --org-id <uuid> [--out <path>] [--pretty]` | No. It only reads. |
-| `stratum/scripts/restore-org.ts` | `npm run restore -- --file <path> [--dry-run] [--keep-key-state]` | Yes, unless `--dry-run` is given. |
+| `runtime/scripts/backup-org.ts` | `npm run backup -- --org-id <uuid> [--out <path>] [--pretty]` | No. It only reads. |
+| `runtime/scripts/restore-org.ts` | `npm run restore -- --file <path> [--dry-run] [--keep-key-state]` | Yes, unless `--dry-run` is given. |
 
 Both read `SUPABASE_URL` and `SUPABASE_SERVICE_KEY` from the process
 environment, so run them through `npm run db:with-env -- ...`. A dry-run
 restore needs neither, because it returns before reading them.
 
-Sources: `stratum/package.json:47-48`, `stratum/scripts/backup-org.ts:8`,
-`stratum/scripts/backup-org.ts:168-173`, `stratum/scripts/restore-org.ts:9`,
-`stratum/scripts/restore-org.ts:241-251`.
+Sources: `runtime/package.json:47-48`, `runtime/scripts/backup-org.ts:8`,
+`runtime/scripts/backup-org.ts:168-173`, `runtime/scripts/restore-org.ts:9`,
+`runtime/scripts/restore-org.ts:241-251`.
 
 ## What a backup contains
 
@@ -50,24 +50,24 @@ organization row matches, it writes nothing and exits 1.
 
 With no `--out`, the file goes to `backups/stratum-backup-<first 8 chars of
 org id>-<timestamp>.backup.json` under the current directory. Run it from
-`stratum/`, where `backups/` is ignored by Git. The script writes the file
+`runtime/`, where `backups/` is ignored by Git. The script writes the file
 with default permissions, which is why the LOCAL_STRATUM procedure sets
 `umask 077` first.
 
 The file holds organization data, including `api_keys` rows with their key
 hashes and `billing_records`. Treat it as sensitive.
 
-Sources: `stratum/scripts/backup-org.ts:22-49`,
-`stratum/scripts/backup-org.ts:95-113`, `stratum/scripts/backup-org.ts:124-156`,
-`stratum/scripts/backup-org.ts:176-185`, `stratum/.gitignore:71-72`,
-`stratum/src/proxy/auth.ts:33-42`, `docs/runbooks/LOCAL_STRATUM.md:62-67`.
+Sources: `runtime/scripts/backup-org.ts:22-49`,
+`runtime/scripts/backup-org.ts:95-113`, `runtime/scripts/backup-org.ts:124-156`,
+`runtime/scripts/backup-org.ts:176-185`, `runtime/.gitignore:71-72`,
+`runtime/src/proxy/auth.ts:33-42`, `docs/runbooks/LOCAL_STRATUM.md:62-67`.
 
 ## What a backup does not contain
 
 - **Files on disk.** The proxy keeps billing usage events in a local outbox
-  directory (default `stratum/data/usage-outbox/`) and reads captured sessions
-  from `stratum/data/sessions/`. The encoder model cache is
-  `stratum/models/`. None of these are in the backup. Events still in the
+  directory (default `runtime/data/usage-outbox/`) and reads captured sessions
+  from `runtime/data/sessions/`. The encoder model cache is
+  `runtime/models/`. None of these are in the backup. Events still in the
   outbox are not yet in `billing_records`, so they are not in the backup
   either.
 - **The database volume, other organizations, and schema state.** This is a
@@ -76,13 +76,13 @@ Sources: `stratum/scripts/backup-org.ts:22-49`,
 - **A consistent point in time.** Tables are read one after another, so the
   file is not an atomic cross-table snapshot.
 
-Sources: `stratum/supabase/migrations/20260924235900_invoice_send_claims.sql:1-4`,
-`stratum/src/billing/invoice-ledger.ts:71-94`, `stratum/src/billing/invoice-ledger.ts:124-127`,
-`stratum/src/billing/invoice-ledger.ts:146`, `stratum/src/billing/invoice-ledger.ts:166-168`,
-`stratum/scripts/invoice.ts:180-188`,
-`stratum/scripts/restore-org.ts:75-84`, `stratum/src/proxy/index.ts:198-199`,
-`stratum/src/proxy/index.ts:226`, `stratum/.gitignore:43-49`,
-`stratum/scripts/local-compose.ts:113`, `docs/runbooks/LOCAL_STRATUM.md:75-78`.
+Sources: `runtime/supabase/migrations/20260924235900_invoice_send_claims.sql:1-4`,
+`runtime/src/billing/invoice-ledger.ts:71-94`, `runtime/src/billing/invoice-ledger.ts:124-127`,
+`runtime/src/billing/invoice-ledger.ts:146`, `runtime/src/billing/invoice-ledger.ts:166-168`,
+`runtime/scripts/invoice.ts:180-188`,
+`runtime/scripts/restore-org.ts:75-84`, `runtime/src/proxy/index.ts:198-199`,
+`runtime/src/proxy/index.ts:226`, `runtime/.gitignore:43-49`,
+`runtime/scripts/local-compose.ts:113`, `docs/runbooks/LOCAL_STRATUM.md:75-78`.
 
 ## Verify a backup
 
@@ -121,8 +121,8 @@ The dry run checks the file only. It rejects:
 It does not prove that foreign keys or all inserts will succeed on a target
 (`docs/runbooks/LOCAL_STRATUM.md:102-104`).
 
-Sources: `stratum/scripts/backup-org.ts:193`, `stratum/scripts/restore-org.ts:67-159`,
-`stratum/scripts/restore-org.ts:234-244`.
+Sources: `runtime/scripts/backup-org.ts:193`, `runtime/scripts/restore-org.ts:67-159`,
+`runtime/scripts/restore-org.ts:234-244`.
 
 ## What a restore does
 
@@ -153,13 +153,13 @@ key was revoked after the backup; each key then keeps its backed-up
 inserts, so a key that already exists in the target makes the insert fail and
 restore stops, as described above.
 
-Sources: `stratum/scripts/restore-org.ts:21-49`, `stratum/scripts/restore-org.ts:173-192`,
-`stratum/scripts/restore-org.ts:254-286`, `stratum/scripts/backup-org.ts:42`.
+Sources: `runtime/scripts/restore-org.ts:21-49`, `runtime/scripts/restore-org.ts:173-192`,
+`runtime/scripts/restore-org.ts:254-286`, `runtime/scripts/backup-org.ts:42`.
 
 ## The disposable recovery check
 
 `npm run db:verify-recovery` runs
-`stratum/test/integration/local-backup-recovery.mjs` through the local stack
+`runtime/test/integration/local-backup-recovery.mjs` through the local stack
 wrapper. It uses a fresh random organization and never touches existing data.
 In order, it:
 
@@ -167,11 +167,11 @@ In order, it:
    conversation session, graph entities and an edge with extra session links,
    facts, an operational reference, audit results (one `CONFLICT`, one
    `UNVERIFIED`), and a reviewed decision supersession
-   (`stratum/test/integration/local-backup-recovery.mjs:67-116`).
+   (`runtime/test/integration/local-backup-recovery.mjs:67-116`).
 2. Writes a project-local dotenv override that points `SUPABASE_URL` at a
    closed port. The check fails if either CLI loads it, which shows that
-   process credentials win (`stratum/test/integration/local-backup-recovery.mjs:118-121`,
-   `stratum/test/integration/local-backup-recovery.mjs:44-51`).
+   process credentials win (`runtime/test/integration/local-backup-recovery.mjs:118-121`,
+   `runtime/test/integration/local-backup-recovery.mjs:44-51`).
 3. Runs `backup-org.ts` and checks exact row counts for 13 of the 23
    tables: `organizations`, `sessions`, `api_keys`, `function_changes`,
    `tech_decisions`, `operational_references`, `knowledge_entities`,
@@ -181,7 +181,7 @@ In order, it:
    link. It does not count `developers`, `org_config`, `billing_records`,
    `invoices`, `policy_updates`, `todos`, `variable_changes`,
    `memory_vectors`, or `pruning_logs`
-   (`stratum/test/integration/local-backup-recovery.mjs:122-137`).
+   (`runtime/test/integration/local-backup-recovery.mjs:122-137`).
 4. Confirms restore exits 1 with the expected error for a backup missing
    `audit_statuses` and for a backup whose `audit_statuses` rows name another
    organization. After the first attempt it checks only that the source
@@ -189,24 +189,24 @@ In order, it:
    database. The check itself does not prove that neither attempt wrote
    anything. In the code, both errors come from `validateBackup`, and restore
    returns on a validation error before it creates a database client
-   (`stratum/test/integration/local-backup-recovery.mjs:139-157`,
-   `stratum/scripts/restore-org.ts:80`, `stratum/scripts/restore-org.ts:91`,
-   `stratum/scripts/restore-org.ts:226-232`, `stratum/scripts/restore-org.ts:252`).
+   (`runtime/test/integration/local-backup-recovery.mjs:139-157`,
+   `runtime/scripts/restore-org.ts:80`, `runtime/scripts/restore-org.ts:91`,
+   `runtime/scripts/restore-org.ts:226-232`, `runtime/scripts/restore-org.ts:252`).
 5. Deletes the organization, confirms it is gone, runs `restore-org.ts`, and
    checks suppression, audit status, the unacknowledged alert, the decision
    supersession review fields, graph session links, the source link's ID and
-   time, and the session erasure inventory (`stratum/test/integration/local-backup-recovery.mjs:159-189`).
+   time, and the session erasure inventory (`runtime/test/integration/local-backup-recovery.mjs:159-189`).
 6. Deletes the organization again, restores a copy whose `source_fact_links`
    list is empty, and checks that no links remain
-   (`stratum/test/integration/local-backup-recovery.mjs:190-194`).
+   (`runtime/test/integration/local-backup-recovery.mjs:190-194`).
 7. Always deletes its rows and temporary files, even on failure
-   (`stratum/test/integration/local-backup-recovery.mjs:196-202`).
+   (`runtime/test/integration/local-backup-recovery.mjs:196-202`).
 
 On success it prints
 `local audited organization, graph provenance, and source-link backup and restore passed`
-(`stratum/test/integration/local-backup-recovery.mjs:195`).
+(`runtime/test/integration/local-backup-recovery.mjs:195`).
 
-Source for the npm script: `stratum/package.json:64`.
+Source for the npm script: `runtime/package.json:64`.
 
 ## Known limits
 
@@ -215,24 +215,24 @@ Source for the npm script: `stratum/package.json:64`.
   remain open under `plan.md` §7c "Backup + restore" (`plan.md:413`).
 - **Only the current table manifest restores.** An older export fails
   validation and needs an explicit migration of the file
-  (`stratum/scripts/restore-org.ts:75-84`).
+  (`runtime/scripts/restore-org.ts:75-84`).
 - **No merge.** Restore cannot update an organization that already exists
-  (`stratum/scripts/restore-org.ts:4-7`, `stratum/scripts/restore-org.ts:267`).
+  (`runtime/scripts/restore-org.ts:4-7`, `runtime/scripts/restore-org.ts:267`).
 - **No partial rollback.** A failed restore leaves the rows it already
-  inserted (`stratum/scripts/restore-org.ts:254-268`).
+  inserted (`runtime/scripts/restore-org.ts:254-268`).
 - **The recovery check only runs on the default stack.** It requires
   `SUPABASE_URL` to be exactly `http://127.0.0.1:54321`, so it refuses an
   isolated instance started with `DEVOPS_LOCAL_INSTANCE` and
-  `DEVOPS_LOCAL_PORT` (`stratum/test/integration/local-backup-recovery.mjs:11-13`,
-  `stratum/scripts/local-compose.ts:10-21`).
+  `DEVOPS_LOCAL_PORT` (`runtime/test/integration/local-backup-recovery.mjs:11-13`,
+  `runtime/scripts/local-compose.ts:10-21`).
 - **Gaps listed above.** The usage outbox, captured session files, and the
   model cache are outside the backup
   ([What a backup does not contain](#what-a-backup-does-not-contain)).
   Held invoice claims (`invoice_send_claims`) are included since PB-65, so a
   restore keeps the double-billing guard for claimed periods.
-- **No scheduled backups.** No script in `stratum/scripts/` or `scripts/`
+- **No scheduled backups.** No script in `runtime/scripts/` or `scripts/`
   runs a backup on a schedule. Backups happen when an operator runs one.
 
-`stratum/docs/MEMORY_AND_EVAL_COMMANDS.md` now says 23 tables, matching the
-code. The code exports 23 (`stratum/scripts/backup-org.ts:22-43`,
-`stratum/scripts/backup-org.ts:127`, `stratum/scripts/backup-org.ts:143-153`).
+`runtime/docs/MEMORY_AND_EVAL_COMMANDS.md` now says 23 tables, matching the
+code. The code exports 23 (`runtime/scripts/backup-org.ts:22-43`,
+`runtime/scripts/backup-org.ts:127`, `runtime/scripts/backup-org.ts:143-153`).

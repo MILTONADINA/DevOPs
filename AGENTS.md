@@ -177,7 +177,7 @@ DevOPs ships with two memory backends in order of preference:
    start.
 2. **Stratum** (recommended for production): structured fact tables + git
    attestation. It is configured through environment variables, not a file;
-   `memory/stratum/README.md` says which ones and how the tool reaches it.
+   `memory/runtime/README.md` says which ones and how the tool reaches it.
 
 Both may be active simultaneously. See `docs/MEMORY.md`.
 

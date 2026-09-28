@@ -81,8 +81,8 @@ before this link accepts reports. Until it is enabled, open an issue at
 <https://github.com/MILTONADINA/DevOPs/issues> that asks for a private channel
 and contains no vulnerability details.
 
-This policy covers the whole repository, including Stratum (`stratum/`).
-`stratum/SECURITY_POLICY.md` points here for the reporting channel.
+This policy covers the whole repository, including Stratum (`runtime/`).
+`runtime/SECURITY_POLICY.md` points here for the reporting channel.
 
 Include in your report:
 

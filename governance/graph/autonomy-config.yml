@@ -48,7 +48,7 @@ gates:
   merge_to_main:
     phase_0: human_required_every_time
     phase_1: human_required_every_time
-    phase_2: auto_allowed_for_low_risk_devops_core_only  # docs, non-production skill/hook edits only; never stratum/
+    phase_2: auto_allowed_for_low_risk_devops_core_only  # docs, non-production skill/hook edits only; never runtime/
 
 kill_switch:
   halt_file: ".workflow/state/graph-halt"

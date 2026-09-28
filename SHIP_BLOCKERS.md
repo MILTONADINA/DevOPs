@@ -1,5 +1,7 @@
 # Ship Blockers — Gaps Between Now and a Shippable Masterpiece
 
+> **Paths.** On 2026-09-27 the `stratum/` directory moved to `runtime/` (ADR-0026). Entries below keep the path that was true when they were written.
+
 **Produced**: 2026-09-14, via a systematic audit (3 parallel investigations covering
 DevOps core, Stratum, and cross-cutting consistency) that checked actual runtime
 state — ran the test commands, ran the claim validator, checked live CI run

@@ -5,8 +5,8 @@ model: haiku
 tools: Read, Glob, Bash
 permissions:
   read_paths:
-    - "stratum/src/memory/**"
-    - "stratum/src/types/**"
+    - "runtime/src/memory/**"
+    - "runtime/src/types/**"
     - "**/*.md"
   write_paths: []     # read-only by design
   forbidden_paths:
@@ -102,11 +102,11 @@ echo "$RELEVANT_FACTS" >> .workflow/state/session-context.md
 
 ## Cross-references
 
-- `stratum/docs/MEMORY_ARCHITECTURE.md` — three-tier design (canonical)
-- `stratum/docs/TECHNICAL_SPEC.md` — fact-type schemas
-- `stratum/src/types/facts.ts` — fact types; `stratum/src/memory/warm/schemas.ts` — their Zod schemas
-- `stratum/src/memory/warm/extractor.ts` — fact extractor (a local model set by `CQ_MEMORY_EXTRACT_MODEL`; output is Zod-validated)
-- `stratum/src/memory/cold/vectors.ts` — semantic store (pgvector on Supabase; ADR-0013)
-- `stratum/src/memory/cold/graph.ts` — graph store (Supabase tables; ADR-0013)
+- `runtime/docs/MEMORY_ARCHITECTURE.md` — three-tier design (canonical)
+- `runtime/docs/TECHNICAL_SPEC.md` — fact-type schemas
+- `runtime/src/types/facts.ts` — fact types; `runtime/src/memory/warm/schemas.ts` — their Zod schemas
+- `runtime/src/memory/warm/extractor.ts` — fact extractor (a local model set by `CQ_MEMORY_EXTRACT_MODEL`; output is Zod-validated)
+- `runtime/src/memory/cold/vectors.ts` — semantic store (pgvector on Supabase; ADR-0013)
+- `runtime/src/memory/cold/graph.ts` — graph store (Supabase tables; ADR-0013)
 - `plan.md §4` (v0.5.x) — Phase 3 implementation checklist
 - `blueprint.md §4` — architecture diagram with librarian's place

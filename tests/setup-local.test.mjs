@@ -32,9 +32,9 @@ test("root npm setup help describes the local stack without starting it", () => 
 });
 
 test("Stratum setup uses the same local workflow without a dotenv-writing legacy script", () => {
-  const packageJson = JSON.parse(readFileSync(new URL("../stratum/package.json", import.meta.url), "utf8"));
+  const packageJson = JSON.parse(readFileSync(new URL("../runtime/package.json", import.meta.url), "utf8"));
   assert.equal(packageJson.scripts.setup, "node ../scripts/setup-local.mjs");
-  assert.equal(existsSync(new URL("../stratum/scripts/setup.ts", import.meta.url)), false);
+  assert.equal(existsSync(new URL("../runtime/scripts/setup.ts", import.meta.url)), false);
 });
 
 // A fake git for configureGitHooks: records each call. `top` answers rev-parse --show-toplevel

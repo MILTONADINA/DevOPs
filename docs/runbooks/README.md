@@ -3,7 +3,7 @@
 Operator runbooks for this repository. They describe what the code does today
 on a development machine. The hosted Supabase project is retired; every
 database procedure here targets the project-local Compose stack
-(`stratum/docs/decisions/0020-local-storage-after-hosted-retirement.md`). No
+(`runtime/docs/decisions/0020-local-storage-after-hosted-retirement.md`). No
 runbook here describes a production deployment, because none is documented as
 live (`CLAUDE.md:167-172`).
 
@@ -18,11 +18,11 @@ These files are the `plan.md` §7b "Runbooks" item (`plan.md:407`).
 
 ## Conventions
 
-- Stratum commands run from `stratum/`. The local stack wrapper refuses any
-  other working directory (`stratum/scripts/local-compose.ts:166`).
+- Stratum commands run from `runtime/`. The local stack wrapper refuses any
+  other working directory (`runtime/scripts/local-compose.ts:166`).
 - Commands that need the database go through `npm run db:with-env -- ...`.
   The wrapper supplies `SUPABASE_URL` and a short-lived service JWT to that
-  one child process (`stratum/scripts/local-compose.ts:157-163`). Never copy
+  one child process (`runtime/scripts/local-compose.ts:157-163`). Never copy
   that JWT into a file.
 - Exit code 0 is not always success. Several operator CLIs print `SKIPPED` and
   exit 0 when database settings are missing. Each runbook names the output line

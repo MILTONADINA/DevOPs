@@ -24,11 +24,11 @@ function fakeSecurityTools(directory, includeCosign = true) {
 // these tests do not depend on the state of the checkout they run in (polish backlog PB-59). A test that
 // exercises one of these checks passes its own override after this spread.
 function checkoutFixture(directory) {
-  for (const deps of ['root-node_modules', 'stratum-node_modules']) mkdirSync(path.join(directory, deps, '.bin'), { recursive: true });
+  for (const deps of ['root-node_modules', 'runtime-node_modules']) mkdirSync(path.join(directory, deps, '.bin'), { recursive: true });
   mkdirSync(path.join(directory, 'proofs'), { recursive: true });
   return {
     GRAPH_PREFLIGHT_DEPS_ROOT_DIR: path.join(directory, 'root-node_modules'),
-    GRAPH_PREFLIGHT_DEPS_STRATUM_DIR: path.join(directory, 'stratum-node_modules'),
+    GRAPH_PREFLIGHT_DEPS_RUNTIME_DIR: path.join(directory, 'runtime-node_modules'),
     GRAPH_PREFLIGHT_PROOFS_DIR: path.join(directory, 'proofs'),
   };
 }
@@ -98,24 +98,24 @@ test('normal preflight repairs non-executable .bin entries and records the fix',
     const reportPath = path.join(dir, 'preflight.json');
     const result = spawnSync('bash', [PREFLIGHT], {
       cwd: ROOT,
-      env: { ...process.env, PATH: `${fakeSecurityTools(dir)}:${process.env.PATH}`, ...checkoutFixture(dir), GRAPH_PREFLIGHT_DEPS_STRATUM_DIR: path.join(dir, 'node_modules'), GRAPH_PREFLIGHT_REPORT: reportPath },
+      env: { ...process.env, PATH: `${fakeSecurityTools(dir)}:${process.env.PATH}`, ...checkoutFixture(dir), GRAPH_PREFLIGHT_DEPS_RUNTIME_DIR: path.join(dir, 'node_modules'), GRAPH_PREFLIGHT_REPORT: reportPath },
       encoding: 'utf8', timeout: 30_000,
     });
     assert.equal(result.status, 10, result.stderr || result.stdout);
     assert.ok((statSync(tool).mode & 0o111) !== 0);
     const report = JSON.parse(readFileSync(reportPath, 'utf8'));
     assert.equal(report.status, 'remediated');
-    assert.equal(report.checks.find((check) => check.id === 'deps.stratum').status, 'fixed');
+    assert.equal(report.checks.find((check) => check.id === 'deps.runtime').status, 'fixed');
     const secondTool = path.join(bin, 'second-tool');
     writeFileSync(secondTool, '#!/bin/sh\nexit 0\n');
     chmodSync(secondTool, 0o644);
     const second = spawnSync('bash', [PREFLIGHT], {
       cwd: ROOT,
-      env: { ...process.env, PATH: `${path.join(dir, 'fake-security-tools')}:${process.env.PATH}`, ...checkoutFixture(dir), GRAPH_PREFLIGHT_DEPS_STRATUM_DIR: path.join(dir, 'node_modules'), GRAPH_PREFLIGHT_REPORT: reportPath },
+      env: { ...process.env, PATH: `${path.join(dir, 'fake-security-tools')}:${process.env.PATH}`, ...checkoutFixture(dir), GRAPH_PREFLIGHT_DEPS_RUNTIME_DIR: path.join(dir, 'node_modules'), GRAPH_PREFLIGHT_REPORT: reportPath },
       encoding: 'utf8', timeout: 30_000,
     });
     assert.equal(second.status, 10, second.stderr || second.stdout);
-    const reverted = spawnSync('bash', [PREFLIGHT, '--revert', 'deps.stratum'], {
+    const reverted = spawnSync('bash', [PREFLIGHT, '--revert', 'deps.runtime'], {
       cwd: ROOT, env: { ...process.env, GRAPH_PREFLIGHT_REPORT: reportPath }, encoding: 'utf8', timeout: 30_000,
     });
     assert.equal(reverted.status, 0, reverted.stderr);
@@ -174,7 +174,7 @@ test('graph-halt alone forces needs_human and survives preflight', () => {
   const dir = mkdtempSync(path.join(ROOT, '.workflow', 'state', 'graph-halt-test-'));
   try {
     const repo = path.join(dir, 'repo');
-    for (const subdir of ['scripts', 'governance/graph', '.workflow/state', '.workflow/proofs', 'node_modules/.bin', 'stratum/node_modules/.bin', 'fake-bin']) {
+    for (const subdir of ['scripts', 'governance/graph', '.workflow/state', '.workflow/proofs', 'node_modules/.bin', 'runtime/node_modules/.bin', 'fake-bin']) {
       mkdirSync(path.join(repo, subdir), { recursive: true });
     }
     copyFileSync(path.join(ROOT, 'scripts', 'graph-preflight.mjs'), path.join(repo, 'scripts', 'graph-preflight.mjs'));
@@ -219,7 +219,7 @@ test('graph-halt alone forces needs_human and survives preflight', () => {
 
 // A copy of the preflight in its own project directory, whose root node_modules is a symlink to a
 // directory outside it: the usual layout of a worktree that shares an install.
-function linkedDependenciesProject({ linkStratum = false } = {}) {
+function linkedDependenciesProject({ linkRuntime = false } = {}) {
   const outside = mkdtempSync(path.join(tmpdir(), 'preflight-shared-deps-'));
   // Real path: on macOS tmpdir() is under /var, a symlink to /private/var, and the preflight compares real paths.
   const project = realpathSync(mkdtempSync(path.join(tmpdir(), 'preflight-linked-root-')));
@@ -228,10 +228,10 @@ function linkedDependenciesProject({ linkStratum = false } = {}) {
     mkdirSync(path.dirname(path.join(project, file)), { recursive: true });
     copyFileSync(path.join(ROOT, file), path.join(project, file));
   }
-  if (linkStratum) {
-    mkdirSync(path.join(project, 'stratum'), { recursive: true });
-    symlinkSync(outside, path.join(project, 'stratum', 'node_modules'));
-  } else mkdirSync(path.join(project, 'stratum', 'node_modules', '.bin'), { recursive: true });
+  if (linkRuntime) {
+    mkdirSync(path.join(project, 'runtime'), { recursive: true });
+    symlinkSync(outside, path.join(project, 'runtime', 'node_modules'));
+  } else mkdirSync(path.join(project, 'runtime', 'node_modules', '.bin'), { recursive: true });
   mkdirSync(path.join(project, '.workflow', 'state'), { recursive: true });
   symlinkSync(outside, path.join(project, 'node_modules'));
   const runPreflight = (extraEnv = {}) => spawnSync('bash', [path.join(project, 'scripts', 'graph-preflight.sh'), '--check-only'], {
@@ -265,13 +265,13 @@ test('a dependency override that redirects outside the project still aborts', ()
   } finally { fixture.cleanup(); }
 });
 
-test('check-only also reports a stratum/node_modules symlinked outside the project', () => {
-  const fixture = linkedDependenciesProject({ linkStratum: true });
+test('check-only also reports a runtime/node_modules symlinked outside the project', () => {
+  const fixture = linkedDependenciesProject({ linkRuntime: true });
   try {
     const result = fixture.runPreflight();
     assert.notEqual(result.status, 2, result.stderr);
     const report = JSON.parse(readFileSync(path.join(fixture.project, '.workflow', 'state', 'preflight.json'), 'utf8'));
-    assert.equal(report.checks.find((check) => check.id === 'deps.stratum')?.status, 'pass');
+    assert.equal(report.checks.find((check) => check.id === 'deps.runtime')?.status, 'pass');
   } finally { fixture.cleanup(); }
 });
 
@@ -280,8 +280,8 @@ test('a Stratum dependency override that redirects outside the project still abo
   try {
     const link = path.join(fixture.project, '.workflow', 'state', 'stratum-deps-link');
     symlinkSync(fixture.outside, link);
-    const result = fixture.runPreflight({ GRAPH_PREFLIGHT_DEPS_STRATUM_DIR: link });
+    const result = fixture.runPreflight({ GRAPH_PREFLIGHT_DEPS_RUNTIME_DIR: link });
     assert.equal(result.status, 2, result.stdout);
-    assert.match(result.stderr, /Stratum dependencies redirect outside the project root/);
+    assert.match(result.stderr, /Runtime dependencies redirect outside the project root/);
   } finally { fixture.cleanup(); }
 });

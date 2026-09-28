@@ -74,7 +74,7 @@ jobs:
           # actually ships. .workflow/ holds claim corpus + state files;
           # docs/ + memory/ are prose; coverage/ + node_modules/ + dist/
           # + build/ are derived artifacts.
-          exclude-directories: node_modules,dist,build,coverage,.workflow,.remember,docs/screenshots,stratum/data,stratum/coverage
+          exclude-directories: node_modules,dist,build,coverage,.workflow,.remember,docs/screenshots,runtime/data,runtime/coverage
           # Bound analysis duration. Default 20m; keep at 20m unless we
           # consistently hit timeouts on large diffs.
           claudecode-timeout: '20'
