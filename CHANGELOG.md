@@ -18,6 +18,12 @@ product. See `docs/LAUNCH_READINESS.md` for current, frequently-updated
 status — this file intentionally does not duplicate that detail while the
 phase is open.
 
+### Added — repository hygiene check (quality plan QW-9)
+
+- `scripts/check-repo-hygiene.mjs` runs in CI's `validate` job (`specs/ops/repo-hygiene.md`). It checks four things: every tracked file that starts with `#!` is executable, the plugin and version manifests carry the package version, no render or screenshot is committed outside an allowlist, and the root tests run by glob.
+- 22 scripts with a shebang are now executable in git. `.claude-plugin/plugin.json` and `governance/VERSION.md` now say 0.3.0, the released version. The root `npm test` runs `tests/**/*.test.mjs`, so a new test file runs without editing a list.
+- The empty `runtime/tests/` stubs are removed. Two stale acceptance criteria in the Phase 0 capture plan are corrected: its fixtures live in `runtime/test/fixtures/anthropic/`, and it never committed `.sse` files.
+
 ### Added — runtime lint gate in CI (quality plan QW-1)
 
 - The required `runtime-test` job now runs `npm run lint` in `runtime/`. The script is `eslint src --ext .ts --max-warnings 0 && prettier --check src`, so an ESLint warning or an unformatted file fails the job (`specs/ops/ci-product-suites.md` REQ-3). Four files that Prettier flagged were reformatted; the layout changed, the code did not.

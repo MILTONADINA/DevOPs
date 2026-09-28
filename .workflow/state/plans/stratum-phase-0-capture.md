@@ -95,7 +95,7 @@ P0-B scope (binding):
 **Test runner**: vitest (per Q8.1). Migration from declared-but-unused jest scaffold is part of P0-A.
 
 **ACs (Session 13 revised under production-grade quality bar)**:
-- AC-P0-A.1 Mock Anthropic non-streaming response fixtures exist at `stratum/tests/fixtures/anthropic/*.json` covering: simple text, single tool_use, mixed-content (text+tool_use), multi-turn, 4xx error, 5xx error
+- AC-P0-A.1 Mock Anthropic non-streaming response fixtures exist at `stratum/tests/fixtures/anthropic/*.json` (corrected 2026-09-28: they live at `runtime/test/fixtures/anthropic/*.json`; `tests/` never held them) covering: simple text, single tool_use, mixed-content (text+tool_use), multi-turn, 4xx error, 5xx error
 - AC-P0-A.2 **Streaming tests are explicitly EXCLUDED from P0-A.** The mock SDK surface MUST raise on `messages.stream()` invocation with an error message naming P0-B as the responsible scope. Streaming fixtures (e.g., `streaming.sse` referenced in prior revisions) live in P0-B's coverage, not here.
 - AC-P0-A.3 Mock error responses for: 401 (invalid auth), 429 (rate limit), 500 (server error), network failure (connection-reset), malformed-JSON response
 - AC-P0-A.4 vitest test suite invokable via `npm test` (in `stratum/`) returns exit 0 against fully-mocked Anthropic surface; no real network calls
@@ -128,7 +128,7 @@ P0-B scope (binding):
   - Client-side abort (`AbortController`) → upstream connection closed; session JSON marked `client_aborted: true`; no further chunks accumulated
   - Anthropic-side error event in stream → forwarded to client; session JSON records the error
 - AC-P0-B.6 Comprehensive vitest coverage (P0-B authors all streaming tests): text-only streaming, tool_use streaming, mixed-content (text + tool_use) streaming, multi-turn streaming, abort handling, all 4 error paths from AC-P0-B.5
-- AC-P0-B.7 Streaming fixtures live at `stratum/tests/fixtures/anthropic-streams/*.sse` (SSE wire format, not JSONL). Coverage: simple-text-stream, tool-use-stream, mixed-content-stream, multi-turn-stream, abort-mid-stream, malformed-chunks, network-drop, anthropic-error-event.
+- AC-P0-B.7 **Superseded (2026-09-28 audit):** no `.sse` fixture files were ever committed; the streaming tests build their SSE bodies inline in `runtime/test/proxy/{sse,sse-edges,streaming}.test.ts`. As written: Streaming fixtures live at `stratum/tests/fixtures/anthropic-streams/*.sse` (SSE wire format, not JSONL). Coverage: simple-text-stream, tool-use-stream, mixed-content-stream, multi-turn-stream, abort-mid-stream, malformed-chunks, network-drop, anthropic-error-event.
 
 **Claim evidence**: streaming integration tests passing + manual smoke against a real Claude Code session demonstrates first-token latency overhead ≤50ms p95 + session JSON reassembles correctly from a captured real stream.
 
