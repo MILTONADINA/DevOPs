@@ -86,7 +86,6 @@
     "specs/meta/session-15-v0.3x-2a-code-gaps.md",
     "specs/meta/session-15-v0.3x-2f-anthropic-integrations.md",
     "specs/meta/session-7-stratum-audit.md",
-    "specs/ops/ci-product-suites.md",
     "specs/ops/conversation-recovery.md",
     "specs/ops/decision-supersession-recovery.md",
     "specs/ops/developer-guide.md",

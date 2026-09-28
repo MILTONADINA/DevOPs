@@ -18,6 +18,10 @@ product. See `docs/LAUNCH_READINESS.md` for current, frequently-updated
 status — this file intentionally does not duplicate that detail while the
 phase is open.
 
+### Added — runtime lint gate in CI (quality plan QW-1)
+
+- The required `runtime-test` job now runs `npm run lint` in `runtime/`. The script is `eslint src --ext .ts --max-warnings 0 && prettier --check src`, so an ESLint warning or an unformatted file fails the job (`specs/ops/ci-product-suites.md` REQ-3). Four files that Prettier flagged were reformatted; the layout changed, the code did not.
+
 ### Changed — `stratum/` is now `runtime/` (owner decision 2026-09-26)
 
 - The runtime (proxy, memory, pruner) moved from `stratum/` to `runtime/`, and its package is `@miltonadina/devops-runtime` (ADR-0026; `specs/ops/one-platform-naming.md` REQ-5). **Breaking** for scripts that use the old path: use `cd runtime` and `npm --prefix runtime`.
