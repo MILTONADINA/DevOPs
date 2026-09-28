@@ -130,7 +130,7 @@ jobs:
         run: |
           npm ci
           npm test
-      - name: Stratum typecheck and tests
+      - name: Runtime typecheck and tests
         working-directory: runtime
         run: |
           npm ci
