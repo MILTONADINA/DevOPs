@@ -37,7 +37,7 @@ test('SessionStart loads the baton then recalls memory through the project-local
   const batonIndex = commands.findIndex(command => command.includes('load-baton.sh'));
   const memoryIndex = commands.findIndex(command => command.includes('session-start-context.ts'));
   assert.ok(batonIndex >= 0 && memoryIndex > batonIndex);
-  assert.match(commands[memoryIndex], /stratum\/node_modules\/\.bin\/tsx/);
+  assert.match(commands[memoryIndex], /runtime\/node_modules\/\.bin\/tsx/);
   const result = spawnSync('bash', ['-c', commands[memoryIndex]], {
     cwd: ROOT,
     env: { ...process.env, CLAUDE_PROJECT_DIR: ROOT, DEVOPS_STRATUM_PROJECT_ROOT: ROOT, DEVOPS_STRATUM_ORG_ID: '' },

@@ -30,10 +30,10 @@ This page does not repeat them.
 | Log shows `usage outbox replay failed` | Usage events are queued on disk and not yet written to `billing_records`. | Check the database. Do not delete the outbox directory. |
 | `/sprint` refuses to start | Run `bash scripts/graph-preflight.sh` and read the failing check IDs. | See [Blocked graph cycles](#blocked-graph-cycles). |
 
-Sources: `stratum/src/proxy/index.ts:116-121`, `stratum/src/proxy/index.ts:155-164`,
-`stratum/src/proxy/index.ts:198-201`, `stratum/src/proxy/index.ts:269-280`,
-`stratum/src/proxy/auth.ts:73-78`, `stratum/src/proxy/auth.ts:98-100`,
-`stratum/src/proxy/auth.ts:131-134`, `stratum/src/proxy/routes/health.ts:29-43`,
+Sources: `runtime/src/proxy/index.ts:116-121`, `runtime/src/proxy/index.ts:155-164`,
+`runtime/src/proxy/index.ts:198-201`, `runtime/src/proxy/index.ts:269-280`,
+`runtime/src/proxy/auth.ts:73-78`, `runtime/src/proxy/auth.ts:98-100`,
+`runtime/src/proxy/auth.ts:131-134`, `runtime/src/proxy/routes/health.ts:29-43`,
 `slash-commands/universal/sprint.md:14-21`.
 
 ### Proxy health
@@ -51,7 +51,7 @@ To check the proxy and the local database together from a script, run the
 same smoke check that `npm run setup` uses. It starts its own proxy instance on
 a random loopback port, calls `/health`, requires
 `dependencies.database === "ok"`, and prints
-`Proxy listener and local database health: ok`. Run it from `stratum/`:
+`Proxy listener and local database health: ok`. Run it from `runtime/`:
 
 ```sh
 npm run db:with-env -- tsx scripts/smoke-setup.ts
@@ -60,10 +60,10 @@ npm run db:with-env -- tsx scripts/smoke-setup.ts
 This checks the code and the database. It does not check a proxy process
 that is already running.
 
-Sources: `stratum/src/proxy/routes/health.ts:1-8`, `stratum/src/proxy/routes/health.ts:29-43`,
-`stratum/src/proxy/routes/health.ts:58-72`, `stratum/src/proxy/index.ts:104-107`,
-`stratum/src/proxy/index.ts:164`, `stratum/src/proxy/index.ts:225`,
-`stratum/src/proxy/auth.ts:110`, `stratum/scripts/smoke-setup.ts:7-36`,
+Sources: `runtime/src/proxy/routes/health.ts:1-8`, `runtime/src/proxy/routes/health.ts:29-43`,
+`runtime/src/proxy/routes/health.ts:58-72`, `runtime/src/proxy/index.ts:104-107`,
+`runtime/src/proxy/index.ts:164`, `runtime/src/proxy/index.ts:225`,
+`runtime/src/proxy/auth.ts:110`, `runtime/scripts/smoke-setup.ts:7-36`,
 `scripts/setup-local.mjs:40`.
 
 ### Logs
@@ -74,7 +74,7 @@ level (default `info`). `NODE_ENV=development` switches to pretty output.
 
 The local database, REST, and gateway containers belong to the Compose project
 `devops-stratum-compose` (or `devops-stratum-isolated-<instance>`), defined by
-`stratum/supabase/docker-compose.local.yml`. Their logs are Docker container
+`runtime/supabase/docker-compose.local.yml`. Their logs are Docker container
 logs; no repository script reads them. When `npm run db:start` fails, its
 error already names the failed stage and each container's state and exit
 code, and it does not print Docker's own error text because that can include
@@ -86,8 +86,8 @@ read-only dashboard (`npm run graph:dashboard`, default
 `http://127.0.0.1:4081`) shows a halt banner and the events file, newest first. It has no
 control that halts, resumes, or approves anything.
 
-Sources: `stratum/src/lib/logger.ts:10-18`, `stratum/scripts/local-compose.ts:14-26`,
-`stratum/scripts/local-compose.ts:48-62`, `stratum/scripts/local-compose.ts:150-154`,
+Sources: `runtime/src/lib/logger.ts:10-18`, `runtime/scripts/local-compose.ts:14-26`,
+`runtime/scripts/local-compose.ts:48-62`, `runtime/scripts/local-compose.ts:150-154`,
 `hooks/universal/pre-tool/deploy-gate.sh:70-74`, `scripts/graph-blocked.sh:86-87`,
 `package.json:19`, `scripts/graph-dashboard/README.md:29`,
 `scripts/graph-dashboard/README.md:81-83`, `scripts/graph-dashboard/README.md:109-113`,
@@ -200,18 +200,18 @@ again. Revoke it again after the restore
 A secret committed to Git stays in history after the file is changed. Rotate
 it.
 
-Sources: `stratum/src/proxy/auth.ts:33-42`, `stratum/src/proxy/auth.ts:66-83`,
-`stratum/scripts/api-keys.ts:1-9`, `stratum/scripts/api-keys.ts:58-65`,
-`stratum/src/proxy/index.ts:13-17`, `stratum/src/proxy/index.ts:166-168`,
-`stratum/src/proxy/index.ts:195-197`, `stratum/src/proxy/providers/router.ts:80-82`,
-`stratum/scripts/verify-billing.ts:1-9`, `stratum/scripts/verify-billing.ts:95-108`,
-`stratum/scripts/local-compose.ts:134-136`, `stratum/scripts/local-compose.ts:157-159`,
+Sources: `runtime/src/proxy/auth.ts:33-42`, `runtime/src/proxy/auth.ts:66-83`,
+`runtime/scripts/api-keys.ts:1-9`, `runtime/scripts/api-keys.ts:58-65`,
+`runtime/src/proxy/index.ts:13-17`, `runtime/src/proxy/index.ts:166-168`,
+`runtime/src/proxy/index.ts:195-197`, `runtime/src/proxy/providers/router.ts:80-82`,
+`runtime/scripts/verify-billing.ts:1-9`, `runtime/scripts/verify-billing.ts:95-108`,
+`runtime/scripts/local-compose.ts:134-136`, `runtime/scripts/local-compose.ts:157-159`,
 `docs/runbooks/LOCAL_STRATUM.md:117`.
 
 ## When the proxy is down
 
 The proxy does not fall back on its own. A client pointed at it gets errors.
-`stratum/docs/FAQ.md:37` states this and recommends a client-side fallback:
+`runtime/docs/FAQ.md:37` states this and recommends a client-side fallback:
 send the request directly to the provider (`api.anthropic.com`).
 
 For Claude Code, the client uses the proxy only when `ANTHROPIC_BASE_URL`
@@ -238,9 +238,9 @@ To restart the commercial proxy against the local database:
    `CQ_BILLING_SIGNING_SECRET`. Commercial startup refuses to run without it.
    Use the value that signed the existing billing records unless you are
    rotating it ([Rotate a leaked key](#rotate-a-leaked-key)). The proxy does
-   not load `stratum/.env`. Do not put the secret in a command line or a
+   not load `runtime/.env`. Do not put the secret in a command line or a
    project file.
-2. From `stratum/`, run:
+2. From `runtime/`, run:
 
    ```sh
    CQ_COMMERCIAL=true npm run db:with-env -- npm run dev
@@ -252,10 +252,10 @@ To restart the commercial proxy against the local database:
    process. Stop the proxy and fix the environment.
 4. Point the client back at the proxy only after step 3 passes.
 
-Sources: `stratum/docs/FAQ.md:37`, `CLAUDE.md:175-183`,
-`stratum/src/proxy/index.ts:13-17`, `stratum/src/proxy/index.ts:109-121`,
-`stratum/src/proxy/index.ts:135-164`, `stratum/src/proxy/index.ts:189-213`,
-`stratum/src/proxy/index.ts:226-242`, `stratum/src/proxy/index.ts:271`,
-`stratum/scripts/local-compose.ts:157-162`,
-`stratum/docs/COMMERCIAL_ONBOARDING.md:100`,
-`stratum/docs/MEMORY_AND_EVAL_COMMANDS.md:11-12`.
+Sources: `runtime/docs/FAQ.md:37`, `CLAUDE.md:175-183`,
+`runtime/src/proxy/index.ts:13-17`, `runtime/src/proxy/index.ts:109-121`,
+`runtime/src/proxy/index.ts:135-164`, `runtime/src/proxy/index.ts:189-213`,
+`runtime/src/proxy/index.ts:226-242`, `runtime/src/proxy/index.ts:271`,
+`runtime/scripts/local-compose.ts:157-162`,
+`runtime/docs/COMMERCIAL_ONBOARDING.md:100`,
+`runtime/docs/MEMORY_AND_EVAL_COMMANDS.md:11-12`.

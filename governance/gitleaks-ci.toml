@@ -48,12 +48,14 @@ useDefault = true
 [allowlist]
 description = "CI gitleaks-action allowlist: known false-positive literal key-shaped strings in unit test fixtures"
 
-# stratum/test/billing/verify-stripe.test.ts pins classifyStripeKey()'s
+# runtime/test/billing/verify-stripe.test.ts (stratum/ until 2026-09-27) pins classifyStripeKey()'s
 # skip/refuse/run branch with literal `sk_live_...` / `sk_test_...`
 # strings (see file for context). These are not real Stripe keys --
 # they are hardcoded test inputs asserting how the verifier classifies
 # a key shape, never sent anywhere.
 paths = [
+  '''^runtime/test/billing/verify-stripe\.test\.ts$''',
+  # The same file before the 2026-09-27 move: the scheduled full-history scan reads old commits.
   '''^stratum/test/billing/verify-stripe\.test\.ts$''',
 ]
 

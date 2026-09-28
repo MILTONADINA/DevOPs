@@ -2,7 +2,7 @@
 
 ## Our Commitment
 
-DevOPs, including its Stratum subsystem in `stratum/`, is an open-source
+DevOPs, including its Stratum subsystem in `runtime/`, is an open-source
 technical project with high standards for both code quality and human
 interaction. We are committed to making participation in this project a
 respectful, professional experience for everyone.

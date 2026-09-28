@@ -254,7 +254,7 @@ function main() {
       if (saved.target !== path.join(process.env.HOME || os.homedir(), 'bin', 'cosign')) throw new Error('Cosign target differs from current home');
       if (createHash('sha256').update(readFileSync(saved.target)).digest('hex') !== saved.sha256) throw new Error('Cosign changed; refusing revert');
       unlinkSync(saved.target);
-    } else if (['deps.root', 'deps.stratum'].includes(id)) {
+    } else if (['deps.root', 'deps.runtime'].includes(id)) {
       for (const item of saved) {
         if (!insideRoot(realpathSync(item.file))) throw new Error('revert path leaves the project root');
         chmodSync(item.file, item.mode);
@@ -270,7 +270,7 @@ function main() {
   gitRemote(gitReady);
   nodeVersion();
   npmRuns();
-  // Test overrides (GRAPH_PREFLIGHT_DEPS_ROOT_DIR, _DEPS_STRATUM_DIR, _PROOFS_DIR) must stay inside the
+  // Test overrides (GRAPH_PREFLIGHT_DEPS_ROOT_DIR, _DEPS_RUNTIME_DIR, _PROOFS_DIR) must stay inside the
   // project root, so a fixture can stand in for gitignored directories a fresh checkout lacks; a
   // dependency override must not redirect out of it either. The default node_modules may be a symlink
   // to a shared install (a worktree): checking it only reads, and a repair still refuses any launcher
@@ -280,11 +280,11 @@ function main() {
   if (!insideRoot(rootDependencies)) throw new Error('Root dependencies leave the project root');
   if (rootOverride && existsSync(rootDependencies) && !insideRoot(realpathSync(rootDependencies))) throw new Error('Root dependencies redirect outside the project root');
   dependencyDirectory('deps.root', rootDependencies, checkOnly, registry);
-  const stratumOverride = process.env.GRAPH_PREFLIGHT_DEPS_STRATUM_DIR;
-  const stratumDependencies = path.resolve(stratumOverride || path.join(ROOT, 'stratum', 'node_modules'));
-  if (!insideRoot(stratumDependencies)) throw new Error('Stratum dependencies leave the project root');
-  if (stratumOverride && existsSync(stratumDependencies) && !insideRoot(realpathSync(stratumDependencies))) throw new Error('Stratum dependencies redirect outside the project root');
-  dependencyDirectory('deps.stratum', stratumDependencies, checkOnly, registry);
+  const runtimeOverride = process.env.GRAPH_PREFLIGHT_DEPS_RUNTIME_DIR;
+  const runtimeDependencies = path.resolve(runtimeOverride || path.join(ROOT, 'runtime', 'node_modules'));
+  if (!insideRoot(runtimeDependencies)) throw new Error('Runtime dependencies leave the project root');
+  if (runtimeOverride && existsSync(runtimeDependencies) && !insideRoot(realpathSync(runtimeDependencies))) throw new Error('Runtime dependencies redirect outside the project root');
+  dependencyDirectory('deps.runtime', runtimeDependencies, checkOnly, registry);
   for (const name of ['gitleaks', 'semgrep', 'cosign']) {
     toolVersion(name);
     if (name === 'cosign' && checks.at(-1).status === 'fail' && !checkOnly) repairCosign(registry);

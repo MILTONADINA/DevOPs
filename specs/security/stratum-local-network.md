@@ -1,15 +1,15 @@
 # Local network posture of the DevOps proxy
 
 **Status**: approved (owner, 2026-09-26, spec batch 1; recorded in .workflow/state/approvals.jsonl as human_approved_spec)
-**Amended**: 2026-09-26, by the owner's directive that DevOps is one platform (ADR-0026; `specs/ops/one-platform-naming.md`). The five new settings are named `DEVOPS_PROXY_*` instead of `STRATUM_*`, and the proxy is called the DevOps proxy. No requirement changed otherwise.
+**Amended**: 2026-09-26, by the owner's directive that DevOps is one platform (ADR-0026; `specs/ops/one-platform-naming.md`). The five new settings are named `DEVOPS_PROXY_*` instead of `STRATUM_*`, and the proxy is called the DevOps proxy. No requirement changed otherwise. On 2026-09-27 its paths followed the move of `stratum/` to `runtime/` (`specs/ops/one-platform-naming.md` REQ-5); no requirement changed.
 **Spec ID**: security/stratum-local-network (quality plan cycle S1)
-**Decision context**: DevOPs is open source and local-first, with no hosted service (owner, 2026-09-26; ADR-0025). The DevOps proxy (code under `stratum/`) runs on the user's own machine and holds the user's provider keys.
+**Decision context**: DevOPs is open source and local-first, with no hosted service (owner, 2026-09-26; ADR-0025). The DevOps proxy (code under `runtime/`) runs on the user's own machine and holds the user's provider keys.
 
 ## Problem
 
 A read-only audit (Workflow `wf_eade04c4-534`, finding SEC-1, reproduced) found:
 - In personal mode the proxy has no authentication.
-- It registers `@fastify/cors` with the default `origin: '*'` (`stratum/src/proxy/app.ts:123-124`).
+- It registers `@fastify/cors` with the default `origin: '*'` (`runtime/src/proxy/app.ts:123-124`).
 - It never checks the `Host` header.
 
 So any web page the user opens while the proxy runs can send requests to `http://localhost:4080` and spend the user's provider key. A page can do this directly, as a cross-origin request, or through DNS rebinding: a hostname that resolves to 127.0.0.1 after the page loads.
@@ -25,7 +25,7 @@ The default local setup must keep working with no new settings: an AI client on 
 
 ## Definitions
 
-- **Auth configured.** The proxy runs with API-key authentication, which is the team (commercial) mode's `auth.resolve` in `stratum/src/proxy/index.ts`.
+- **Auth configured.** The proxy runs with API-key authentication, which is the team (commercial) mode's `auth.resolve` in `runtime/src/proxy/index.ts`.
 - **Loopback name.** `127.0.0.1`, `localhost` or `[::1]`, each with or without the listening port.
 
 ## Requirements
@@ -50,13 +50,13 @@ IF `PORT` is set and is not an integer from 1 to 65535, OR `RATE_LIMIT_MAX` is s
 - Loopback `http` stays allowed, for local model servers such as Ollama.
 
 ### REQ-6 — Docs and packaging match the behaviour
-- `stratum/docs/API_REFERENCE.md` SHALL state which requests need auth in each mode.
+- `runtime/docs/API_REFERENCE.md` SHALL state which requests need auth in each mode.
 - The local setup docs SHALL name the new variables and the reason for the default.
-- `stratum/Dockerfile` SHALL be removed (owner decision O-11: no deployment; Compose already covers local use). Every doc that tells a user to run it SHALL be removed or rewritten.
+- `runtime/Dockerfile` SHALL be removed (owner decision O-11: no deployment; Compose already covers local use). Every doc that tells a user to run it SHALL be removed or rewritten.
 
 ## Acceptance criteria
 
-Tests live in `stratum/test/proxy/local-network.test.ts` unless stated. Each test title names its AC as `specs/security/stratum-local-network.md#AC-n`.
+Tests live in `runtime/test/proxy/local-network.test.ts` unless stated. Each test title names its AC as `specs/security/stratum-local-network.md#AC-n`.
 
 - **AC-1** (REQ-1). Given personal mode, when a preflight arrives with `Origin: https://evil.example`, the response is 403 with no `Access-Control-Allow-Origin`. When a GET arrives with that Origin and a loopback Host, the response carries no `Access-Control-Allow-Origin`.
 - **AC-2** (REQ-2). Given personal mode:
@@ -81,11 +81,11 @@ Tests live in `stratum/test/proxy/local-network.test.ts` unless stated. Each tes
   - an `https` URL starts;
   - `ANTHROPIC_BASE_URL=http://127.0.0.1:4080` with the proxy on port 4080 refuses (self-loop).
 - **AC-7** (goal). The default path still works with no new settings:
-  - the root `npm run setup` smoke boot (`stratum/scripts/smoke-setup.ts`) and `tests/setup-local.test.mjs` pass unchanged;
+  - the root `npm run setup` smoke boot (`runtime/scripts/smoke-setup.ts`) and `tests/setup-local.test.mjs` pass unchanged;
   - a `POST /v1/messages` with no `Origin` header and `Host: localhost:4080`, against an injected fake upstream, is served.
 - **AC-8** (REQ-6):
-  - `git ls-files stratum/Dockerfile` is empty;
-  - `git grep -n "docker run.*stratum-proxy\|HOST=0.0.0.0" -- stratum/docs docs README.md` finds nothing;
+  - `git ls-files runtime/Dockerfile` is empty;
+  - `git grep -n "docker run.*stratum-proxy\|HOST=0.0.0.0" -- runtime/docs docs README.md` finds nothing;
   - API_REFERENCE states the per-mode auth rule.
 
 ## Falsified by

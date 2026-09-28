@@ -2,7 +2,7 @@
 
 This runbook covers the project-local PostgreSQL, PostgREST, and gateway stack.
 It is for development on this machine. The retired hosted Supabase project is
-not part of this procedure. Run commands from `stratum/` unless stated otherwise.
+not part of this procedure. Run commands from `runtime/` unless stated otherwise.
 
 ## Start and check
 
@@ -58,7 +58,7 @@ project file.
 ## Back up one organization
 
 1. Identify the organization's UUID from your own authorized records. Choose
-   an output path under this project's ignored `stratum/backups/` directory.
+   an output path under this project's ignored `runtime/backups/` directory.
 2. Restrict newly created files, then export:
 
    ```sh
@@ -82,7 +82,7 @@ PostgreSQL volume backup or an atomic cross-table point-in-time snapshot.
 1. Confirm the target stack is running and has the schema version that
    supports the backup's table manifest. The restore CLI accepts only the
    current manifest; older snapshots need an explicit migration. Keep the
-   backup file in `stratum/backups/`.
+   backup file in `runtime/backups/`.
 2. Validate the file and inspect its table counts without writing:
 
    ```sh
@@ -119,4 +119,4 @@ organization. It does not verify recovery of real data or a clean machine.
 | Restore rejects a table or row | Read the exact manifest or organization mismatch error | Preserve the backup; migrate the snapshot deliberately or correct the source. Do not edit evidence rows to force acceptance. |
 | Restore fails after writing rows | Inspect the scoped target rows and error | Reconcile or rebuild a clean target before another restore. |
 
-For design and security boundaries, see [local storage](../../stratum/docs/LOCAL_STORAGE.md).
+For design and security boundaries, see [local storage](../../runtime/docs/LOCAL_STORAGE.md).

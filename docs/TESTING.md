@@ -9,13 +9,13 @@ a flaky test. CONTRIBUTING.md has the rules for pull requests.
 | Layer | Command | What it covers | Runs in CI |
 |---|---|---|---|
 | Root suite | `npm test` | `node --test` over the files listed in the root `package.json` `test` script: the analyzer entry point, test hermeticity, the reproducibility check, local setup, and the graph pipeline (dashboard, resilience, test floors) and Jev tests | `validate` (Node 22); `node-compat` (Node 24 and 26) |
-| Stratum unit and component tests | `cd stratum && npm test` | vitest over `stratum/test/` | `stratum-test` (Node 22); `node-compat` |
-| Stratum typecheck | `cd stratum && npm run typecheck` | `tsc --noEmit` over `src/`, `scripts/` and `evals/` (test files are not typechecked yet) | `stratum-test`; `node-compat` |
-| Stratum lint | `cd stratum && npm run lint` | ESLint and Prettier over `src/` | not yet (quality plan QW-1) |
+| Stratum unit and component tests | `cd runtime && npm test` | vitest over `runtime/test/` | `runtime-test` (Node 22); `node-compat` |
+| Stratum typecheck | `cd runtime && npm run typecheck` | `tsc --noEmit` over `src/`, `scripts/` and `evals/` (test files are not typechecked yet) | `runtime-test`; `node-compat` |
+| Stratum lint | `cd runtime && npm run lint` | ESLint and Prettier over `src/` | not yet (quality plan QW-1) |
 | Cold setup smoke | `npm run setup` | Starts the local database stack and smoke-tests the proxy from a clean checkout | `setup-linux` (under 300 s) |
-| SQL integration tests | `stratum/test/integration/*.sql` | Database behavior against the local stack | `setup-linux` |
-| Local database checks | `cd stratum && npm run db:verify-*` | End-to-end checks of memory, audit, recovery and project scoping against the local stack | not yet; run them locally when you change those paths |
-| Evals | `cd stratum && npm run test:eval` | The pruner's golden-query tiers | not in CI; required locally when `stratum/src/pruner/` changes (PR template) |
+| SQL integration tests | `runtime/test/integration/*.sql` | Database behavior against the local stack | `setup-linux` |
+| Local database checks | `cd runtime && npm run db:verify-*` | End-to-end checks of memory, audit, recovery and project scoping against the local stack | not yet; run them locally when you change those paths |
+| Evals | `cd runtime && npm run test:eval` | The pruner's golden-query tiers | not in CI; required locally when `runtime/src/pruner/` changes (PR template) |
 
 Run `npm ci` at the root before the root suite: its reproducibility-check
 tests spawn `tsx` from the root lockfile. On Node 22 and later, the versions
@@ -43,7 +43,7 @@ MODULE_NOT_FOUND. Pass files or globs, as the root `test` script does.
 ## Test floors
 
 `governance/test-floors.json` sets the minimum number of passing tests for
-each suite (`root` and `stratum`). CI parses each suite's output with
+each suite (`root` and `runtime`). CI parses each suite's output with
 `scripts/check-test-floor.mjs` and fails when:
 
 - any test fails;

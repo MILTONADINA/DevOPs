@@ -81,7 +81,7 @@ EOF
 # phase0-004-claim-validator-investigation, 2026-09-14): this filter was
 # previously anchored to the START of the command (`^[[:space:]]*verb`),
 # which only catches the literal first-token case. Anything realistic --
-# `cd stratum && vercel deploy --prod`, `npx vercel deploy --prod`,
+# `cd runtime && vercel deploy --prod`, `npx vercel deploy --prod`,
 # `VERCEL_TOKEN=x vercel deploy --prod` -- bypassed the gate entirely,
 # exiting 0 before any gate logic ran, for both the production-deploy check
 # and the billing-path four-eyes check (the latter retired 2026-09-26).

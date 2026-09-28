@@ -1,0 +1,19 @@
+# Scoped ignore for runtime/Dockerfile (BuildKit reads <dockerfile>.dockerignore). The build context
+# is the DevOps parent, so start by excluding EVERYTHING, then re-include only what the image needs:
+# the runtime source + the one cross-subtree file (observability/pii-redaction.ts).
+**
+
+!runtime/**
+!observability/pii-redaction.ts
+
+# Re-exclude heavy / generated / secret paths under runtime/ (negation above re-added them).
+runtime/node_modules/**
+runtime/models/**
+runtime/data/**
+runtime/dist/**
+runtime/coverage/**
+runtime/.git/**
+runtime/evals/datasets/**
+**/.env
+**/.env.*
+**/*.log
