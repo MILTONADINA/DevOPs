@@ -29,33 +29,34 @@ repo-relative `path:line`. It describes code paths and reports no test run.
 ## 2. Entry points and modes
 
 `npm run dev` runs `tsx src/proxy/index.ts` (`runtime/package.json:9`). The
-server binds `127.0.0.1` unless `HOST` is set (`runtime/src/proxy/index.ts:104-107`)
-and listens on `PORT`, default 4080 (`runtime/src/proxy/index.ts:225`).
+server binds `127.0.0.1` unless `DEVOPS_PROXY_HOST` is set (`HOST` is a
+deprecated one-release alias; `runtime/src/proxy/index.ts:161-167`) and
+listens on `PORT`, default 4080 (`runtime/src/proxy/network-settings.ts:73-81`, `runtime/src/proxy/index.ts:548`).
 
 **Personal mode** is the default. The base options hold the messages deps and
-the dashboard reader (`runtime/src/proxy/index.ts:243-246`). No auth gate is
+the dashboard reader (`runtime/src/proxy/index.ts:493-500`). No auth gate is
 registered, and the rate limit is per IP, default 100 per minute
-(`runtime/src/proxy/app.ts:164-166`). Personal mode needs at least one
+(`runtime/src/proxy/app.ts:381-383`, `runtime/src/proxy/network-settings.ts:104-106`). Personal mode needs at least one
 configured provider (`runtime/src/proxy/default-deps.ts:26-29`).
 
 **Commercial mode** requires `CQ_COMMERCIAL=true` (or `1`) and both Supabase
-settings (`runtime/src/proxy/index.ts:110-113`). Startup also demands
+settings (`runtime/src/proxy/index.ts:186-189`). Startup also demands
 `CQ_BILLING_SIGNING_SECRET` and refuses to run on Vercel
-(`runtime/src/proxy/index.ts:116-121`). Commercial mode adds:
+(`runtime/src/proxy/index.ts:192-197`). Commercial mode adds:
 
-- An API-key gate on `/v1/*` (`runtime/src/proxy/index.ts:142`). The key comes
+- An API-key gate on `/v1/*` (`runtime/src/proxy/index.ts:398`). The key comes
   from `Authorization: Bearer` or `x-api-key` and is looked up by SHA-256 hash
   among active keys (`runtime/src/proxy/auth.ts:34-36`, `runtime/src/proxy/auth.ts:45`,
   `runtime/src/proxy/auth.ts:72-75`).
-- Config, memory, billing, sessions and webhook APIs (`runtime/src/proxy/index.ts:143-147`).
-- Per-org request limits by plan (`runtime/src/proxy/app.ts:136-142`,
+- Config, memory, billing, sessions and webhook APIs (`runtime/src/proxy/index.ts:399-403`).
+- Per-org request limits by plan (`runtime/src/proxy/app.ts:353-359`,
   `runtime/src/proxy/rate-limit-tiers.ts:20-25`). A plan lookup error falls
-  back to `starter` (`runtime/src/proxy/index.ts:155-162`).
+  back to `starter` (`runtime/src/proxy/index.ts:411-418`).
 - A per-org token budget and the fsynced usage outbox
-  (`runtime/src/proxy/index.ts:192`, `runtime/src/proxy/index.ts:195-203`).
+  (`runtime/src/proxy/index.ts:448`, `runtime/src/proxy/index.ts:451-459`).
 - Optional local fact extraction, shadow observation, and a Stripe inbound
-  webhook (`runtime/src/proxy/index.ts:171-188`, `runtime/src/proxy/index.ts:204-213`,
-  `runtime/src/proxy/index.ts:166-168`).
+  webhook (`runtime/src/proxy/index.ts:427-444`, `runtime/src/proxy/index.ts:460-469`,
+  `runtime/src/proxy/index.ts:422-424`).
 
 In development, "Supabase" means the local gateway at `127.0.0.1:54321`
 (section 10). `runtime/vercel-src/entry.ts` builds the same app for a
@@ -92,8 +93,8 @@ flowchart TD
 Steps for the non-streaming path (`runtime/src/proxy/routes/messages.ts:401-486`):
 
 1. **Auth and rate limit.** The auth hook runs before any route
-   (`runtime/src/proxy/app.ts:129-131`). The limiter is registered after it so
-   it can read `req.orgId` (`runtime/src/proxy/app.ts:133-168`).
+   (`runtime/src/proxy/app.ts:346-348`). The limiter is registered after it so
+   it can read `req.orgId` (`runtime/src/proxy/app.ts:350-385`).
 2. **Token count.** The route asks the router's counter. Anthropic models get
    the SDK's exact count when an Anthropic key exists. Other models get a
    chars/4 estimate flagged `estimated` (`runtime/src/proxy/providers/router.ts:192-216`).
@@ -133,7 +134,7 @@ With the outbox enabled it holds back the last chunk and any bytes after
 
 On shutdown, Fastify waits for in-flight requests, then the route awaits
 pending memory and shadow writes and closes the outbox
-(`runtime/src/proxy/index.ts:250-264`, `runtime/src/proxy/routes/messages.ts:397-400`).
+(`runtime/src/proxy/index.ts:573-587`, `runtime/src/proxy/routes/messages.ts:397-400`).
 
 ## 4. Multi-provider router
 
@@ -194,7 +195,7 @@ read, and suppressed rows are not returned (`runtime/src/memory/warm/tier2.ts:17
 
 In the proxy, extraction runs only when `CQ_MEMORY_EXTRACT_MODEL` is set to a
 `local/<model>` id and `CQ_LOCAL_BASE_URL` is an HTTP loopback address
-(`runtime/src/proxy/index.ts:87-94`, `runtime/src/proxy/index.ts:204-212`).
+(`runtime/src/proxy/index.ts:114-121`, `runtime/src/proxy/index.ts:460-468`).
 The recorder writes facts under the verified conversation, or a new memory
 session (`runtime/src/proxy/message-memory.ts:22-31`). Extracted facts are
 never summaries (ADR-0004, `runtime/src/memory/warm/extractor.ts:1-7`).
@@ -237,7 +238,7 @@ the request path and pruning is enabled nowhere
 LoCoMo gate as red at the documented decay setting (`runtime/src/pruner/kadanedial.ts:10-24`).
 
 The only live caller is the shadow observer, enabled by `CQ_SHADOW_OBSERVE`
-in commercial mode (`runtime/src/proxy/index.ts:171-188`). It runs selection
+in commercial mode (`runtime/src/proxy/index.ts:427-444`). It runs selection
 on its own window and logs counts: candidates, selected, pruned, fact
 coverage, and superseded candidates (`runtime/src/proxy/shadow-observer.ts:190-203`).
 It never changes forwarding or billing (`runtime/src/proxy/forward.ts:98`).
@@ -256,9 +257,9 @@ Tier 1 of the audit is deterministic and needs no LLM. `git-indexer.ts` turns
 `runtime/src/audit/audit-engine.ts:82`, `runtime/src/audit/audit-engine.ts:106`).
 
 In the proxy, the audit runs only when `CQ_AUDIT_REPO_ROOT` is set, which also
-requires local extraction (`runtime/src/proxy/index.ts:138-140`). The repo path
+requires local extraction (`runtime/src/proxy/index.ts:394-396`). The repo path
 must stay inside the project root and contain no symlinks
-(`runtime/src/proxy/index.ts:72-85`). Facts are inserted suppressed and released
+(`runtime/src/proxy/index.ts:99-112`). Facts are inserted suppressed and released
 unless the result is `CONFLICT` (`runtime/src/proxy/message-memory.ts:34-48`).
 
 Tier 2 (Llama spot-check) and Tier 3 (Opus escalation) have prompt-building and
@@ -269,7 +270,7 @@ parsing code but are wired nowhere in the request path
 
 **Usage outbox.** In commercial mode each successful request becomes a usage
 event in a local directory, default `data/usage-outbox`
-(`runtime/src/proxy/index.ts:198-202`). The outbox must sit inside the project
+(`runtime/src/proxy/index.ts:454-458`). The outbox must sit inside the project
 root and uses mode 0700 (`runtime/src/billing/durable-usage-outbox.ts:62-69`).
 Each event is written to a temp file, fsynced, and renamed
 (`runtime/src/billing/durable-usage-outbox.ts:129-142`). A replay loop sends
@@ -302,13 +303,13 @@ requires an `sk_test_` key (`runtime/scripts/invoice.ts:100`), and the Stripe
 client refuses `sk_live_` keys unless `allowLiveKey` is set
 (`runtime/src/billing/stripe.ts:267-268`). `POST /stripe/webhook` verifies the
 Stripe signature on the raw body and records `invoice.paid`
-(`runtime/src/billing/stripe-webhook.ts:1-14`, `runtime/src/proxy/index.ts:166-168`).
+(`runtime/src/billing/stripe-webhook.ts:1-14`, `runtime/src/proxy/index.ts:422-424`).
 
 **What is local-only.** The outbox lives on the proxy's disk and the billing
 tables in the local Compose database. This document records no Stripe send and
 no paid invoice. Commercial startup refuses to run when the `VERCEL`
 environment variable is set to a value other than `0`
-(`runtime/src/proxy/index.ts:120`, `runtime/src/proxy/index.ts:196`). That is
+(`runtime/src/proxy/index.ts:196`, `runtime/src/proxy/index.ts:452`). That is
 the only host check. On any other host with an ephemeral disk, commercial startup proceeds
 and the outbox is not durable.
 
@@ -319,7 +320,7 @@ and the outbox is not durable.
 | `/dashboard` | inline `HTML` in `runtime/src/proxy/routes/dashboard.ts:45` | `/dashboard/api`: totals, sessions and waste from local capture files (`runtime/src/proxy/dashboard-data.ts:1-7`) |
 | `/dashboard/graph` | `runtime/src/proxy/routes/graph-dashboard.ts:1-2` | the `/v1/memory/graph*` routes, with an API key |
 | `/billing` | `BILLING_HTML` in `runtime/src/proxy/routes/billing.ts:243-257` | the `/v1/billing/*` routes |
-| `/docs`, `/openapi.json` | `runtime/src/proxy/openapi.ts` | static API spec (`runtime/src/proxy/app.ts:172-183`) |
+| `/docs`, `/openapi.json` | `runtime/src/proxy/openapi.ts` | static API spec (`runtime/src/proxy/app.ts:389-400`) |
 
 `/dashboard/api` returns 403 when auth is enforced, because capture files
 carry no tenant key (`runtime/src/proxy/routes/dashboard.ts:213-217`). The
@@ -351,7 +352,7 @@ pre-Stripe duplicate-send guard from section 8
 (`runtime/supabase/migrations/20260924235900_invoice_send_claims.sql:1-4`,
 `runtime/src/billing/invoice-ledger.ts:12-13`). The second is any usage event
 still waiting in the on-disk outbox, which is a set of files, not table rows
-(`runtime/src/proxy/index.ts:197-199`). A restore from `npm run backup` alone
+(`runtime/src/proxy/index.ts:453-455`). A restore from `npm run backup` alone
 loses both, and neither CLI warns about it.
 
 ## 11. ADR index

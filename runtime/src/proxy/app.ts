@@ -8,7 +8,7 @@
  * Phase 1 measures tokens + captures/redacts traffic; it does NOT prune.
  */
 
-import Fastify, { type FastifyInstance } from "fastify";
+import Fastify, { type FastifyInstance, type FastifyReply } from "fastify";
 import cors from "@fastify/cors";
 import rateLimit from "@fastify/rate-limit";
 import { logger } from "../lib/logger";
@@ -26,6 +26,7 @@ import { planRequestsPerMinute } from "./rate-limit-tiers";
 import { OPENAPI_SPEC, OPENAPI_DOCS_HTML } from "./openapi";
 import { registerAuth, type AuthDeps } from "./auth";
 import type { MessagesDeps } from "./forward";
+import { isLoopbackBindAddress, resolveRateLimitMax } from "./network-settings";
 
 export interface BuildProxyOptions {
   /**
@@ -34,10 +35,34 @@ export interface BuildProxyOptions {
    */
   cors?: boolean;
   /**
-   * Per-IP rate limit. `false` disables (used by most tests); a number sets the
-   * max requests per window; omitted uses RATE_LIMIT_MAX env (default 100) over
-   * RATE_LIMIT_WINDOW (default "1 minute"). Protects the proxy + the upstream
-   * Anthropic key from runaway clients.
+   * The port the proxy is about to listen on (or already listening on). Used only by REQ-2's Host
+   * check (specs/security/stratum-local-network.md): when set, a Host that names a loopback name, or
+   * matches a `DEVOPS_PROXY_ALLOWED_HOSTS` entry that carries no port, must carry no port or exactly
+   * this one. `start()` always passes this (via baseOptions()). A caller that builds the app
+   * directly, such as a test built on `app.inject()`, may omit it: a loopback name is then accepted
+   * with any port, and a portless allow-list entry matches only a Host that has no port.
+   */
+  listenPort?: number;
+  /**
+   * The bind host the proxy is about to listen on (or already listening on). Used only by REQ-2's
+   * Host check: when this is ITSELF a loopback bind address ({@link isLoopbackBindAddress}), its own
+   * literal value is accepted as a Host name too (REQ-2's Definitions entry for a loopback name) —
+   * besides the three fixed loopback names 127.0.0.1, localhost and [::1] — case-insensitively, with
+   * the same port rule as those names. A non-loopback `listenHost` (e.g. "0.0.0.0") adds nothing.
+   * `start()` always passes this (via baseOptions()). A caller that builds the app directly, such as
+   * a test built on `app.inject()`, may omit it: the loopback names are then just the three fixed
+   * ones.
+   */
+  listenHost?: string;
+  /**
+   * Per-IP rate limit. `false` disables the limiter, with or without `rateLimitByPlan` (used by most
+   * tests). When `rateLimitByPlan` is not set, a number sets the max requests per window and
+   * bypasses RATE_LIMIT_MAX entirely (it is never read), and omitted validates and uses
+   * RATE_LIMIT_MAX env (default 100, via {@link resolveRateLimitMax}) over RATE_LIMIT_WINDOW
+   * (default "1 minute") — an invalid RATE_LIMIT_MAX then throws from buildProxy() itself
+   * (specs/security/stratum-local-network.md REQ-4). With `rateLimitByPlan` set (and `rateLimit` not
+   * `false`) the org's plan decides the limit: a number here is ignored and RATE_LIMIT_MAX is never read.
+   * Protects the proxy + the upstream Anthropic key from runaway clients.
    */
   rateLimit?: false | number;
   /**
@@ -110,18 +135,210 @@ export interface BuildProxyOptions {
   health?: HealthDeps;
 }
 
+// --- specs/security/stratum-local-network.md — REQ-1 (CORS) + REQ-2 (Host). "Auth configured"
+// (the spec's Definitions entry) is exactly `opts.auth !== undefined` — the same presence check the
+// auth gate below uses (`if (opts.auth)`); buildStartOptions() (index.ts) sets `opts.auth` when
+// `commercialEnabled()` is true, so this file reads that predicate through `opts.auth` rather than
+// adding a second one. ---
+
+/** The three fixed loopback Host names of REQ-2's Definitions entry, compared case-insensitively. */
+const LOOPBACK_HOST_NAMES = new Set(["127.0.0.1", "localhost", "[::1]"]);
+
+/** Split a comma-separated env value into trimmed, non-empty entries (case preserved). */
+function parseCommaList(value: string | undefined): string[] {
+  if (value === undefined) return [];
+  return value
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+}
+
+/** Strip one trailing "." (an absolute-FQDN dot) from a hostname. */
+function stripTrailingDot(name: string): string {
+  return name.endsWith(".") ? name.slice(0, -1) : name;
+}
+
+/**
+ * Split a Host-header-shaped string into its bare name and (if present) numeric port, honoring the
+ * bracketed IPv6-literal form (`[::1]:8080`). `host` must already be trimmed + lowercased. A
+ * trailing `:<non-digits>` is left attached to `name` (not a port), so a malformed Host never
+ * spoofs a bare loopback name.
+ */
+function splitHostPort(host: string): { name: string; port?: number } {
+  if (host.startsWith("[")) {
+    const close = host.indexOf("]");
+    if (close === -1) return { name: host };
+    const name = host.slice(0, close + 1);
+    const rest = host.slice(close + 1);
+    // Any remainder other than exactly `:<digits>` (a bare trailing ":", non-digit garbage, or extra
+    // ":"-separated junk) returns the WHOLE original string as `name` — mirroring the unbracketed
+    // branch's own `{ name: host }` fallback just below — so a malformed bracketed Host (e.g.
+    // "[::1]:abc") never collapses to the bare bracket form ("[::1]") and spoofs a loopback name.
+    return rest.startsWith(":") && /^\d+$/.test(rest.slice(1)) ? { name, port: Number(rest.slice(1)) } : { name: host };
+  }
+  const lastColon = host.lastIndexOf(":");
+  return lastColon !== -1 && /^\d+$/.test(host.slice(lastColon + 1)) ? { name: host.slice(0, lastColon), port: Number(host.slice(lastColon + 1)) } : { name: host };
+}
+
+/**
+ * The Host-header NAME form of a loopback bind address ({@link isLoopbackBindAddress}'s own three
+ * cases; REQ-2's Definitions entry lets it name the proxy): the literal "::1" is bracketed, matching
+ * how a Host header spells an IPv6 literal (`[::1]`); any other accepted spelling ("localhost", a
+ * 127.0.0.0/8 address, an already-bracketed `[::1]`) is returned trimmed and lower-cased. Callers
+ * only ever pass an address {@link isLoopbackBindAddress} already accepted, so no other input shape
+ * is handled.
+ */
+function loopbackBindAddressHostName(addr: string): string {
+  const a = addr.trim().toLowerCase();
+  return a === "::1" ? "[::1]" : a;
+}
+
+/**
+ * True when `host` (already trimmed + lowercased) is a loopback name per REQ-2's Definitions entry:
+ * one of {@link LOOPBACK_HOST_NAMES} (the proxy's three fixed names, 127.0.0.1, localhost and
+ * [::1]), OR `extraLoopbackName` when set (the proxy's configured `listenHost` itself, in its
+ * Host-header NAME form, when that bind address is itself loopback — computed once by the caller
+ * via {@link loopbackBindAddressHostName}, not re-derived per request) — each with or without a
+ * port. Built on {@link splitHostPort}, so the name and the port of the request's Host are checked
+ * separately.
+ *
+ * When `listenPort` is known, a present port must equal it exactly — for either the fixed names or
+ * `extraLoopbackName`. When `listenPort` is unset (a test built directly on `app.inject()`; the
+ * real proxy's `start()` always supplies it, via baseOptions()), the port is not compared at all:
+ * only the name matters.
+ *
+ * @param host - the request's Host header, already trimmed + lowercased.
+ * @param listenPort - the proxy's already-resolved listen port, when known.
+ * @param extraLoopbackName - the configured listenHost's own Host-header name, when it is itself
+ *   loopback; `undefined` when listenHost is unset or is not itself loopback.
+ */
+function isLoopbackHost(host: string, listenPort: number | undefined, extraLoopbackName: string | undefined): boolean {
+  const { name, port } = splitHostPort(host);
+  if (!LOOPBACK_HOST_NAMES.has(name) && name !== extraLoopbackName) return false;
+  if (port === undefined) return true;
+  return listenPort === undefined || port === listenPort;
+}
+
+/**
+ * True when `host` (trimmed + lowercased) matches a `DEVOPS_PROXY_ALLOWED_HOSTS` entry (REQ-2): an
+ * entry that carries its own port matches only that exact host+port; a portless entry matches a
+ * portless host, or a host whose port equals `listenPort`. Both sides are compared with one
+ * trailing dot stripped.
+ */
+function matchesAllowedHostsEntry(host: string, entries: string[], listenPort: number | undefined): boolean {
+  const { name: hostName, port: hostPort } = splitHostPort(host);
+  const strippedHost = stripTrailingDot(hostName);
+  for (const entry of entries) {
+    const { name: entryName, port: entryPort } = splitHostPort(entry);
+    if (stripTrailingDot(entryName) !== strippedHost) continue;
+    if (entryPort !== undefined ? hostPort === entryPort : hostPort === undefined || hostPort === listenPort) return true;
+  }
+  return false;
+}
+
+/** Send REQ-1/REQ-2's 403 refusal, JSON-shaped like buildProxy()'s own error handler below. */
+function sendForbidden(reply: FastifyReply, type: string, message: string): FastifyReply {
+  return reply.code(403).send({ type: "error", error: { type, message } });
+}
+
+/** Send REQ-2's 400 refusal for a request with more than one Host header, JSON-shaped like {@link sendForbidden}. */
+function sendBadRequest(reply: FastifyReply, type: string, message: string): FastifyReply {
+  return reply.code(400).send({ type: "error", error: { type, message } });
+}
+
+/**
+ * True when `rawHeaders` — Node's flat `[name, value, name, value, ...]` array
+ * ({@link import("node:http").IncomingMessage.rawHeaders}) — carries more than one `Host` header
+ * line, matched case-insensitively by name (REQ-2's last sentence; RFC 9112 §3.2 has a server
+ * respond with 400 to a request message that contains more than one Host header field line).
+ * Deliberately reads the RAW wire headers, not `req.headers.host`: Node's
+ * own HTTP parser already folds a repeated `host` entry in `.headers` down to just the first value
+ * it saw, silently discarding the rest — so that property can never reveal a duplicate no matter how
+ * the request was sent. Only a real socket can exercise this (see local-network.test.ts's
+ * `rawRequest` helper): `app.inject()`'s `rawHeaders` is built from `Object.keys()` of a plain
+ * headers object, which cannot hold the same key twice either.
+ */
+function hasDuplicateHostHeader(rawHeaders: string[]): boolean {
+  let count = 0;
+  for (let i = 0; i < rawHeaders.length; i += 2) {
+    if (rawHeaders[i]?.toLowerCase() === "host") count++;
+  }
+  return count > 1;
+}
+
 /**
  * Build the proxy Fastify instance (no network listen).
  *
  * @param opts - optional feature toggles.
  * @returns A configured (but not-yet-listening) Fastify instance. Call
  *          `await app.ready()` before `app.inject()`, or `app.listen()` to serve.
+ * @throws {Error} naming RATE_LIMIT_MAX and the rejected raw value (specs/security/
+ *   stratum-local-network.md REQ-4) when `opts.rateLimit` is omitted (it is neither a number nor
+ *   `false`), `opts.rateLimitByPlan` is not set, and `process.env.RATE_LIMIT_MAX` is set but is
+ *   not a positive integer — see {@link resolveRateLimitMax}.
  */
 export function buildProxy(opts: BuildProxyOptions = {}): FastifyInstance {
   const app = Fastify({ logger: false });
+  const authConfigured = opts.auth !== undefined;
+  // REQ-2's auth-configured allow-list: unset means "accept any Host"; set (even to "") narrows it
+  // to its entries plus the loopback names. Read once here, not on every request.
+  const allowedHostsRaw = process.env["DEVOPS_PROXY_ALLOWED_HOSTS"];
+  const allowedHosts = allowedHostsRaw !== undefined ? parseCommaList(allowedHostsRaw).map((entry) => entry.toLowerCase()) : undefined;
+  // REQ-2's Definitions entry for a loopback name: when the configured listenHost is itself a
+  // loopback bind address, its own Host-header name counts as a loopback name too, wherever the
+  // loopback names are checked below (personal mode, and auth-configured mode with an allow-list) —
+  // computed once here, like allowedHosts just above, not on every request.
+  const configuredLoopbackHostName = opts.listenHost !== undefined && isLoopbackBindAddress(opts.listenHost) ? loopbackBindAddressHostName(opts.listenHost) : undefined;
+
+  // REQ-1 + REQ-2 (specs/security/stratum-local-network.md): one onRequest hook, registered before the
+  // @fastify/cors plugin because Fastify installs a hook added with addHook() after the plugins
+  // registered before it, so registering it first makes the Host and duplicate-Host refusals run
+  // before the CORS plugin can answer a preflight.
+  // Independent of `opts.cors`: even with `cors: false` — a test-only knob; production never
+  // sets it — this still enforces REQ-2's Host check, and /health is not exempt. Before either
+  // mode branch below, it also refuses (400) any request whose raw headers carry more than one Host
+  // line (REQ-2's last sentence) — independent of mode, and independent of what req.headers.host
+  // itself folds to.
+  app.addHook("onRequest", async (req, reply) => {
+    // REQ-2's last sentence (RFC 9112 §3.2): checked first, against the RAW wire headers — see
+    // hasDuplicateHostHeader()'s own doc for why req.headers.host itself can never reveal this.
+    if (hasDuplicateHostHeader(req.raw.rawHeaders)) {
+      return sendBadRequest(reply, "invalid_host", "Request has more than one Host header.");
+    }
+
+    const hostHeader = req.headers.host;
+    const host = typeof hostHeader === "string" ? hostHeader.trim().toLowerCase() : undefined;
+
+    if (!authConfigured) {
+      // REQ-2: no auth configured -> every request needs a loopback Host.
+      if (host === undefined || !isLoopbackHost(host, opts.listenPort, configuredLoopbackHostName)) {
+        return sendForbidden(reply, "forbidden_host", "Host header is missing or is not a loopback address.");
+      }
+      // REQ-1: no auth configured -> no origin is ever allowed; refuse a preflight outright (a
+      // simple request is still served, just never gets Access-Control-Allow-Origin — handled by
+      // @fastify/cors's `origin: false` registered below).
+      const isPreflight = req.method === "OPTIONS" && typeof req.headers.origin === "string" && typeof req.headers["access-control-request-method"] === "string";
+      if (isPreflight) {
+        return sendForbidden(reply, "forbidden_origin", "Cross-origin requests need DEVOPS_PROXY_CORS_ORIGINS configured with auth.");
+      }
+      return;
+    }
+
+    // REQ-2, auth configured: any Host is accepted unless DEVOPS_PROXY_ALLOWED_HOSTS is set, in
+    // which case only its entries plus the loopback names are accepted (REQ-1's origin allow-list
+    // is @fastify/cors's own job via the `origin` option registered below).
+    if (allowedHosts !== undefined) {
+      const allowed = host !== undefined && (isLoopbackHost(host, opts.listenPort, configuredLoopbackHostName) || matchesAllowedHostsEntry(host, allowedHosts, opts.listenPort));
+      if (!allowed) {
+        return sendForbidden(reply, "forbidden_host", "Host header is not on the DEVOPS_PROXY_ALLOWED_HOSTS allow-list.");
+      }
+    }
+  });
 
   if (opts.cors !== false) {
-    void app.register(cors);
+    // Personal mode never allows any origin (REQ-1); auth-configured mode allows only
+    // DEVOPS_PROXY_CORS_ORIGINS (comma-separated, empty by default — REQ-1's own default).
+    void app.register(cors, authConfigured ? { origin: parseCommaList(process.env["DEVOPS_PROXY_CORS_ORIGINS"]) } : { origin: false });
   }
 
   // Auth gate (opt-in) — registered before the routes so it guards them all (it
@@ -162,7 +379,7 @@ export function buildProxy(opts: BuildProxyOptions = {}): FastifyInstance {
         return payload;
       });
     } else {
-      const max = typeof opts.rateLimit === "number" ? opts.rateLimit : parseInt(process.env["RATE_LIMIT_MAX"] ?? "100", 10);
+      const max = typeof opts.rateLimit === "number" ? opts.rateLimit : resolveRateLimitMax(process.env);
       void app.register(rateLimit, { max, timeWindow: process.env["RATE_LIMIT_WINDOW"] ?? "1 minute" });
     }
   }
