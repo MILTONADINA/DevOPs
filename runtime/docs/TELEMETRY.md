@@ -9,7 +9,7 @@ All paths are relative to the repository root. The proxy entry points are
 `runtime/src/proxy/index.ts` (Node server) and `runtime/vercel-src/entry.ts`
 (serverless function). Both build the app with the same `buildProxy` and
 `buildStartOptions` calls (`runtime/vercel-src/entry.ts:45`,
-`runtime/src/proxy/index.ts:247`), but they pass different environment values
+`runtime/src/proxy/index.ts:570`), but they pass different environment values
 and dashboard directories. Commercial mode does not start on the serverless
 entry by default (see "Commercial mode only" below).
 
@@ -102,10 +102,10 @@ The proxy writes these other lines. All go to the local process output.
   turn number and the error name and message, not turn content.
 
 Sources:
-- `runtime/src/proxy/app.ts:121` (Fastify logger off), `runtime/src/proxy/app.ts:228` (proxy error)
-- `runtime/src/proxy/index.ts:253`, `runtime/src/proxy/index.ts:271` (shutdown, startup)
-- `runtime/src/proxy/index.ts:159`, `runtime/src/proxy/index.ts:201` (plan lookup, outbox replay)
-- `runtime/src/proxy/index.ts:171-177`, `runtime/src/proxy/shadow-observer.ts:19-37`, `runtime/src/proxy/shadow-observer.ts:190`, `runtime/src/proxy/routes/messages.ts:379`, `runtime/src/proxy/routes/messages.ts:482` (shadow line, its fields, one emit per observed turn)
+- `runtime/src/proxy/app.ts:281` (Fastify logger off), `runtime/src/proxy/app.ts:445` (proxy error)
+- `runtime/src/proxy/index.ts:576`, `runtime/src/proxy/index.ts:593` (shutdown, startup)
+- `runtime/src/proxy/index.ts:415`, `runtime/src/proxy/index.ts:457` (plan lookup, outbox replay)
+- `runtime/src/proxy/index.ts:427-433`, `runtime/src/proxy/shadow-observer.ts:19-37`, `runtime/src/proxy/shadow-observer.ts:190`, `runtime/src/proxy/routes/messages.ts:379`, `runtime/src/proxy/routes/messages.ts:482` (shadow line, its fields, one emit per observed turn)
 - `runtime/src/proxy/capture.ts:112`, `runtime/src/proxy/capture.ts:150`, `runtime/src/proxy/capture.ts:187` (capture errors)
 
 ## The capture artifact
@@ -153,11 +153,11 @@ Sources:
 - `runtime/src/proxy/default-deps.ts:37-40`, `runtime/src/proxy/default-deps.ts:53` (path, wiring)
 - `runtime/.gitignore:47` (`data/sessions/`)
 - `runtime/src/proxy/capture.ts:125-127` (full rewrite, no mode), `runtime/src/proxy/capture.ts:136-153` (redact or drop), `runtime/src/proxy/capture.ts:156-171` (stored fields), `runtime/src/proxy/capture.ts:183-188` (flush error handling)
-- `runtime/src/proxy/capture.ts:192-202` (`end()` sets `ended_at`; no caller in `runtime/src` or `runtime/vercel-src`), `runtime/src/proxy/routes/messages.ts:397-400` (the only `onClose` hook), `runtime/src/proxy/index.ts:253-257` (shutdown log and comment)
+- `runtime/src/proxy/capture.ts:192-202` (`end()` sets `ended_at`; no caller in `runtime/src` or `runtime/vercel-src`), `runtime/src/proxy/routes/messages.ts:397-400` (the only `onClose` hook), `runtime/src/proxy/index.ts:576-580` (shutdown log and comment)
 - `runtime/src/proxy/token-count.ts:76`, `runtime/src/proxy/token-count.ts:82`, `runtime/src/proxy/providers/router.ts:194`, `runtime/src/proxy/routes/messages.ts:169-173`, `runtime/src/proxy/routes/messages.ts:424` (every `message_breakdown` producer returns `[]`)
 - `observability/pii-redaction.ts:8-9` (coverage), `runtime/src/proxy/capture.ts:16` (import)
 - `runtime/src/proxy/routes/messages.ts:336-350` (streaming turns are captured in `finally`, including on client abort)
-- `runtime/src/proxy/index.ts:226`, `runtime/src/proxy/index.ts:245` (Node dashboard reader: fixed `<cwd>/data/sessions`), `runtime/src/proxy/default-deps.ts:39` (capture store directory)
+- `runtime/src/proxy/index.ts:508`, `runtime/src/proxy/index.ts:496` (Node dashboard reader: fixed `<cwd>/data/sessions`), `runtime/src/proxy/default-deps.ts:39` (capture store directory)
 - `runtime/vercel-src/entry.ts:38`, `runtime/vercel-src/entry.ts:42` (serverless dashboard directory)
 
 ## OpenTelemetry and Sentry
@@ -214,7 +214,7 @@ cache of 256 entries, so an identical body is not counted twice. Other
 providers get a local estimate and no network call. In commercial mode,
 `POST /v1/tokens/count` uses the same counter.
 
-Sources: `runtime/src/proxy/default-deps.ts:33-34`, `runtime/src/proxy/default-deps.ts:46`, `runtime/src/proxy/providers/router.ts:192-194`, `runtime/src/proxy/providers/router.ts:207-213`, `runtime/src/proxy/token-count.ts:54`, `runtime/src/proxy/token-count.ts:70-75`, `runtime/src/proxy/index.ts:190`, `runtime/node_modules/@anthropic-ai/sdk/client.js:67`, `runtime/node_modules/@anthropic-ai/sdk/client.js:87`.
+Sources: `runtime/src/proxy/default-deps.ts:33-34`, `runtime/src/proxy/default-deps.ts:46`, `runtime/src/proxy/providers/router.ts:192-194`, `runtime/src/proxy/providers/router.ts:207-213`, `runtime/src/proxy/token-count.ts:54`, `runtime/src/proxy/token-count.ts:70-75`, `runtime/src/proxy/index.ts:446`, `runtime/node_modules/@anthropic-ai/sdk/client.js:67`, `runtime/node_modules/@anthropic-ai/sdk/client.js:87`.
 
 ### 3. Commercial mode only
 
@@ -253,13 +253,13 @@ of these calls.
   persist.
 
 Sources:
-- `runtime/src/proxy/index.ts:110-113` (commercial mode), `runtime/src/proxy/index.ts:116-121` (startup requirements), `runtime/src/proxy/index.ts:242`, `runtime/vercel-src/entry.ts:33-35` (checked at startup on both entries; serverless `VERCEL` default), `runtime/src/proxy/index.ts:141-147` (Supabase client)
+- `runtime/src/proxy/index.ts:186-189` (commercial mode), `runtime/src/proxy/index.ts:192-197` (startup requirements), `runtime/src/proxy/index.ts:568`, `runtime/vercel-src/entry.ts:33-35` (checked at startup on both entries; serverless `VERCEL` default), `runtime/src/proxy/index.ts:397-403` (Supabase client)
 - `runtime/docs/decisions/0020-local-storage-after-hosted-retirement.md`, `runtime/docs/LOCAL_STORAGE.md` (local stack, `127.0.0.1:54321`)
 - `runtime/src/proxy/routes/webhooks.ts:53`, `runtime/src/proxy/routes/webhooks.ts:87`, `runtime/src/webhooks/deliver.ts:81`
-- `runtime/src/proxy/index.ts:166-168`, `runtime/src/proxy/routes/stripe-webhook.ts:56`, `runtime/src/billing/stripe.ts:45`, `runtime/src/billing/stripe.ts:55`, `runtime/scripts/invoice.ts:18-20`, `runtime/scripts/verify-stripe.ts:19`
-- `runtime/src/proxy/index.ts:87-94`, `runtime/src/proxy/index.ts:204-212` (loopback-only extraction)
-- `runtime/src/proxy/index.ts:172`, `runtime/src/pruner/encoder.ts:99` (`allowRemoteModels = false`)
-- `runtime/src/proxy/routes/messages.ts:117-118` (query is the latest user message text), `runtime/src/proxy/shadow-observer.ts:104`, `runtime/src/proxy/shadow-observer.ts:153-154` (truncate to 1,200 characters and send), `runtime/src/memory/warm/query-fact-exchanges.ts:9-16` (RPC call with `search_text`), `runtime/src/proxy/index.ts:180` (wiring), `runtime/supabase/migrations/20260924235800_shadow_hot_query_lookup.sql:3-8` (read-only `STABLE` SQL function)
+- `runtime/src/proxy/index.ts:422-424`, `runtime/src/proxy/routes/stripe-webhook.ts:56`, `runtime/src/billing/stripe.ts:45`, `runtime/src/billing/stripe.ts:55`, `runtime/scripts/invoice.ts:18-20`, `runtime/scripts/verify-stripe.ts:19`
+- `runtime/src/proxy/index.ts:114-121`, `runtime/src/proxy/index.ts:460-468` (loopback-only extraction)
+- `runtime/src/proxy/index.ts:428`, `runtime/src/pruner/encoder.ts:99` (`allowRemoteModels = false`)
+- `runtime/src/proxy/routes/messages.ts:117-118` (query is the latest user message text), `runtime/src/proxy/shadow-observer.ts:104`, `runtime/src/proxy/shadow-observer.ts:153-154` (truncate to 1,200 characters and send), `runtime/src/memory/warm/query-fact-exchanges.ts:9-16` (RPC call with `search_text`), `runtime/src/proxy/index.ts:436` (wiring), `runtime/supabase/migrations/20260924235800_shadow_hot_query_lookup.sql:3-8` (read-only `STABLE` SQL function)
 
 ### Not outbound
 
@@ -287,7 +287,7 @@ Sources: `runtime/src/proxy/routes/dashboard.ts:89`, `runtime/src/proxy/routes/g
   `model`, `inputTokens`, `outputTokens` and the pinned price. It is deleted
   after the row reaches the database.
 
-Sources: `runtime/src/proxy/index.ts:195-202`, `runtime/src/proxy/routes/messages.ts:219-241`, `runtime/src/billing/durable-usage-outbox.ts:66-68`, `runtime/src/billing/durable-usage-outbox.ts:121-132`, `runtime/src/billing/durable-usage-outbox.ts:91-92`, `runtime/.gitignore:49`.
+Sources: `runtime/src/proxy/index.ts:451-458`, `runtime/src/proxy/routes/messages.ts:219-241`, `runtime/src/billing/durable-usage-outbox.ts:66-68`, `runtime/src/billing/durable-usage-outbox.ts:121-132`, `runtime/src/billing/durable-usage-outbox.ts:91-92`, `runtime/.gitignore:49`.
 
 ## Database records (commercial mode)
 

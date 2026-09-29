@@ -1,7 +1,7 @@
 # Local network posture of the DevOps proxy
 
 **Status**: approved (owner, 2026-09-26, spec batch 1; recorded in .workflow/state/approvals.jsonl as human_approved_spec)
-**Amended**: 2026-09-26, by the owner's directive that DevOps is one platform (ADR-0026; `specs/ops/one-platform-naming.md`). The five new settings are named `DEVOPS_PROXY_*` instead of `STRATUM_*`, and the proxy is called the DevOps proxy. No requirement changed otherwise. On 2026-09-27 its paths followed the move of `stratum/` to `runtime/` (`specs/ops/one-platform-naming.md` REQ-5); no requirement changed.
+**Amended**: 2026-09-26, by the owner's directive that DevOps is one platform (ADR-0026; `specs/ops/one-platform-naming.md`). The five new settings are named `DEVOPS_PROXY_*` instead of `STRATUM_*`, and the proxy is called the DevOps proxy. No requirement changed otherwise. On 2026-09-27 its paths followed the move of `stratum/` to `runtime/` (`specs/ops/one-platform-naming.md` REQ-5); no requirement changed. On 2026-09-28, a loopback `DEVOPS_PROXY_HOST` is also accepted as a Host name, and a request with more than one Host header gets 400 (owner decisions recorded for cycle phase1-016; RFC 9112 §3.2). On 2026-09-29 the first "Falsified by" bullet was aligned with REQ-1 and AC-1: a simple cross-origin request is served without Access-Control-Allow-Origin, and only the preflight is refused. No requirement changed.
 **Spec ID**: security/stratum-local-network (quality plan cycle S1)
 **Decision context**: DevOPs is open source and local-first, with no hosted service (owner, 2026-09-26; ADR-0025). The DevOps proxy (code under `runtime/`) runs on the user's own machine and holds the user's provider keys.
 
@@ -26,7 +26,7 @@ The default local setup must keep working with no new settings: an AI client on 
 ## Definitions
 
 - **Auth configured.** The proxy runs with API-key authentication, which is the team (commercial) mode's `auth.resolve` in `runtime/src/proxy/index.ts`.
-- **Loopback name.** `127.0.0.1`, `localhost` or `[::1]`, each with or without the listening port.
+- **Loopback name.** `127.0.0.1`, `localhost` or `[::1]`, or the configured `DEVOPS_PROXY_HOST` when it is itself a loopback address, each with or without the listening port.
 
 ## Requirements
 
@@ -34,7 +34,7 @@ The default local setup must keep working with no new settings: an AI client on 
 WHERE no auth is configured, THE PROXY SHALL NOT send an `Access-Control-Allow-Origin` header for any origin, and SHALL answer a CORS preflight (`OPTIONS` with `Origin` and `Access-Control-Request-Method`) with status 403. WHERE auth is configured, THE PROXY SHALL allow only the origins listed in `DEVOPS_PROXY_CORS_ORIGINS` (comma-separated, empty by default).
 
 ### REQ-2 — Loopback Host only without auth
-WHERE no auth is configured, THE PROXY SHALL refuse with status 403, before routing, every request whose `Host` header is missing or is not a loopback name. WHERE auth is configured, THE PROXY SHALL accept any `Host`, unless `DEVOPS_PROXY_ALLOWED_HOSTS` (comma-separated) is set, in which case only those hosts and the loopback names are accepted.
+WHERE no auth is configured, THE PROXY SHALL refuse with status 403, before routing, every request whose `Host` header is missing or is not a loopback name. WHERE auth is configured, THE PROXY SHALL accept any `Host`, unless `DEVOPS_PROXY_ALLOWED_HOSTS` (comma-separated) is set, in which case only those hosts and the loopback names are accepted. IF a request carries more than one Host header, THEN the proxy SHALL refuse it with 400, in every mode.
 
 ### REQ-3 — No unauthenticated remote bind
 - The listen address SHALL be read from `DEVOPS_PROXY_HOST`.
@@ -90,7 +90,7 @@ Tests live in `runtime/test/proxy/local-network.test.ts` unless stated. Each tes
 
 ## Falsified by
 
-- Any request from a foreign Origin or a foreign Host that gets a 2xx, or an `Access-Control-Allow-Origin` header, from a proxy with no auth configured.
+- A cross-origin preflight, or any request with a foreign Host, that gets a 2xx from a proxy with no auth configured, or any response from such a proxy that carries an `Access-Control-Allow-Origin` header.
 - A proxy with no auth configured and without the opt-in that starts listening on a non-loopback address.
 - `RATE_LIMIT_MAX=abc` or an invalid `PORT` that starts the proxy.
 

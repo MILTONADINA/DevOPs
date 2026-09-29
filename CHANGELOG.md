@@ -18,6 +18,56 @@ product. See `docs/LAUNCH_READINESS.md` for current, frequently-updated
 status — this file intentionally does not duplicate that detail while the
 phase is open.
 
+### Security — local network hardening (specs/security/stratum-local-network.md)
+
+- **Breaking:** the bind-host setting is now `DEVOPS_PROXY_HOST`. `HOST` is
+  deprecated — honored for one release only as an alias, used when
+  `DEVOPS_PROXY_HOST` is unset or blank (`DEVOPS_PROXY_HOST` wins when both
+  are set) — and logs a deprecation warning when it is set to a non-empty
+  value. If your shell or CI exports `HOST` (some set it to the machine's
+  name), a personal-mode proxy now refuses to start on that address: unset
+  `HOST`, or set `DEVOPS_PROXY_HOST=127.0.0.1`.
+- **Breaking:** in personal mode (no auth configured) the proxy answers a
+  CORS preflight with `403`, never sends `Access-Control-Allow-Origin`, and
+  refuses with `403` any request whose `Host` header is missing or isn't a
+  loopback name: `127.0.0.1`, `localhost`, `[::1]`, or a loopback
+  `DEVOPS_PROXY_HOST`, with no port or with the proxy's own listening port.
+  Any other port gets `403`, so a port forward such as `localhost:5000` to a
+  proxy listening on `4080` is refused. A browser app that called the proxy
+  from another origin stops working.
+- **Breaking:** in commercial mode (auth configured) the proxy sends
+  `Access-Control-Allow-Origin` only for the origins listed in
+  `DEVOPS_PROXY_CORS_ORIGINS`, which is empty by default; an entry `*` allows
+  any origin. `DEVOPS_PROXY_ALLOWED_HOSTS` optionally limits which `Host`
+  names it accepts; with it unset any `Host` is accepted.
+- A request that carries more than one `Host` header gets `400`
+  (`invalid_host`), in every mode.
+- **Breaking:** with no auth configured, a non-loopback `DEVOPS_PROXY_HOST`
+  (for example a bind-all address) refuses to start unless
+  `DEVOPS_PROXY_ALLOW_REMOTE_UNAUTHENTICATED=1` is set, in which case the
+  proxy starts and logs a warning. Loopback means `localhost`, an address in
+  `127.0.0.0/8`, or `::1` (also written `[::1]`). The opt-in only allows the
+  bind: with no auth every non-loopback `Host` still gets `403`, so it does
+  not make the proxy reachable by its address. Reaching the proxy from
+  another device takes auth (`CQ_COMMERCIAL` with Supabase credentials).
+- **Breaking:** an invalid `PORT` (not an integer from 1 to 65535) or
+  `RATE_LIMIT_MAX` (not a positive integer) refuses to start, and the message
+  names the variable and the value it rejected.
+- **Breaking:** a provider base URL (`ANTHROPIC_BASE_URL`, `OPENAI_BASE_URL`,
+  `OPENROUTER_BASE_URL`, `GEMINI_BASE_URL` or `CQ_LOCAL_BASE_URL`) that uses
+  plain `http` to a non-loopback host refuses to start unless
+  `DEVOPS_PROXY_ALLOW_INSECURE_UPSTREAM=1` is set. A model server on another
+  LAN host over plain `http` needs that opt-in; loopback `http` (a local
+  Ollama or LM Studio server) and `https` are not affected by this rule.
+- **Breaking:** a base URL that names the proxy's own listen address (a
+  self-loop) refuses to start, and no setting overrides that.
+- **Breaking:** the Docker image is removed: `runtime/Dockerfile` and
+  `runtime/Dockerfile.dockerignore` are deleted. Run the proxy directly
+  (`npm run dev` in `runtime/`); Docker Compose remains for the local
+  database stack (`npm run db:start`) and does not host the proxy.
+- Nothing changes for a command-line or SDK client on the same machine that
+  connects to `localhost` or `127.0.0.1` on the proxy's own port.
+
 ### Added — repository hygiene check (quality plan QW-9)
 
 - `scripts/check-repo-hygiene.mjs` runs in CI's `validate` job (`specs/ops/repo-hygiene.md`). It checks four things: every tracked file that starts with `#!` is executable, the plugin and version manifests carry the package version, no render or screenshot is committed outside an allowlist, and the root tests run by glob.

@@ -30,8 +30,8 @@ This page does not repeat them.
 | Log shows `usage outbox replay failed` | Usage events are queued on disk and not yet written to `billing_records`. | Check the database. Do not delete the outbox directory. |
 | `/sprint` refuses to start | Run `bash scripts/graph-preflight.sh` and read the failing check IDs. | See [Blocked graph cycles](#blocked-graph-cycles). |
 
-Sources: `runtime/src/proxy/index.ts:116-121`, `runtime/src/proxy/index.ts:155-164`,
-`runtime/src/proxy/index.ts:198-201`, `runtime/src/proxy/index.ts:269-280`,
+Sources: `runtime/src/proxy/index.ts:192-197`, `runtime/src/proxy/index.ts:411-420`,
+`runtime/src/proxy/index.ts:454-457`, `runtime/src/proxy/index.ts:592-603`,
 `runtime/src/proxy/auth.ts:73-78`, `runtime/src/proxy/auth.ts:98-100`,
 `runtime/src/proxy/auth.ts:131-134`, `runtime/src/proxy/routes/health.ts:29-43`,
 `slash-commands/universal/sprint.md:14-21`.
@@ -39,7 +39,8 @@ Sources: `runtime/src/proxy/index.ts:116-121`, `runtime/src/proxy/index.ts:155-1
 ### Proxy health
 
 The proxy serves `GET /health` without authentication. It listens on
-`127.0.0.1:4080` unless `HOST` or `PORT` is set.
+`127.0.0.1:4080` unless `DEVOPS_PROXY_HOST` (or the deprecated `HOST`
+alias) or `PORT` is set.
 
 - `status` is always `"ok"` while the process answers. It does not mean the
   database is reachable.
@@ -61,8 +62,8 @@ This checks the code and the database. It does not check a proxy process
 that is already running.
 
 Sources: `runtime/src/proxy/routes/health.ts:1-8`, `runtime/src/proxy/routes/health.ts:29-43`,
-`runtime/src/proxy/routes/health.ts:58-72`, `runtime/src/proxy/index.ts:104-107`,
-`runtime/src/proxy/index.ts:164`, `runtime/src/proxy/index.ts:225`,
+`runtime/src/proxy/routes/health.ts:58-72`, `runtime/src/proxy/index.ts:161-167`,
+`runtime/src/proxy/index.ts:420`, `runtime/src/proxy/network-settings.ts:73-81`, `runtime/src/proxy/index.ts:548`,
 `runtime/src/proxy/auth.ts:110`, `runtime/scripts/smoke-setup.ts:7-36`,
 `scripts/setup-local.mjs:40`.
 
@@ -202,8 +203,8 @@ it.
 
 Sources: `runtime/src/proxy/auth.ts:33-42`, `runtime/src/proxy/auth.ts:66-83`,
 `runtime/scripts/api-keys.ts:1-9`, `runtime/scripts/api-keys.ts:58-65`,
-`runtime/src/proxy/index.ts:13-17`, `runtime/src/proxy/index.ts:166-168`,
-`runtime/src/proxy/index.ts:195-197`, `runtime/src/proxy/providers/router.ts:80-82`,
+`runtime/src/proxy/index.ts:13-17`, `runtime/src/proxy/index.ts:422-424`,
+`runtime/src/proxy/index.ts:451-453`, `runtime/src/proxy/providers/router.ts:80-82`,
 `runtime/scripts/verify-billing.ts:1-9`, `runtime/scripts/verify-billing.ts:95-108`,
 `runtime/scripts/local-compose.ts:134-136`, `runtime/scripts/local-compose.ts:157-159`,
 `docs/runbooks/LOCAL_STRATUM.md:117`.
@@ -253,9 +254,9 @@ To restart the commercial proxy against the local database:
 4. Point the client back at the proxy only after step 3 passes.
 
 Sources: `runtime/docs/FAQ.md:37`, `CLAUDE.md:175-183`,
-`runtime/src/proxy/index.ts:13-17`, `runtime/src/proxy/index.ts:109-121`,
-`runtime/src/proxy/index.ts:135-164`, `runtime/src/proxy/index.ts:189-213`,
-`runtime/src/proxy/index.ts:226-242`, `runtime/src/proxy/index.ts:271`,
+`runtime/src/proxy/index.ts:13-17`, `runtime/src/proxy/index.ts:185-197`,
+`runtime/src/proxy/index.ts:391-420`, `runtime/src/proxy/index.ts:445-469`,
+`runtime/src/proxy/index.ts:508-533`, `runtime/src/proxy/index.ts:568`, `runtime/src/proxy/index.ts:593`,
 `runtime/scripts/local-compose.ts:157-162`,
 `runtime/docs/COMMERCIAL_ONBOARDING.md:100`,
 `runtime/docs/MEMORY_AND_EVAL_COMMANDS.md:11-12`.

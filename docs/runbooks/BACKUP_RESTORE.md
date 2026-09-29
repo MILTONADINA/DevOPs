@@ -80,8 +80,8 @@ Sources: `runtime/supabase/migrations/20260924235900_invoice_send_claims.sql:1-4
 `runtime/src/billing/invoice-ledger.ts:71-94`, `runtime/src/billing/invoice-ledger.ts:124-127`,
 `runtime/src/billing/invoice-ledger.ts:146`, `runtime/src/billing/invoice-ledger.ts:166-168`,
 `runtime/scripts/invoice.ts:180-188`,
-`runtime/scripts/restore-org.ts:75-84`, `runtime/src/proxy/index.ts:198-199`,
-`runtime/src/proxy/index.ts:226`, `runtime/.gitignore:43-49`,
+`runtime/scripts/restore-org.ts:75-84`, `runtime/src/proxy/index.ts:454-455`,
+`runtime/src/proxy/index.ts:508`, `runtime/.gitignore:43-49`,
 `runtime/scripts/local-compose.ts:113`, `docs/runbooks/LOCAL_STRATUM.md:75-78`.
 
 ## Verify a backup
