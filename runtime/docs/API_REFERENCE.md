@@ -4,7 +4,61 @@
 
 Local: `http://localhost:4080` (the proxy runs on your machine; there is no hosted instance)
 
-All endpoints require the header `Authorization: Bearer <org_api_key>` except `/health`.
+---
+
+## Authentication
+
+Which requests need an API key depends on the proxy's mode — "personal" (the default) or
+"commercial" (`CQ_COMMERCIAL=true` or `1`, with Supabase configured; the local-network spec below
+calls this "auth configured"):
+
+**Personal mode:** no request needs an API key, on any path, including `/v1/*`, `/health`,
+`/openapi.json`, and `/docs`. Instead every request is gated on its network origin
+(`specs/security/stratum-local-network.md`, REQ-1/REQ-2):
+- `Host` must be a loopback name — `127.0.0.1`, `localhost`, or `[::1]`, or the configured
+  `DEVOPS_PROXY_HOST` when it is itself a loopback address — with no port or with the proxy's own
+  listening port (case-insensitive). Any other port gets `403`, so a port forward such as
+  `localhost:5000` to a proxy listening on `4080` is refused. A missing or non-loopback `Host` gets
+  `403`.
+- No response ever carries `Access-Control-Allow-Origin`, so a browser page cannot read a
+  cross-origin response even when it succeeds. A CORS preflight (`OPTIONS` with `Origin` and
+  `Access-Control-Request-Method`) gets `403` outright.
+- A same-machine client (curl, an SDK, another local process) hitting `http://localhost:4080` or
+  `http://127.0.0.1:4080` sends no `Origin` and a loopback `Host`, so it is unaffected.
+
+**Commercial mode:** every request under `/v1/*` requires the header
+`Authorization: Bearer <org_api_key>` or `x-api-key: <org_api_key>` (see Billing, Configuration, and
+Memory below for which key scope each endpoint needs). Only `/v1/*` is gated by a key — `/health`,
+`/openapi.json`, `/docs`, the `/dashboard` and `/dashboard/graph` HTML pages, the `/billing` HTML
+page, and `POST /stripe/webhook` stay public. `GET /dashboard/api` is the exception: it returns
+`403` on every request in this mode, with a key or without one, because captured sessions carry no
+tenant key. `Host` accepts any value unless `DEVOPS_PROXY_ALLOWED_HOSTS` is set, in which case only
+its entries plus the loopback names above are accepted. `Access-Control-Allow-Origin` is sent only
+for origins listed in `DEVOPS_PROXY_CORS_ORIGINS` (empty by default, so none by default); other
+origins get no CORS header, same as personal mode. An entry `*` in that list means any origin: the
+response then carries `Access-Control-Allow-Origin: *`, a deliberate widening of the allow-list.
+
+In every mode, a request that carries more than one `Host` header gets `400` (REQ-2), even when each
+line would be accepted on its own.
+
+**Reaching the proxy from another device:** the proxy binds `127.0.0.1` unless `DEVOPS_PROXY_HOST`
+(or its deprecated alias `HOST`) names another address. It refuses to start on a non-loopback (for
+example bind-all) address unless auth is configured or
+`DEVOPS_PROXY_ALLOW_REMOTE_UNAUTHENTICATED=1` is set (REQ-3 of the same spec). That opt-in only
+allows the bind: with no auth every non-loopback `Host` still gets `403`, so the proxy is not
+reachable from another machine by its address. Reaching it from another device takes auth
+(`CQ_COMMERCIAL` with Supabase), and `DEVOPS_PROXY_ALLOWED_HOSTS` pins which `Host` names it accepts
+(with auth and no allow-list, any `Host` is accepted). The `Host` check reads only the header the
+client sends, so it is not authentication: with no auth, a client that can reach the bound address
+and sends `Host: localhost` is served.
+
+Both modes' `Host`/origin refusals return:
+
+| Status | Code | Meaning |
+|---|---|---|
+| 400 | `invalid_host` | Request carries more than one Host header (every mode) |
+| 403 | `forbidden_host` | `Host` header missing, or not an accepted loopback/allow-listed name |
+| 403 | `forbidden_origin` | Cross-origin preflight refused (personal mode only) |
 
 ---
 
@@ -26,8 +80,9 @@ X-CQ-Disable-Pruning: true     Measure only, no pruning (Phase 1 behavior)
 **Transparent header passthrough:** as a drop-in proxy, `anthropic-version` and `anthropic-beta`
 on your request are forwarded upstream unchanged — your SDK's API version is honored and beta
 opt-ins (e.g. `anthropic-beta`) are NOT dropped. When absent, the proxy defaults the version to
-`2023-06-01`. (The proxy supplies its own `x-api-key` to Anthropic; you authenticate to CQ with your
-CQ key via `Authorization: Bearer` or `x-api-key`.)
+`2023-06-01`. (The proxy supplies its own `x-api-key` to Anthropic; in commercial mode, you
+authenticate to CQ with your CQ key via `Authorization: Bearer` or `x-api-key` — personal mode needs
+no CQ key, see Authentication above.)
 
 **Response:** Identical to Anthropic API response, plus:
 ```json
