@@ -465,12 +465,16 @@ describe("buildStartOptions", () => {
     expect(opts.auth).toBeUndefined();
     expect(opts.config).toBeUndefined();
     expect(opts.memory).toBeUndefined();
-    expect(opts.billing).toBeUndefined();
+    // The usage read API (specs/ops/payment-removal.md REQ-3) is team-mode only, and no billing or stripeWebhook option exists in either mode (REQ-1).
+    // Mutation: buildStartOptions setting `usage` outside team mode, or setting a `billing` or `stripeWebhook` option again.
+    expect(opts.usage).toBeUndefined();
+    expect(Object.hasOwn(opts, "billing")).toBe(false);
+    expect(Object.hasOwn(opts, "stripeWebhook")).toBe(false);
     expect(opts.sessions).toBeUndefined();
     expect(makeClient).not.toHaveBeenCalled();
   });
 
-  test("commercial mode: builds the client ONCE and wires auth(/v1)+config+memory+billing+sessions", () => {
+  test("specs/ops/payment-removal.md#AC-1 and specs/ops/payment-removal.md#AC-3 — commercial mode: builds the client ONCE and wires auth(/v1)+config+memory+usage+sessions, with no billing or stripeWebhook option", () => {
     const makeClient = vi.fn(() => fakeClient);
     const opts = buildStartOptions({ CQ_COMMERCIAL: "true", SUPABASE_URL: "u", SUPABASE_SERVICE_KEY: "k" }, base, makeClient as unknown as ClientFactory);
     expect(makeClient).toHaveBeenCalledTimes(1);
@@ -478,7 +482,9 @@ describe("buildStartOptions", () => {
     expect(opts.auth?.protectedPrefixes).toEqual(["/v1/"]);
     expect(opts.config).toBeDefined();
     expect(opts.memory).toBeDefined();
-    expect(opts.billing).toBeDefined();
+    expect(opts.usage).toBeDefined();
+    expect(Object.hasOwn(opts, "billing")).toBe(false);
+    expect(Object.hasOwn(opts, "stripeWebhook")).toBe(false);
     expect(opts.sessions).toBeDefined();
     expect(opts.webhooks).toBeDefined();
     expect(opts.tokens).toBeDefined();
@@ -487,17 +493,14 @@ describe("buildStartOptions", () => {
     expect(opts.dashboard).toBe(base.dashboard);
   });
 
-  test("Stripe webhook is wired ONLY when STRIPE_WEBHOOK_SECRET is set", () => {
-    const commercial = { CQ_COMMERCIAL: "true", SUPABASE_URL: "u", SUPABASE_SERVICE_KEY: "k" };
-    const without = buildStartOptions(commercial, base, (() => fakeClient) as unknown as ClientFactory);
-    expect(without.stripeWebhook).toBeUndefined(); // no endpoint secret ⇒ no route
-
-    const withSecret = buildStartOptions({ ...commercial, STRIPE_WEBHOOK_SECRET: "whsec_x" }, base, (() => fakeClient) as unknown as ClientFactory);
-    expect(withSecret.stripeWebhook).toBeDefined();
-    expect(withSecret.stripeWebhook?.signingSecret).toBe("whsec_x");
-
-    // personal mode never wires it even if the secret is present
-    const personal = buildStartOptions({ STRIPE_WEBHOOK_SECRET: "whsec_x" }, base, (() => fakeClient) as unknown as ClientFactory);
-    expect(personal.stripeWebhook).toBeUndefined();
+  test("specs/ops/payment-removal.md#AC-1 — stripeWebhook is absent from the built options even when STRIPE_WEBHOOK_SECRET is in the env, in team mode and in personal mode", () => {
+    // Each env is a variable, not an object literal at the call: StartEnv no longer declares STRIPE_WEBHOOK_SECRET, so the environment only carries it and the options ignore it. Each env also keeps
+    // a key StartEnv does declare (CQ_COMMERCIAL), because TypeScript refuses an object that shares no property with the all-optional StartEnv.
+    const teamEnv = { CQ_COMMERCIAL: "true", SUPABASE_URL: "u", SUPABASE_SERVICE_KEY: "k", STRIPE_WEBHOOK_SECRET: "whsec_x" };
+    const personalEnv = { CQ_COMMERCIAL: "false", STRIPE_WEBHOOK_SECRET: "whsec_x" };
+    const team = buildStartOptions(teamEnv, base, (() => fakeClient) as unknown as ClientFactory);
+    const personal = buildStartOptions(personalEnv, base, (() => fakeClient) as unknown as ClientFactory);
+    expect(team).not.toHaveProperty("stripeWebhook");
+    expect(personal).not.toHaveProperty("stripeWebhook");
   });
 });

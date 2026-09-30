@@ -8,7 +8,8 @@
  * Two modes:
  *  - DEFAULT (Phase 1, personal): measurement proxy + dashboard, UNAUTHENTICATED.
  *  - COMMERCIAL (CQ_COMMERCIAL=true + Supabase creds): adds the multi-tenant auth gate (protecting
- *    /v1/*) + the config/memory/billing/sessions APIs over Supabase. Multi-tenant, key-authenticated.
+ *    /v1/*) + the config/memory/usage/sessions APIs over Supabase (the usage API is served under
+ *    /v1/billing/*). Multi-tenant, key-authenticated.
  *
  * Usage (settings come from the process environment only; runtime/.env is not loaded):
  *   npm run dev                          # personal; needs ANTHROPIC_API_KEY (or another provider)
@@ -31,10 +32,9 @@ import type { MessagesDeps } from "./forward";
 import { resolveApiKeyVia } from "./auth";
 import { createSupabaseConfigDeps } from "./routes/config";
 import { createSupabaseMemoryDeps } from "./routes/memory";
-import { createSupabaseBillingDeps } from "./routes/billing";
+import { createSupabaseUsageDeps } from "./routes/usage";
 import { createSupabaseSessionsDeps } from "./routes/sessions";
 import { createSupabaseWebhookDeps } from "./routes/webhooks";
-import { createSupabaseStripeWebhookDeps } from "./routes/stripe-webhook";
 import { createSupabaseUsageRecorder } from "../billing/usage-recorder";
 import { createLocalUsageOutbox } from "../billing/durable-usage-outbox";
 import { createTokenBudget } from "./token-budget";
@@ -57,8 +57,6 @@ export interface StartEnv {
   CQ_COMMERCIAL?: string | undefined;
   SUPABASE_URL?: string | undefined;
   SUPABASE_SERVICE_KEY?: string | undefined;
-  /** Stripe endpoint signing secret (whsec_…). When set in commercial mode, wires POST /stripe/webhook. */
-  STRIPE_WEBHOOK_SECRET?: string | undefined;
   /** Dedicated billing-record signing secret. When set in commercial mode, the request path persists usage. */
   CQ_BILLING_SIGNING_SECRET?: string | undefined;
   CQ_USAGE_OUTBOX_DIR?: string | undefined;
@@ -380,8 +378,9 @@ export type ClientFactory = (url: string, key: string) => SupabaseClient;
 
 /**
  * Assemble buildProxy options from env: always the base (messages + dashboard); in COMMERCIAL mode,
- * additionally the multi-tenant auth gate (protecting /v1/*) + the config/memory/billing/sessions
- * APIs over Supabase. Billing mode opens a private local outbox; inject a fake client in tests.
+ * additionally the multi-tenant auth gate (protecting /v1/*) + the config/memory/usage/sessions
+ * APIs over Supabase (the usage API is served under /v1/billing/*). Billing mode opens a private
+ * local outbox; inject a fake client in tests.
  *
  * @param env - the relevant environment.
  * @param base - the always-on options (messages, dashboard).
@@ -398,11 +397,12 @@ export function buildStartOptions(env: StartEnv, base: BuildProxyOptions, makeCl
     opts.auth = { resolve: resolveApiKeyVia(client), protectedPrefixes: ["/v1/"] };
     opts.config = createSupabaseConfigDeps(client);
     opts.memory = createSupabaseMemoryDeps(client);
-    opts.billing = createSupabaseBillingDeps(client);
-    opts.sessions = createSupabaseSessionsDeps(client);
+    opts.usage = createSupabaseUsageDeps(client);
+    const sessions = createSupabaseSessionsDeps(client);
+    opts.sessions = sessions;
     opts.webhooks = createSupabaseWebhookDeps(client);
-    // Per-plan request rate limiting (reuse the billing deps' plan reader).
-    const billing = opts.billing;
+    // Plan reader for the per-plan request rate limit and the token budget: the sessions deps' getPlan, called as a method on each lookup
+    // (specs/ops/payment-removal.md REQ-2).
     // Fail-OPEN to the starter tier on a lookup error. This closure feeds @fastify/rate-limit's async
     // `max` (NOT wrapped by the plugin) AND the token-budget gate; an unguarded throw here from a transient
     // Supabase blip would propagate into the rate-limiter on EVERY request → the whole instance 500s
@@ -410,7 +410,7 @@ export function buildStartOptions(env: StartEnv, base: BuildProxyOptions, makeCl
     // tryConsume is already try/caught in messages.ts; this guards the rate-limit path symmetrically.)
     const getPlan = async (orgId: string): Promise<string> => {
       try {
-        return (await billing.getOrgPlan(orgId)) ?? "starter";
+        return (await sessions.getPlan(orgId)) ?? "starter";
       } catch (e) {
         logger.warn({ err: (e as Error).message, orgId }, "getOrgPlan failed — defaulting to starter tier");
         return "starter";
@@ -418,10 +418,6 @@ export function buildStartOptions(env: StartEnv, base: BuildProxyOptions, makeCl
     };
     opts.rateLimitByPlan = { getPlan };
     opts.health = { checkDatabase: createSupabaseHealthCheck(client) };
-    // Stripe inbound webhook (records invoice.paid) — only when the endpoint secret is configured.
-    if (typeof env.STRIPE_WEBHOOK_SECRET === "string" && env.STRIPE_WEBHOOK_SECRET !== "") {
-      opts.stripeWebhook = createSupabaseStripeWebhookDeps(client, env.STRIPE_WEBHOOK_SECRET);
-    }
     if (base.messages !== undefined) {
       base.messages.resolveConversation = createSupabaseConversationResolver(client);
       if (env.CQ_SHADOW_OBSERVE === "true" || env.CQ_SHADOW_OBSERVE === "1") {
@@ -510,7 +506,6 @@ export async function start(): Promise<void> {
     CQ_COMMERCIAL: process.env["CQ_COMMERCIAL"],
     SUPABASE_URL: process.env["SUPABASE_URL"],
     SUPABASE_SERVICE_KEY: process.env["SUPABASE_SERVICE_KEY"],
-    STRIPE_WEBHOOK_SECRET: process.env["STRIPE_WEBHOOK_SECRET"],
     CQ_BILLING_SIGNING_SECRET: process.env["CQ_BILLING_SIGNING_SECRET"],
     CQ_USAGE_OUTBOX_DIR: process.env["CQ_USAGE_OUTBOX_DIR"],
     VERCEL: process.env["VERCEL"],

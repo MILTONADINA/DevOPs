@@ -65,16 +65,29 @@ describe("OPENAPI_SPEC structure", () => {
   });
 });
 
+describe("OPENAPI_SPEC labels its USD figures as estimates (REQ-6)", () => {
+  test("specs/ops/payment-removal.md#AC-6 — the usage summary, usage records and session-stats paths say their USD figures are estimates", () => {
+    for (const path of ["/v1/billing/summary", "/v1/billing/records", "/v1/sessions/{id}/stats"] as const) {
+      const get = OPENAPI_SPEC.paths[path].get;
+      expect(JSON.stringify(OPENAPI_SPEC.paths[path]), path).toContain("estimate");
+      expect(get.summary, path).toMatch(/estimate/i);
+      expect(get.responses["200"].description, path).toContain("USD figures are estimates, for information only");
+    }
+  });
+});
+
 describe("documented paths are a subset of the real routes", () => {
   test("each spec path+method is actually registered (build the full app, fake every dep)", async () => {
     // Fake every route dep so buildProxy registers the entire surface. The fakes never run (we only
-    // inspect the route table), so trivial stubs suffice.
+    // inspect the route table), so trivial stubs suffice. `usage` is what registers /v1/billing/summary
+    // and /v1/billing/records: a key buildProxy does not know (a stale one) registers nothing, and the
+    // probe below then answers 404 for both.
     const anyFake = {} as never;
     const app = buildProxy({
       cors: false,
       rateLimit: false,
       messages: anyFake,
-      billing: anyFake,
+      usage: anyFake,
       config: anyFake,
       memory: anyFake,
       sessions: anyFake,
