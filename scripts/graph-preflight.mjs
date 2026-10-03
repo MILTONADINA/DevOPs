@@ -99,6 +99,86 @@ function gitRemote(gitReady) {
   add('git.remote', result.status === 0 ? 'pass' : 'fail', result.status === 0 ? 'origin HEAD reachable' : 'origin HEAD unreachable or timed out');
 }
 
+// specs/graph/branch-protection-preflight.md: read-only drift detection, no repair.
+function branchProtection(gitReady) {
+  if (!gitReady) { add('branch.protection', 'skipped', 'git.runs failed'); return; }
+  const requireValue = (condition, message) => { if (!condition) throw new Error(message); };
+  const isObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
+  const forbidden = ['deepteam', 'Claude semantic security review'];
+  const readContained = (relative, label) => {
+    let resolved;
+    try { resolved = realpathSync(path.join(ROOT, relative)); }
+    catch { throw new Error(`${label} is missing or unreadable`); }
+    requireValue(insideRoot(resolved), `${label} redirects outside the project root`);
+    try {
+      requireValue(statSync(resolved).isFile(), `${label} is not a regular file`);
+      return readFileSync(resolved, 'utf8');
+    } catch { throw new Error(`${label} is unreadable or not a regular file`); }
+  };
+  const requireProcess = (result, label) => {
+    requireValue(!result.error && !result.signal && result.status === 0,
+      `${label} failed (${result.error?.code || result.signal || result.status || 'unknown'})`);
+  };
+  try {
+    const policyText = readContained('governance/required-checks.yml', 'Required-checks policy');
+    let policy;
+    try { policy = JSON.parse(policyText); }
+    catch { throw new Error('Required-checks policy is not valid JSON'); }
+    requireValue(isObject(policy) && Object.keys(policy).length === 1 && Array.isArray(policy.contexts),
+      'Required-checks policy must contain only a contexts array');
+    const required = policy.contexts;
+    requireValue(required.length > 0 && required.every((name) => typeof name === 'string' && name !== '' && name.trim() === name)
+      && new Set(required).size === required.length, 'Required-checks policy contexts must be nonempty, trimmed and unique');
+    for (const name of forbidden) requireValue(!required.includes(name), `Required-checks policy cannot require ${name}`);
+    const allowed = readContained('.workflow/network-allowlist.txt', 'Network allowlist')
+      .split(/\r?\n/).map((line) => line.trim()).filter((line) => line && !line.startsWith('#'));
+    requireValue(allowed.includes('api.github.com'), 'Network allowlist must include api.github.com; gh request withheld');
+
+    // Bind only this check's Git lookups independently; preserve other checks' environment.
+    const gitEnv = { ...process.env };
+    for (const name of Object.keys(gitEnv)) if (name.startsWith('GIT_')) delete gitEnv[name];
+    const git = (args) => spawnSync('git', args, { cwd: ROOT, env: gitEnv, encoding: 'utf8', timeout: 5000 });
+    const root = git(['rev-parse', '--show-toplevel']);
+    requireProcess(root, 'Sanitized Git root lookup');
+    requireValue(root.stdout.trim() === ROOT, 'Sanitized Git root does not resolve this project root');
+    const origin = git(['remote', 'get-url', 'origin']);
+    requireProcess(origin, 'Sanitized Git origin lookup');
+    const url = origin.stdout.replace(/\r?\n$/, '');
+    const match = /^(?:https:\/\/github\.com\/|git@github\.com:|ssh:\/\/git@github\.com\/)([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)$/.exec(url);
+    requireValue(match && match[0] === url, 'Origin must be an ordinary GitHub repository URL without credentials or extra components');
+    const owner = match[1];
+    const repository = match[2].replace(/\.git$/, '');
+    requireValue([owner, repository].every((part) => part && part !== '.' && part !== '..'), 'Origin has an invalid GitHub owner or repository');
+
+    const resource = `repos/${owner}/${repository}/branches/main/protection`;
+    const response = run('gh', ['api', '--hostname', 'github.com', '--method', 'GET', resource], 10_000);
+    requireProcess(response, 'gh API protection request');
+    let protection;
+    try { protection = JSON.parse(response.stdout); }
+    catch { throw new Error('Protection response is not valid JSON'); }
+    requireValue(isObject(protection), 'Protection response must be an object');
+    const status = protection.required_status_checks;
+    requireValue(isObject(status) && Array.isArray(status.contexts)
+      && status.contexts.every((name) => typeof name === 'string' && name.trim() !== ''),
+      'Protection required status checks must contain an array of nonempty context strings');
+    for (const name of forbidden) requireValue(!status.contexts.includes(name), `Protection cannot require unfunded context ${name}`);
+    const missing = required.filter((name) => !status.contexts.includes(name));
+    requireValue(missing.length === 0, `Protection is missing required contexts: ${missing.join(', ')}`);
+    requireValue(status.strict === true, 'Protection status checks must be strict');
+    requireValue(isObject(protection.enforce_admins) && protection.enforce_admins.enabled === true,
+      'Protection must enforce administrator checks');
+    requireValue(isObject(protection.required_pull_request_reviews)
+      && protection.required_pull_request_reviews.required_approving_review_count === 0,
+      'Protection approving review count must be integer 0 under owner Decision 2');
+    add('branch.protection', 'pass', `${owner}/${repository} main protection matches required contexts, strict/admin checks and zero reviews`);
+  } catch (error) {
+    // Only our bounded diagnostics are emitted; never API bodies, tool output or origin text.
+    const evidence = JSON.stringify(String(error.message)).slice(1, -1).replace(/[\u007f-\u009f\u2028\u2029]/g,
+      (character) => `\\u${character.charCodeAt(0).toString(16).padStart(4, '0')}`);
+    add('branch.protection', 'fail', evidence);
+  }
+}
+
 function nodeVersion() {
   const declared = JSON.parse(readFileSync(path.join(ROOT, 'package.json'), 'utf8')).engines?.node;
   const minimum = /^>=(\d+)\.(\d+)\.(\d+)$/.exec(declared || '');
@@ -268,6 +348,7 @@ function main() {
   const checkOnly = process.argv.includes('--check-only');
   const gitReady = gitRuns(checkOnly, registry);
   gitRemote(gitReady);
+  branchProtection(gitReady);
   nodeVersion();
   npmRuns();
   // Test overrides (GRAPH_PREFLIGHT_DEPS_ROOT_DIR, _DEPS_RUNTIME_DIR, _PROOFS_DIR) must stay inside the

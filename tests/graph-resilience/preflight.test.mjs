@@ -9,9 +9,16 @@ import { createHash } from 'node:crypto';
 const ROOT = path.resolve(import.meta.dirname, '..', '..');
 const PREFLIGHT = path.join(ROOT, 'scripts', 'graph-preflight.sh');
 
+// Owned API response for existing preflight oracles; never invokes operator gh.
+function healthyProtectionGh(bin) {
+  const response = {"required_status_checks":{"strict":true,"contexts":["validate","runtime-test","setup-linux","gitleaks","semgrep","dependency-audit"]},"enforce_admins":{"enabled":true},"required_pull_request_reviews":{"required_approving_review_count":0}};
+  writeFileSync(path.join(bin, 'gh'), `#!/bin/sh\nprintf '%s\\n' '${JSON.stringify(response)}'\n`, { mode: 0o755 });
+}
+
 function fakeSecurityTools(directory, includeCosign = true) {
   const bin = path.join(directory, 'fake-security-tools');
   mkdirSync(bin);
+  healthyProtectionGh(bin);
   for (const name of includeCosign ? ['gitleaks', 'semgrep', 'cosign'] : ['gitleaks', 'semgrep']) {
     const file = path.join(bin, name);
     writeFileSync(file, name === 'cosign' ? '#!/bin/sh\necho "GitVersion: fixture-version"\n' : '#!/bin/sh\necho fixture-version\n');
@@ -179,7 +186,9 @@ test('graph-halt alone forces needs_human and survives preflight', () => {
     }
     copyFileSync(path.join(ROOT, 'scripts', 'graph-preflight.mjs'), path.join(repo, 'scripts', 'graph-preflight.mjs'));
     copyFileSync(path.join(ROOT, 'governance', 'graph', 'preflight-remediations.yml'), path.join(repo, 'governance', 'graph', 'preflight-remediations.yml'));
-    writeFileSync(path.join(repo, '.workflow', 'network-allowlist.txt'), 'github.com\nrelease-assets.githubusercontent.com\n');
+    writeFileSync(path.join(repo, 'governance', 'required-checks.yml'), JSON.stringify({ contexts: ['validate', 'runtime-test', 'setup-linux', 'gitleaks', 'semgrep', 'dependency-audit'] }));
+    writeFileSync(path.join(repo, '.workflow', 'network-allowlist.txt'), 'github.com\napi.github.com\nrelease-assets.githubusercontent.com\n');
+    healthyProtectionGh(path.join(repo, 'fake-bin'));
     writeFileSync(path.join(repo, 'package.json'), JSON.stringify({ engines: { node: '>=20.0.0' } }));
     const fakeGit = path.join(repo, 'fake-bin', 'git');
     writeFileSync(fakeGit, `#!/bin/sh\ncase "$*" in\n  'rev-parse --show-toplevel') printf '%s\\n' '${repo}' ;;\n  'remote get-url origin') echo 'https://github.com/example/repo.git' ;;\n  'ls-remote --exit-code origin HEAD') echo 'abc HEAD' ;;\n  'rev-parse HEAD') echo 'abcdef0' ;;\n  *) exit 2 ;;\nesac\n`);

@@ -53,6 +53,30 @@ it does not establish safety of arbitrary container code or every scan target.
 DeepTeam/Claude's visible unfunded skips and the rest of MR-7 remain separate
 under owner Decision 9. This Semgrep gate does not claim those reviews ran.
 
+### Branch protection drift check (MR-8)
+
+Before a sprint, `branch.protection` compares the current GitHub origin's
+`main` protection with `governance/required-checks.yml`. It requires all
+configured contexts, strict checks, administrator enforcement and zero
+approving reviews under owner Decision 2. The unfunded DeepTeam and Claude
+contexts cannot satisfy this policy. Missing or unreadable protection fails
+with `needs_human`; the check never repairs GitHub settings.
+
+For request tampering and cross-project disclosure, the new check rebinds its
+Git root and origin with inherited `GIT_*` overrides removed, accepts only
+three explicit GitHub origin forms, checks the exact API allowlist entry and
+uses bounded `gh api --hostname github.com --method GET` argv. Its policy and
+allowlist reads resolve within the project. Process and parse failures do not
+dump API bodies or credentials into evidence. Tests use owned tool stubs and
+keep the original repair, halt and blocked-marker assertions.
+
+This uses the owner's existing authenticated gh. The new check does not audit
+every Git configuration source, app binding, GitHub ruleset or bypass route;
+legacy checks retain their existing behavior. Policy files remain editable
+until MR-4, and settings can change after preflight. GitHub's required checks
+remain the merge gate; this additional check detects the specified drift at
+preflight time.
+
 ### Tier-3 LLM-orchestrated pentest
 
 Beyond the static tier-3 scanners, DevOPs ships configurations for four
