@@ -7,7 +7,13 @@ for mr3_var in $(compgen -e); do
 done
 export LC_ALL=C
 MR3_REPO="${1:-}"
-case "$MR3_REPO" in /*) ;; *) echo 'fixture requires an absolute directory' >&2; exit 64 ;; esac
+case "$MR3_REPO" in
+    /*) ;;
+    *)
+        echo 'fixture requires an absolute directory' >&2
+        exit 64
+        ;;
+esac
 [[ -d "$MR3_REPO" && ! -e "$MR3_REPO/.git" ]] || { echo 'fixture requires a fresh directory without .git' >&2; exit 64; }
 if mr3_probe="$(git -C "$MR3_REPO" rev-parse --is-inside-work-tree 2>&1)"; then
     echo 'fixture refuses any existing Git ancestor' >&2
