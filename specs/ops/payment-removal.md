@@ -216,6 +216,15 @@ Removing the Vercel adapter. Dropping the USD estimates (the owner kept them).
 Retiring the proof claims that the removal breaks, which is a ledger action
 after C4.
 
+**Sequencing clarification (2026-10-03, owner's continuing-work direction):**
+the separate historical disposition ledger may proceed after C4-A's schema
+removal and C4-B's initial managed explicit-session API delivery have merged.
+This permits the ledger action without declaring C4 complete: broader erasure
+coverage, managed onboarding/restarts and the representative one-year benchmark
+remain open under `specs/memory/session-erasure.md`. The bounded ledger rules
+are in `specs/ops/claim-retirement.md`; this clarification changes no removal
+requirement or acceptance criterion.
+
 ## Acceptance criteria
 
 ### AC-1 (REQ-1)

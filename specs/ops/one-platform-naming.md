@@ -99,6 +99,10 @@ WHEN `stratum/` is renamed, it SHALL become `runtime/`, and its package SHALL be
 
 The move SHALL land right after the graph cycle that retires the billing four-eyes gate, whose path patterns still match `stratum/src/billing/`, and before the cycles that edit runtime paths: QW-1, QW-9, S1 and C1 to C4. Claims written to the current proof template re-run in a detached worktree at their `git_sha` and survive the move. Older claims go to the claim-retirement step planned after C4.
 
+The 2026-10-03 sequencing clarification in payment-removal's Out of scope
+permits that historical ledger after merged C4-A and the initial C4-B delivery;
+it does not close the wider erasure, managed lifecycle or benchmark gates.
+
 The move SHALL NOT rename the compose project, container or volume names (REQ-4 governs those), and SHALL NOT rename the settings (REQ-2 and REQ-3, in the naming cycle).
 
 Checks keyed on the name SHALL be renamed in the same pull request, with branch protection updated in lockstep:
