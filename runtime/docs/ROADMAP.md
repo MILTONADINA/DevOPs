@@ -207,8 +207,9 @@ stays in the tree as code.
 **Redefined by owner decision, 2026-09-26** (ADR-0025). This phase was a
 token-arbitrage billing system: HMAC-signed records, an append-only ledger,
 monthly invoices, a CFO dashboard with the fee, Stripe and pricing tiers. The
-project is now open source with no payment. Much of that billing layer was
-built ahead and is still in the tree; graph cycles C1–C4 remove it. The
+project is now open source with no payment. The payment layer was
+built ahead; C1/C2 are merged and C3 removes its remaining application modules.
+C4 still needs to remove invoice schema and deliver actual API erasure. The
 requirements are in `../../specs/ops/payment-removal.md`, and the root
 `plan.md` §8 is the checklist.
 
@@ -225,10 +226,11 @@ measured and nothing billed.
 
 - [x] Remove the payment HTTP surface: the CFO page, invoice and Stripe
   routes, and the fee fields (C1; see `../../docs/handoff/README.md` for verification)
-- [ ] Make the usage ledger unsigned: no HMAC, no fee column, no append-only
-  enforcement (C2 locally verified with M1, unsigned replay and no-secret
-  entry point; required CI and merge pending)
-- [ ] Delete the payment modules and their tests (C3)
+- [x] Make the usage ledger unsigned: no HMAC, no fee column, no append-only
+  enforcement (C2 merged in PR #222 at `4ac4784`; replay and no-secret
+  entry point verified)
+- [ ] Delete the payment modules and their tests (C3 locally verified;
+  measured runtime floor 1,388 declared from 1,521; CI and merge pending)
 - [ ] Remove the invoice tables and the billing-retention erasure blocker (C4)
 - [ ] Keep exact token counts, with token and USD estimates shown as
   information only

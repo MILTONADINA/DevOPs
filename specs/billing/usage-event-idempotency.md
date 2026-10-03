@@ -1,6 +1,6 @@
 # Idempotent commercial usage events
 
-**Amended**: 2026-10-03 by `specs/ops/payment-removal.md` C2: REQ-4 replaces HMAC replay comparison with persisted-input comparison and preserves the event-ID index. Signature verification is legacy source retained until C3 and is incompatible with M1.
+**Amended**: 2026-10-03 by `specs/ops/payment-removal.md`: C2 REQ-4 replaces HMAC replay comparison with persisted-input comparison and preserves the event-ID index. C3 REQ-7 removes the legacy signature verifier; the unsigned replay requirements remain unchanged.
 
 **Scope:** Safe usage replay after an ambiguous database result. This spec
 identifies each new team message event; `durable-usage-outbox.md` supplies the
@@ -34,8 +34,8 @@ SHALL be computed or compared.
 ## REQ-3 — Legacy audit verification boundary
 
 The former signature-verification requirement is superseded by
-`specs/ops/payment-removal.md#req-4`. Its CLI and old payment tests remain until
-C3; they do not establish integrity of post-M1 unsigned rows. Current replay
+`specs/ops/payment-removal.md#req-4`. C3 removes its CLI and old payment tests;
+they do not establish integrity of post-M1 unsigned rows. Current replay
 verification is REQ-2 and payment-removal AC-4.
 
 ## Acceptance criteria

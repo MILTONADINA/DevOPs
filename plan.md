@@ -453,15 +453,15 @@ needs.
 **Ship gate**: every requirement of `specs/ops/payment-removal.md` is met (payment surface absent, usage ledger unsigned, USD kept as estimates, backups from before the removal still restore, gateway untouched, test floors lowered only through declared lowerings); organizations and API keys work in team mode on a local install; session erasure runs in <30s on 1-year data without a financial ledger.
 **Effort remaining**: not estimated. The former ~30h estimate covered the billing scope and is withdrawn.
 
-**Current implementation (C2 local verification, 2026-10-03; merge pending).**
-C1 landed in PR #221 at `18ba62b`. The payment HTTP surface is removed;
-usage reads and session statistics report tokens and USD estimates without fees.
-C2's unsigned usage writer and M1 are locally verified together: no fee/signature
-columns or mutation guards, no startup signing secret, unchanged durable outbox
-and input-checked replay. Legacy restore strips retired columns and retains
-invoice tables. Billing modules/CLIs remain until C3; invoice tables and the
-application erasure blocker remain until C4. Verification and merge conditions
-are recorded in `docs/handoff/README.md`.
+**Current implementation (C3 local verification, 2026-10-03; merge pending).**
+C1 and C2 landed in PRs #221 (`18ba62b`) and #222 (`4ac4784`). Payment HTTP
+routes are absent; unsigned usage retains exact tokens, pinned USD estimates,
+durable replay and no-secret team startup. C3 removes the legacy payment modules,
+three payment commands, CLI-only factory and payment types, preserving PruningLog.
+Invoice tables/RPCs and the application erasure blocker remain until C4. The C4
+acceptance criterion requires actual API erasure; ending a session or a preflight
+response alone will not satisfy it. Verification and merge conditions are in
+`docs/handoff/README.md`.
 
 ### 8a. Payment removal (graph cycles; requirements in `specs/ops/payment-removal.md`)
 
@@ -470,20 +470,24 @@ are recorded in `docs/handoff/README.md`.
   `invoice.ready` and `tee.attestation_failed` webhook events are removed; the
   plan reader uses sessions dependencies; a token-only usage read API stays
   (REQ-1 to REQ-3, REQ-6).
-- [ ] **C2 — Unsigned usage ledger.** Copy the usage recorder and outbox out
+- [x] **C2 — Unsigned usage ledger.** Copy the usage recorder and outbox out
   of `runtime/src/billing/`; migration M1 drops the signature, the fee column
   and the append-only enforcement; team mode stops requiring
   `CQ_BILLING_SIGNING_SECRET` (REQ-4, REQ-5). Locally verified with
   1,521 runtime tests, 473 root tests, all 14 SQL fixtures, setup, actual
-  no-secret message/restart replay and legacy restore. Required final-head CI
-  and merge remain before checking this cycle complete.
+  no-secret message/restart replay and legacy restore. Final-head required CI
+  and merge passed in PR #222 (`4ac4784`, 2026-10-03).
 - [x] **Retire the billing four-eyes gate.** Landed in PR #212 (`10855fc`),
   after owner authorization on 2026-09-26. The deploy gate and graph-halt stay;
   the declared test-floor lowering mechanism (REQ-12) is available. C1 raises
   the runtime floor to 1,433; C2 raises it to 1,521. Neither needs a lowering. The gateway path
   (`runtime/src/proxy/providers/`) is not payment code.
 - [ ] **C3 — Delete the payment modules** (`runtime/src/billing/`,
-  `runtime/scripts/invoice.ts`) and their tests (REQ-7).
+  `runtime/scripts/invoice.ts`) and their tests (REQ-7). Locally verified:
+  1,388 runtime tests, 473 root tests, all 14 SQL fixtures, setup and real
+  no-secret proxy/replay. The declared 1,521→1,388 reduction retires 135 old
+  cases while adding two retained arithmetic guards. Required CI and merge
+  still gate completion.
 - [ ] **C4 — Remove the invoice schema** (migration M2) and the
   billing-retention erasure blocker, and supersede ADR-0021 (REQ-8, REQ-9).
 - [ ] **Declared test-floor lowerings** for each cycle that removes tests
@@ -589,7 +593,7 @@ Update after every version ships. Snapshot at last update:
 | v0.6.x (Phase 5 audit) | IN PROGRESS | not recalculated | not recalculated | CONFLICT in <5s; Opus <1% escalation; live request-path audit |
 | v0.7.x (Phase 4 ZK-Context + AWS Nitro TEE) | **DROPPED** (owner decision 2026-09-26, ADR-0025) | — | — | None. The §6d Claude Code Security release-gate scan (~4h) moved to v0.8.x |
 | v0.8.x (polish + operator-ready) | IN PROGRESS | not recalculated | ~50h (§7 header, not recalculated) + ~4h (§6d) | <5min cold-clone-to-running on macOS, Linux and WSL2; backup tested; Claude Code Security clean release |
-| v0.9.x (payment removal + self-hosted team features) | IN PROGRESS (C1 merged in PR #221; C2 locally verified pending CI/merge; C3–C4 open) | — | not estimated | `specs/ops/payment-removal.md` met; team mode works on a local install; erasure <30s without a financial ledger |
+| v0.9.x (payment removal + self-hosted team features) | IN PROGRESS (C1/C2 merged; C3 locally verified pending CI/merge; C4 open) | — | not estimated | `specs/ops/payment-removal.md` met; team mode works on a local install; erasure <30s without a financial ledger |
 | v1.0.0 (open-source local-first release) | NOT STARTED (redefined 2026-09-26) | — | not estimated | A user's AI agent produces a working local setup on clean macOS, Linux and WSL2 |
 | **TOTAL to v1.0.0** | — | not computable | not computable | — |
 

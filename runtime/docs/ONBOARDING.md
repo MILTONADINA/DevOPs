@@ -107,7 +107,7 @@ Open the JSON and look at the raw API traffic. This is the most important thing 
 
 ### Files That Require Extra Care
 
-**`src/usage/recorder.ts` and `src/usage/durable-usage-outbox.ts`** — preserve exact token counts, the pinned USD estimate, trusted organization/project identity and idempotent replay. C2 writes unsigned rows and needs no signing secret. The journal must be durable before successful response completion; database failure must leave the event available for replay. Deliver writer changes together with their compatible schema. The old `src/billing/` code stays untouched until C3; invoice/signature verification commands cannot use the post-M1 schema.
+**`src/usage/recorder.ts` and `src/usage/durable-usage-outbox.ts`** — preserve exact token counts, the pinned USD estimate, trusted organization/project identity and idempotent replay. Usage rows are unsigned and need no signing secret. The journal must be durable before successful response completion; database failure must leave the event available for replay. Deliver writer changes together with their compatible schema. C3 removes the legacy payment modules and invoice/signature verification commands; use the unsigned usage checks documented in `MEMORY_AND_EVAL_COMMANDS.md`.
 
 **`src/pruner/kadanedial.ts`** — any change requires running the full eval suite before committing. Read `docs/ALGORITHM.md` completely before touching this file.
 

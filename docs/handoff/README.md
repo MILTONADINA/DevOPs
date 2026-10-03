@@ -1,4 +1,4 @@
-# Handoff: C2 local verification and next steps (2026-10-03)
+# Handoff: C3 local verification and next steps (2026-10-03)
 
 Read [`AGENTS.md`](../../AGENTS.md) and the local `.workflow/state/baton.md` first. This page records the 2026-10-03 local verification snapshot before merge and the remaining roadmap. Git and the PR checks determine the current merge state; the verification below does not declare the whole project finished.
 
@@ -10,6 +10,51 @@ The repository uses only `main`, `dev`, and `feature`. Changes reach protected `
 - Claude's stopped checkpoint: `7565ca4`, followed by handoff `1e5f2a8`, both preserved on `feature`.
 - Codex resumed that checkpoint on 2026-10-03, finished T4–T7, and added a regression test for auth-enabled requests without an organization. This was a cross-tool continuation with independent review and validation agents, not a replay of Claude Workflow `wf_51c12945-ff7`. The old Workflow record remains historical/indeterminate.
 - Do not apply the old baton's `git reset --soft HEAD~1`: it no longer identifies the WIP code boundary.
+
+## C3 implementation and verification — snapshot before merge
+
+C2 merged in [PR #222](https://github.com/MILTONADINA/DevOPs/pull/222) at
+`4ac4784856e68efc150b67c55ae449839e30c479`, with all six required checks and
+Node24/26 checks passing. The corrected PR title check passed; the earlier
+failure affected only the title. Main/dev/feature were synchronized before C3.
+The C2/C1 sections below preserve their historical pre-merge snapshots.
+
+C3 implements payment-removal REQ-7. Its one atomic change deletes ten legacy
+billing modules, three CLIs, the CLI-only read factory and twelve old test files.
+It removes only payment types, keeps PruningLog exactly, and removes only the
+invoice/verify-billing/verify-stripe npm scripts. No dependency changes are needed.
+The optional source-summary sample now reads usage pricing instead of the deleted
+calculator, preserving all eleven sample/sentence checks; no real model was run.
+
+Independent disposition covered every removed assertion. Two nonpayment gaps
+were preserved in usage summary tests before retirement: negative token/USD
+changes and raw-cost aggregation before final rounding. Fee/signature/payment
+assertions are retired; usage, plan limits, tenancy, provenance, durability and
+generic outbound webhook protection remain.
+
+| C3 local gate | Result |
+|---|---|
+| Importer check | No imports through billing directories; expected grep exit 1 |
+| Typecheck and source lint | Pass |
+| Focused retained usage/startup/session APIs | Pass; final summary guards 7 passed |
+| Independent runtime suite, clean locked installation | 1,388 passed; 5 skipped; 5 todo |
+| Root, isolated Linux/Node24 | 473 passed; 17 skipped |
+| SQL, setup, actual no-secret npm dev message/replay | All 14 SQL fixtures pass; setup applies zero migrations; actual entry-point proof passes |
+| Scope | 26 exact deletions; all 75 provider/migration/frozen hashes unchanged; PruningLog unchanged |
+
+The new lowering records runtime **1,521→1,388**, citing ADR-0025 and REQ-7/12:
+135 old cases retired and two preservation cases added. It uses the executed
+count, not a planned subtraction. Root stays473. Source/command/exit evidence,
+independent disposition and review live in `.workflow/proofs/c3-2026-10-03/`.
+The initial container dependency install refused missing project-local mount
+directories before testing; those prerequisites were corrected, then the install
+and root suite passed. No acceptance test was relaxed for that failure.
+
+At this snapshot final required GitHub checks and squash merge still gate C3.
+Invoice tables/functions, backup export/restore and financial erasure blocker stay
+until C4. The full payment-removal spec stays approved and incomplete. No payment
+module remains as an optional product feature. No provider, historical migration,
+frozen fixture, hosted service or paid model changed.
 
 ## C2 implementation and verification — snapshot before merge
 
@@ -136,19 +181,26 @@ verified; the PR records their current state.
 
 ## Next action
 
-Finish C2's independent review, source-bound claims and required checks on its
-final PR head, then merge under standing owner authorization and synchronize
-main/dev/feature. Consult Git/PR state and the local baton before repeating any
-work. Once C2 is merged, continue **C3**, using `.workflow/state/c3-plan.md` if
-present and the approved payment-removal spec. Do not resume old Claude Workflow
-`wf_51c12945-ff7` or reset the preserved C1 checkpoint.
+Finish C3's final source-bound review, claims and required checks on its PR head;
+merge under standing owner authorization and synchronize main/dev/feature. Consult
+Git/PR state and the local baton before repeating work. Then use
+`.workflow/state/c4-plan.md` and the approved payment-removal spec.
 
-Then:
+C4 requires ordered M2 invoice-function/table removal and inventory replacement,
+coordinated backup export/legacy-table skip/report, removal of the financial
+preflight blocker, ADR-0021 supersession and the erasure spec move. **AC-8 also
+requires a session actually erased through the API.** Current DELETE only ends
+it; current preflight does not execute erasure. Preserve truthful unknown
+external/backups/RAM/shared-graph blockers. Schema-only C4-A progress can land
+separately, but cannot close C4 without actual safe erasure (C4-B). Do not weaken
+AC-8 or treat a mocked ready response as proof. The one-year/<30s benchmark is
+also a remaining v0.9 gate, separate from a small real erasure fixture.
 
-1. **C3:** delete payment modules/types, `runtime/scripts/invoice.ts`, `runtime/src/proxy/routes/billing.ts`, related scripts and payment-only tests. PB-122 records the CLI-only factory/test deletion.
-2. **C4:** migration M2, invoice-table removal, session-erasure simplification, old-backup restore handling and ADR-0021 retirement.
-3. Claim retirement, MR-3, remaining spec approvals and security/hygiene cycles in the local roadmap.
-4. Naming aliases (`DEVOPS_*`) and remaining capitalized Stratum prose; v0.4 pruner cycles 1b and 2. No pruning quality gate is declared passed by C1.
+After C4: historical claim retirement, MR-3, remaining approved roadmap and
+security/hygiene work; naming aliases/current prose; v0.4 pruner cycles1b/2 and
+quality gates; clean-machine macOS/Linux/WSL2 and real-use release gates. The
+mission is still the whole remaining roadmap, not only payment removal. Do not
+resume old Claude Workflow `wf_51c12945-ff7` or reset its preserved C1 checkpoint.
 
 The detailed original [C1 backlog](c1-payment-surface-backlog.md) remains historical planning context. Its five planner answers were: fix the adapter type error; move the developer breakdown test; use “USD figures are estimates, for information only”; allow test-only webhook-secret fixtures and preserve C2's two billing imports; invert retired fee/signature assertions while retaining non-fee assertions. The recorded implementation and proof reflect those answers.
 

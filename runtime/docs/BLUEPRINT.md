@@ -166,7 +166,7 @@ if claim.type == "code_change":
 
 ### 6. Usage Ledger (was: Billing Engine)
 
-**Location:** `src/usage/` after C2 (`../../specs/ops/payment-removal.md`). The old payment modules remain under `src/billing/` until C3; they are not the team-mode writer.
+**Location:** `src/usage/` (`../../specs/ops/payment-removal.md`). C3 removes the old payment modules; unsigned usage measurement, durable replay and estimated USD values remain.
 
 **The core calculation:**
 ```

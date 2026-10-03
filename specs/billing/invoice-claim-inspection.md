@@ -1,5 +1,13 @@
 # Inspect a held invoice claim without sending
 
+**Status**: superseded (payment-removal C3; owner decision 2026-09-26, ADR-0025)
+
+**Superseded by:** `specs/ops/payment-removal.md` REQ-7 removes this payment
+application contract and its implementation. The historical requirements below
+are retained for traceability, not current acceptance gates. Existing invoice
+tables, RPC migrations and backup/restore records remain until C4/M2 under
+REQ-8/9/10; this supersession does not remove or rewrite that schema history.
+
 **Scope:** `plan.md` §9 commercial invoice recovery; follows
 `specs/billing/invoice-send-claim.md` REQ-2.
 

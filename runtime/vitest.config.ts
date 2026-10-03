@@ -41,7 +41,6 @@ export default defineConfig({
         // Future-phase scaffold stubs (NOT v0.3.x §2d scope):
         'src/proxy/worker.ts', // Phase 2+ Cloudflare Worker entry
         'src/proxy/tee/**', // Phase 4 ZK/TEE
-        'src/proxy/routes/billing.ts', // Phase 6
         'src/proxy/routes/config.ts', // Phase 3+
         'src/proxy/routes/memory.ts', // Phase 3+
         'src/proxy/routes/sessions.ts', // Phase 3+

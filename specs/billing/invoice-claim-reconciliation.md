@@ -1,5 +1,13 @@
 # Reconcile a claimed Stripe invoice without another charge
 
+**Status**: superseded (payment-removal C3; owner decision 2026-09-26, ADR-0025)
+
+**Superseded by:** `specs/ops/payment-removal.md` REQ-7 removes this payment
+application contract and its implementation. The historical requirements below
+are retained for traceability, not current acceptance gates. Existing invoice
+tables, RPC migrations and backup/restore records remain until C4/M2 under
+REQ-8/9/10; this supersession does not remove or rewrite that schema history.
+
 **Scope:** `plan.md` §9 commercial invoice recovery. The durable claim blocks
 another send after an ambiguous provider or local-ledger failure. An operator
 needs a verified way to record an already-finalized invoice by its Stripe ID.
