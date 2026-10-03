@@ -18,6 +18,20 @@ product. See `docs/LAUNCH_READINESS.md` for current, frequently-updated
 status — this file intentionally does not duplicate that detail while the
 phase is open.
 
+### Changed — invoice schema and legacy recovery (specs/ops/payment-removal.md, C4-A)
+
+- **Breaking:** M2 drops invoice reconciliation/payment RPCs and invoice tables
+  together with their removal from backup exports and session inventory classes.
+  Upgrade schema and recovery code together; historical migrations are retained.
+- Restore accepts validated legacy invoice arrays, reports their names and counts,
+  and skips their rows. Existing retired usage-column stripping and active-data
+  validation remain.
+- Erasure preflight no longer treats usage rows as financial retention. Unknown
+  stores and missing execution still block erasure. The moved memory specification
+  preserves deletion, isolation, shared-data, cache, retry and performance gates;
+  ADR-0021 is superseded with its original rationale retained as history.
+- Actual session erasure remains C4-B work; this entry does not complete C4 or v0.9.
+
 ### Changed — unsigned usage and payment module retirement (specs/ops/payment-removal.md, C2/C3)
 
 - **Breaking:** M1 removes usage signatures, fee columns and mutation guards.

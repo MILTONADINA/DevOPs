@@ -2,7 +2,7 @@
  * Create an organization (v1.0.0 onboarding) — FREE (Supabase, no LLM).
  *
  * The first step of onboarding a design partner (COMMERCIAL_ONBOARDING.md): create the org + set its
- * plan (the plan drives the monthly-minimum invoice floor). Completes the operational tooling — there
+ * plan (the plan drives request, token and concurrent-session limits). Completes the operational tooling — there
  * was create-api-key (which NEEDS an org) but no create-org, so onboarding dropped to manual SQL.
  * With --with-key it also mints the first API key in one step. Gated on Supabase creds.
  *
@@ -35,7 +35,7 @@ export function parseArgs(argv: string[]): Args {
       case "--plan": {
         const p = val();
         // Reject an unknown plan (fail-closed) — silently keeping the 'starter' default would create an
-        // org on the WRONG billing tier (e.g. a typo'd "enterprize" → a $0 floor instead of $499), and the
+        // org with the wrong limits (e.g. a typo'd "enterprize" would silently use starter), and the
         // DB CHECK never catches it because the parser already substituted a valid default.
         if (!(PLANS as readonly string[]).includes(p)) throw new Error(`invalid --plan "${p}"; expected one of: ${PLANS.join(", ")}`);
         out.plan = p as Plan;

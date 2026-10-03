@@ -3,7 +3,44 @@
 // seeded throwaway org (see the commit's live-verification notes).
 
 import { describe, test, expect } from "vitest";
-import { parseArgs, summarizeBackup, totalRows, backupFilename, main, ORG_SCOPED_TABLES, type BackupFile } from "../../scripts/backup-org";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { parseArgs, summarizeBackup, totalRows, backupFilename, exportOrg, main, ORG_SCOPED_TABLES, type BackupFile } from "../../scripts/backup-org";
+
+test("specs/ops/payment-removal.md#REQ-9 — export reads every active table with scoped exact paging and never queries retired invoice tables", async () => {
+  const active = ["organizations", "developers", "org_config", "sessions", "billing_records", "function_changes", "tech_decisions", "policy_updates", "todos", "variable_changes", "operational_references", "knowledge_entities", "knowledge_edges", "knowledge_entity_sessions", "knowledge_edge_sessions", "source_fact_links", "memory_vectors", "audit_conflicts", "audit_statuses", "api_keys", "pruning_logs"];
+  const queried: string[] = [];
+  const pages: [number, number][] = [];
+  const usage = Array.from({ length: 1001 }, (_, i) => ({ id: `u${i}`, org_id: "o1", session_id: "s1" }));
+  const rows: Record<string, unknown[]> = { organizations: [{ id: "o1" }], sessions: [{ id: "s1", org_id: "o1" }], billing_records: usage, pruning_logs: [{ id: "p1", session_id: "s1" }] };
+  const client = {
+    from(table: string) {
+      expect(active, `unexpected export query: ${table}`).toContain(table);
+      queried.push(table);
+      let scoped = false;
+      const order: string[] = [];
+      const query = {
+        select(columns: string, options: unknown) { expect(columns).toBe("*"); expect(options).toEqual({ count: "exact" }); return query; },
+        eq(column: string, value: string) { expect(column).toBe(table === "organizations" ? "id" : "org_id"); expect(value).toBe("o1"); scoped = true; return query; },
+        in(column: string, value: string[]) { expect(table).toBe("pruning_logs"); expect(column).toBe("session_id"); expect(value).toEqual(["s1"]); scoped = true; return query; },
+        order(column: string, options: unknown) { expect(options).toEqual({ ascending: true }); order.push(column); return query; },
+        async range(start: number, end: number) {
+          expect(scoped).toBe(true);
+          expect(order.length).toBeGreaterThan(0);
+          if (table === "billing_records") { expect(order).toEqual(["id"]); pages.push([start, end]); }
+          const data = rows[table] ?? [];
+          return { data: data.slice(start, end + 1), count: data.length, error: null };
+        },
+      };
+      return query;
+    },
+  } as unknown as SupabaseClient;
+  const backup = await exportOrg(client, "o1", "2026-10-03T00:00:00Z");
+  expect(new Set(queried)).toEqual(new Set(active));
+  expect(Object.keys(backup.tables).sort()).toEqual([...active].sort());
+  expect(backup.tables["billing_records"]).toEqual(usage);
+  expect(backup.tables["pruning_logs"]).toEqual(rows["pruning_logs"]);
+  expect(pages).toEqual([[0, 499], [500, 999], [1000, 1499]]);
+});
 
 test("backup exits nonzero without database credentials", async () => {
   const url = process.env["SUPABASE_URL"];

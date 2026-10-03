@@ -10,7 +10,8 @@
  *
  * billing_records has GENERATED columns (token_delta/cost_delta_usd); those are stripped before
  * insert so the DB recomputes them. Pre-C2 backups' retired fee/signature columns are stripped
- * and reported as well. Decision supersession references are restored after all decisions exist.
+ * and reported as well. C4's retired invoice tables are validated, reported and skipped.
+ * Decision supersession references are restored after all decisions exist.
  */
 
 import { readFileSync } from "node:fs";
@@ -33,8 +34,6 @@ export const RESTORE_ORDER = [
   "operational_references",
   "pruning_logs",
   "billing_records",
-  "invoices",
-  "invoice_send_claims",
   "knowledge_entities",
   "knowledge_edges",
   "knowledge_entity_sessions",
@@ -54,6 +53,9 @@ const GENERATED_COLS: Record<string, string[]> = {
 const RETIRED_COLS: Record<string, string[]> = {
   billing_records: ["cq_fee_usd", "signed_hash"],
 };
+
+/** M2 removed these tables; only scoped legacy row arrays are accepted and skipped. */
+const RETIRED_TABLES = new Set(["invoices", "invoice_send_claims"]);
 
 interface Args {
   file?: string;
@@ -90,7 +92,18 @@ export function validateBackup(obj: unknown): BackupFile {
     if (!Array.isArray(b.tables[table])) throw new Error(`backup table ${table} missing or not an array`);
   }
   for (const table of Object.keys(b.tables)) {
-    if (!expected.has(table)) throw new Error(`backup table ${table} is not supported by restore`);
+    if (!expected.has(table) && !RETIRED_TABLES.has(table)) throw new Error(`backup table ${table} is not supported by restore`);
+  }
+  for (const table of RETIRED_TABLES) {
+    if (!Object.hasOwn(b.tables, table)) continue;
+    const rows = b.tables[table];
+    if (!Array.isArray(rows)) throw new Error(`backup table ${table} must be an array`);
+    if (rows.some((row) => typeof row !== "object" || row === null || Array.isArray(row))) {
+      throw new Error(`backup table ${table} row must be an object`);
+    }
+    if (rows.some((row) => (row as { org_id?: unknown }).org_id !== b.orgId)) {
+      throw new Error(`backup table ${table} organization mismatch`);
+    }
   }
   const sourceLinks = b.tables["source_fact_links"];
   if (sourceLinks?.some((row) => (row as { org_id?: unknown } | null)?.org_id !== b.orgId)) {
@@ -259,6 +272,10 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
   }
 
   const plan = restorePlan(backup, { keepKeyState: args.keepKeyState });
+  for (const table of RETIRED_TABLES) {
+    const rows = backup.tables[table];
+    if (Array.isArray(rows)) out(`Note: skipped retired table ${table} (${rows.length} row(s)).`);
+  }
   for (const [table, columns] of Object.entries(RETIRED_COLS)) {
     for (const column of columns) {
       const count = (backup.tables[table] ?? []).filter((row) => Object.hasOwn(row as object, column)).length;

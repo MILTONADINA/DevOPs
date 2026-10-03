@@ -1,6 +1,6 @@
-# Handoff: C3 local verification and next steps (2026-10-03)
+# Handoff: C4-A local verification and remaining erasure work (2026-10-03)
 
-Read [`AGENTS.md`](../../AGENTS.md) and the local `.workflow/state/baton.md` first. This page records the 2026-10-03 local verification snapshot before merge and the remaining roadmap. Git and the PR checks determine the current merge state; the verification below does not declare the whole project finished.
+Read [`AGENTS.md`](../../AGENTS.md) and the local `.workflow/state/baton.md` first. This page records the C4-A local verification snapshot before merge and the dated snapshots below. Git and the PR checks determine the current merge state; the verification below does not declare the whole project finished.
 
 ## Branches and provenance
 
@@ -10,6 +10,57 @@ The repository uses only `main`, `dev`, and `feature`. Changes reach protected `
 - Claude's stopped checkpoint: `7565ca4`, followed by handoff `1e5f2a8`, both preserved on `feature`.
 - Codex resumed that checkpoint on 2026-10-03, finished T4–T7, and added a regression test for auth-enabled requests without an organization. This was a cross-tool continuation with independent review and validation agents, not a replay of Claude Workflow `wf_51c12945-ff7`. The old Workflow record remains historical/indeterminate.
 - Do not apply the old baton's `git reset --soft HEAD~1`: it no longer identifies the WIP code boundary.
+
+## Current C4-A delivery and remaining C4-B
+
+C3 merged in [PR #223](https://github.com/MILTONADINA/DevOPs/pull/223) at
+`28ea1aac8117722613e8a483894421fc4c5e481e` on 2026-10-03. All six required checks,
+Node24/26 and the title check passed on tested head `2c53798`. The merge tree
+matches that tested tree; main/dev/feature were synchronized before C4-A. The
+C3/C2/C1 sections below preserve their historical pre-merge snapshots.
+
+C4-A coordinates M2 `20261003010000_retire_invoice_schema.sql` with the recovery
+code. It drops the two invoice RPCs before the two invoice tables, then replaces
+the latest inventory function with only those organization-only classes removed.
+Every historical migration remains unchanged. New backups omit the retired
+tables. Legacy restore validates their arrays and organization identities, skips
+and reports them (including present empty arrays), and continues to strip/report
+retired usage columns without logging their values. Active keys, facts, graph
+provenance, source-link identities and generated token/USD fields retain their
+existing recovery rules.
+
+The preflight loses only its financial reason. Numeric usage counts, authenticated
+organization scope and all nonfinancial blocks remain. The erasure specification
+moves to `specs/memory/session-erasure.md`; ADR-0021 is superseded with its original
+body preserved as history. Final source review, required CI on the exact PR head
+and merge remain gates. Evidence is in `.workflow/proofs/c4a-2026-10-03/`.
+
+| C4-A local gate | Result |
+|---|---|
+| Focused red/green | Recovery: 13 expected old-contract failures, then 43 pass; preflight: 2 expected financial-reason failures, then 25 pass with independent store guards |
+| Typecheck and source lint | Pass |
+| Independent runtime suite, clean locked installation | 1,403 passed; 5 skipped; 5 todo; run once |
+| Root, isolated Linux/Node24 | 473 passed; 17 skipped |
+| Database migration and SQL | M2 applied once; all 14 SQL fixtures pass; 63 migration records, 21 public tables, retired tables/RPCs absent; original container/volume preserved |
+| Recovery | Synthetic legacy dry/real skip+strip and current backup recovery pass; retained usage, keys, shared graph, source links, decisions and audit assertions stay |
+| Real system | Setup applies zero additional migrations; actual no-secret npm-dev usage/replay and project-scoped session/preflight/cap checks pass |
+
+The measured runtime floor rises from 1,388 to 1,403 (+10 recovery cases and
++5 preflight cases); root stays 473 and no lowering entry is needed. The runbook
+was corrected before the full runtime run to describe retained synthetic files
+on failure. Two optional checks recorded unchanged baseline diagnostics: the
+backup pagination's `while (true)` under broader script lint, and a test's
+`decisions[0]` under expanded strict test compilation. Required source lint and
+typecheck pass; neither unrelated line was changed or hidden. These checks do
+not establish model quality, cross-platform clean installs or real-user recovery.
+
+**C4 is incomplete.** C4-B must implement actual API erasure with trusted store
+coverage, a write fence, atomic private-data deletion, preserved shared data and
+retryable failures. Current DELETE merely ends the session; current preflight
+cannot authorize erasure. Unknown external copies, backups, RAM and graph
+ownership remain blockers. The one-year/<30-second benchmark is an additional
+v0.9 gate; a small real erasure fixture will not satisfy it. Payment-removal AC-8
+and whole-project completion are not claimed by this schema delivery.
 
 ## C3 implementation and verification — snapshot before merge
 
@@ -181,20 +232,17 @@ verified; the PR records their current state.
 
 ## Next action
 
-Finish C3's final source-bound review, claims and required checks on its PR head;
-merge under standing owner authorization and synchronize main/dev/feature. Consult
-Git/PR state and the local baton before repeating work. Then use
-`.workflow/state/c4-plan.md` and the approved payment-removal spec.
+Finish C4-A's final source review, claims and required checks on
+its PR head; merge under standing owner authorization and synchronize
+main/dev/feature. Consult Git/PR state and the local baton before repeating work.
+The source-grounded plan is `.workflow/state/c4-plan.md`; C4-B design prerequisites
+are recorded separately in `.workflow/state/c4-erasure-design.md`.
 
-C4 requires ordered M2 invoice-function/table removal and inventory replacement,
-coordinated backup export/legacy-table skip/report, removal of the financial
-preflight blocker, ADR-0021 supersession and the erasure spec move. **AC-8 also
-requires a session actually erased through the API.** Current DELETE only ends
-it; current preflight does not execute erasure. Preserve truthful unknown
-external/backups/RAM/shared-graph blockers. Schema-only C4-A progress can land
-separately, but cannot close C4 without actual safe erasure (C4-B). Do not weaken
-AC-8 or treat a mocked ready response as proof. The one-year/<30s benchmark is
-also a remaining v0.9 gate, separate from a small real erasure fixture.
+Then deliver C4-B's actual safe API erasure under the moved memory spec.
+**AC-8 requires a session actually erased through the API.** Do not weaken it,
+substitute end-session, or treat a mocked ready response as proof. Preserve all
+unknown-store and shared-data safeguards. The one-year/<30-second benchmark is
+also a remaining v0.9 gate, separate from the small real erasure fixture.
 
 After C4: historical claim retirement, MR-3, remaining approved roadmap and
 security/hygiene work; naming aliases/current prose; v0.4 pruner cycles1b/2 and

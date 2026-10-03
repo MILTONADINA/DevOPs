@@ -453,12 +453,15 @@ needs.
 **Ship gate**: every requirement of `specs/ops/payment-removal.md` is met (payment surface absent, usage ledger unsigned, USD kept as estimates, backups from before the removal still restore, gateway untouched, test floors lowered only through declared lowerings); organizations and API keys work in team mode on a local install; session erasure runs in <30s on 1-year data without a financial ledger.
 **Effort remaining**: not estimated. The former ~30h estimate covered the billing scope and is withdrawn.
 
-**Current implementation (C3 local verification, 2026-10-03; merge pending).**
-C1 and C2 landed in PRs #221 (`18ba62b`) and #222 (`4ac4784`). Payment HTTP
+**Current implementation (C4-A locally verified, 2026-10-03; CI and merge pending).**
+C1, C2 and C3 landed in PRs #221 (`18ba62b`), #222 (`4ac4784`) and #223
+(`28ea1aa`). Payment HTTP
 routes are absent; unsigned usage retains exact tokens, pinned USD estimates,
-durable replay and no-secret team startup. C3 removes the legacy payment modules,
+durable replay and no-secret team startup. C3 removed the legacy payment modules,
 three payment commands, CLI-only factory and payment types, preserving PruningLog.
-Invoice tables/RPCs and the application erasure blocker remain until C4. The C4
+The coordinated C4-A change removes invoice tables/RPCs and their backup
+exports, accepts and reports retired legacy tables during restore, and removes
+only the financial erasure reason. Unknown-store and execution blockers remain. The C4
 acceptance criterion requires actual API erasure; ending a session or a preflight
 response alone will not satisfy it. Verification and merge conditions are in
 `docs/handoff/README.md`.
@@ -482,14 +485,19 @@ response alone will not satisfy it. Verification and merge conditions are in
   the declared test-floor lowering mechanism (REQ-12) is available. C1 raises
   the runtime floor to 1,433; C2 raises it to 1,521. Neither needs a lowering. The gateway path
   (`runtime/src/proxy/providers/`) is not payment code.
-- [ ] **C3 — Delete the payment modules** (`runtime/src/billing/`,
+- [x] **C3 — Delete the payment modules** (`runtime/src/billing/`,
   `runtime/scripts/invoice.ts`) and their tests (REQ-7). Locally verified:
   1,388 runtime tests, 473 root tests, all 14 SQL fixtures, setup and real
   no-secret proxy/replay. The declared 1,521→1,388 reduction retires 135 old
-  cases while adding two retained arithmetic guards. Required CI and merge
-  still gate completion.
+  cases while adding two retained arithmetic guards. All required checks and
+  merge passed in PR #223 (`28ea1aa`, 2026-10-03).
 - [ ] **C4 — Remove the invoice schema** (migration M2) and the
   billing-retention erasure blocker, and supersede ADR-0021 (REQ-8, REQ-9).
+  C4-A delivers that schema/restore/preflight boundary; C4-B must still erase
+  an eligible session through the real API to satisfy AC-8. C4-A local proof:
+  1,403 runtime tests, 473 root tests, all 14 SQL fixtures, both recovery checks,
+  setup and actual no-secret proxy/replay pass; M2 applied once to the existing
+  volume. Required CI and merge remain. C4 remains open.
 - [ ] **Declared test-floor lowerings** for each cycle that removes tests
   (REQ-12).
 
@@ -501,12 +509,11 @@ response alone will not satisfy it. Verification and merge conditions are in
   The code exists; no team has used it over time.
 - [ ] **Usage estimates.** Exact token counts, plus USD estimates labelled as
   information only (REQ-6). No fee and no invoice.
-- [ ] **Session erasure endpoint** (~5h). After C2 the unsigned usage records
-  retain organization/session foreign keys and the API retention blocker; `specs/billing/session-erasure.md` and ADR-0021 define the
-  scoped inventory, shared-graph safety, financial retention decision, and
-  one-year benchmark requirements. C2 removes immutability and C4 removes the
-  financial retention boundary (REQ-8), treating usage as ordinary
-  session-linked data. A read-only local database RPC counts
+- [ ] **Session erasure endpoint** (remaining effort not estimated).
+  `specs/memory/session-erasure.md` defines scoped inventory, shared-graph safety,
+  ordinary usage deletion, cache/write fencing, retries and the one-year benchmark.
+  C4-A supersedes ADR-0021's financial premise under payment-removal REQ-8;
+  it does not deliver an erasure executor. A read-only local database RPC counts
   session-linked rows and distinguishes complete, shared, and uncertain graph
   provenance. Two-session promotion and local backup/restore checks preserve
   recorded graph and File-to-fact source links. Untagged graph rows, RAM,
@@ -593,7 +600,7 @@ Update after every version ships. Snapshot at last update:
 | v0.6.x (Phase 5 audit) | IN PROGRESS | not recalculated | not recalculated | CONFLICT in <5s; Opus <1% escalation; live request-path audit |
 | v0.7.x (Phase 4 ZK-Context + AWS Nitro TEE) | **DROPPED** (owner decision 2026-09-26, ADR-0025) | — | — | None. The §6d Claude Code Security release-gate scan (~4h) moved to v0.8.x |
 | v0.8.x (polish + operator-ready) | IN PROGRESS | not recalculated | ~50h (§7 header, not recalculated) + ~4h (§6d) | <5min cold-clone-to-running on macOS, Linux and WSL2; backup tested; Claude Code Security clean release |
-| v0.9.x (payment removal + self-hosted team features) | IN PROGRESS (C1/C2 merged; C3 locally verified pending CI/merge; C4 open) | — | not estimated | `specs/ops/payment-removal.md` met; team mode works on a local install; erasure <30s without a financial ledger |
+| v0.9.x (payment removal + self-hosted team features) | IN PROGRESS (C1–C3 merged; C4-A locally verified pending CI/merge; C4-B erasure open) | — | not estimated | `specs/ops/payment-removal.md` met; team mode works on a local install; erasure <30s without a financial ledger |
 | v1.0.0 (open-source local-first release) | NOT STARTED (redefined 2026-09-26) | — | not estimated | A user's AI agent produces a working local setup on clean macOS, Linux and WSL2 |
 | **TOTAL to v1.0.0** | — | not computable | not computable | — |
 

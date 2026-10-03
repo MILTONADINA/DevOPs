@@ -389,8 +389,10 @@ An exchange whose extraction has not settled is not replaceable (REQ-6c).
 ## REQ-14 — Erasure and privacy
 
 `conversation_exchanges` SHALL be classified in the `inspect_session_erasure`
-inventory (migration `20260924000000`, ADR-0021), and its rolled-back fixture
-SHALL still show every public table classified. Session content deletion SHALL
+inventory under `specs/memory/session-erasure.md` (the initial inventory
+migration is `20260924000000`; ADR-0021 is superseded by ADR-0025 and
+payment-removal REQ-8). Its rolled-back fixture SHALL still show every public
+table classified. Session content deletion SHALL
 delete the session's ledger rows. The in-process epoch and chain caches SHALL
 hold hashes only, bounded by LRU, and SHALL be dropped when a session is
 tombstoned.

@@ -8,7 +8,8 @@ usage. Its name stays unchanged during payment removal.
 Payment-removal C1 removes the CFO page, invoice HTTP reads and inbound Stripe
 webhook. C2 persists unsigned token usage and estimated USD savings without
 `CQ_BILLING_SIGNING_SECRET`. C3 removes the legacy invoice and Stripe scripts;
-invoice tables remain until C4. See
+C4-A/M2 retires the invoice schema and financial preflight blocker. Actual
+session erasure remains unfinished. See
 [`specs/ops/payment-removal.md`](../../specs/ops/payment-removal.md).
 
 ## 1. Start the local proxy
@@ -115,11 +116,14 @@ The `/billing` page and `/v1/billing/invoice`, `/v1/billing/audit.csv`,
 `/v1/billing/invoices` and `POST /stripe/webhook` are no longer registered.
 There is no Stripe endpoint to configure and no payment acceptance step.
 
-## Remaining invoice schema
+## Payment removal and session erasure
 
 C3 removes `npm run invoice`, `npm run verify-stripe` and
 `npm run verify-billing` with their payment implementation. No Stripe key is
-needed for onboarding. Invoice tables remain in backups/restores until C4;
-session erasure still reports its existing
-retention blocker until that cycle changes the erasure boundary. The current v1.0.0 goal is a working
+needed for onboarding. C4-A/M2 removes the invoice tables/RPCs; new backups
+omit the tables, and restore skips and reports them in legacy backups.
+Session preflight no longer reports a financial blocker, but still reports
+unknown stores and unavailable execution. DELETE ends a session without
+erasing it. Actual API erasure and the one-year/<30-second benchmark remain
+open under `specs/memory/session-erasure.md`. The current v1.0.0 goal is a working
 local setup on macOS, Linux and WSL2 (root `plan.md` §9).

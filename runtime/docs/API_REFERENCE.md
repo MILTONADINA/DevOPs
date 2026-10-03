@@ -159,6 +159,26 @@ number of usage rows; its existing field name is retained.
 }
 ```
 
+### GET /v1/sessions/:id/erasure-preflight
+
+Read-only inventory for an explicit session, requiring an authenticated
+organization-level key. Personal mode and project-bound keys receive 403;
+foreign, missing and internal sessions receive 404. Query parameters cannot
+substitute another organization.
+
+After C4-A/M2 the response remains `blocked_incomplete_inventory`. Reasons
+include `graph_ownership_ambiguous` when applicable, `stores_not_inventoried`
+while external copies/backups/RAM are unknown, and
+`erasure_execution_unavailable`. `inventory.counts.billing_records` remains a
+numeric usage count; a positive count does not create a financial blocker.
+This route deletes nothing and does not establish erasure readiness.
+
+### DELETE /v1/sessions/:id
+
+Ends an explicit session by setting `ended_at`; it does not delete the session
+or its content. No actual erasure endpoint is implemented yet. The retained
+requirements are in `specs/memory/session-erasure.md`.
+
 ### GET /v1/sessions
 
 List sessions for the authenticated org.
@@ -184,8 +204,9 @@ Payment removal C1 (`specs/ops/payment-removal.md` REQ-1) removes `/billing`,
 `/v1/billing/invoice`, `/v1/billing/audit.csv`, `/v1/billing/invoices`, and
 `POST /stripe/webhook`. Those routes are no longer registered. C3 removes the
 invoice CLI and other payment commands. C2 writes unsigned
-usage records without fee/signature columns or a signing secret. Invoice tables
-and the existing session-erasure retention blocker remain until C4.
+usage records without fee/signature columns or a signing secret. C4-A/M2
+retires the invoice tables/RPCs and the financial preflight blocker. Actual
+API erasure and the one-year performance benchmark remain unfinished.
 
 ### GET /v1/billing/summary
 
