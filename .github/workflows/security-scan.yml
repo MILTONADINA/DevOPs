@@ -57,45 +57,32 @@ jobs:
           GITLEAKS_ENABLE_COMMENTS: "false"
 
   semgrep:
-    # The deprecated returntocorp/semgrep-action bundled a Semgrep that crashed on the
-    # registry packs' MEDIUM severity ("ValueError: invalid rule severity value") and
-    # still reported success, so this check scanned nothing for weeks. Run a pinned
-    # current Semgrep directly; fail on findings, on fatal errors, and on an empty scan.
+    # Pinned scanner plus strict host checker: any finding/error, lost test tree,
+    # malformed report or below-floor count fails (ci-semgrep-scan.md REQ-1..5).
     runs-on: ubuntu-24.04
-    container:
-      image: semgrep/semgrep:1.167.0@sha256:06938c1f365d3f67b8cedd8bc117607ae64253f88a0e768e9da9408548927dd6
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444  # v5.0.0
+        with: { node-version: 22 }
       - name: Semgrep (owasp-top-ten, r2c-security-audit, secrets)
         shell: bash
         run: |
           set -euo pipefail
-          semgrep scan --config p/owasp-top-ten --config p/r2c-security-audit --config p/secrets \
-            --metrics=off --error --json --output semgrep.json . || rc=$?
-          rc=${rc:-0}
-          python3 - "$rc" <<'PY'
-          import json, sys
-          rc = int(sys.argv[1])
-          d = json.load(open("semgrep.json"))
-          scanned = len(d.get("paths", {}).get("scanned", []))
-          fatal = [e for e in d.get("errors", []) if str(e.get("level", "")).lower() not in ("warn", "warning", "info")]
-          print(f"semgrep: exit {rc}, {scanned} files scanned, {len(d.get('results', []))} findings, {len(d.get('errors', []))} errors ({len(fatal)} fatal)")
-          for e in d.get("errors", []):
-              print("SCAN_DIAGNOSTIC " + json.dumps(e, sort_keys=True))
-          for r in d.get("results", []):
-              print(f"FINDING {r['extra'].get('severity')} {r['check_id']} {r['path']}:{r['start']['line']}")
-          for e in fatal:
-              print(f"ERROR {e.get('type')} {str(e.get('message'))[:200]}")
-          if scanned == 0:
-              sys.exit("semgrep scanned no files: refusing to report a pass")
-          paths = d.get("paths", {}).get("scanned", [])
-          for tree in ("tests/", "runtime/test/"):
-              if not any(p.startswith(tree) for p in paths):
-                  sys.exit(f"semgrep scanned no file under {tree}: the .semgrepignore scope was lost (spec REQ-4)")
-          if fatal:
-              sys.exit("semgrep reported fatal errors")
-          sys.exit(rc)
-          PY
+          scan_report_dir="$(mktemp -d "$RUNNER_TEMP/semgrep-report.XXXXXX")"
+          rc=0
+          docker run --rm \
+            --workdir /src \
+            --volume "$GITHUB_WORKSPACE:/src:ro" \
+            --volume "$scan_report_dir:/report" \
+            --env GIT_CONFIG_COUNT=1 \
+            --env GIT_CONFIG_KEY_0=safe.directory \
+            --env GIT_CONFIG_VALUE_0=/src \
+            --env GIT_OPTIONAL_LOCKS=0 \
+            --entrypoint semgrep \
+            semgrep/semgrep:1.167.0@sha256:06938c1f365d3f67b8cedd8bc117607ae64253f88a0e768e9da9408548927dd6 \
+            scan --config p/owasp-top-ten --config p/r2c-security-audit --config p/secrets \
+            --metrics=off --error --json --output /report/semgrep.json . || rc=$?
+          node scripts/assert-scan.mjs "$scan_report_dir/semgrep.json" governance/scan-floors.yml "$rc"
 
   dependency-audit:
     # specs/security/ci-dependency-audit.md (masterpiece REQ-M22). Reads the lockfiles;
