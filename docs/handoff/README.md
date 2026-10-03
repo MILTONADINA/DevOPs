@@ -1,6 +1,6 @@
 # Handoff: C1 closeout and next steps (2026-10-03)
 
-Read [`AGENTS.md`](../../AGENTS.md) and the local `.workflow/state/baton.md` first. This page describes the C1 change and its remaining roadmap. Git and the PR checks determine the current merge state; the verification below does not declare the whole project finished.
+Read [`AGENTS.md`](../../AGENTS.md) and the local `.workflow/state/baton.md` first. This page records the 2026-10-03 local verification snapshot before merge and the remaining roadmap. Git and the PR checks determine the current merge state; the verification below does not declare the whole project finished.
 
 ## Branches and provenance
 
@@ -21,7 +21,9 @@ Spec: [`specs/ops/payment-removal.md`](../../specs/ops/payment-removal.md), REQ-
 - The invoice CLI's two-method billing factory remains until C3. Signed usage writes, the signing secret, billing modules and invoice tables remain for C2–C4.
 - Updated the API/operator docs, both affected billing specs and the spec-status baseline. The added missing-org regression guard fails when the auth fallback guard is deliberately removed from an isolated copy.
 
-Local verification results (current-change gates independently reproduced; baseline measured once):
+Local C1 verification results before the supplemental dependency remediation
+(implementation gates independently reproduced; baseline measured once).
+These results remain bound to the dependency tree used for those runs:
 
 | Gate | Result |
 |---|---|
@@ -38,9 +40,52 @@ The runtime floor rises from 1,415 to 1,433; no lowering entry is needed. Root r
 
 Detailed commands, exits, source manifests, test disposition and independent reports are local under `.workflow/proofs/c1-resume-2026-10-03/`. Named-file Gitleaks scans are clean. The limited local Semgrep scan has one unchanged INFO finding in a webhook unit test, reviewed as non-blocking; the full required CI Semgrep packs still gate the PR. Local proof is not a substitute for those required GitHub checks.
 
+## Supplemental dependency remediation — local verification snapshot before merge
+
+[PR #221](https://github.com/MILTONADINA/DevOPs/pull/221) carries the C1 change
+and dependency remediation; consult it for current checks and merge state. Its
+initial required dependency audit found 10 high-severity and 2 moderate package
+findings in the runtime dependency tree. The remediation follows
+[`specs/security/stratum-dependency-alerts.md`](../../specs/security/stratum-dependency-alerts.md).
+
+An initial parser/plugin upgrade candidate cleared the audit and passed the
+existing lint configuration, but independent review found a transitive
+dependency requiring Node 22.13 while the project supports Node 22.12.
+That candidate was rejected. The replacement selects both
+`@typescript-eslint/parser` and `@typescript-eslint/eslint-plugin` at 8.55.0,
+using `~8.55.0` manifest ranges: this supports the existing ESLint 8.57 and
+TypeScript 5.9 versions without pulling the newer transitive Node requirement
+introduced on the 8.56+ line. It removes the vulnerable `braces` dependency
+chain. The lockfile also resolves `brace-expansion` 2.1.7 and nested 1.1.21,
+Fastify 5.12.5, and `fast-uri` 3.1.8 / nested 4.2.1.
+
+The selected dependency set is now locally verified:
+
+| Gate on the replacement dependency tree | Result |
+|---|---|
+| Dependency audit | Zero vulnerabilities |
+| Existing source lint configuration | Pass; rules unchanged |
+| Independent typecheck and expanded Vercel-adapter typecheck | Pass |
+| Independent full runtime suite | 1,433 passed; 5 skipped; 5 todo |
+| Proof binding | Validated manifest and lockfile hashes match the selected files |
+| Real team-mode boot after a fresh locked install | Health 200 with database healthy; Stripe/CFO 404; usage read 401 without key; no model requests |
+
+Evidence is recorded under `.workflow/proofs/c1-resume-2026-10-03/`, including
+`dependency-compatible-audit.json`, `dependency-compatible-lint.json`, the
+independent validation reports, and `dependency-team-boot.json`. The earlier
+473 root tests and 14 SQL integration results remain evidence for their
+unchanged source binding; they were not rerun for the runtime dependency
+change. The earlier table is retained with its original dependency binding.
+No Node support promise or lint rule was changed. At this local verification
+snapshot, required GitHub checks on the new PR head and merge were not yet
+verified; the PR records their current state.
+
 ## Next action
 
-If the C1 PR has not landed, finish its required GitHub checks and merge under the recorded standing owner authorization. Then start **C2** from synchronized `main`/`dev`/`feature`, reading the entire payment-removal spec before planning.
+If PR #221 remains open, finish its required GitHub checks on the current
+head and merge under the recorded standing owner authorization. Once it has
+landed, start **C2** from synchronized `main`/`dev`/`feature`,
+reading the entire payment-removal spec before planning.
 
 C2 pairs the unsigned writer with migration M1 in the same change: remove immutability triggers/function before dropping `cq_fee_usd` and `signed_hash`; keep usage-event uniqueness and compare replay inputs; keep the durable outbox; stop requiring the signing secret only when persistence is wired. Copy usage modules out of `runtime/src/billing/` without staging that directory. Preserve providers, frozen fixtures and all existing migrations. Apply REQ-9's legacy-backup compatibility at the column-removal boundary. Repeat the spec's running-system gates for C2.
 

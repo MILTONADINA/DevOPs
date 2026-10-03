@@ -586,7 +586,7 @@ Update after every version ships. Snapshot at last update:
 | v0.6.x (Phase 5 audit) | IN PROGRESS | not recalculated | not recalculated | CONFLICT in <5s; Opus <1% escalation; live request-path audit |
 | v0.7.x (Phase 4 ZK-Context + AWS Nitro TEE) | **DROPPED** (owner decision 2026-09-26, ADR-0025) | — | — | None. The §6d Claude Code Security release-gate scan (~4h) moved to v0.8.x |
 | v0.8.x (polish + operator-ready) | IN PROGRESS | not recalculated | ~50h (§7 header, not recalculated) + ~4h (§6d) | <5min cold-clone-to-running on macOS, Linux and WSL2; backup tested; Claude Code Security clean release |
-| v0.9.x (payment removal + self-hosted team features) | NOT STARTED (redefined 2026-09-26) | — | not estimated | `specs/ops/payment-removal.md` met; team mode works on a local install; erasure <30s without a financial ledger |
+| v0.9.x (payment removal + self-hosted team features) | IN PROGRESS (C1 and compatible dependency remediation implemented and locally verified; landing tracked in PR #221; C2–C4 open) | — | not estimated | `specs/ops/payment-removal.md` met; team mode works on a local install; erasure <30s without a financial ledger |
 | v1.0.0 (open-source local-first release) | NOT STARTED (redefined 2026-09-26) | — | not estimated | A user's AI agent produces a working local setup on clean macOS, Linux and WSL2 |
 | **TOTAL to v1.0.0** | — | not computable | not computable | — |
 
