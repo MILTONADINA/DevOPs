@@ -15,12 +15,16 @@ project is retired
 
 | Script | npm script (from `runtime/`) | Writes to the database |
 | --- | --- | --- |
-| `runtime/scripts/backup-org.ts` | `npm run backup -- --org-id <uuid> [--out <path>] [--pretty]` | No. It only reads. |
+| `runtime/scripts/backup-org.ts` | `npm run backup -- --org-id <uuid> [--out <path>] [--pretty]` | Yes: marks erasure coverage unknown before reading application rows; no application content is changed. |
 | `runtime/scripts/restore-org.ts` | `npm run restore -- --file <path> [--dry-run] [--keep-key-state]` | Yes, unless `--dry-run` is given. |
 
 Both read `SUPABASE_URL` and `SUPABASE_SERVICE_KEY` from the process
 environment, so run them through `npm run db:with-env -- ...`. A dry-run
 restore needs neither, because it returns before reading them.
+The generic wrapper refuses enabled erasure deployments and all reserved
+`erasure-*` instances, even while disabled. These commands do not grant managed
+erasure coverage; follow the restricted procedure in LOCAL_STRATUM for that
+separate boundary.
 
 Sources: `runtime/package.json:47-48`, `runtime/scripts/backup-org.ts`,
 `runtime/scripts/restore-org.ts`.
@@ -29,7 +33,7 @@ Sources: `runtime/package.json:47-48`, `runtime/scripts/backup-org.ts`,
 
 A backup is one JSON object with three keys: `orgId`, `exportedAt`, and
 `tables`. `tables` maps each table name to an array of rows. The file holds
-21 tables:
+21 application tables:
 
 - `organizations`, selected by `id`.
 - These 19 tables, selected by `org_id`: `developers`, `org_config`,
@@ -46,6 +50,9 @@ Each table is read in pages of 500 rows with an exact row count. The export
 fails if the count is unavailable, changes between pages, or does not match
 the rows received. It never writes a partial file on a read error. If no
 organization row matches, it writes nothing and exits 1.
+Before any protected read, export requires acknowledgement of the durable
+organization-wide unknown-coverage marker. Marker denial stops reads and file
+output. Finishing an export never clears this uncertainty.
 
 With no `--out`, the file goes to `backups/stratum-backup-<first 8 chars of
 org id>-<timestamp>.backup.json` under the current directory. Run it from
@@ -70,6 +77,9 @@ Sources: `runtime/scripts/backup-org.ts`, `runtime/.gitignore:71-72`,
 - **The database volume, other organizations, and schema state.** This is a
   logical export of one organization, not a PostgreSQL volume backup. It does
   not record which migrations were applied (`devops_local.migrations`).
+- **Protected erasure authority.** Deployment, organization coverage,
+  session receipts and tombstones are outside the application-table export.
+  Missing metadata in a backup cannot prove that an identity was never erased.
 - **A consistent point in time.** Tables are read one after another, so the
   file is not an atomic cross-table snapshot.
 
@@ -116,7 +126,8 @@ is present as a valid row array, restore skips it and prints its name and row
 count, including zero for an empty array. It never queries or inserts a
 retired table. This applies to dry and real restores.
 
-The dry run does not prove that foreign keys or all inserts will succeed on a target
+The dry run does not contact target erasure authority or prove admission,
+foreign keys or that all inserts will succeed on a target
 (`docs/runbooks/LOCAL_STRATUM.md:102-104`).
 
 Sources: `runtime/scripts/backup-org.ts`, `runtime/scripts/restore-org.ts`.
@@ -125,6 +136,12 @@ Sources: `runtime/scripts/backup-org.ts`, `runtime/scripts/restore-org.ts`.
 
 Restore is for a clean target that does not contain the organization. It
 inserts rows in a fixed parent-before-child order and keeps the original UUIDs.
+Before any application insert, it requires `prepare_erasure_restore` to admit
+all represented session/fact/entity identities and references. Known global
+session authority and completed fact/entity tombstones reject admission. The
+RPC durably records `restore_import` unknown coverage; imports never enroll
+sessions or reset prior uncertainty. Row guards remain the final protection
+against intervening erasure, and the multi-request import is not atomic.
 Most tables get a plain insert, so an existing row causes a primary-key error.
 Five tables are handled differently:
 
@@ -210,7 +227,8 @@ In order, it:
 6. Deletes the organization again, restores a copy whose `source_fact_links`
    list is empty, and checks that no links remain
    (`runtime/test/integration/local-backup-recovery.mjs`).
-7. Always attempts scoped row cleanup. Removes temporary files after success;
+7. Always attempts scoped application-row cleanup; unknown erasure metadata
+   remains retained. Removes temporary files after success;
    preserves the synthetic files when the check or cleanup fails
    (`runtime/test/integration/local-backup-recovery.mjs`).
 
@@ -234,11 +252,13 @@ Source for the npm script: `runtime/package.json:64`.
   (`runtime/scripts/restore-org.ts`).
 - **No partial rollback.** A failed restore leaves the rows it already
   inserted (`runtime/scripts/restore-org.ts`).
-- **The recovery check only runs on the default stack.** It requires
-  `SUPABASE_URL` to be exactly `http://127.0.0.1:54321`, so it refuses an
-  isolated instance started with `DEVOPS_LOCAL_INSTANCE` and
-  `DEVOPS_LOCAL_PORT` (`runtime/test/integration/local-backup-recovery.mjs`,
-  `runtime/scripts/local-compose.ts:10-21`).
+- **The recovery check requires a matching local stack.** It validates
+  `DEVOPS_LOCAL_PORT` as an integer from 1024 through 65535 (default 54321),
+  and requires `SUPABASE_URL` to be exactly `http://127.0.0.1:<port>`. A matching
+  isolated instance is supported; the current proof used port 55431.
+  Generic-wrapper refusal still applies to enabled erasure deployments and
+  reserved `erasure-*` instances (`runtime/test/integration/local-backup-recovery.mjs`,
+  `runtime/scripts/local-compose.ts`).
 - **Gaps listed above.** The usage outbox, captured session files, and the
   model cache are outside the backup
   ([What a backup does not contain](#what-a-backup-does-not-contain)).
@@ -249,6 +269,8 @@ Source for the npm script: `runtime/package.json:64`.
   runs a backup on a schedule. Backups happen when an operator runs one.
 
 The current 21-table manifest is in `runtime/scripts/backup-org.ts` and is
-reflected in `runtime/docs/MEMORY_AND_EVAL_COMMANDS.md`. Actual session erasure
-and the one-year/<30-second benchmark remain unfinished under
-`specs/memory/session-erasure.md`.
+reflected in `runtime/docs/MEMORY_AND_EVAL_COMMANDS.md`. The initial managed
+explicit-session class passed actual API erasure proof, but ordinary backup
+exports create unknown copies and restore never grants coverage. Broader
+session/copy erasure, general managed onboarding/restarts and the
+one-year/<30-second benchmark remain open under `specs/memory/session-erasure.md`.

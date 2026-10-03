@@ -26,9 +26,12 @@ workflow. It does not read or create `.env` files. The proxy smoke check uses
 the local database; provider-backed messages need a configured provider.
 Clean-machine and cross-platform timing gates remain open.
 
-`npm run backup -- --org-id <uuid> [--pretty]` exports one org's full row-set across all
-21 tables to a timestamped JSON in the gitignored `backups/` (disaster recovery / data
-portability / GDPR export). **FREE**, read-only (SELECT only); needs Supabase creds.
+`npm run backup -- --org-id <uuid> [--pretty]` exports one org's rows from the 21
+application tables in its manifest to timestamped JSON in gitignored `backups/`
+(application recovery/data portability). **FREE**; needs local database credentials.
+Before any protected read, it durably marks the organization's erasure coverage
+unknown. A failed marker stops export; finishing the backup never clears it.
+Private deployment/coverage/receipt/tombstone metadata is not in this export.
 `npm run restore -- --file <path> [--dry-run] [--keep-key-state]` re-inserts a backup (API keys come back inactive unless `--keep-key-state`) in FK-dependency order
 — preserving UUIDs (so cross-table references stay valid) and stripping generated
 usage columns plus retired `cq_fee_usd`/`signed_hash` columns — into a CLEAN target.
@@ -37,6 +40,13 @@ C4-A/M2 removes `invoices` and `invoice_send_claims` from the schema and new
 exports. Restore accepts either retired table in an older backup and reports
 its skipped row count, including zero for a present empty table. Active-table
 validation, key deactivation and provenance restoration remain required.
+Live restore also requires acknowledged admission before its first active insert:
+the target org must be absent, known global session/tombstone conflicts are refused,
+and imported coverage becomes permanently unknown. Preserved UUIDs do not grant
+enrollment. Admission and inserts are separate transactions; the row guards still
+reject intervening conflicts. An application backup omits global erasure history,
+so missing history cannot prove that no prior erasure occurred. Dry run validates
+the file/plan only and makes no database admission claim.
 The disposable recovery harness checks the retained data round trip;
 real-data recovery remains unverified.
 
@@ -56,10 +66,18 @@ and does not measure model quality.
 C3 removes the legacy `invoice`, `verify-billing` and `verify-stripe` npm
 scripts and their payment implementation. Use the unsigned usage checks above
 for persistence and replay. DevOps has no payment workflow (ADR-0025).
-C4-A removes invoice schema and the financial preflight blocker, but does not
-implement API erasure. Preflight still reports incomplete inventory and
-unavailable execution; DELETE only ends a session. Actual deletion and the
-one-year/<30-second benchmark remain open (`specs/memory/session-erasure.md`).
+C4-A removed invoice schema and the financial preflight blocker. The C4-B
+candidate adds default-disabled managed erasure and a source-bound, single-use
+local launcher. Its initial managed explicit-session class passed actual
+authenticated HTTP verification on 2026-10-03, including private-data deletion,
+shared/foreign-data survival, rollback and stable retry.
+`GET /v1/sessions/:id/erasure-preflight` remains read-only;
+`POST /v1/sessions/:id/erasure` is the separate execution operation. DELETE only
+ends a session. Historical/conversation sessions, general managed onboarding and
+restart operations, broader managed-copy support and the one-year/<30-second
+benchmark remain open. See the
+[limited erasure runbook](../../docs/runbooks/LOCAL_STRATUM.md#limited-managed-erasure-candidate)
+and `specs/memory/session-erasure.md`.
 
 The proxy exposes the **usage read API** when `buildProxy({ usage })` is supplied:
 `GET /v1/billing/summary` (`?month=YYYY-MM`, optional `since`/`until`, all time
@@ -89,7 +107,7 @@ is **SSRF-guarded** (rejects localhost / private / cloud-metadata targets). Set 
 `PATCH /v1/config`.
 
 **Commercial mode:** `CQ_COMMERCIAL=true npm run db:with-env -- npm run dev`
-(with the local stack running) boots the proxy without a signing secret
+(with the ordinary unactivated local stack running) boots the proxy without a signing secret
 with the multi-tenant auth gate (protecting `/v1/*`) and the config, memory, usage,
 sessions and webhook-test APIs wired over Supabase —
 mint a key with `npm run create-api-key`, then call `/v1/*` with `Authorization: Bearer <key>`.
@@ -107,11 +125,21 @@ and prints the raw key once. The proxy enforces it when `buildProxy({ auth })` i
 `npm run api-keys -- --org-id <uuid> --list` lists an org's keys (never the secret/hash); `--revoke
 <key-id>` deactivates one — the auth gate (which filters `is_active=true`) rejects it immediately.
 
-Run database commands through `npm run db:with-env -- ...` after `npm run db:start`.
+For an ordinary unactivated stack, run database commands through
+`npm run db:with-env -- ...` after `npm run db:start`.
 The wrapper supplies the local `SUPABASE_URL` and `SUPABASE_SERVICE_KEY` to its
 child process. Provider-backed commands additionally need their explicitly
 configured provider settings; no hosted Supabase project is needed. The proxy,
 backup and restore commands do not load `.env` files.
+
+The generic wrapper refuses every reserved `erasure-*` instance, even while
+disabled, and any other enabled erasure deployment. The initial restricted
+launcher accepts only `proxy`/`api-proof`, requires a sealed manifest and
+operator-bound activation, and consumes a one-run marker before issuing its
+credential. Its reviewed proof driver invokes the real creator CLIs; standalone
+managed onboarding/restart orchestration is not supplied. Ordinary environment
+flags or service-role fields cannot activate erasure. Protected recall, audit,
+graph and usage/statistics reads retain their mandatory unknown-coverage markers.
 
 The schema lives in `supabase/migrations/`; the local migration runner applies it.
 The ONNX embedding model (~23 MB) downloads once to the gitignored `models/` on the
@@ -134,7 +162,7 @@ Ingestion (turning real sessions into facts via the extractor) is the one
 **NEEDS CREDITS** part of the memory loop — everything that stores, promotes,
 queries, or benchmarks *existing* facts is FREE.
 
-Claude SessionStart also runs the read-only Stratum memory bridge when the
+Claude SessionStart also runs the Stratum memory bridge when the
 operator supplies `DEVOPS_STRATUM_PROJECT_ROOT` (this project's real path),
 `DEVOPS_STRATUM_ORG_ID` (the trusted organization UUID), `SUPABASE_URL`, and
 `SUPABASE_SERVICE_KEY` in the process environment. The Supabase hostname must
@@ -147,6 +175,11 @@ The semantic query comes from the baton's Next action and uses only the local
 cached model; if the model is absent, recent facts still appear with
 `semanticStatus: "unavailable"`. Missing binding or runtime skips recall
 without blocking startup.
+The bridge leaves fact content unchanged but marks organization-wide erasure
+coverage unknown before protected reads. Coverage denial stops both semantic
+and lexical/recent fallback output; it is not treated as a missing-model fallback.
+The restricted erasure launcher does not give credentials to an ambient
+SessionStart hook or other unbound consumer.
 
 ---
 
@@ -220,8 +253,8 @@ UNVERIFIED facts and are LLM-gated.
 | `npm run audit:repo [-- --max-count N]` | **FREE** | Index a repo's real git history into structured code changes and report them (commits / files / added·deleted·modified). No LLM. |
 | `npm run audit:repo -- --facts <json>` | **FREE** | Attest a project-local JSON array of facts against that history: CONFIRMED (with commit evidence) / UNVERIFIED (→ Tier-2, gated) / CONFLICT (stale memory). Paths outside this project, symlinks, and secret-like paths are rejected. A CONFLICT yields a non-zero exit. |
 | `npm run audit:repo -- --facts <json> --persist --org-id <uuid> --session-id <uuid>` | **FREE** | Record every Tier-1 outcome in `audit_statuses`; CONFLICTs also suppress their facts and enter `audit_conflicts` atomically. Needs Supabase creds and the status migration; skips cleanly without creds. |
-| `npm run audit:conflicts [-- --org-id <uuid>] [--all]` | **FREE** | The spec's **alert** half ("CONFLICT ⇒ suppress + alert"): list the unacknowledged Historical-Drift queue from `audit_conflicts` (the table's `WHERE acknowledged = FALSE` partial index). `--all` includes acknowledged. Skips cleanly without Supabase creds. |
-| `npm run audit:conflicts -- --ack <id> [--by <dev-uuid>]` | **FREE** | Acknowledge a conflict (clears it from the alert queue); org-scoped with `--org-id`. Verified end-to-end live (seed → list → ack → re-read). |
+| `npm run audit:conflicts -- --org-id <uuid> [--all]` | **FREE** | List this organization's unacknowledged Historical-Drift queue from `audit_conflicts`; `--all` includes acknowledged. `--org-id` is required before client creation. Listing first marks the organization's erasure coverage unknown and refuses reads/output if the marker fails. A scoped command skips cleanly without Supabase creds. |
+| `npm run audit:conflicts -- --org-id <uuid> --ack <id> [--by <dev-uuid>]` | **FREE** | Acknowledge a conflict in the required organization scope. This path updates acknowledgement metadata and reads only the affected ID; it does not copy conflict text. |
 
 Tier-1 is FREE and runs end-to-end today; escalating the UNVERIFIED residue to the
 Tier-2 Llama / Tier-3 Opus models (and wiring the audit as a request-path injection

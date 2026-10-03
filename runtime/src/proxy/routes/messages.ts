@@ -255,11 +255,12 @@ function recordUsageSafe(deps: MessagesDeps, request: FastifyRequest, model: str
  * accumulating the event stream, then capture the (redacted) accumulated turn.
  */
 async function handleStreaming(body: MessagesBody, request: FastifyRequest, reply: FastifyReply, deps: MessagesDeps, start: number, pending: Set<Promise<void>>): Promise<FastifyReply> {
+  // Reject excluded identities before the token counter can send or retain request content (AC-B11).
+  const conversationId = await resolveConversation(deps, request, reply, body.model);
+  if (deps.resolveConversation && !conversationId) return reply;
   // Count + budget-check BEFORE forwarding (so an over-budget request never reaches upstream).
   const tokens = await deps.countTokens(body).catch(() => ESTIMATED_FALLBACK);
   if (await checkTokenBudget(deps, request, tokens.input_tokens, reply)) return reply;
-  const conversationId = await resolveConversation(deps, request, reply, body.model);
-  if (deps.resolveConversation && !conversationId) return reply;
 
   let sf;
   try {
@@ -416,6 +417,10 @@ export function makeMessagesRoute(deps: MessagesDeps): FastifyPluginCallback {
         return handleStreaming(body, request, reply, deps, start, pendingWrites);
       }
 
+      // Reject excluded identities before the token counter can send or retain request content (AC-B11).
+      const conversationId = await resolveConversation(deps, request, reply, body.model);
+      if (deps.resolveConversation && !conversationId) return reply;
+
       // Exact token count (best-effort; method is flagged honestly downstream).
       let tokens;
       try {
@@ -426,8 +431,6 @@ export function makeMessagesRoute(deps: MessagesDeps): FastifyPluginCallback {
 
       // Per-org token-budget gate (commercial) — reject before forwarding if over budget.
       if (await checkTokenBudget(deps, request, tokens.input_tokens, reply)) return reply;
-      const conversationId = await resolveConversation(deps, request, reply, body.model);
-      if (deps.resolveConversation && !conversationId) return reply;
 
       // Forward upstream. validateStatus:true means HTTP errors come back as a
       // result (not a throw); a throw here is a genuine network/transport error.

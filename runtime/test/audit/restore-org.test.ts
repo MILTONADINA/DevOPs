@@ -167,7 +167,12 @@ describe("legacy usage restore (specs/ops/payment-removal.md#REQ-9)", () => {
         delete: vi.fn(() => ({ eq: vi.fn(async () => ({ error: null })) })),
       };
     });
-    vi.mocked(createClient).mockReturnValue({ from } as unknown as ReturnType<typeof createClient>);
+    const rpc = vi.fn(async (name: string, input: unknown) => {
+      expect(name).toBe("prepare_erasure_restore");
+      expect(input).toEqual({ p_org_id: "o1", p_session_ids: ["s1"], p_fact_ids: [], p_entity_ids: [] });
+      return { data: true, error: null };
+    });
+    vi.mocked(createClient).mockReturnValue({ from, rpc } as unknown as ReturnType<typeof createClient>);
     const output = vi.spyOn(process.stdout, "write").mockImplementation((value) => { messages.push(String(value)); return true; });
     vi.stubEnv("SUPABASE_URL", "http://127.0.0.1:54321");
     vi.stubEnv("SUPABASE_SERVICE_KEY", "synthetic-test-only");
@@ -192,8 +197,10 @@ describe("legacy usage restore (specs/ops/payment-removal.md#REQ-9)", () => {
       if (dryRun) {
         expect(from).not.toHaveBeenCalled();
         expect(createClient).not.toHaveBeenCalled();
+        expect(rpc).not.toHaveBeenCalled();
         expect(text).toContain("DRY RUN — would insert 4 row(s) across 3 tables");
       } else {
+        expect(rpc).toHaveBeenCalledTimes(1);
         expect(inserts.find(({ table }) => table === "billing_records")?.rows).toEqual([usage, { ...usage, id: "b2", usage_event_id: "u2" }]);
         expect(inserts.map(({ table }) => table)).toEqual(["organizations", "sessions", "billing_records"]);
         expect(text).toContain("Restored 4 row(s) across 3 tables");

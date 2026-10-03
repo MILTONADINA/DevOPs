@@ -20,6 +20,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { posix } from "node:path";
 import type { AnyFact } from "../../types/facts";
 import { createWarmMemory, FACT_TABLES } from "../../memory/warm/tier2";
+import { markErasureCoverageUnknown } from "../../memory/erasure-coverage";
 import { graphEncoder } from "../../memory/graph-embedding";
 
 export interface ConflictSummary {
@@ -273,6 +274,7 @@ export function createSupabaseMemoryDeps(client: SupabaseClient, encodeQuery?: (
       return (data ?? []).length > 0;
     },
     async listConflicts(orgId, limit, projectScope) {
+      await markErasureCoverageUnknown(client, orgId, "protected_read");
       if (projectScope !== undefined) {
         const { data, error } = await client.rpc("list_project_audit_conflicts", { match_org: orgId, match_project_scope: projectScope, result_limit: limit });
         if (error) throw new Error(`listConflicts failed: ${error.message}`);
@@ -289,6 +291,7 @@ export function createSupabaseMemoryDeps(client: SupabaseClient, encodeQuery?: (
       return (data ?? []) as ConflictSummary[];
     },
     async listAuditStatuses(orgId, limit, projectScope) {
+      await markErasureCoverageUnknown(client, orgId, "protected_read");
       if (projectScope !== undefined) {
         const { data, error } = await client.rpc("list_project_audit_statuses", { match_org: orgId, match_project_scope: projectScope, result_limit: limit });
         if (error) throw new Error(`listAuditStatuses failed: ${error.message}`);
@@ -304,6 +307,7 @@ export function createSupabaseMemoryDeps(client: SupabaseClient, encodeQuery?: (
       return (data ?? []) as AuditStatusSummary[];
     },
     async listGraph(orgId, limit, projectScope) {
+      await markErasureCoverageUnknown(client, orgId, "protected_read");
       let query = client.from("knowledge_entities").select("id,kind,name,session_id,file_path,summary").eq("org_id", orgId);
       if (projectScope !== undefined) {
         query = query.eq("scope_verified", true);
@@ -322,6 +326,7 @@ export function createSupabaseMemoryDeps(client: SupabaseClient, encodeQuery?: (
       return { entities, edges: (edgesResult.data ?? []) as GraphSnapshot["edges"] };
     },
     async searchGraph(orgId, query, mode, projectScope) {
+      await markErasureCoverageUnknown(client, orgId, "protected_read");
       const embedding = mode === "semantic" ? await encode(query) : undefined;
       const found =
         mode === "semantic"
@@ -336,6 +341,7 @@ export function createSupabaseMemoryDeps(client: SupabaseClient, encodeQuery?: (
       return expandMatches(orgId, matches, projectScope);
     },
     async listGraphFiles(orgId, limit, after, projectScope) {
+      await markErasureCoverageUnknown(client, orgId, "protected_read");
       let request = client.from("knowledge_entities").select("id,kind,name,session_id,file_path,summary").eq("org_id", orgId).eq("kind", "File");
       if (projectScope !== undefined) {
         request = request.eq("scope_verified", true);
@@ -349,6 +355,7 @@ export function createSupabaseMemoryDeps(client: SupabaseClient, encodeQuery?: (
       return { files, next: (result.data ?? []).length > limit ? files.at(-1)!.name : null };
     },
     async listGraphDependencies(orgId, limit, after, projectScope) {
+      await markErasureCoverageUnknown(client, orgId, "protected_read");
       let request = client.from("knowledge_edges").select("id,edge_type,from_entity,to_entity").eq("org_id", orgId).eq("edge_type", "DEPENDS_ON");
       if (projectScope !== undefined) {
         request = request.eq("scope_verified", true);
@@ -362,6 +369,7 @@ export function createSupabaseMemoryDeps(client: SupabaseClient, encodeQuery?: (
       return { edges, next: (result.data ?? []).length > limit ? edges.at(-1)!.id : null };
     },
     async listRelatedFacts(orgId, file, projectScope) {
+      await markErasureCoverageUnknown(client, orgId, "protected_read");
       let query = client.from("knowledge_entities").select("id").eq("org_id", orgId).eq("kind", "File").eq("name", file).eq("file_path", file);
       if (projectScope !== undefined) {
         query = query.eq("scope_verified", true);

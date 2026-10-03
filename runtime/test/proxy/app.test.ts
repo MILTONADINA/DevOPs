@@ -41,6 +41,17 @@ describe("buildProxy — /health", () => {
 });
 
 describe("buildProxy — factory contract", () => {
+  test.each([
+    { method: "GET" as const, suffix: "erasure-preflight" },
+    { method: "POST" as const, suffix: "erasure" },
+  ])("personal $suffix refuses without database dependencies", async ({ method, suffix }) => {
+    app = buildProxy({ cors: false, rateLimit: false });
+    const res = await app.inject({ method, url: `/v1/sessions/20000000-0000-4000-8000-000000000001/${suffix}` });
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error.message).toBe("organization-level API key required");
+    expect((await app.inject({ method: "GET", url: "/v1/sessions" })).statusCode).toBe(404);
+  });
+
   test("returns an injectable instance that is not yet listening", async () => {
     app = buildProxy({ cors: false });
     await app.ready();

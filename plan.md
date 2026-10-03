@@ -453,17 +453,23 @@ needs.
 **Ship gate**: every requirement of `specs/ops/payment-removal.md` is met (payment surface absent, usage ledger unsigned, USD kept as estimates, backups from before the removal still restore, gateway untouched, test floors lowered only through declared lowerings); organizations and API keys work in team mode on a local install; session erasure runs in <30s on 1-year data without a financial ledger.
 **Effort remaining**: not estimated. The former ~30h estimate covered the billing scope and is withdrawn.
 
-**Current implementation (C4-A locally verified, 2026-10-03; CI and merge pending).**
+**Current implementation (C4-B local verification, 2026-10-03; final CI/merge pending).**
 C1, C2 and C3 landed in PRs #221 (`18ba62b`), #222 (`4ac4784`) and #223
 (`28ea1aa`). Payment HTTP
 routes are absent; unsigned usage retains exact tokens, pinned USD estimates,
 durable replay and no-secret team startup. C3 removed the legacy payment modules,
 three payment commands, CLI-only factory and payment types, preserving PruningLog.
-The coordinated C4-A change removes invoice tables/RPCs and their backup
+The coordinated C4-A change merged in PR #224 (`3e570a2`) and removes invoice tables/RPCs and their backup
 exports, accepts and reports retired legacy tables during restore, and removes
-only the financial erasure reason. Unknown-store and execution blockers remain. The C4
-acceptance criterion requires actual API erasure; ending a session or a preflight
-response alone will not satisfy it. Verification and merge conditions are in
+only the financial erasure reason. C4-B's initial managed explicit-session class
+now passes actual authenticated API deletion, shared/foreign-data survival,
+rollback and stable retry on a fresh isolated, source-bound instance. All 20 SQL
+fixtures with 70 applied migrations, legacy/current recovery, explicit-session, setup and
+unsigned proxy/replay checks pass. Clean runtime: 1,623 passed, 5 skipped, 5 todo;
+isolated Linux root: 473 passed, 17 skipped; typecheck and source lint pass.
+Final security/governance checks, CI and merge remain.
+Unknown stores, broader session/copy coverage, general managed onboarding/restart
+and the one-year benchmark remain open. Verification and merge conditions are in
 `docs/handoff/README.md`.
 
 ### 8a. Payment removal (graph cycles; requirements in `specs/ops/payment-removal.md`)
@@ -493,11 +499,13 @@ response alone will not satisfy it. Verification and merge conditions are in
   merge passed in PR #223 (`28ea1aa`, 2026-10-03).
 - [ ] **C4 — Remove the invoice schema** (migration M2) and the
   billing-retention erasure blocker, and supersede ADR-0021 (REQ-8, REQ-9).
-  C4-A delivers that schema/restore/preflight boundary; C4-B must still erase
-  an eligible session through the real API to satisfy AC-8. C4-A local proof:
+  C4-A delivers that schema/restore/preflight boundary and merged in PR #224
+  (`3e570a2`). C4-A local proof:
   1,403 runtime tests, 473 root tests, all 14 SQL fixtures, both recovery checks,
   setup and actual no-secret proxy/replay pass; M2 applied once to the existing
-  volume. Required CI and merge remain. C4 remains open.
+  volume. C4-B now has actual API proof for the initial managed explicit-session
+  class; runtime1,623/root473 pass. Final security/governance checks, CI and merge
+  remain. C4 remains open.
 - [ ] **Declared test-floor lowerings** for each cycle that removes tests
   (REQ-12).
 
@@ -512,13 +520,14 @@ response alone will not satisfy it. Verification and merge conditions are in
 - [ ] **Session erasure endpoint** (remaining effort not estimated).
   `specs/memory/session-erasure.md` defines scoped inventory, shared-graph safety,
   ordinary usage deletion, cache/write fencing, retries and the one-year benchmark.
-  C4-A supersedes ADR-0021's financial premise under payment-removal REQ-8;
-  it does not deliver an erasure executor. A read-only local database RPC counts
-  session-linked rows and distinguishes complete, shared, and uncertain graph
-  provenance. Two-session promotion and local backup/restore checks preserve
-  recorded graph and File-to-fact source links. Untagged graph rows, RAM,
-  backup deletion, and external copies remain unresolved. No compliance claim
-  is made yet.
+  C4-A supersedes ADR-0021's financial premise under payment-removal REQ-8.
+  C4-B's controlled initial explicit-session class is verified through the
+  actual API with ordinary usage deletion, safe shared survivors, rollback and
+  stable retry. Activation is default-disabled and bound to a fresh isolated
+  instance/source/store generation; copying marks coverage unknown. Historical
+  and conversation sessions, arbitrary RAM/external/backup copies, general
+  managed onboarding/restart and the one-year benchmark remain unresolved.
+  Full verification/merge gates remain; no compliance claim is made.
 
 ### 8c. v0.9.0 release
 
@@ -600,7 +609,7 @@ Update after every version ships. Snapshot at last update:
 | v0.6.x (Phase 5 audit) | IN PROGRESS | not recalculated | not recalculated | CONFLICT in <5s; Opus <1% escalation; live request-path audit |
 | v0.7.x (Phase 4 ZK-Context + AWS Nitro TEE) | **DROPPED** (owner decision 2026-09-26, ADR-0025) | — | — | None. The §6d Claude Code Security release-gate scan (~4h) moved to v0.8.x |
 | v0.8.x (polish + operator-ready) | IN PROGRESS | not recalculated | ~50h (§7 header, not recalculated) + ~4h (§6d) | <5min cold-clone-to-running on macOS, Linux and WSL2; backup tested; Claude Code Security clean release |
-| v0.9.x (payment removal + self-hosted team features) | IN PROGRESS (C1–C3 merged; C4-A locally verified pending CI/merge; C4-B erasure open) | — | not estimated | `specs/ops/payment-removal.md` met; team mode works on a local install; erasure <30s without a financial ledger |
+| v0.9.x (payment removal + self-hosted team features) | IN PROGRESS (C1–C4-A merged; C4-B initial-class API and runtime1,623/root473 passed; final CI/merge and wider erasure/benchmark open) | — | not estimated | `specs/ops/payment-removal.md` met; team mode works on a local install; erasure <30s without a financial ledger |
 | v1.0.0 (open-source local-first release) | NOT STARTED (redefined 2026-09-26) | — | not estimated | A user's AI agent produces a working local setup on clean macOS, Linux and WSL2 |
 | **TOTAL to v1.0.0** | — | not computable | not computable | — |
 

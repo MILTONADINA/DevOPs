@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { createWarmMemory, rowToFact } from "../src/memory/warm/tier2";
 import { createVectorStore } from "../src/memory/cold/vectors";
+import { ErasureCoverageUnavailableError, markErasureCoverageUnknown } from "../src/memory/erasure-coverage";
 import { factToText } from "../src/memory/promote";
 import { cosineSimilarity, createOnnxEncoder, type BiEncoder } from "../src/pruner/encoder";
 import type { AnyFact } from "../src/types/facts";
@@ -102,13 +103,15 @@ export async function retrieveSessionContext(opts: SessionContextOptions, deps: 
           if (fact && !fact.is_suppressed) add(fact, match.similarity);
         }
         vectorOk = true;
-      } catch {
+      } catch (error) {
+        if (error instanceof ErasureCoverageUnavailableError) throw error;
         /* warm ranking can still provide relevant facts */
       }
       if (deps.encodeMany) {
         try {
           const candidates = [...eligible];
           try {
+            await markErasureCoverageUnknown(client, opts.orgId, "protected_read");
             const { data, error } = await client.rpc("search_project_warm_facts", {
               match_org: opts.orgId, match_project_scope: projectScope,
               search_text: opts.task.slice(0, 1200), result_limit: LEXICAL_CANDIDATE_LIMIT,
@@ -126,7 +129,8 @@ export async function retrieveSessionContext(opts: SessionContextOptions, deps: 
                 seen.add(fact.id);
               }
             }
-          } catch {
+          } catch (error) {
+            if (error instanceof ErasureCoverageUnavailableError) throw error;
             /* the bounded recent warm candidates remain usable */
           }
           if (candidates.length > 0) {
@@ -141,11 +145,13 @@ export async function retrieveSessionContext(opts: SessionContextOptions, deps: 
             for (const candidate of scored) add(candidate.fact, candidate.similarity);
           }
           warmOk = true;
-        } catch {
+        } catch (error) {
+          if (error instanceof ErasureCoverageUnavailableError) throw error;
           /* promoted vectors can still provide relevant facts */
         }
       }
-    } catch {
+    } catch (error) {
+      if (error instanceof ErasureCoverageUnavailableError) throw error;
       // A missing local query encoder leaves the three recent facts usable.
     }
     const completed = Number(vectorOk) + Number(warmEnabled && warmOk);

@@ -8,8 +8,13 @@ usage. Its name stays unchanged during payment removal.
 Payment-removal C1 removes the CFO page, invoice HTTP reads and inbound Stripe
 webhook. C2 persists unsigned token usage and estimated USD savings without
 `CQ_BILLING_SIGNING_SECRET`. C3 removes the legacy invoice and Stripe scripts;
-C4-A/M2 retires the invoice schema and financial preflight blocker. Actual
-session erasure remains unfinished. See
+C4-A/M2 retires the invoice schema and financial preflight blocker. C4-B's
+initial managed explicit-session class passed controlled actual API erasure
+verification; broader coverage, general managed onboarding/restarts and the
+one-year benchmark remain open. This ordinary team-mode setup does not grant
+managed erasure coverage. See the
+[limited erasure runbook](../../docs/runbooks/LOCAL_STRATUM.md#limited-managed-erasure-candidate)
+and
 [`specs/ops/payment-removal.md`](../../specs/ops/payment-removal.md).
 
 ## 1. Start the local proxy

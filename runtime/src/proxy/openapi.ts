@@ -143,7 +143,28 @@ export const OPENAPI_SPEC = {
       get: {
         summary: "Read-only session erasure inventory and blockers (organization-level key required)",
         parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
-        responses: { "200": { description: "Blocked erasure preflight with scoped local inventory" }, "403": ERROR_RESPONSE, "404": ERROR_RESPONSE },
+        responses: {
+          "200": { description: "Read-only ready or blocked preflight with scoped counts and managed-store classifications" },
+          "403": ERROR_RESPONSE,
+          "404": ERROR_RESPONSE,
+          "503": ERROR_RESPONSE,
+        },
+      },
+    },
+    "/v1/sessions/{id}/erasure": {
+      post: {
+        summary: "Erase an eligible explicit session (organization-level key required)",
+        description:
+          "Accepts no query or body fields. A durable fence precedes atomic content deletion. Completion returns the stored receipt, including on retry after session deletion. Client-held responses, privileged host/database snapshots and physical heap/OS remnants are excluded from the guarantee.",
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+        responses: {
+          "200": { description: "Stable scoped completion receipt with actual deleted and retained counts and exclusions" },
+          "400": ERROR_RESPONSE,
+          "403": ERROR_RESPONSE,
+          "404": ERROR_RESPONSE,
+          "409": { description: "Known session blocked by unknown coverage or an unsafe dependency; no content erased" },
+          "503": { description: "Unavailable or incomplete; retry resolves durable request state" },
+        },
       },
     },
     "/v1/billing/summary": {

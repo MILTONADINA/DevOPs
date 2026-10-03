@@ -13,6 +13,11 @@ test("specs/ops/payment-removal.md#REQ-9 — export reads every active table wit
   const usage = Array.from({ length: 1001 }, (_, i) => ({ id: `u${i}`, org_id: "o1", session_id: "s1" }));
   const rows: Record<string, unknown[]> = { organizations: [{ id: "o1" }], sessions: [{ id: "s1", org_id: "o1" }], billing_records: usage, pruning_logs: [{ id: "p1", session_id: "s1" }] };
   const client = {
+    async rpc(name: string, args: unknown) {
+      expect(name).toBe("mark_erasure_coverage_unknown");
+      expect(args).toEqual({ p_org_id: "o1", p_reason: "backup_export" });
+      return { data: true, error: null };
+    },
     from(table: string) {
       expect(active, `unexpected export query: ${table}`).toContain(table);
       queried.push(table);

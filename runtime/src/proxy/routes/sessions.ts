@@ -12,6 +12,8 @@
 
 import type { FastifyInstance, FastifyPluginCallback, FastifyReply, FastifyRequest } from "fastify";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { createSessionErasureDeps, type SessionErasureDeps } from "../session-erasure";
+import { markErasureCoverageUnknown } from "../../memory/erasure-coverage";
 import { planLimits } from "../rate-limit-tiers";
 import { resolveOrg } from "./org-scope";
 
@@ -47,6 +49,8 @@ export interface SessionErasureInventory {
 }
 
 export interface SessionsDeps {
+  /** Real managed erasure; omitted adapters explicitly remain unavailable. */
+  erasure?: SessionErasureDeps;
   listSessions: (orgId: string, limit: number, projectScope?: string | null) => Promise<SessionSummary[]>;
   getSession: (orgId: string, id: string, projectScope?: string | null) => Promise<SessionSummary | null>;
   /** Token stats for a session, or null if the session is not in this org. */
@@ -145,6 +149,14 @@ export function makeSessionsRoute(deps: SessionsDeps): FastifyPluginCallback {
         return err(reply, 403, "organization-level API key required");
       }
       const id = (req.params as { id: string }).id;
+      if (deps.erasure) {
+        try {
+          const result = await deps.erasure.inspect(req.orgId, id);
+          return result === null ? err(reply, 404, "session not found for this org") : result;
+        } catch {
+          return reply.code(503).send({ status: "incomplete", retryable: true, reasons: ["erasure_unavailable"] });
+        }
+      }
       if ((await deps.getSession(req.orgId, id)) === null) return err(reply, 404, "session not found for this org");
       const inventory = await deps.inspectErasure(req.orgId, id);
       if (inventory === null) return err(reply, 404, "session not found for this org");
@@ -157,6 +169,28 @@ export function makeSessionsRoute(deps: SessionsDeps): FastifyPluginCallback {
         reasons,
         inventory,
       };
+    });
+
+    app.post("/v1/sessions/:id/erasure", async (req, reply) => {
+      if (req.authEnforced !== true || !req.orgId || req.projectScopeId !== undefined) {
+        return err(reply, 403, "organization-level API key required");
+      }
+      // This operation has no caller-controlled options, scope or coverage flags.
+      if (
+        Object.keys(req.query as object).length > 0 ||
+        (req.body !== undefined && (req.body === null || typeof req.body !== "object" || Array.isArray(req.body) || Object.keys(req.body).length > 0))
+      ) {
+        return err(reply, 400, "erasure accepts no query or body fields");
+      }
+      if (!deps.erasure) return reply.code(503).send({ status: "incomplete", retryable: true, reasons: ["erasure_unavailable"] });
+      try {
+        // Do not gate on getSession: a completed retry has a receipt but no session.
+        const result = await deps.erasure.erase(req.orgId, (req.params as { id: string }).id);
+        if (result === null) return err(reply, 404, "session not found for this org");
+        return reply.code(result.status === "blocked" ? 409 : 200).send(result);
+      } catch {
+        return reply.code(503).send({ status: "incomplete", retryable: true, reasons: ["erasure_unavailable"] });
+      }
     });
 
     // DELETE /v1/sessions/:id — end a session (set ended_at); the session.ended trigger (WEBHOOKS.md).
@@ -189,6 +223,7 @@ export function createSupabaseSessionsDeps(client: SupabaseClient): SessionsDeps
     return ((data ?? [])[0] as SessionSummary | undefined) ?? null;
   };
   return {
+    erasure: createSessionErasureDeps(client),
     async listSessions(orgId, limit, projectScope) {
       // Only EXPLICIT sessions are client-facing; kind='usage' rows are internal daily billing buckets.
       let query = client.from("sessions").select(SESSION_COLS).eq("org_id", orgId).eq("kind", "explicit");
@@ -256,6 +291,7 @@ export function createSupabaseSessionsDeps(client: SupabaseClient): SessionsDeps
     async getSessionStats(orgId, id, projectScope) {
       // Scope check first: only an org's own session yields stats (no cross-tenant peeking).
       if ((await getSession(orgId, id, projectScope)) === null) return null;
+      await markErasureCoverageUnknown(client, orgId, "protected_read");
       const { data, error } = await client.from("billing_records").select("original_tokens, quarantined_tokens, cost_delta_usd").eq("org_id", orgId).eq("session_id", id);
       if (error) throw new Error(`getSessionStats failed: ${error.message}`);
       const rows = (data ?? []) as { original_tokens: number; quarantined_tokens: number; cost_delta_usd: number }[];

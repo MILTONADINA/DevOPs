@@ -1,8 +1,9 @@
 /** Loopback-only Compose stack for this project's local Supabase HTTP API. */
 import { createHmac, randomBytes } from "node:crypto";
 import { execFileSync, spawnSync } from "node:child_process";
-import { readFileSync, readdirSync, realpathSync } from "node:fs";
+import { readFileSync, readdirSync, realpathSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { assertArtifactDeployment, ERASURE_ENTRIES, erasureChildEnvironment, verifyErasureArtifact } from "../src/lib/erasure-generation";
 
 type Binding = { HostIp?: string; HostPort?: string };
 type Ports = Record<string, Binding[] | null>;
@@ -156,9 +157,38 @@ async function start(): Promise<void> {
 
 function withEnv(argv: string[]): number {
   if (argv.length === 0) throw new Error("usage: npm run db:with-env -- <command> [args...]");
+  if ((process.env.DEVOPS_LOCAL_INSTANCE ?? "").startsWith("erasure-")) throw new Error("reserved erasure instance forbids unrestricted credentials");
+  if (deploymentMetadata()?.enabled !== false) throw new Error("erasure generation forbids unrestricted credentials");
   const env = { ...process.env, SUPABASE_URL: `http://127.0.0.1:${localStack.port}`, SUPABASE_SERVICE_KEY: serviceJwt(currentSecret(), Math.floor(Date.now() / 1000) + 86_400), DEVOPS_STRATUM_PROJECT_ROOT: projectRoot };
   const child = spawnSync(argv[0]!, argv.slice(1), { cwd: process.cwd(), env, stdio: "inherit" });
   if (child.error) throw child.error;
+  return child.status ?? 1;
+}
+
+/** Operator-only metadata inspection; no service credential is minted for this check. */
+function deploymentMetadata(): { enabled?: unknown } {
+  const env = stackEnv("placeholder");
+  const sql = (query: string): string => compose(["exec", "-T", "db", "psql", "-X", "-At", "-v", "ON_ERROR_STOP=1", "-U", "supabase_admin", "-d", "postgres", "-c", query], env).trim();
+  if (sql("SELECT to_regclass('public.erasure_deployment') IS NOT NULL") === "f") return { enabled: false };
+  try { return JSON.parse(sql("SELECT row_to_json(d) FROM public.erasure_deployment d WHERE id")) as { enabled?: unknown }; }
+  catch { throw new Error("erasure generation metadata unavailable"); }
+}
+
+/** Single-use first proof launch. Arbitrary argv and inherited runtime env are forbidden. */
+function erasureLaunch(argv: string[]): number {
+  const [manifestPath, selector] = argv;
+  if (argv.length !== 2 || !selector || !(selector in ERASURE_ENTRIES)) throw new Error("invalid erasure launch selector");
+  if (!(process.env.DEVOPS_LOCAL_INSTANCE ?? "").startsWith("erasure-")) throw new Error("erasure launch requires reserved instance");
+  const artifact = verifyErasureArtifact(manifestPath!, projectRoot);
+  if (artifact.manifest.instance !== process.env.DEVOPS_LOCAL_INSTANCE || String(artifact.manifest.api_port) !== localStack.port || !artifact.manifest.selectors.includes(selector as keyof typeof ERASURE_ENTRIES)) throw new Error("erasure generation instance or selector mismatch");
+  assertArtifactDeployment(artifact, deploymentMetadata());
+  inspectPorts(stackEnv("placeholder"));
+  for (const store of Object.values(artifact.manifest.stores)) if (readdirSync(join(artifact.root, store)).length !== 0) throw new Error("erasure generation requires fresh stores");
+  // An interrupted/failed first run is never silently adopted by a later launch.
+  writeFileSync(join(artifact.root, "runtime/data/erasure-launch-used"), `${artifact.manifest.activation_id}\n${artifact.digest}\n`, { flag: "wx", mode: 0o600 });
+  const env = erasureChildEnvironment(artifact, serviceJwt(currentSecret(), Math.floor(Date.now() / 1000) + 3600), process.execPath);
+  const child = spawnSync(process.execPath, [join(artifact.root, "runtime/node_modules/tsx/dist/cli.mjs"), join(artifact.root, ERASURE_ENTRIES[selector as keyof typeof ERASURE_ENTRIES])], { cwd: join(artifact.root, "runtime"), env, stdio: "inherit" });
+  if (child.error) throw new Error("erasure generation child launch failed");
   return child.status ?? 1;
 }
 
@@ -169,6 +199,7 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
     case "stop": compose(["down"], stackEnv("placeholder")); return 0;
     case "migrate": process.stdout.write(`${migrate(stackEnv("placeholder"))} migration(s) applied.\n`); return 0;
     case "with-env": return withEnv(argv.slice(1));
+    case "erasure-launch": return erasureLaunch(argv.slice(1));
     default: throw new Error("usage: local-compose.ts start|stop|migrate|with-env");
   }
 }

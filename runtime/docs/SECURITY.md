@@ -197,23 +197,39 @@ The enclave has no logging. Errors are returned as typed error codes only — no
 | Standard | Status | Notes |
 |---|---|---|
 | SOC 2 Type II | Target: Month 12 | Architecture designed for compliance from day one |
-| GDPR Article 17 (right to erasure) | Not verified | No complete erasure endpoint or retention assessment is implemented |
+| GDPR Article 17 (right to erasure) | Not verified | Initial managed explicit-session API proof exists; broader deletion coverage and a compliance/retention assessment remain open |
 | HIPAA | Not supported in MVP | PHI requires BAA and additional controls |
 | CCPA | Not verified | No complete deletion workflow or compliance assessment is recorded |
 
 ### GDPR Erasure
 
-The following remains required work, not a deployed erasure capability. There
-is no actual erasure endpoint or one-year/<30-second benchmark yet. C2/M1
+The initial managed explicit-session class passed controlled authenticated HTTP
+erasure verification on 2026-10-03; this is not a general compliance claim or a
+one-year/<30-second benchmark. C2/M1
 makes `billing_records` unsigned and mutable; C4-A/M2 removes invoice
 tables/RPCs and the financial preflight blocker. Usage remains ordinary
 session-linked data with organization/session foreign keys. ADR-0021 is
 superseded; `specs/memory/session-erasure.md` preserves the nonfinancial gates.
 
-The current organization-authenticated preflight reports scoped database
-counts, including numeric `billing_records`, and remains blocked on
-unavailable execution and applicable graph/store uncertainty. External
-copies, backups and RAM are not inventoried. DELETE only ends a session.
+The organization-authenticated preflight reports scoped database counts,
+including numeric `billing_records`, and separate managed-store classifications.
+It is ready only for the enrolled class under trusted activation of a fresh
+isolated source/process/store generation. Unknown stores, unsafe dependencies
+or stale coverage block execution; protected reads/exports durably mark
+organization-wide uncertainty before copying. The initial boundary excludes
+explicit-session content from unsupported application memory/capture paths;
+it does not prove deletion of arbitrary RAM, external copies or backups.
+DELETE only ends a session; POST performs erasure and returns a stable scoped
+receipt with retained metadata and declared exclusions.
+
+The real API proof covers ordinary private-data deletion, shared/foreign-data
+survival, rollback and retry after a lost response. Broader historical and
+conversation-session coverage, general managed onboarding/restart operations
+and the representative one-year benchmark remain open. Client-held responses,
+privileged host/database snapshots and physical heap/OS remnants are excluded,
+not claimed erased or anonymous. See the
+[limited erasure runbook](../../docs/runbooks/LOCAL_STRATUM.md#limited-managed-erasure-candidate)
+for the proof binding and operating restrictions.
 
 Before an erasure can report success, the required workflow is:
 

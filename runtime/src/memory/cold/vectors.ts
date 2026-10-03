@@ -17,6 +17,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { EMBEDDING_DIM } from "../../pruner/encoder";
+import { markErasureCoverageUnknown } from "../erasure-coverage";
 
 export type VectorSourceType = "fact" | "turn" | "entity";
 
@@ -104,6 +105,7 @@ export function createVectorStore(client: SupabaseClient): VectorStore {
 
     async search(orgId: string, queryEmbedding: number[], k = 10): Promise<VectorMatch[]> {
       assertDim(queryEmbedding);
+      await markErasureCoverageUnknown(client, orgId, "protected_read");
       const { data, error } = await client.rpc("match_memory_vectors", {
         query_embedding: toVectorLiteral(queryEmbedding),
         match_org: orgId,
@@ -120,6 +122,7 @@ export function createVectorStore(client: SupabaseClient): VectorStore {
 
     async searchProjectFacts(orgId: string, projectScope: string | null, queryEmbedding: number[], k = 10): Promise<VectorMatch[]> {
       assertDim(queryEmbedding);
+      await markErasureCoverageUnknown(client, orgId, "protected_read");
       const { data, error } = await client.rpc("match_project_fact_vectors", {
         query_embedding: toVectorLiteral(queryEmbedding),
         match_org: orgId,
