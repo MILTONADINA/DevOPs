@@ -1,6 +1,6 @@
-# Handoff: historical claim dispositions and MR-3 (2026-10-03)
+# Handoff: MR-3 hook hardening in progress (2026-10-03)
 
-Read [`AGENTS.md`](../../AGENTS.md) and the local `.workflow/state/baton.md` first. C4-B is merged. The next delivery records historical claim dispositions, followed by MR-3 hook hardening. Earlier dated snapshots remain below; none declares the whole project finished.
+Read [`AGENTS.md`](../../AGENTS.md) and the local `.workflow/state/baton.md` first. C4-B and the historical claim dispositions are merged. MR-3 hook hardening is in progress; its tests-first commits and completed local verification are recorded below. Earlier dated snapshots remain intact; none declares the whole project finished.
 
 ## Branches and provenance
 
@@ -73,11 +73,71 @@ The separate [historical disposition ledger](../../governance/claim-retirements.
 records the runtime-move attempt and obsolete invoice scopes, with retained or
 deferred outcomes for mixed claims. [Its documentation](../../verification/CLAIM_RETIREMENTS.md)
 explains that original evidence stays unchanged and the validator does not read
-the sidecar. It adds no passing proof count. This data/doc delivery has its own
-review and CI gates; then continue MR-3 and the remaining roadmap.
+the sidecar. It adds no passing proof count. This data/doc delivery merged in
+[PR #226](https://github.com/MILTONADINA/DevOPs/pull/226) at
+`5bb1ba6012c255cf8d64b5f46577ac7efe64cef5`; MR-3 is the active continuation.
 The old Claude Workflow run remains historical/indeterminate; do not reset or
 resume it. Use the local baton for exact process handles, current proof bindings
 and any later progress. Earlier sections below are dated historical evidence.
+
+## MR-3 checkpoint — tests committed before fixes
+
+The owner adopted the narrow REQ-M16/AC-M16.1 contract under the roadmap's
+early-draft allowance. Ordinary diagnostics remain available during halt;
+recognized consequential commands, including `gh pr merge`, are refused while
+halted. Decision 13 keeps unhalted merge exempt from deploy markers. Literal
+branch/tag lookup must be local and contained; deploy authority is exactly one
+validated running record. The whole masterpiece specification remains draft.
+
+Against the original hooks/installer, frozen acceptance tests produced 134 cases:
+58 passed and 76 failed for the expected missing behavior; all original 12 passed.
+The tests and narrow spec were committed at
+`9ee51df409e6681162564c2983f0f4d237deac23` before implementation. Independent
+review then found that multiple individually valid classifier response objects
+could bypass the deploy wrapper's refusal. A separate six-case regression
+produced 4 passes and 2 expected failures and was committed at
+`89eb688b4c0c2b10291b670144ebee2f13d230cc` before the response-validation fix.
+The response suite passed 6/6 at its recorded earlier source binding; that
+bounded result does not establish the final combined MR-3 behavior.
+
+A separate 27-case source-review batch then produced 5 passes and 22 expected
+failures. It was committed at `a1dec76a4f005cf59b0b97f760d92e690a8a0f12`
+before those parser corrections. The final 12-case refspec/option/`env --` batch
+produced 5 passes and 7 expected failures and was committed at
+`52bb3f69097d71eb44fe5f8a5dfa70326a005de8` before its helper correction.
+Neither RED result is a passing implementation claim.
+
+Evidence is under `.workflow/proofs/mr3-2026-10-03/`: `red-analysis.json`,
+`red-source-binding.json`, `response-red-analysis.json`,
+`response-fix-binding.json`, `response-green.json`, `review-red-analysis.json`,
+`review-red-binding.json`, `ref-operands-red-analysis.json` and
+`ref-operands-red-binding.json`. The original four acceptance sources remain
+unchanged. The combined focused run now passes all 179 cases with no failures
+or skips: `focused-green.json` and `focused-green-terminal-binding.json` bind
+that result to classifier SHA256 `214d95c3e8b3ecfd93c001683debc6e9fd043739a376aa40e32e18060fa0cb1f`
+and the reviewed wrapper/installer/test inputs. The complete isolated Linux/Node24
+root suite then passed: 657 total, 640 passed, zero failed and 17 expected skips.
+`full-root-corrected-network.json` and `full-root-terminal-binding.json` bind
+this result to unchanged executable/test sources. The root floor rises from
+473 to the measured 640; runtime stays 1623, with no test removal or lowering.
+The first full run had two failures because its network-disabled container
+could not check the existing allowlisted GitHub origin. That failed evidence
+is retained; both cases passed a focused environment correction before the
+full rerun. No product change was made to resolve that prerequisite error.
+Final independent closure/scans, exact-head CI and merge still require terminal
+evidence at this checkpoint. Use the local baton for later progress; do not
+repeat completed tests without a changed source binding or diagnosed failure.
+
+Finite parsing, malformed wrapper transport, plain marker authenticity,
+protected file-tool authority, broader tool parity and proof-ledger accounting
+remain explicit limits. Ordinary non-force `--tags`/`--follow-tags`/`--all`
+pushes require deploy approval, but the sealed hook does not enumerate their
+implicit destinations. Forced bulk/mirror ambiguity refuses; an explicit
+protected right-hand refspec destination remains blocked. The local branch
+lookup exception applies only to bare NAME; colon refspecs need an explicit
+`refs/heads/` destination for ordinary admission. These are bounded parser
+rules, not complete Git mutation mediation.
+MR-4/MR-5/MR-6/MR-10 are not delivered here.
 
 ## C4-A delivery — historical snapshot before merge
 
@@ -300,21 +360,23 @@ verified; the PR records their current state.
 
 ## Next action
 
-Finish the historical disposition ledger's independent review, exact-source
-proof and required CI; merge under standing owner authorization and synchronize
-main/dev/feature. Then implement MR-3 hook hardening under the roadmap's explicit
-early-draft allowance. Reconcile Decision13's unhalted merge-marker exclusion
-and the safe diagnostic behavior during a halt before writing its failing tests.
-The masterpiece spec remains draft. Consult the local baton for current handles
-and do not repeat C4-B's passing runtime, root, SQL or actual HTTP proof.
+The final shared classifier, two graph hook entries and exact installer companion
+copy have passed the combined 179-case focused suite after independent source
+review. The complete root suite also passed (640 passed, zero failed, 17 expected
+skips), and the floor is raised to 640. Finish static/security/proof gates and
+verify required exact-head CI before the authorized merge and main/dev/feature
+synchronization.
+The masterpiece spec remains draft. Consult the local baton for current handles.
+Do not repeat the original RED, the completed response proof or unchanged C4-B
+runtime/SQL/actual HTTP checks, or MR-3's completed full root verification.
 
 Preserve the limited erasure guarantee, immutable applied migrations and
 original operator database. The one-year/<30-second benchmark is a separate
 remaining v0.9 gate. Broader historical/conversation/copy coverage and managed
 onboarding/restart operations remain unsupported by this initial proof.
 
-After the bounded ledger: MR-3, remaining roadmap and
-security/hygiene work; naming aliases/current prose; v0.4 pruner cycles1b/2 and
+After MR-3: the remaining roadmap and security/hygiene work;
+naming aliases/current prose; v0.4 pruner cycles1b/2 and
 quality gates; clean-machine macOS/Linux/WSL2 and real-use release gates. The
 mission is the whole remaining roadmap. Do not resume old Claude Workflow
 `wf_51c12945-ff7` or reset its preserved C1 checkpoint.
