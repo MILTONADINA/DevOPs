@@ -9,8 +9,8 @@
  *
  * RESTORE is the documented follow-up, deliberately separate: billing_records has GENERATED
  * token_delta/cost_delta_usd columns, and pre-C2 backups may contain retired fee/signature
- * columns. Restore strips those and uses FK-dependent insertion order. Invoice tables stay
- * in the export until payment-removal C4 drops them. This export half
+ * columns. Restore strips those and uses FK-dependent insertion order. C4 retires invoice
+ * tables from exports; legacy restore reports and skips them. This export half
  * is independently valuable and safe. Output lands in the gitignored `backups/` (may hold real
  * org data — never commit).
  */
@@ -25,8 +25,6 @@ export const ORG_SCOPED_TABLES = [
   "org_config",
   "sessions",
   "billing_records",
-  "invoices",
-  "invoice_send_claims",
   "function_changes",
   "tech_decisions",
   "policy_updates",
@@ -138,9 +136,7 @@ export async function exportOrg(client: SupabaseClient, orgId: string, exportedA
             ? ["entity_id", "session_id"]
             : t === "knowledge_edge_sessions"
               ? ["edge_id", "session_id"]
-              : t === "invoice_send_claims"
-                ? ["period_start", "period_end"] // primary key (org_id, period_start, period_end); no id column
-                : ["id"];
+              : ["id"];
     tables[t] = await selectAll(client, t, "org_id", orgId, order);
   }
 

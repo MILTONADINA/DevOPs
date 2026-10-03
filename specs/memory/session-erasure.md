@@ -1,12 +1,18 @@
-# Session erasure and billing retention boundary
+# Scoped session erasure
 
-**Amended**: 2026-10-03 by `specs/ops/payment-removal.md` C2: M1 removes usage signatures and mutation-blocking triggers. The existing API retention blocker and invoice inventory stay through C2; payment-removal REQ-8 removes them as applicable in C4, which also moves this spec and supersedes ADR-0021.
+**Status**: approved
+
+**Amended**: 2026-10-03 by `specs/ops/payment-removal.md` REQ-8/9.
+C4-A moves this spec out of `specs/billing/`, retires the invoice schema and
+financial preflight blocker, and supersedes ADR-0021. The deletion endpoint and
+one-year performance acceptance remain unfinished; this is not an implemented
+erasure specification.
 
 **Scope:** `plan.md` §8 and `runtime/docs/SECURITY.md` §GDPR Erasure. A
-customer may request deletion of one session's content. Usage rows still
-reference the session and organization after C2. The former financial premise
-is superseded by the approved no-payment decision; C4 must remove the erasure
-retention blocker without weakening the inventory, ownership or deletion gates.
+customer may request deletion of one session's content. Unsigned usage rows
+remain ordinary session-linked data with organization/session foreign keys.
+ADR-0025 and payment-removal REQ-8 supersede the former financial premise;
+the inventory, ownership and deletion gates below remain required.
 
 ## REQ-1 — Scoped, complete session inventory
 
@@ -47,26 +53,22 @@ view reflect the original snapshot.
 
 WHEN an organization-level authenticated key requests an explicit session's
 erasure preflight, THE API SHALL return the scoped database inventory and a
-blocked status with distinct billing-retention, ambiguous-graph, and
-uninventoried-store reasons as applicable. It SHALL return 404 for a foreign,
+blocked status with distinct ambiguous-graph, uninventoried-store, and
+unavailable-execution reasons as applicable. It SHALL NOT report a financial
+retention blocker because usage rows exist. It SHALL return 404 for a foreign,
 missing, or internal usage session and deny project-bound keys. It SHALL NOT
 delete data or claim erasure is ready while external copies, backups, or RAM
-remain uninventoried.
+remain uninventoried or erasure execution is unavailable.
 
-## REQ-2 — Ledger invariant and retention decision (pre-C2 requirement)
+## REQ-2 — Usage is ordinary session-linked data
 
-The following historical requirement no longer describes the M1 schema. Its
-existing API blocker remains until the coordinated C4 erasure change; do not
-claim erasure complete from removal of mutation triggers alone.
-
-WHILE billing records remain append-only and signed over their original
-organization/session IDs, THE SYSTEM SHALL NOT rewrite or delete those rows or
-claim that replacing their IDs anonymizes them. IF a session has billing rows,
-THEN completion SHALL require a documented applicable retention decision and
-a technical boundary that either lawfully retains only necessary financial
-data or permits erasure without violating the ledger invariant. An absent
-decision SHALL block completion with a distinct status. Any retained data
-SHALL be identified in the response and excluded from ordinary memory recall.
+WHEN an authorized session erasure executes, THE SYSTEM SHALL delete that
+session's usage rows in `billing_records` as ordinary session-linked data
+within the transaction required by REQ-3. The inventory SHALL continue to
+report a numeric `billing_records` count, including zero. Usage rows SHALL NOT
+create a billing-retention blocker. Any data retained for another applicable
+reason SHALL be identified in the response and excluded from ordinary memory
+recall; replacing a linkable identifier SHALL NOT be described as anonymization.
 
 ## REQ-3 — Atomic content deletion and reuse safety
 
@@ -83,18 +85,26 @@ erasure and retain a retryable record; it SHALL NOT return a success response.
 WHEN an erasure reports success, THE SYSTEM SHALL return a timestamp and a
 machine-checkable inventory of deleted and legally retained data classes. A
 local integration check SHALL prove a foreign-organization request cannot
-erase the target, a billed session cannot bypass REQ-2, a shared graph entity
-survives, and all session-owned content is gone. The v0.9 release gate SHALL
+erase the target, session-linked usage is deleted without a financial blocker,
+a shared graph entity survives, and all session-owned content is gone. The
+check SHALL invoke an actual authenticated erasure API and verify the database
+afterward. A read-only preflight or end-session response SHALL NOT satisfy
+this requirement or payment-removal AC-8. The v0.9 release gate SHALL
 measure end-to-end erasure of a representative one-year session history in
 under 30 seconds and record the fixture size, command, elapsed time, and
 remaining rows. A small fixture alone SHALL NOT satisfy that gate.
 
 ## Acceptance status
 
-- C2 removes usage-row signatures and mutation guards, but keeps the session
-  foreign key, invoice tables and existing read-only erasure preflight blocker.
-  C4 must update this boundary under payment-removal REQ-8; C2 alone does not
-  establish a working erasure endpoint or a one-year performance result.
+- C4-A/M2 retires both invoice RPCs and both invoice tables, removes their
+  organization-only inventory entries, and removes the financial preflight
+  blocker. `billing_records` and its numeric count remain. These changes do
+  not implement erasure or satisfy the actual-API part of payment-removal AC-8.
+- The current preflight remains `blocked_incomplete_inventory`, including
+  `erasure_execution_unavailable` and applicable graph/store reasons.
+  `DELETE /v1/sessions/:id` only sets `ended_at`; it does not erase data.
+- Actual API erasure, complete RAM/external/backup coverage and the
+  representative one-year/<30-second benchmark remain unfinished.
 - The local inventory now reports linked graph rows and provenance uncertainty;
   disposable two-session promotion and backup/restore checks cover recorded
   links. A clean-target recovery check preserves File-to-fact source link IDs

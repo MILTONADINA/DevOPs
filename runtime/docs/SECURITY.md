@@ -203,20 +203,32 @@ The enclave has no logging. Errors are returned as typed error codes only — no
 
 ### GDPR Erasure
 
-The following is a planned workflow, not a deployed capability. There is no
-end-to-end erasure endpoint or one-year/<30-second benchmark yet. The current
-`billing_records` table is immutable and has foreign keys to organizations
-and sessions, so its `session_id` cannot be replaced in place as step 4 below
-suggests. That step requires a new schema and retention design.
+The following remains required work, not a deployed erasure capability. There
+is no actual erasure endpoint or one-year/<30-second benchmark yet. C2/M1
+makes `billing_records` unsigned and mutable; C4-A/M2 removes invoice
+tables/RPCs and the financial preflight blocker. Usage remains ordinary
+session-linked data with organization/session foreign keys. ADR-0021 is
+superseded; `specs/memory/session-erasure.md` preserves the nonfinancial gates.
 
-When a customer requests erasure of a session, the intended workflow is:
+The current organization-authenticated preflight reports scoped database
+counts, including numeric `billing_records`, and remains blocked on
+unavailable execution and applicable graph/store uncertainty. External
+copies, backups and RAM are not inventoried. DELETE only ends a session.
 
-1. Tier 1: clear session from RAM immediately
-2. Tier 2: DELETE from all fact tables WHERE session_id = ?
-3. Tier 3: Delete from Pinecone by metadata filter; delete nodes from Neo4j
-4. Billing records: design a lawful, technically sound separation of retained
-   financial totals from identifiable session data before implementing erasure.
-5. Return erasure confirmation with timestamp
+Before an erasure can report success, the required workflow is:
+
+1. Resolve the authenticated organization/session and inventory every row,
+   graph reuse relationship, cache, external copy and backup; block on unknown
+   ownership or incomplete coverage.
+2. Prevent new writes and invalidate retained session memory without
+   repersisting it through eviction callbacks.
+3. Delete session-owned facts, ordinary usage, pruning logs and their
+   source/vector/audit derivatives in one database transaction, preserving
+   other tenants and graph data still shared by another session.
+4. Verify all required stores; a failure must retain a retryable incomplete
+   record and must not return success.
+5. Return a timestamp and machine-checkable deleted/retained classes. Prove
+   actual API deletion separately from the representative one-year benchmark.
 
 The [European Commission explains](https://commission.europa.eu/law/law-topic/data-protection/information-business-and-organisations/application-gdpr_en)
 that pseudonymised data remains personal data if re-identification is possible;

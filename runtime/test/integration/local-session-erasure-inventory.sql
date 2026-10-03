@@ -2,6 +2,16 @@
 \set ON_ERROR_STOP on
 BEGIN;
 
+-- specs/ops/payment-removal.md REQ-8: M2 retired every invoice-only object.
+SELECT 1 / CASE WHEN to_regclass('public.invoices') IS NULL
+  AND to_regclass('public.invoice_send_claims') IS NULL
+  AND to_regprocedure('public.reconcile_claimed_invoice(uuid,timestamptz,timestamptz,text,integer,text,timestamptz)') IS NULL
+  AND to_regprocedure('public.record_invoice_payment(uuid,text,integer,text,text)') IS NULL
+  AND NOT EXISTS (
+    SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'public' AND p.proname IN ('reconcile_claimed_invoice', 'record_invoice_payment'))
+  THEN 1 ELSE 0 END AS retired_invoice_schema_absent;
+
 INSERT INTO public.organizations(name) VALUES ('Erasure inventory A') RETURNING id AS org_a \gset
 INSERT INTO public.organizations(name) VALUES ('Erasure inventory B') RETURNING id AS org_b \gset
 INSERT INTO public.sessions(org_id, model) VALUES (:'org_a'::uuid, 'local-check') RETURNING id AS session_a \gset
@@ -49,6 +59,7 @@ DO $$
 DECLARE report jsonb := current_setting('devops_test.erasure_inventory')::jsonb;
 BEGIN
   IF report->>'scope' IS DISTINCT FROM 'local_database_only'
+     OR jsonb_typeof(report->'counts'->'billing_records') IS DISTINCT FROM 'number'
      OR (report->'counts'->>'billing_records')::integer IS DISTINCT FROM 1
      OR (report->'counts'->>'function_changes')::integer IS DISTINCT FROM 2
      OR (report->'counts'->>'operational_references')::integer IS DISTINCT FROM 1
@@ -61,6 +72,7 @@ BEGIN
      OR (report->'counts'->>'knowledge_edge_sessions')::integer IS DISTINCT FROM 0
      OR (report->'counts'->>'memory_vectors')::integer IS DISTINCT FROM 2
      OR (report->>'graph_ownership') IS DISTINCT FROM 'ambiguous'
+     OR (report->>'unattributed_graph') IS DISTINCT FROM 'not_inventoried'
      OR (report->>'external_copies') IS DISTINCT FROM 'not_inventoried'
      OR (report->>'backups') IS DISTINCT FROM 'not_inventoried'
      OR (report->>'in_memory') IS DISTINCT FROM 'not_inventoried' THEN
@@ -69,6 +81,21 @@ BEGIN
   RAISE NOTICE 'scoped local session inventory counted billing, facts, audit, graph, source link, vector, and pruning dependencies';
 END;
 $$;
+
+-- Positive usage is ordinary session data; zero is also a JSON number.
+-- The second organization's existing session has no usage rows.
+SELECT 1 / CASE WHEN
+  public.inspect_session_erasure(:'org_b'::uuid, :'session_b'::uuid)->>'scope' = 'local_database_only'
+  AND public.inspect_session_erasure(:'org_b'::uuid, :'session_b'::uuid)->>'org_id' = :'org_b'
+  AND public.inspect_session_erasure(:'org_b'::uuid, :'session_b'::uuid)->>'session_id' = :'session_b'
+  AND jsonb_typeof(public.inspect_session_erasure(:'org_b'::uuid, :'session_b'::uuid)->'counts'->'billing_records') = 'number'
+  AND public.inspect_session_erasure(:'org_b'::uuid, :'session_b'::uuid)->'counts'->'billing_records' = '0'::jsonb
+  THEN 1 ELSE 0 END AS empty_usage_inventory_is_numeric;
+
+SELECT 1 / CASE WHEN
+  current_setting('devops_test.erasure_inventory')::jsonb->'org_only_classes' =
+    '["api_keys", "developers", "org_config", "organizations"]'::jsonb
+  THEN 1 ELSE 0 END AS retained_org_only_classes_passed;
 
 -- Any newly introduced public table must be classified before this inventory
 -- can be treated as complete for the local database.
@@ -88,6 +115,18 @@ SELECT 1 / CASE WHEN NOT has_function_privilege('anon', 'public.inspect_session_
   AND NOT has_function_privilege('authenticated', 'public.inspect_session_erasure(uuid,uuid)', 'EXECUTE')
   AND has_function_privilege('service_role', 'public.inspect_session_erasure(uuid,uuid)', 'EXECUTE')
   THEN 1 ELSE 0 END AS service_only_grants_passed;
+
+-- CREATE OR REPLACE must retain the inventory's service-only invoker contract.
+SELECT 1 / CASE WHEN EXISTS (
+  SELECT 1 FROM pg_proc p JOIN pg_language l ON l.oid = p.prolang
+  WHERE p.oid = 'public.inspect_session_erasure(uuid,uuid)'::regprocedure
+    AND l.lanname = 'sql' AND p.provolatile = 's' AND NOT p.prosecdef
+    AND p.proconfig @> ARRAY['search_path=""']::text[]
+    AND NOT EXISTS (
+      SELECT 1 FROM aclexplode(COALESCE(p.proacl, acldefault('f', p.proowner))) a
+      WHERE a.grantee = 0 AND a.privilege_type = 'EXECUTE'))
+  AND (SELECT relrowsecurity FROM pg_class WHERE oid = 'public.billing_records'::regclass)
+  THEN 1 ELSE 0 END AS retained_inventory_security_passed;
 
 ROLLBACK;
 

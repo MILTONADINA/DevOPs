@@ -1,8 +1,27 @@
 # ADR-0021: Session erasure needs a separate financial retention boundary
 
 **Date:** 2026-09-24
-**Status:** Proposed; technical inventory complete, policy and implementation open
-**Spec:** `specs/billing/session-erasure.md`
+**Status:** Superseded by ADR-0025 and payment-removal REQ-8 (C4-A, 2026-10-03)
+**Spec:** `specs/memory/session-erasure.md`
+
+## Supersession — 2026-10-03
+
+The approved no-payment decision in ADR-0025 supersedes this ADR's financial
+retention premise. C2/M1 removes usage signatures and mutation guards;
+C4-A/M2 removes the invoice RPCs/tables and the financial preflight blocker.
+Usage remains ordinary session-linked data. Historical migrations are
+unchanged.
+
+The scoped inventory, ownership/provenance checks, shared-data preservation,
+write prevention, atomic deletion, retryable incomplete outcomes and
+one-year/<30-second verification duties continue in
+`specs/memory/session-erasure.md`. C4-A does not implement an erasure endpoint:
+the preflight remains blocked, DELETE only ends a session, and the actual-API
+acceptance and performance benchmark remain unfinished.
+
+The original context, decision, policy discussion and implementation record
+below are preserved as history. Their financial restrictions describe the
+2026-09-24 design, not the current payment-removal requirements.
 
 ## Decision context
 

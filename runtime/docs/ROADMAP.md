@@ -208,8 +208,10 @@ stays in the tree as code.
 token-arbitrage billing system: HMAC-signed records, an append-only ledger,
 monthly invoices, a CFO dashboard with the fee, Stripe and pricing tiers. The
 project is now open source with no payment. The payment layer was
-built ahead; C1/C2 are merged and C3 removes its remaining application modules.
-C4 still needs to remove invoice schema and deliver actual API erasure. The
+built ahead; C1–C3 are merged, including the payment application module removal.
+C4-A removes invoice schema and coordinates legacy backup recovery (locally
+verified, CI/merge pending);
+C4-B still needs to deliver actual API erasure. The
 requirements are in `../../specs/ops/payment-removal.md`, and the root
 `plan.md` §8 is the checklist.
 
@@ -229,15 +231,17 @@ measured and nothing billed.
 - [x] Make the usage ledger unsigned: no HMAC, no fee column, no append-only
   enforcement (C2 merged in PR #222 at `4ac4784`; replay and no-secret
   entry point verified)
-- [ ] Delete the payment modules and their tests (C3 locally verified;
-  measured runtime floor 1,388 declared from 1,521; CI and merge pending)
-- [ ] Remove the invoice tables and the billing-retention erasure blocker (C4)
+- [x] Delete the payment modules and their tests (C3 merged in PR #223 at
+  `28ea1aa`; measured runtime floor 1,388 declared from 1,521; required CI passed)
+- [ ] Remove the invoice tables and the billing-retention erasure blocker (C4-A
+  locally verified with coordinated legacy restore; runtime 1,403/root 473,
+  SQL/recovery/setup/entry-point proofs pass; required CI and merge pending)
 - [ ] Keep exact token counts, with token and USD estimates shown as
   information only
-- [ ] Session erasure endpoint. After C2 unsigned usage rows retain
-  organization/session foreign keys and the API retention blocker; C4 removes
-  that financial boundary and treats usage as ordinary session-linked data. No compliant erasure
-  timing proof exists.
+- [ ] Session erasure endpoint. Unsigned usage rows are ordinary session-linked
+  data. C4-A removes the financial preflight reason but keeps unknown-store and
+  unavailable-executor blocks. Actual API erasure, shared-data safety and the
+  one-year timing proof remain open under `../../specs/memory/session-erasure.md`.
 
 ### Acceptance Criteria
 

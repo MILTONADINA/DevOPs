@@ -172,7 +172,7 @@ describe("GET /v1/sessions/:id/stats", () => {
 });
 
 describe("GET /v1/sessions/:id/erasure-preflight", () => {
-  test("requires an organization-level authenticated key and reports blockers without deleting", async () => {
+  test("specs/ops/payment-removal.md#AC-8 preflight retains authorization and nonfinancial blockers without deleting", async () => {
     const { deps, captured } = fakeDeps();
     const app = buildProxy({ rateLimit: false, cors: false, sessions: deps, auth: {
       resolve: async (key) => key === "org" ? { orgId: "o1", keyId: "k1" } :
@@ -184,12 +184,55 @@ describe("GET /v1/sessions/:id/erasure-preflight", () => {
     expect(captured["erasure"]).toBeUndefined();
     const result = await app.inject({ method: "GET", url, headers: { authorization: "Bearer org" } });
     expect(result.statusCode).toBe(200);
-    expect(result.json()).toMatchObject({ status: "blocked_billing_retention", reasons: [
-      "billing_retention_undecided", "graph_ownership_ambiguous", "stores_not_inventoried", "erasure_execution_unavailable",
-    ] });
+    expect(result.json()).toMatchObject({ status: "blocked_incomplete_inventory", reasons: [
+      "graph_ownership_ambiguous", "stores_not_inventoried", "erasure_execution_unavailable",
+    ], inventory: { counts: { billing_records: 2 } } });
     expect(captured["erasure"]).toEqual({ orgId: "o1", id: "s1" });
     expect(captured["ended"]).toBeUndefined();
     expect((await app.inject({ method: "GET", url: "/v1/sessions/ghost/erasure-preflight", headers: { authorization: "Bearer org" } })).statusCode).toBe(404);
+    await app.close();
+  });
+  // Mutation: treating positive usage as financial retention, or making an inventoried session ready without an executor.
+  test.each([0, 2])("specs/ops/payment-removal.md#AC-8 keeps %i usage rows numeric and requires an erasure executor", async (usageRows) => {
+    const { deps, captured } = fakeDeps();
+    deps.inspectErasure = async (orgId, id) => ({
+      scope: "local_database_only", org_id: orgId, session_id: id,
+      counts: { billing_records: usageRows }, graph_ownership: "none",
+      external_copies: "inventoried", backups: "inventoried", in_memory: "inventoried",
+    });
+    const app = buildProxy({ rateLimit: false, cors: false, sessions: deps, auth: {
+      resolve: async () => ({ orgId: "o1", keyId: "k1" }),
+    } });
+    await app.ready();
+    const result = await app.inject({ method: "GET", url: "/v1/sessions/s1/erasure-preflight", headers: { authorization: "Bearer org" } });
+    expect(result.statusCode).toBe(200);
+    expect(result.json()).toMatchObject({
+      status: "blocked_incomplete_inventory", reasons: ["erasure_execution_unavailable"],
+      inventory: { org_id: "o1", session_id: "s1", counts: { billing_records: usageRows } },
+    });
+    expect(captured["ended"]).toBeUndefined();
+    await app.close();
+  });
+  // Mutation: omitting any single uninventoried store from preflight's blockers.
+  test.each(["external_copies", "backups", "in_memory"])("keeps an independently unknown %s store blocked", async (store) => {
+    const { deps, captured } = fakeDeps();
+    deps.inspectErasure = async (orgId, id) => ({
+      scope: "local_database_only", org_id: orgId, session_id: id,
+      counts: { billing_records: 2 }, graph_ownership: "none",
+      external_copies: "inventoried", backups: "inventoried", in_memory: "inventoried",
+      [store]: "not_inventoried",
+    });
+    const app = buildProxy({ rateLimit: false, cors: false, sessions: deps, auth: {
+      resolve: async () => ({ orgId: "o1", keyId: "k1" }),
+    } });
+    await app.ready();
+    const result = await app.inject({ method: "GET", url: "/v1/sessions/s1/erasure-preflight", headers: { authorization: "Bearer org" } });
+    expect(result.statusCode).toBe(200);
+    expect(result.json()).toMatchObject({
+      status: "blocked_incomplete_inventory", reasons: ["stores_not_inventoried", "erasure_execution_unavailable"],
+      inventory: { counts: { billing_records: 2 }, [store]: "not_inventoried" },
+    });
+    expect(captured["ended"]).toBeUndefined();
     await app.close();
   });
   test("does not expose preflight through personal-mode query parameters", async () => {

@@ -13,7 +13,6 @@
     "specs/billing/commercial-fail-closed.md",
     "specs/billing/durable-usage-outbox.md",
     "specs/billing/project-usage-provenance.md",
-    "specs/billing/session-erasure.md",
     "specs/billing/usage-event-idempotency.md",
     "specs/billing/usage-write-drain.md",
     "specs/evals/deepeval-metric-source.md",
