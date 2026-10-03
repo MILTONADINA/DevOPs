@@ -210,11 +210,12 @@ monthly invoices, a CFO dashboard with the fee, Stripe and pricing tiers. The
 project is now open source with no payment. The payment layer was
 built ahead; C1–C3 are merged, including the payment application module removal.
 C4-A removes invoice schema and coordinates legacy backup recovery (merged in
-PR #224 at `3e570a2`). C4-B's initial managed explicit-session class passed actual
-authenticated API erasure, shared/foreign-data survival, rollback and stable
-retry on a fresh isolated, source-bound instance. Clean runtime1,623 and isolated
-Linux root473 pass. Final security/governance checks, CI/merge, wider coverage
-and the one-year benchmark remain open. The
+PR #224 at `3e570a2`). C4-B's initial managed explicit-session class merged in PR #225 (`90d0de5`).
+Its tested generation passed actual authenticated API erasure,
+shared/foreign-data survival, rollback and stable retry on a fresh isolated,
+source-bound instance, with clean runtime1,623 and isolated Linux root473
+passing. All six required checks passed before merge. Wider coverage,
+general managed onboarding/restarts and the one-year benchmark remain open. The
 requirements are in `../../specs/ops/payment-removal.md`, and the root
 `plan.md` §8 is the checklist.
 
@@ -244,9 +245,10 @@ measured and nothing billed.
 - [ ] Session erasure endpoint. Unsigned usage rows are ordinary session-linked
   data. The controlled initial explicit-session class now has real API deletion,
   shared-data safety, rollback and retry proof. Unknown stores and unsafe
-  dependencies block execution. Broader historical/conversation/copy coverage,
-  general managed onboarding/restarts, final gates and the one-year timing
-  proof remain open under `../../specs/memory/session-erasure.md`.
+  dependencies block execution. This initial class merged in PR #225 (`90d0de5`).
+  Broader historical/conversation/copy coverage, general managed onboarding/restarts
+  and the one-year timing proof remain open under
+  `../../specs/memory/session-erasure.md`.
 
 ### Acceptance Criteria
 

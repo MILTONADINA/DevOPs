@@ -1,6 +1,6 @@
-# Handoff: MR-3 hook hardening in progress (2026-10-03)
+# Handoff: MR-3 merged; roadmap continuation (2026-10-03)
 
-Read [`AGENTS.md`](../../AGENTS.md) and the local `.workflow/state/baton.md` first. C4-B and the historical claim dispositions are merged. MR-3 hook hardening is in progress; its tests-first commits and completed local verification are recorded below. Earlier dated snapshots remain intact; none declares the whole project finished.
+Read [`AGENTS.md`](../../AGENTS.md) and the local `.workflow/state/baton.md` first. C4-B and the historical claim dispositions are merged. MR-3 hook hardening is merged; its tests-first commits, verification and remaining limits are recorded below. Earlier dated snapshots remain intact; none declares the whole project finished.
 
 ## Branches and provenance
 
@@ -75,12 +75,32 @@ deferred outcomes for mixed claims. [Its documentation](../../verification/CLAIM
 explains that original evidence stays unchanged and the validator does not read
 the sidecar. It adds no passing proof count. This data/doc delivery merged in
 [PR #226](https://github.com/MILTONADINA/DevOPs/pull/226) at
-`5bb1ba6012c255cf8d64b5f46577ac7efe64cef5`; MR-3 is the active continuation.
+`5bb1ba6012c255cf8d64b5f46577ac7efe64cef5`; MR-3 subsequently merged in PR #227.
 The old Claude Workflow run remains historical/indeterminate; do not reset or
 resume it. Use the local baton for exact process handles, current proof bindings
 and any later progress. Earlier sections below are dated historical evidence.
 
-## MR-3 checkpoint — tests committed before fixes
+## Merged MR-3 hook hardening
+
+[PR #227](https://github.com/MILTONADINA/DevOPs/pull/227) merged at
+`079b70dea840395083da897ca407e2cab2d23ab2`, with the same tree as reviewed
+candidate `f41079858c80edda388447d4ea939fa386563c34`. All six required checks
+passed on that exact candidate; local and remote main/dev/feature were then
+synchronized. Claim009 and the independent final source/claim reviews are in
+`.workflow/proofs/mr3-2026-10-03/` and its parent proof directory.
+
+Local focused verification passed 179 cases. Required CI confirmed root640
+(floor640, zero failures, 17 skips), runtime1623 (5 skips, 5 todo), the cold
+Linux setup in 67 seconds and all 20 SQL fixtures. Node24 and Node26 compatibility
+jobs also passed. Semgrep scanned 1,046 files with zero findings and three
+nonfatal errors; its present gate permits those errors. MR-7's stricter scan
+validation remains open. DeepTeam and Claude review visibly skipped without
+keys and did not perform security reviews. MR-3 does not complete the whole
+masterpiece specification or the project roadmap.
+
+The following pre-merge verification snapshot is retained as historical evidence.
+
+## MR-3 local verification snapshot before merge — tests committed before fixes
 
 The owner adopted the narrow REQ-M16/AC-M16.1 contract under the roadmap's
 early-draft allowance. Ordinary diagnostics remain available during halt;
@@ -360,22 +380,26 @@ verified; the PR records their current state.
 
 ## Next action
 
-The final shared classifier, two graph hook entries and exact installer companion
-copy have passed the combined 179-case focused suite after independent source
-review. The complete root suite also passed (640 passed, zero failed, 17 expected
-skips), and the floor is raised to 640. Finish static/security/proof gates and
-verify required exact-head CI before the authorized merge and main/dev/feature
-synchronization.
-The masterpiece spec remains draft. Consult the local baton for current handles.
-Do not repeat the original RED, the completed response proof or unchanged C4-B
-runtime/SQL/actual HTTP checks, or MR-3's completed full root verification.
+MR-3 is merged and its required delivery gates are complete. Continue the
+remaining roadmap from the local baton, which records the current scoped task
+and live process handles. Preserve completed RED/GREEN evidence; do not rerun
+unchanged C4-B runtime/SQL/HTTP proofs or MR-3 tests without a changed source
+binding, diagnosed failure or required gate.
+
+MR-4 remains deferred until MR-5 signed approvals under recorded Decision 11.
+The agent-accessible release key does not meet M15's human-only key requirement.
+MR-6 preparation exposed a contract conflict: M16 requires a running cycle for
+a tag push, while M17 would block every push during that cycle. Its journal-derived
+completion prerequisite also belongs to MR-9. Resolve those dependencies before
+claiming the full cycle lock delivered; independent roadmap work can continue.
+The whole masterpiece spec remains draft under the early-cycle allowance.
 
 Preserve the limited erasure guarantee, immutable applied migrations and
 original operator database. The one-year/<30-second benchmark is a separate
 remaining v0.9 gate. Broader historical/conversation/copy coverage and managed
 onboarding/restart operations remain unsupported by this initial proof.
 
-After MR-3: the remaining roadmap and security/hygiene work;
+Remaining: roadmap security/hygiene work;
 naming aliases/current prose; v0.4 pruner cycles1b/2 and
 quality gates; clean-machine macOS/Linux/WSL2 and real-use release gates. The
 mission is the whole remaining roadmap. Do not resume old Claude Workflow
