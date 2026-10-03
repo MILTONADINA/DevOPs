@@ -31,10 +31,12 @@ if command -v gitleaks >/dev/null 2>&1; then
     gitleaks protect --staged --no-banner || exit 1
 fi
 
-# Claim validator on any modified proof files
-if ls .workflow/proofs/*.yml 2>/dev/null >/dev/null; then
+# Local claim metadata (the committed --all selector is a separate gate).
+shopt -s nullglob dotglob
+claim_files=(.workflow/proofs/*.yml)
+if (( ${#claim_files[@]} )); then
     if command -v tsx >/dev/null 2>&1; then
-        tsx "$DEVOPS_ROOT/verification/claim-validator.ts" --all --no-rerun || exit 1
+        tsx "$DEVOPS_ROOT/verification/claim-validator.ts" "${claim_files[@]}" --no-rerun || exit 1
     fi
 fi
 HOOK

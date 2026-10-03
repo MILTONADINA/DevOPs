@@ -1,0 +1,25 @@
+claim:
+  id: "claim-2026-10-03-019"
+  type: "doc"
+  spec_ref: "specs/verification/claim-schema-loading.md#req-4--fail-safely-and-retain-the-read-only-acceptance-mode"
+  description: "At commit daa1250, the verification README states that default replay executes claim-controlled shell text and that --no-rerun accepts metadata without observing commands, GREEN or RED."
+  proof:
+    git_sha: "daa1250309c770f322d73d872af3d83b42bd7d24"
+    files_changed:
+      - "verification/README.md"
+    test_command: "docker run --rm --pull=never --network none --tmpfs /workspace/.workflow/state:rw,exec,mode=1777 --mount type=bind,source=/Users/milto/Projects/DevOps/.workflow/state/mr10b/committed-repo,target=/workspace --mount type=bind,source=/Users/milto/Projects/DevOps/.workflow/state/mr3/linux-tmp,target=/tmp --mount type=bind,source=/Users/milto/Projects/DevOps/.workflow/state/mr3/linux-home,target=/root --mount type=bind,source=/Users/milto/Projects/DevOps/.workflow/state/mr3/jq-1.8.1-arm64/jq-linux-arm64,target=/usr/local/bin/jq,readonly --workdir /workspace --env DOTENV_CONFIG_PATH=/workspace/.absent-dotenv --mount type=bind,source=/Users/milto/Projects/DevOps/.workflow/state/mr3/clean-repo/node_modules,target=/workspace/node_modules,readonly --mount type=bind,source=/Users/milto/Projects/DevOps/.workflow/state/mr10b,target=/mr10b,readonly --env TSX_DISABLE_CACHE=1 node:24-bookworm node node_modules/tsx/dist/cli.mjs .workflow/proofs/committed/scripts/verify-readme.ts"
+    test_exit_code: 0
+    test_output_path: ".workflow/proofs/mr10-committed-2026-10-03/seed-direct-proof.log"
+    duration_ms: 319
+    environment:
+      DOTENV_CONFIG_PATH: "/workspace/.absent-dotenv"
+      GIT_READER_SHA256: "9b76178d2728a3a644752b40941a5a944e7b9e3619093362e9e5a43718a7f19b"
+      INPUT_READER_SHA256: "1360650f9abf8a04d440bac782a7eb51292549758a81f6d5b2d332b7fe8b7518"
+      PACKAGE_LOCK_SHA256: "1e24ada608e649ce274152c45f3c0846440b32f8ad48c850c5e175c97fd7c34b"
+      PROOF_CHECKS_SHA256: "b6644364252fc14cff5b81c65a324c397b86ee8e38cb3c13a64d52ccc4b0f400"
+      PROOF_SCRIPT_SHA256: "8bacceec395208d337218980eddce3d0c6848dee1652a8b61bffbc90c29382b6"
+      TSX_DISABLE_CACHE: "1"
+  confidence: "medium"
+  reproducibility_hash: "sha256:d685e1ae061bfd48af988936888e743ee2df374ff2f76908b2e9e37880d596ba"
+  timestamp: "2026-10-03T23:37:50.206367+00:00"
+  caveats: "Named documentation blob-content proof in an owned ordinary local clone using cached Linux Node24 and locked dependencies; not a worktree replay at target G. The later published script/checks and declared helper hashes bind the reviewed observation, not executable author authentication. Three altered-content and four malformed-phrase controls were refused separately. The ignored log is local evidence; CI validates declarations and committed bytes without observing this command or log. This doc claim does not assert implementation/test success, historical RED, safe replay or whole MR10 completion."
