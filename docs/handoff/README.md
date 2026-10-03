@@ -21,7 +21,7 @@ Spec: [`specs/ops/payment-removal.md`](../../specs/ops/payment-removal.md), REQ-
 - The invoice CLI's two-method billing factory remains until C3. Signed usage writes, the signing secret, billing modules and invoice tables remain for C2–C4.
 - Updated the API/operator docs, both affected billing specs and the spec-status baseline. The added missing-org regression guard fails when the auth fallback guard is deliberately removed from an isolated copy.
 
-Local gates were independently reproduced:
+Local verification results (current-change gates independently reproduced; baseline measured once):
 
 | Gate | Result |
 |---|---|
