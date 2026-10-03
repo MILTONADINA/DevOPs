@@ -17,7 +17,6 @@
     "specs/billing/invoice-full-read.md",
     "specs/billing/invoice-send-claim.md",
     "specs/billing/local-ledger-gate.md",
-    "specs/billing/project-key-access.md",
     "specs/billing/project-usage-provenance.md",
     "specs/billing/session-erasure.md",
     "specs/billing/stripe-invoice-amount-gate.md",

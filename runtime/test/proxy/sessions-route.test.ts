@@ -8,7 +8,13 @@ vi.unmock("fastify");
 const { buildProxy } = await import("../../src/proxy/app");
 
 const SESSION: SessionSummary = { id: "s1", created_at: "t", ended_at: null, model: "claude-opus-4-8", lambda: 0.97, gain_shift: 0, theta: 1, zk_enabled: false, audit_enabled: true };
-const STATS: SessionStats = { sessionId: "s1", billingRecords: 2, originalTokens: 100_000, quarantinedTokens: 15_000, savingsUsd: 1.28, feeUsd: 0.26 };
+const STATS: SessionStats = { sessionId: "s1", billingRecords: 2, originalTokens: 100_000, quarantinedTokens: 15_000, savingsUsd: 1.28 };
+
+/** Any key that reads as a fee, an amount due, a minimum or a signature. */
+const FEE_KEY = /fee|amount_?due|minimum|signed_hash/i;
+
+/** Every object key in a JSON value, nested ones included. Keys only: an "estimate" note in a value must not be scanned. */
+const keysDeep = (value: unknown): string[] => (value !== null && typeof value === "object" ? Object.entries(value).flatMap(([key, inner]) => [key, ...keysDeep(inner)]) : []);
 
 function fakeDeps(opts: { active?: number } = {}): { deps: SessionsDeps; captured: Record<string, unknown> } {
   const captured: Record<string, unknown> = {};
@@ -138,6 +144,19 @@ describe("GET /v1/sessions/:id/stats", () => {
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual(STATS);
     expect((await app.inject({ method: "GET", url: "/v1/sessions/ghost/stats?org-id=o1" })).statusCode).toBe(404);
+    await app.close();
+  });
+
+  // Mutation: the stats route adding a fee, amount-due, minimum or signature field to its response (or dropping the token totals or the savings estimate from it).
+  test("specs/ops/payment-removal.md#AC-6 session stats carry token totals and an estimated savings figure and no fee field (regression guard)", async () => {
+    const app = buildProxy({ rateLimit: false, cors: false, sessions: fakeDeps().deps });
+    await app.ready();
+    const res = await app.inject({ method: "GET", url: "/v1/sessions/s1/stats?org-id=o1" });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body).toMatchObject({ originalTokens: 100_000, quarantinedTokens: 15_000 });
+    expect(typeof body.savingsUsd).toBe("number");
+    expect(keysDeep(body).filter((key) => FEE_KEY.test(key))).toEqual([]);
     await app.close();
   });
 

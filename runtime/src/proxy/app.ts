@@ -15,13 +15,12 @@ import { logger } from "../lib/logger";
 import { makeHealthRoute, type HealthDeps } from "./routes/health";
 import { makeMessagesRoute } from "./routes/messages";
 import { makeDashboardRoute, type DashboardDeps } from "./routes/dashboard";
-import { makeBillingRoute, type BillingDeps } from "./routes/billing";
+import { makeUsageRoute, type UsageDeps } from "./routes/usage";
 import { makeConfigRoute, type ConfigDeps } from "./routes/config";
 import { makeMemoryRoute, type MemoryDeps } from "./routes/memory";
 import { makeSessionsRoute, type SessionsDeps } from "./routes/sessions";
 import { makeWebhookRoute, type WebhookDeps } from "./routes/webhooks";
 import { makeTokensRoute, type TokensDeps } from "./routes/tokens";
-import { makeStripeWebhookRoute, type StripeWebhookDeps } from "./routes/stripe-webhook";
 import { planRequestsPerMinute } from "./rate-limit-tiers";
 import { OPENAPI_SPEC, OPENAPI_DOCS_HTML } from "./openapi";
 import { registerAuth, type AuthDeps } from "./auth";
@@ -86,10 +85,13 @@ export interface BuildProxyOptions {
    */
   auth?: AuthDeps;
   /**
-   * The CFO billing API (GET /v1/billing/invoice + /audit.csv). When omitted, the routes
-   * are not registered. The commercial deploy supplies createSupabaseBillingDeps(client).
+   * The usage read API (GET /v1/billing/summary + /v1/billing/records): token totals, effectiveness
+   * and an estimated USD cost difference, with no fee, plan minimum or amount due
+   * (specs/ops/payment-removal.md REQ-3). When omitted, the routes are not registered.
+   * createSupabaseUsageDeps(client) supplies the live source; buildStartOptions sets it in team
+   * mode (CQ_COMMERCIAL) only, never in personal mode.
    */
-  billing?: BillingDeps;
+  usage?: UsageDeps;
   /**
    * The org config API (GET + PATCH /v1/config). When omitted, not registered. The commercial
    * deploy supplies createSupabaseConfigDeps(client).
@@ -115,12 +117,6 @@ export interface BuildProxyOptions {
    * reuses the messages counter.
    */
   tokens?: TokensDeps;
-  /**
-   * The Stripe INBOUND webhook (POST /stripe/webhook) — records `invoice.paid` (the "paid by
-   * design partner" half of v1.0.0). PUBLIC by path (outside /v1/, signature-authenticated). When
-   * omitted, not registered. The commercial deploy supplies createSupabaseStripeWebhookDeps().
-   */
-  stripeWebhook?: StripeWebhookDeps;
   /**
    * Per-PLAN request rate limiting (docs/RATE_LIMITS.md). When provided (commercial mode), requests
    * are limited per-ORG by the org's plan (requests/min) — `getPlan` resolves the plan. When omitted,
@@ -407,8 +403,8 @@ export function buildProxy(opts: BuildProxyOptions = {}): FastifyInstance {
     void app.register(makeDashboardRoute(opts.dashboard));
   }
 
-  if (opts.billing) {
-    void app.register(makeBillingRoute(opts.billing));
+  if (opts.usage) {
+    void app.register(makeUsageRoute(opts.usage));
   }
 
   if (opts.config) {
@@ -429,10 +425,6 @@ export function buildProxy(opts: BuildProxyOptions = {}): FastifyInstance {
 
   if (opts.tokens) {
     void app.register(makeTokensRoute(opts.tokens));
-  }
-
-  if (opts.stripeWebhook) {
-    void app.register(makeStripeWebhookRoute(opts.stripeWebhook));
   }
 
   app.setErrorHandler((err, _req, reply) => {

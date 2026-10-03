@@ -197,12 +197,12 @@ To measure AI usage in CI pipelines:
     # Your AI-assisted step here
     npm run generate
 
-- name: Report CQ savings
+- name: Report CQ sessions
   env:
     CQ_API_KEY: ${{ secrets.CQ_API_KEY }}
   run: |
-    curl -s "http://localhost:4080/v1/sessions?since=$(date -d '1 hour ago' -u +%Y-%m-%dT%H:%M:%SZ)" \
-      -H "Authorization: Bearer $CQ_API_KEY" | jq '.[] | {session_id, token_delta, cq_fee_usd}'
+    curl -s "http://localhost:4080/v1/sessions" \
+      -H "Authorization: Bearer $CQ_API_KEY" | jq '.[] | {id, model, created_at}'
 ```
 
 ---

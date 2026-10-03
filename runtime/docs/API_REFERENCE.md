@@ -27,10 +27,10 @@ calls this "auth configured"):
   `http://127.0.0.1:4080` sends no `Origin` and a loopback `Host`, so it is unaffected.
 
 **Commercial mode:** every request under `/v1/*` requires the header
-`Authorization: Bearer <org_api_key>` or `x-api-key: <org_api_key>` (see Billing, Configuration, and
+`Authorization: Bearer <org_api_key>` or `x-api-key: <org_api_key>` (see Usage, Configuration, and
 Memory below for which key scope each endpoint needs). Only `/v1/*` is gated by a key — `/health`,
-`/openapi.json`, `/docs`, the `/dashboard` and `/dashboard/graph` HTML pages, the `/billing` HTML
-page, and `POST /stripe/webhook` stay public. `GET /dashboard/api` is the exception: it returns
+`/openapi.json`, `/docs`, and the `/dashboard` and `/dashboard/graph` HTML pages
+stay public. `GET /dashboard/api` is the exception: it returns
 `403` on every request in this mode, with a key or without one, because captured sessions carry no
 tenant key. `Host` accepts any value unless `DEVOPS_PROXY_ALLOWED_HOSTS` is set, in which case only
 its entries plus the loopback names above are accepted. `Access-Control-Allow-Origin` is sent only
@@ -144,23 +144,18 @@ Returns metadata for a session.
 
 ### GET /v1/sessions/:id/stats
 
-Returns token statistics for a session.
+Returns token statistics for a session. `savingsUsd` is the estimated USD cost
+difference, rounded to cents, for information only. `billingRecords` is the
+number of usage rows; its existing field name is retained.
 
 **Response:**
 ```json
 {
-  "session_id": "uuid",
-  "turns_total": 42,
-  "total_original_tokens": 187400,
-  "total_quarantined_tokens": 21300,
-  "total_token_delta": 166100,
-  "estimated_savings_usd": 4.98,
-  "cq_fee_usd": 0.996,
-  "pruning_effectiveness_pct": 88.6,
-  "facts_extracted": 7,
-  "facts_verified": 5,
-  "facts_suppressed": 1,
-  "conflicts_detected": 1
+  "sessionId": "uuid",
+  "billingRecords": 42,
+  "originalTokens": 187400,
+  "quarantinedTokens": 21300,
+  "savingsUsd": 4.98
 }
 ```
 
@@ -176,20 +171,31 @@ List sessions for the authenticated org.
 
 ---
 
-## Billing
+## Usage
 
-In commercial mode, all five `/v1/billing/*` data endpoints require an
-unbound organization API key. A project-bound key receives HTTP 403 because
-invoices, ledger records, and developer totals cover the whole organization.
-The `/billing` HTML shell can load without a key, but its data requests still
-require an authorized key. Personal mode retains the `?org-id` fallback.
+The two retained `/v1/billing/*` paths report token usage and estimated USD
+savings. They are wired by the commercial-mode entry point and require an
+unbound organization API key; a project-bound key receives HTTP 403 because
+the records and developer totals cover the whole organization. The default
+personal-mode entry point does not register them. An app built explicitly with
+usage dependencies and no auth can use the `?org-id` fallback.
+
+Payment removal C1 (`specs/ops/payment-removal.md` REQ-1) removes `/billing`,
+`/v1/billing/invoice`, `/v1/billing/audit.csv`, `/v1/billing/invoices`, and
+`POST /stripe/webhook`. Those routes are no longer registered. The invoice
+CLI, signed ledger and invoice tables remain until later removal cycles.
 
 ### GET /v1/billing/summary
 
-Monthly billing summary for the org.
+Usage summary for the org. `total_cost_delta_usd` is an estimated USD cost
+difference, rounded to cents, for information only. Token totals are exact
+sums; pruning effectiveness is rounded to two decimal places (zero when
+there are no original tokens).
 
 **Query params:**
-- `month`: `YYYY-MM`, default: current month
+- `month`: optional `YYYY-MM`; when supplied, selects that calendar month
+- `since`, `until`: optional ISO-8601 timestamps, inclusive start and exclusive
+  end; `month` overrides their bounds. With no bounds the summary covers all time.
 
 **Response:**
 ```json
@@ -200,15 +206,13 @@ Monthly billing summary for the org.
   "total_quarantined_tokens": 1860000,
   "total_token_delta": 10540000,
   "total_cost_delta_usd": 315.20,
-  "total_cq_fee_usd": 63.04,
   "total_sessions": 847,
   "average_pruning_effectiveness_pct": 85.0,
   "by_developer": [
     {
       "developer_id": "uuid",
       "name": "Milton R.",
-      "token_delta": 4200000,
-      "cq_fee_usd": 25.20
+      "token_delta": 4200000
     }
   ]
 }
@@ -216,12 +220,14 @@ Monthly billing summary for the org.
 
 ### GET /v1/billing/records
 
-Paginated list of billing records. For CFO audit use.
+Paginated usage records. Each `cost_delta_usd` is an estimated USD cost
+difference, for information only. Fee and signature fields are not returned.
 
 **Query params:**
 - `since`, `until`: ISO8601 date range
 - `session_id`: filter by session
 - `limit`: default 50, max 500
+- `offset`: default 0
 
 **Response:**
 ```json
@@ -234,41 +240,10 @@ Paginated list of billing records. For CFO audit use.
       "original_tokens": 8420,
       "quarantined_tokens": 1180,
       "token_delta": 7240,
-      "cost_delta_usd": 0.217,
-      "cq_fee_usd": 0.043,
-      "signed_hash": "sha256:abc..."
+      "cost_delta_usd": 0.217
     }
   ],
   "total": 847,
-  "offset": 0,
-  "limit": 50
-}
-```
-
-### GET /v1/billing/invoices
-
-The invoice lifecycle — what the inbound Stripe webhook (`POST /stripe/webhook`) records, so
-"did the design partner pay?" is answerable via the API (not just SQL). Newest first.
-
-**Query params:**
-- `status`: filter by `sent` | `paid` | `failed` (invalid → 400)
-- `limit`: default 50, max 500; `offset`: default 0
-
-**Response:**
-```json
-{
-  "invoices": [
-    {
-      "id": "uuid",
-      "created_at": "2026-05-30T09:00:00Z",
-      "stripe_invoice_id": "in_1abc...",
-      "amount_cents": 9900,
-      "currency": "usd",
-      "status": "paid",
-      "paid_at": "2026-05-30T11:42:00Z"
-    }
-  ],
-  "total": 3,
   "offset": 0,
   "limit": 50
 }
@@ -440,35 +415,21 @@ Source of truth: `src/proxy/openapi.ts`. A test (`test/proxy/openapi.test.ts`)
 asserts every documented path is an actually-registered route and every `$ref`
 resolves, so the spec cannot drift from the implementation.
 
-### POST /stripe/webhook
-
-No API key — Stripe authenticates via the `Stripe-Signature` header (HMAC-SHA256 of
-`<timestamp>.<rawBody>` keyed by the endpoint signing secret `STRIPE_WEBHOOK_SECRET`).
-Mounted OUTSIDE `/v1/`, so it bypasses the API-key gate; the **signature is the auth**.
-
-Records the invoice lifecycle so the system knows "invoice **paid** by design partner"
-(the v1.0.0 acceptance): `invoice.paid` / `invoice.payment_succeeded` → mark the invoice
-paid (upsert into `invoices`, idempotent on `stripe_invoice_id` since Stripe re-delivers
-at-least-once); `invoice.payment_failed` → mark failed; any other event → `200` ack, no-op.
-
-A bad/stale/missing signature returns `400` (never acked as accepted); a verified event
-returns `200 {received:true}`. Verification is over the RAW body (a re-serialized JSON body
-would not match), with a 5-minute timestamp tolerance for replay defense.
-
 ### GET /docs
 
 No authentication required. A human-browsable API reference page that renders
 `/openapi.json` client-side — point a browser at it to see every endpoint, its
 parameters, and responses, always current with the served spec. Self-contained
-(no external CDN) and XSS-safe (textContent/createElement only), matching the CFO
-dashboard's rendering convention. Verified end-to-end in a real browser (renders
-all 18 operations from the live spec).
+(no external CDN) and XSS-safe (textContent/createElement only). It renders the
+operations currently listed in the served spec.
 
 ---
 
 ## Webhooks
 
-CQ sends webhooks to your configured endpoint for:
+`POST /v1/webhooks/test` can send a sample of each supported event to the
+organization's configured endpoint. Automatic event delivery is not wired in
+the proxy (see [TELEMETRY.md](TELEMETRY.md)). Supported event types are:
 
 | Event | Payload |
 |---|---|
@@ -476,6 +437,5 @@ CQ sends webhooks to your configured endpoint for:
 | `fact.suppressed` | Fact ID, suppression reason |
 | `eval.completed` | Config change ID, before/after scores |
 | `session.ended` | Session ID, token stats |
-| `invoice.ready` | Invoice ID, amount, period |
 
 Webhook payloads are signed with HMAC-SHA256 using your webhook secret. Verify the `X-CQ-Signature` header before processing.

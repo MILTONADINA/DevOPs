@@ -68,13 +68,6 @@ describe("complete billing source", () => {
     expect(pages).toEqual([0, 500, 1_000].map((start) => ({ org: ORG, since: SINCE, until: UNTIL, start, end: start + 499 })));
   });
 
-  test("developer breakdown includes every billed row", async () => {
-    const { client, pages } = cappedClient();
-    const got = await createSupabaseBillingDeps(client).developerBreakdown(ORG, SINCE, UNTIL);
-    expect(got).toEqual([{ developer_id: null, name: null, token_delta: 50_050, cq_fee_usd: 100.1 }]);
-    expect(pages.map((page) => page.start)).toEqual([0, 500, 1_000]);
-  });
-
   test("rejects missing, changed, and incomplete exact counts", async () => {
     await expect(createSupabaseBillingDeps(cappedClient({ omitCount: true }).client).listBillingRecords(ORG)).rejects.toThrow(/count/i);
     await expect(createSupabaseBillingDeps(cappedClient({ changeCountAt: 500 }).client).listBillingRecords(ORG)).rejects.toThrow(/count changed/i);

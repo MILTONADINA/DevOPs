@@ -223,8 +223,8 @@ measured and nothing billed.
 
 ### Tasks
 
-- [ ] Remove the payment HTTP surface: the CFO page, invoice and Stripe
-  routes, and the fee fields (C1)
+- [x] Remove the payment HTTP surface: the CFO page, invoice and Stripe
+  routes, and the fee fields (C1; see `../../docs/handoff/README.md` for verification)
 - [ ] Make the usage ledger unsigned: no HMAC, no fee column, no append-only
   enforcement (C2)
 - [ ] Delete the payment modules and their tests (C3)

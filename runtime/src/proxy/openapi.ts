@@ -29,7 +29,7 @@ export const OPENAPI_SPEC = {
   info: {
     title: "Stratum (CQ) Proxy API",
     version: process.env["npm_package_version"] ?? "0.1.0",
-    description: "High-fidelity context-pruning proxy: Anthropic-compatible /v1/messages plus multi-tenant billing, memory, sessions, config, and webhooks. Charges 20% of token savings.",
+    description: "High-fidelity context-pruning proxy: Anthropic-compatible /v1/messages plus usage, memory, sessions, config, and webhooks.",
   },
   servers: [{ url: "/" }],
   security: [{ bearerAuth: [] }],
@@ -51,21 +51,6 @@ export const OPENAPI_SPEC = {
           zk_enabled: { type: "boolean" },
           audit_enabled: { type: "boolean" },
           webhook_url: { type: ["string", "null"] },
-        },
-      },
-      Invoice: {
-        type: "object",
-        properties: {
-          orgId: { type: "string" },
-          plan: { type: "string" },
-          totalOriginalTokens: { type: "integer" },
-          totalQuarantinedTokens: { type: "integer" },
-          totalSavingsUsd: { type: "number" },
-          rawFeeUsd: { type: "number" },
-          monthlyMinimumUsd: { type: "number" },
-          amountDueUsd: { type: "number" },
-          effectivenessPct: { type: "number" },
-          lineItems: { type: "array", items: { type: "object" } },
         },
       },
     },
@@ -149,9 +134,9 @@ export const OPENAPI_SPEC = {
     },
     "/v1/sessions/{id}/stats": {
       get: {
-        summary: "Session token totals + savings",
+        summary: "Session token totals and estimated savings (USD)",
         parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }, ORG_ID_QUERY],
-        responses: { "200": { description: "Stats" }, "404": ERROR_RESPONSE },
+        responses: { "200": { description: "Stats. USD figures are estimates, for information only." }, "404": ERROR_RESPONSE },
       },
     },
     "/v1/sessions/{id}/erasure-preflight": {
@@ -163,42 +148,16 @@ export const OPENAPI_SPEC = {
     },
     "/v1/billing/summary": {
       get: {
-        summary: "Monthly billing summary",
+        summary: "Monthly usage summary (token totals; USD figures are estimates)",
         parameters: [ORG_ID_QUERY, { name: "month", in: "query", schema: { type: "string", pattern: "^\\d{4}-\\d{2}$" } }],
-        responses: { "200": { description: "Summary" }, "403": ERROR_RESPONSE, "404": ERROR_RESPONSE },
-      },
-    },
-    "/v1/billing/invoice": {
-      get: {
-        summary: "Computed invoice",
-        parameters: [ORG_ID_QUERY, ...SINCE_UNTIL],
-        responses: { "200": { description: "Invoice", content: { "application/json": { schema: { $ref: "#/components/schemas/Invoice" } } } }, "403": ERROR_RESPONSE, "404": ERROR_RESPONSE },
+        responses: { "200": { description: "Summary. USD figures are estimates, for information only." }, "403": ERROR_RESPONSE, "404": ERROR_RESPONSE },
       },
     },
     "/v1/billing/records": {
       get: {
-        summary: "Paginated raw billing records",
+        summary: "Paginated usage records (USD delta is an estimate)",
         parameters: [ORG_ID_QUERY, ...SINCE_UNTIL, { name: "limit", in: "query", schema: { type: "integer", maximum: 500 } }, { name: "offset", in: "query", schema: { type: "integer" } }],
-        responses: { "200": { description: "Records page" }, "403": ERROR_RESPONSE },
-      },
-    },
-    "/v1/billing/invoices": {
-      get: {
-        summary: "Invoice lifecycle (sent → paid/failed), as recorded by the Stripe webhook",
-        parameters: [
-          ORG_ID_QUERY,
-          { name: "status", in: "query", required: false, schema: { type: "string", enum: ["sent", "paid", "failed"] } },
-          { name: "limit", in: "query", schema: { type: "integer", maximum: 500 } },
-          { name: "offset", in: "query", schema: { type: "integer" } },
-        ],
-        responses: { "200": { description: "Invoices page" }, "400": ERROR_RESPONSE, "403": ERROR_RESPONSE, "404": ERROR_RESPONSE },
-      },
-    },
-    "/v1/billing/audit.csv": {
-      get: {
-        summary: "Signed-hash audit trail (CSV download)",
-        parameters: [ORG_ID_QUERY, ...SINCE_UNTIL],
-        responses: { "200": { description: "CSV", content: { "text/csv": {} } }, "403": ERROR_RESPONSE },
+        responses: { "200": { description: "Records page. USD figures are estimates, for information only." }, "403": ERROR_RESPONSE },
       },
     },
     "/v1/memory/facts": {

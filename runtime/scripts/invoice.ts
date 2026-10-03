@@ -111,7 +111,7 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
   }
   const client = createClient(url, key);
 
-  // Same source the CFO billing API uses (src/proxy/routes/billing.ts) — one read path.
+  // Plan and records come from src/proxy/routes/billing.ts, which exists only for this CLI and goes with it (specs/ops/payment-removal.md REQ-7).
   const deps = createSupabaseBillingDeps(client);
   const plan = await deps.getOrgPlan(args.orgId);
   if (plan === null) {

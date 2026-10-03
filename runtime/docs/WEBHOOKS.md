@@ -2,7 +2,9 @@
 
 ## Overview
 
-CQ sends webhook events to your configured endpoint for important system events. Webhooks allow you to build integrations that react in real time to conflicts, billing events, and system status changes.
+`POST /v1/webhooks/test` sends a signed sample of one of the four event types
+below to the organization's configured endpoint. Automatic event sources are
+not wired in the proxy (see [TELEMETRY.md](TELEMETRY.md)).
 
 ---
 
@@ -77,7 +79,7 @@ app.post("/webhooks/cq", express.raw({ type: "application/json" }), (req, res) =
 
 ### `conflict.detected`
 
-Fired when Git-attestation detects a Historical Drift conflict — a stored memory that contradicts the Git commit history.
+Sample Historical Drift conflict payload: a stored memory contradicts Git history.
 
 ```json
 {
@@ -98,13 +100,13 @@ Fired when Git-attestation detects a Historical Drift conflict — a stored memo
 }
 ```
 
-**Recommended action:** Alert the relevant developer. Display in your internal tooling. The memory has already been suppressed — no action is required to prevent injection, but the underlying codebase state should be reviewed.
+The sample illustrates a suppressed conflict. Sending it through the test endpoint does not perform an audit or suppress a fact.
 
 ---
 
 ### `fact.suppressed`
 
-Fired when any structured fact is suppressed — either by Git-attestation conflict or manually via the API.
+Sample fact-suppression payload, illustrating a Git-attestation conflict or manual suppression.
 
 ```json
 {
@@ -127,7 +129,7 @@ Fired when any structured fact is suppressed — either by Git-attestation confl
 
 ### `eval.completed`
 
-Fired after a configuration change triggers an automatic eval run (e.g., after updating λ, g, or θ).
+Sample evaluation-result payload. Sending it does not run an evaluation or apply configuration.
 
 ```json
 {
@@ -150,13 +152,13 @@ Fired after a configuration change triggers an automatic eval run (e.g., after u
 
 `result` values: `"passed"`, `"failed"`
 
-If `"failed"`, the configuration change has been rolled back. `config_applied` will be `false`.
+In the event format, `"failed"` pairs with `config_applied: false`; the test endpoint itself does not roll back configuration.
 
 ---
 
 ### `session.ended`
 
-Fired when a session ends (either explicitly via `DELETE /v1/sessions/:id` or after a configurable idle timeout).
+Sample session-end payload. `estimated_savings_usd` is an estimated USD cost difference, for information only. Ending a session does not yet automatically deliver this event.
 
 ```json
 {
@@ -173,62 +175,11 @@ Fired when a session ends (either explicitly via `DELETE /v1/sessions/:id` or af
     "total_quarantined_tokens": 21300,
     "token_delta": 166100,
     "estimated_savings_usd": 4.98,
-    "cq_fee_usd": 0.996,
     "facts_extracted": 7,
     "conflicts_detected": 1
   }
 }
 ```
-
----
-
-### `invoice.ready`
-
-Fired on the 1st of each month when the monthly invoice is generated.
-
-```json
-{
-  "event": "invoice.ready",
-  "id": "evt_uuid",
-  "created_at": "2026-05-01T00:00:00Z",
-  "org_id": "uuid",
-  "data": {
-    "invoice_id": "uuid",
-    "period": "2026-04",
-    "total_original_tokens": 12400000,
-    "total_quarantined_tokens": 1860000,
-    "total_savings_usd": 315.20,
-    "total_cq_fee_usd": 63.04,
-    "due_date": "2026-05-15",
-    "invoice_url": "http://localhost:4080/v1/billing/invoices/uuid/pdf"
-  }
-}
-```
-
----
-
-### `tee.attestation_failed`
-
-Fired when a ZK-Context session's TEE attestation fails. This is a security event.
-
-```json
-{
-  "event": "tee.attestation_failed",
-  "id": "evt_uuid",
-  "created_at": "2026-04-06T14:23:00Z",
-  "org_id": "uuid",
-  "data": {
-    "session_id": "uuid",
-    "reason": "pcr_mismatch",
-    "expected_pcr0": "expected-hash",
-    "received_pcr0": "received-hash"
-  }
-}
-```
-
-`reason` values: `"pcr_mismatch"`, `"expired_nonce"`, `"invalid_certificate_chain"`, `"unknown"`
-
-**Recommended action:** Alert your security team immediately. Do not dismiss this event.
 
 ---
 

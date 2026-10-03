@@ -345,6 +345,29 @@ describe("dashboard route", () => {
     expect(res.payload).toContain("Waste Dashboard");
   });
 
+  // Mutation: dropping "Est." from the cost label, or adding a fee, charge or amount-due card or field.
+  test("specs/ops/payment-removal.md#AC-6 dashboard shows an estimated USD cost and no fee (regression guard)", async () => {
+    const s1 = sess("dddddddd-4", [turn(100), turn(300)], 400, 20);
+    app = buildProxy({ cors: false, rateLimit: false, dashboard: { readSessions: () => [s1] } });
+    await app.ready();
+
+    // The data: a numeric USD estimate beside the token totals, and no key that reads as a fee, a charge, an amount due or a minimum (keys only: the note's wording is a value).
+    const api = await app.inject({ method: "GET", url: "/dashboard/api" });
+    expect(api.statusCode).toBe(200);
+    const data = api.json();
+    expect(typeof data.estimated_cost_usd).toBe("number");
+    expect(data.estimated_cost_usd).toBeGreaterThan(0);
+    expect(data).toMatchObject({ total_input_tokens: 400, total_output_tokens: 20 });
+    const keysDeep = (value: unknown): string[] => (value !== null && typeof value === "object" ? Object.entries(value).flatMap(([key, inner]) => [key, ...keysDeep(inner)]) : []);
+    expect(keysDeep(data).filter((key) => /fee|charge|amount_?due|minimum/i.test(key))).toEqual([]);
+
+    // The page: the cost card is labelled as an estimate, and nothing on it reads as a fee, a charge or an amount due.
+    const page = await app.inject({ method: "GET", url: "/dashboard" });
+    expect(page.statusCode).toBe(200);
+    expect(page.payload).toContain("Est. cost (USD)");
+    expect(page.payload).not.toMatch(/fee|charge|amount due/i);
+  });
+
   test("dashboard conflict shell uses the scoped API and safe browser boundaries", async () => {
     app = buildProxy({ cors: false, rateLimit: false, dashboard: { readSessions: () => [] } });
     await app.ready();
