@@ -1,0 +1,5 @@
+# Finite format: blank/full-line comments and one semgrep: positive-decimal entry.
+# Measured minimum from PR230 required scan run37150053096 at b2e9b891:
+# 1046 paths, zero findings/errors, unchanged packs and test-tree scope.
+# This floor is a lower bound, not proof of complete coverage or an auto-ratchet.
+semgrep: 1046
