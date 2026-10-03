@@ -586,7 +586,11 @@ test('a resume skips appending onto priorRunIds when the pre-update runId is alr
 test('AC-D1.1: readHead(root) agrees with graph-preflight --check-only report git_sha', (t) => {
   const dir = mkdtempSync(path.join(root, '.workflow', 'state', 'graph-readhead-test-'));
   const reportPath = path.join(dir, 'preflight-report.json');
-  const env = { ...process.env, GRAPH_PREFLIGHT_REPORT: reportPath };
+  const fakeBin = path.join(dir, 'fake-gh');
+  mkdirSync(fakeBin);
+  const protection = {"required_status_checks":{"strict":true,"contexts":["validate","runtime-test","setup-linux","gitleaks","semgrep","dependency-audit"]},"enforce_admins":{"enabled":true},"required_pull_request_reviews":{"required_approving_review_count":0}};
+  writeFileSync(path.join(fakeBin, 'gh'), `#!/bin/sh\nprintf '%s\\n' '${JSON.stringify(protection)}'\n`, { mode: 0o755 });
+  const env = { ...process.env, PATH: `${fakeBin}:${process.env.PATH}`, GRAPH_PREFLIGHT_REPORT: reportPath };
   try {
     // Spawning bash on this repo's own script is fine under the hermeticity
     // rule; only a direct toolchain subprocess (git among them) is not. The
