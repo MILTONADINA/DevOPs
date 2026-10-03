@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { validProjectScope } from "../../proxy/auth";
+import { markErasureCoverageUnknown } from "../erasure-coverage";
 
 /** Count current query-matched facts after exact hot-exchange filtering. */
 export function createQueryFactCandidateLookup(client: SupabaseClient) {
@@ -7,6 +8,7 @@ export function createQueryFactCandidateLookup(client: SupabaseClient) {
     if (projectScope !== null && !validProjectScope(projectScope)) throw new Error("invalid project scope for query fact lookup");
     if (exchangeIds.length > 128) throw new Error("query fact lookup exceeds hot-window bound");
     if (exchangeIds.length === 0 || query.trim() === "") return new Map();
+    await markErasureCoverageUnknown(client, orgId, "protected_read");
     const { data, error } = await client.rpc("find_query_hot_fact_exchanges", {
       match_org: orgId,
       match_session: sessionId,

@@ -97,6 +97,13 @@ SELECT 1 / CASE WHEN
     '["api_keys", "developers", "org_config", "organizations"]'::jsonb
   THEN 1 ELSE 0 END AS retained_org_only_classes_passed;
 
+-- C4-B authority survives erasure; it is neither active session content nor an
+-- application backup payload. Keep every existing class assertion above.
+SELECT 1 / CASE WHEN
+  current_setting('devops_test.erasure_inventory')::jsonb->'retained_metadata_classes' =
+    '["erasure_deployment", "erasure_org_coverage", "session_erasure_state"]'::jsonb
+  THEN 1 ELSE 0 END AS retained_erasure_metadata_classes_passed;
+
 -- Any newly introduced public table must be classified before this inventory
 -- can be treated as complete for the local database.
 SELECT 1 / CASE WHEN
@@ -105,6 +112,8 @@ SELECT 1 / CASE WHEN
     SELECT jsonb_object_keys((current_setting('devops_test.erasure_inventory')::jsonb)->'counts') AS name
     UNION ALL
     SELECT jsonb_array_elements_text((current_setting('devops_test.erasure_inventory')::jsonb)->'org_only_classes')
+    UNION ALL
+    SELECT jsonb_array_elements_text((current_setting('devops_test.erasure_inventory')::jsonb)->'retained_metadata_classes')
   ) classes)
   THEN 1 ELSE 0 END AS public_table_coverage_passed;
 

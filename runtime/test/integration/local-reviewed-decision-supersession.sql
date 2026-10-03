@@ -1,13 +1,17 @@
 -- Disposable PostgreSQL acceptance check; all fixture rows roll back.
 \set ON_ERROR_STOP on
 BEGIN;
-CREATE FUNCTION pg_temp.expect_error(statement text, expected text) RETURNS void
+CREATE FUNCTION pg_temp.expect_error(statement text, expected text,
+  alternate_state text DEFAULT NULL, alternate_message text DEFAULT NULL) RETURNS void
 LANGUAGE plpgsql AS $$
 BEGIN
   BEGIN
     EXECUTE statement;
   EXCEPTION WHEN OTHERS THEN
-    IF position(expected IN SQLERRM) = 0 THEN RAISE; END IF;
+    IF position(expected IN SQLERRM) = 0 THEN
+      IF SQLSTATE = alternate_state AND SQLERRM = alternate_message THEN RETURN; END IF;
+      RAISE;
+    END IF;
     RETURN;
   END;
   RAISE EXCEPTION 'expected rejection containing: %', expected;
@@ -41,7 +45,7 @@ INSERT INTO public.tech_decisions(org_id, session_id, project_scope, created_at,
 SELECT pg_temp.expect_error(format(
   'SELECT public.review_tech_decision_supersession(%L,%L,%L,%L,%L,%L)',
   :'org_a', 'orion', :'new_a', :'old_b', 'operator@example.test', 'Reviewed replacement from explicit runbook change.'
-), 'organization or project mismatch');
+), 'organization or project mismatch', '55000', 'erasure fact ownership is unavailable');
 SELECT pg_temp.expect_error(format(
   'SELECT public.review_tech_decision_supersession(%L,%L,%L,%L,%L,%L)',
   :'org_a', 'orion', :'new_a', :'old_vega', 'operator@example.test', 'Reviewed replacement from explicit runbook change.'

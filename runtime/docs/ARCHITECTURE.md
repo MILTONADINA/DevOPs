@@ -309,12 +309,18 @@ drops `reconcile_claimed_invoice`, `record_invoice_payment`,
 the scoped erasure inventory. Historical migrations remain unchanged.
 DevOps has no payment workflow.
 
-**Erasure remains incomplete.** Preflight no longer has a financial blocker;
+**Limited managed erasure.** Preflight no longer has a financial blocker;
 `billing_records` is ordinary session-linked usage and keeps its numeric
-inventory count. Graph uncertainty, unknown RAM/external/backup coverage and
-`erasure_execution_unavailable` still block erasure. DELETE only sets
-`ended_at`. The actual API deletion and one-year/<30-second benchmark remain
-required by `specs/memory/session-erasure.md`; C4-A does not satisfy those gates.
+inventory count. C4-B adds a default-disabled authority, normal capped explicit
+session enrollment, a durable write fence, atomic private-content deletion and
+stable receipts/tombstones. The initial source/process/store-bound class passed
+actual API deletion, safe shared/foreign survival, rollback and retry proof.
+Protected reads/exports mark coverage unknown before copying; unknown stores
+and unsafe graph dependencies block execution. DELETE only sets `ended_at`;
+POST is the separate erasure operation. Historical/conversation sessions,
+arbitrary RAM/external/backup copies, general managed onboarding/restarts and
+the one-year/<30-second benchmark remain open under
+`specs/memory/session-erasure.md`.
 
 **Usage reads.** `runtime/src/proxy/routes/usage.ts` serves
 `GET /v1/billing/summary` and `GET /v1/billing/records` with token totals and
@@ -403,7 +409,7 @@ Status text is copied from each file's status line.
 | 0018 | The Upstream Anthropic Key in Commercial Mode — Per-Deployment for the Pilot, Per-Request Pass-Through to Scale | Accepted (per-deployment key for the first design partner; per-request pass-through is the documented scale path, default-OFF until taken up) | |
 | 0019 | Multi-Provider Gateway — Anthropic-Shaped Surface, Provider Adapters Behind It | Accepted (Anthropic-in / any-provider-out; an OpenAI-compatible INBOUND surface is a documented, additive follow-on) | |
 | 0020 | Local Supabase stack after hosted project retirement | Accepted for local development; production topology open | |
-| 0021 | Session erasure needs a separate financial retention boundary | Superseded by ADR-0025 and payment-removal REQ-8 (C4-A, 2026-10-03) | Nonfinancial duties continue in `specs/memory/session-erasure.md`; endpoint/benchmark open |
+| 0021 | Session erasure needs a separate financial retention boundary | Superseded by ADR-0025 and payment-removal REQ-8 (C4-A, 2026-10-03) | Nonfinancial duties continue in `specs/memory/session-erasure.md`; initial-class API proof passed, broader coverage/benchmark open |
 | 0022 | Versioned client encryption primitive before TEE integration | accepted for offline implementation; request-path activation is gated. | |
 | 0023 | Provenance-gated exchange selection, and what Tier-C gates | proposed (2026-09-25). The owner delegated these decisions to the orchestrator's recommendation and may override any of them. | |
 | 0024 | Tier-2 long-history recall assembly (option A), gated | proposed (2026-09-25). The owner delegated this to the orchestrator's recommendation and may override it. | |

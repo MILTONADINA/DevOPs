@@ -1,6 +1,6 @@
-# Handoff: C4-A local verification and remaining erasure work (2026-10-03)
+# Handoff: C4-B managed erasure verification (2026-10-03)
 
-Read [`AGENTS.md`](../../AGENTS.md) and the local `.workflow/state/baton.md` first. This page records the C4-A local verification snapshot before merge and the dated snapshots below. Git and the PR checks determine the current merge state; the verification below does not declare the whole project finished.
+Read [`AGENTS.md`](../../AGENTS.md) and the local `.workflow/state/baton.md` first. This page records the current C4-B candidate and preserves the earlier dated snapshots below. Git and the PR checks determine the current merge state; the verification below does not declare the whole project finished.
 
 ## Branches and provenance
 
@@ -11,7 +11,68 @@ The repository uses only `main`, `dev`, and `feature`. Changes reach protected `
 - Codex resumed that checkpoint on 2026-10-03, finished T4–T7, and added a regression test for auth-enabled requests without an organization. This was a cross-tool continuation with independent review and validation agents, not a replay of Claude Workflow `wf_51c12945-ff7`. The old Workflow record remains historical/indeterminate.
 - Do not apply the old baton's `git reset --soft HEAD~1`: it no longer identifies the WIP code boundary.
 
-## Current C4-A delivery and remaining C4-B
+## Current C4-B candidate and next steps
+
+C4-A merged in [PR #224](https://github.com/MILTONADINA/DevOPs/pull/224) at
+`3e570a2e0e780b7c1557e95ad07f2b315c1f5b05`. C4-B is based on that commit;
+its local evidence does not mean its PR has merged or the project is complete.
+The controlling requirements and all fourteen C4-B acceptance criteria are in
+[`specs/memory/session-erasure.md`](../../specs/memory/session-erasure.md).
+Payment-removal REQ-8/9/14/15 and AC-8 remain the delivery anchors.
+
+The candidate adds default-disabled, privileged source-bound activation;
+server-minted organization authority; normal capped explicit-session enrollment;
+permanent uncertainty before protected copying; ownership/write fences; atomic
+private-content deletion; and a durable scoped completion receipt. Ordinary
+clients cannot enable coverage, clear uncertainty or enroll restored identities.
+`POST /v1/sessions/:id/erasure` implements execution; existing DELETE remains
+end-session only. Foreign and missing identities return 404, personal/project
+keys are denied, unknown coverage blocks execution, and incomplete execution
+returns retryable failure rather than completion.
+
+The real authenticated proof passed on a new reserved Compose instance with
+fresh volume and credentials, a frozen application/dependency/config inventory,
+normal organization/session constructors and ordinary writers. It included all
+six fact kinds, positive usage/pruning, audit/vector/source derivatives, private
+graph rows and shared survivors. It verified rollback after an injected database
+fault, the committed retry fence, a deliberately lost completed response,
+stable retry, independent row absence and shared/foreign survival. No model
+request was made. Its consumers stopped and matching activation was disabled.
+The small fixture is not the representative one-year/<30-second benchmark.
+
+| Local C4-B evidence | Result |
+|---|---|
+| Real authenticated erasure HTTP | Passed; 17 deleted-class and 11 retained-class counts checked |
+| Committed transaction/race proof | Passed; separate coordinated connections, retry, copy/enrollment/cap and writer races |
+| Current SQL generation | All 20 fixtures pass at 70 migrations; each fixture rolls back |
+| Recovery and running system | Current backup recovery, historical restore, project sessions/caps, setup and actual npm-dev usage/replay pass |
+| Root isolated Linux/Node24 | 473 passed; 17 skipped |
+| Full runtime, clean locked installation | 1,623 passed; 5 skipped; 5 todo after focused fixture repairs |
+| Protected inputs | 63 historical migrations, eight provider files and five frozen datasets unchanged; seven applied C4-B migrations retained |
+
+Evidence is under `.workflow/proofs/c4b-2026-10-03/`; the actual HTTP journal is
+`erasure-api-a1f74062-1674-44f2-90f1-4425f7d57180.json`, bound to canonical manifest
+`9bdacccab02dcc3257703b82341dc011d9a3c7f682798fbf33bba56c89976e35`.
+The proof generation is single-use: never delete its launch marker or silently
+reuse its credentials for another generation. Local frozen artifacts and
+synthetic proof stores are ignored by Git. Application fixture cleanup may
+retain intentionally permanent unknown-coverage metadata and retry history.
+
+The original operator database was not migrated, activated or reset by C4-B;
+it remains at C4-A's 63 migrations and is ineligible for positive erasure.
+Historical/conversation sessions, broader application copies, general managed
+onboarding/restart operations and the representative one-year performance gate
+remain open. The receipt explicitly excludes client-held responses, privileged
+snapshots and physical remnants; these are not described as erased or anonymous.
+
+Next: finish the remaining security/governance gates and exact-head CI,
+record approval, merge and synchronize main/dev/feature. Then continue the
+separate obsolete-claim ledger action, MR-3 and the remaining approved roadmap.
+The old Claude Workflow run remains historical/indeterminate; do not reset or
+resume it. Use the local baton for exact process handles, current proof bindings
+and any later progress. Earlier sections below are dated historical evidence.
+
+## C4-A delivery — historical snapshot before merge
 
 C3 merged in [PR #223](https://github.com/MILTONADINA/DevOPs/pull/223) at
 `28ea1aac8117722613e8a483894421fc4c5e481e` on 2026-10-03. All six required checks,
@@ -232,23 +293,22 @@ verified; the PR records their current state.
 
 ## Next action
 
-Finish C4-A's final source review, claims and required checks on
-its PR head; merge under standing owner authorization and synchronize
-main/dev/feature. Consult Git/PR state and the local baton before repeating work.
-The source-grounded plan is `.workflow/state/c4-plan.md`; C4-B design prerequisites
-are recorded separately in `.workflow/state/c4-erasure-design.md`.
+Finish C4-B's final security/governance review, structured claims and required
+checks on the exact PR head; merge under standing owner authorization and
+synchronize main/dev/feature. Consult Git/PR state and the local baton before
+repeating completed checks. C4-A is already merged; the controlled C4-B actual
+API proof and local runtime/root/system gates now pass as recorded above.
 
-Then deliver C4-B's actual safe API erasure under the moved memory spec.
-**AC-8 requires a session actually erased through the API.** Do not weaken it,
-substitute end-session, or treat a mocked ready response as proof. Preserve all
-unknown-store and shared-data safeguards. The one-year/<30-second benchmark is
-also a remaining v0.9 gate, separate from the small real erasure fixture.
+Preserve the limited erasure guarantee, immutable applied migrations and
+original operator database. The one-year/<30-second benchmark is a separate
+remaining v0.9 gate. Broader historical/conversation/copy coverage and managed
+onboarding/restart operations remain unsupported by this initial proof.
 
-After C4: historical claim retirement, MR-3, remaining approved roadmap and
+After C4-B: historical claim retirement, MR-3, remaining approved roadmap and
 security/hygiene work; naming aliases/current prose; v0.4 pruner cycles1b/2 and
 quality gates; clean-machine macOS/Linux/WSL2 and real-use release gates. The
-mission is still the whole remaining roadmap, not only payment removal. Do not
-resume old Claude Workflow `wf_51c12945-ff7` or reset its preserved C1 checkpoint.
+mission is the whole remaining roadmap. Do not resume old Claude Workflow
+`wf_51c12945-ff7` or reset its preserved C1 checkpoint.
 
 The detailed original [C1 backlog](c1-payment-surface-backlog.md) remains historical planning context. Its five planner answers were: fix the adapter type error; move the developer breakdown test; use “USD figures are estimates, for information only”; allow test-only webhook-secret fixtures and preserve C2's two billing imports; invert retired fee/signature assertions while retaining non-fee assertions. The recorded implementation and proof reflect those answers.
 

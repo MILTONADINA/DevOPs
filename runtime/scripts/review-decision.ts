@@ -2,6 +2,7 @@
 import { readFileSync } from "node:fs";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { validProjectScope } from "../src/proxy/auth";
+import { markErasureCoverageUnknown } from "../src/memory/erasure-coverage";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 type Args = { orgId: string; projectScope: string | null; newerId: string; olderId: string; reviewer?: string; apply: boolean };
@@ -52,8 +53,9 @@ export function validLocalApiOrigin(value: string): boolean {
   return !!match && port > 0 && port <= 65535;
 }
 
-/** Read-only pair check. The database RPC repeats its invariants at write time. */
+/** Mark copy uncertainty, then inspect the pair. The write RPC repeats its invariants. */
 export async function inspectDecisionPair(client: SupabaseClient, args: Args): Promise<{ newer: Decision; older: Decision }> {
+  await markErasureCoverageUnknown(client, args.orgId, "protected_read");
   let pairQuery = client.from("tech_decisions").select("id,decision_text,domain,created_at,is_suppressed,supersedes_id").eq("org_id", args.orgId).in("id", [args.newerId, args.olderId]);
   pairQuery = args.projectScope === null ? pairQuery.is("project_scope", null) : pairQuery.eq("project_scope", args.projectScope);
   const result = await pairQuery;
@@ -74,6 +76,8 @@ export async function inspectDecisionPair(client: SupabaseClient, args: Args): P
 }
 
 export async function reviewDecisionPair(client: SupabaseClient, args: Args, evidence: string): Promise<string> {
+  // This exported entry also reads the recorded relationship; guard before mutation.
+  await markErasureCoverageUnknown(client, args.orgId, "protected_read");
   const result = await client.rpc("review_tech_decision_supersession", {
     match_org: args.orgId,
     match_project_scope: args.projectScope,

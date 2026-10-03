@@ -1,5 +1,6 @@
 /** Unsigned usage inputs and replay identity (specs/ops/payment-removal.md#REQ-4). */
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { markErasureCoverageUnknown } from "../memory/erasure-coverage";
 
 export interface UsageInput {
   sessionId: string;
@@ -55,9 +56,11 @@ export async function recordUsage(deps: RecorderDeps, input: UsageInput): Promis
   const { data, error } = await insert;
   if (error) {
     if (error.code !== "23505" || input.usageEventId === undefined) throw new Error(`recordUsage failed: ${error.message}`);
+    await markErasureCoverageUnknown(deps.client, input.orgId, "protected_read", deps.signal);
     let lookup = deps.client
       .from("billing_records")
       .select("id,org_id,session_id,original_tokens,quarantined_tokens,usage_event_id,api_price_per_token,pruning_log_id")
+      .eq("org_id", input.orgId)
       .eq("usage_event_id", input.usageEventId)
       .limit(1);
     if (deps.signal) lookup = lookup.abortSignal(deps.signal);

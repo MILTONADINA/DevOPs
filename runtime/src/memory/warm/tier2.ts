@@ -27,6 +27,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { AnyFact, FactType } from "../../types/facts";
 import { validateFact } from "./schemas";
+import { markErasureCoverageUnknown } from "../erasure-coverage";
 
 /** fact_type → its Postgres table name. */
 export const FACT_TABLES: Record<FactType, string> = {
@@ -247,6 +248,7 @@ export function createWarmMemory(client: SupabaseClient): WarmMemory {
     },
 
     async queryRecent(orgId: string, opts: QueryRecentOptions = {}): Promise<AnyFact[]> {
+      await markErasureCoverageUnknown(client, orgId, "protected_read");
       const limit = opts.limit ?? 50;
       const tables = Object.values(FACT_TABLES);
       const results = await Promise.all(
@@ -279,6 +281,7 @@ export function createWarmMemory(client: SupabaseClient): WarmMemory {
     },
 
     async queryUnpromoted(orgId: string, opts: QueryUnpromotedOptions = {}): Promise<AnyFact[]> {
+      await markErasureCoverageUnknown(client, orgId, "protected_read");
       const limit = opts.limit ?? 100;
       const tables = Object.values(FACT_TABLES);
       const results = await Promise.all(
@@ -322,6 +325,7 @@ export function createWarmMemory(client: SupabaseClient): WarmMemory {
     async getFactsByRefs(orgId: string, refs: string[], projectScope?: string | null): Promise<Map<string, AnyFact>> {
       const out = new Map<string, AnyFact>();
       if (refs.length === 0) return out;
+      await markErasureCoverageUnknown(client, orgId, "protected_read");
       const tables = Object.values(FACT_TABLES);
       const results = await Promise.all(
         tables.map(async (table) => {

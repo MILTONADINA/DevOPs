@@ -8,7 +8,9 @@ import { createClient } from "@supabase/supabase-js";
 const root = resolve(process.cwd(), "..");
 const url = process.env.SUPABASE_URL;
 const key = process.env.SUPABASE_SERVICE_KEY;
-if (url !== "http://127.0.0.1:54321" || !key || process.env.DEVOPS_STRATUM_PROJECT_ROOT !== root) {
+const localPort = process.env["DEVOPS_LOCAL_PORT"] ?? "54321";
+if (!/^[1-9]\d{3,4}$/.test(localPort) || Number(localPort) < 1024 || Number(localPort) > 65535 ||
+    url !== `http://127.0.0.1:${localPort}` || !key || process.env.DEVOPS_STRATUM_PROJECT_ROOT !== root) {
   throw new Error("run through npm run db:with-env from runtime/");
 }
 const db = createClient(url, key, { auth: { persistSession: false } });

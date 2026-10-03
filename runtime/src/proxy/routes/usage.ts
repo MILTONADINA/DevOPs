@@ -7,13 +7,14 @@
  *
  * When the auth gate is on, both need an organization-level key (a project-bound key gets 403). Org scope comes from req.orgId (set by the auth gate) and falls back to ?org-id
  * when the proxy runs unauthenticated (./org-scope). The record source is INJECTED (UsageDeps) so the routes are testable via app.inject() with no DB; createSupabaseUsageDeps wires
- * the live source. The summary's totals come from the pure summarizeUsage (src/usage/summary.ts). FREE (read-only); no Anthropic.
+ * the live source. The summary's totals come from the pure summarizeUsage (src/usage/summary.ts). Content reads first record erasure uncertainty; no Anthropic.
  */
 
 import type { FastifyInstance, FastifyPluginCallback, FastifyReply, FastifyRequest } from "fastify";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { resolveOrg } from "./org-scope";
 import { summarizeUsage, type UsageRecord } from "../../usage/summary";
+import { markErasureCoverageUnknown } from "../../memory/erasure-coverage";
 
 /** A usage record as GET /v1/billing/records returns it: token counts and the estimated USD cost difference. */
 export interface UsageRecordFull {
@@ -183,6 +184,7 @@ export function createSupabaseUsageDeps(client: SupabaseClient): UsageDeps {
       return row ? row.plan : null;
     },
     async listUsageRecords(orgId: string, since?: string, until?: string): Promise<UsageRecord[]> {
+      await markErasureCoverageUnknown(client, orgId, "protected_read");
       const rows: UsageRecord[] = [];
       let expected: number | undefined;
       do {
@@ -202,6 +204,7 @@ export function createSupabaseUsageDeps(client: SupabaseClient): UsageDeps {
       return rows;
     },
     async developerBreakdown(orgId: string, since?: string, until?: string): Promise<DeveloperUsage[]> {
+      await markErasureCoverageUnknown(client, orgId, "protected_read");
       type Row = {
         original_tokens: number;
         quarantined_tokens: number;
@@ -239,6 +242,7 @@ export function createSupabaseUsageDeps(client: SupabaseClient): UsageDeps {
       return [...map.values()];
     },
     async listRecords(orgId: string, query: UsageRecordsQuery): Promise<{ records: UsageRecordFull[]; total: number }> {
+      await markErasureCoverageUnknown(client, orgId, "protected_read");
       let q = client.from("billing_records").select("id, created_at, session_id, original_tokens, quarantined_tokens, token_delta, cost_delta_usd", { count: "exact" }).eq("org_id", orgId);
       if (query.since !== undefined) q = q.gte("created_at", query.since);
       if (query.until !== undefined) q = q.lt("created_at", query.until);

@@ -1,4 +1,5 @@
 // specs/ops/payment-removal.md#AC-4, #AC-5, #AC-6: actual entry point and M1 replay proof.
+import { deepStrictEqual } from "node:assert/strict";
 import { spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { closeSync, mkdirSync, mkdtempSync, openSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
@@ -14,7 +15,9 @@ const runtimeRoot = process.cwd();
 const root = resolve(runtimeRoot, "..");
 const url = process.env["SUPABASE_URL"];
 const key = process.env["SUPABASE_SERVICE_KEY"];
-if (url !== "http://127.0.0.1:54321" || !key || process.env["DEVOPS_STRATUM_PROJECT_ROOT"] !== root ||
+const localPort = process.env["DEVOPS_LOCAL_PORT"] ?? "54321";
+if (!/^[1-9]\d{3,4}$/.test(localPort) || Number(localPort) < 1024 || Number(localPort) > 65535 ||
+    url !== `http://127.0.0.1:${localPort}` || !key || process.env["DEVOPS_STRATUM_PROJECT_ROOT"] !== root ||
     runtimeRoot !== join(root, "runtime") || process.platform === "win32") {
   throw new Error("run through npm run db:verify-unsigned-usage from runtime/ with the local stack and M1 applied");
 }
@@ -190,8 +193,14 @@ try {
     quarantinedTokens: 22, apiPricePerToken: 0.000008, pruningLogId: pruningLog })) {
     let rejected = false;
     try { await recordUsage({ client: db }, { ...input, [field]: change }); }
-    catch (error) { rejected = error instanceof Error && error.message === "usage event replay mismatch"; }
+    catch (error) {
+      // The ownership guard rejects a foreign org before the duplicate-event lookup.
+      const expected = field === "orgId" ? "recordUsage failed: erasure session ownership is unavailable" : "usage event replay mismatch";
+      rejected = error instanceof Error && error.message === expected;
+    }
     assert(rejected, `replayed ${field} mismatch was not refused by the writer`);
+    deepStrictEqual(read(await db.from("billing_records").select("*").eq("usage_event_id", input.usageEventId!), "read unchanged replay"), [row],
+      `replayed ${field} mismatch changed or added a row`);
   }
   assert(read(await db.from("billing_records").select("id").eq("usage_event_id", input.usageEventId!), "count replay").length === 1, "duplicate or mismatched replay added a row");
 

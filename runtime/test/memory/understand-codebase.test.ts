@@ -118,6 +118,7 @@ describe("parseArgs", () => {
 
 // Minimal Supabase stub driving exactly the calls the CLI makes:
 //   .from("organizations").select("id").eq("name",_).limit(1)  → { data: org, error }
+//   .rpc("mark_erasure_coverage_unknown", scoped args)          → { data: true, error: null }
 //   .rpc("entity_status"|"match_memory_vectors", _)             → { data, error }
 function fakeClient(opts: { org?: { id: string }[]; entityStatus?: unknown[]; matches?: unknown[]; facts?: unknown[] }): SupabaseClient {
   return {
@@ -132,7 +133,12 @@ function fakeClient(opts: { org?: { id: string }[]; entityStatus?: unknown[]; ma
         }),
       }),
     }),
-    rpc: (fn: string) => Promise.resolve({ data: fn === "entity_status" ? opts.entityStatus ?? [] : opts.matches ?? [], error: null }),
+    rpc: vi.fn((fn: string, args: Record<string, unknown>) => Promise.resolve({
+      data: fn === "mark_erasure_coverage_unknown"
+        ? args["p_org_id"] === "o1" && args["p_reason"] === "protected_read"
+        : fn === "entity_status" ? opts.entityStatus ?? [] : opts.matches ?? [],
+      error: null,
+    })),
   } as unknown as SupabaseClient;
 }
 
@@ -197,6 +203,8 @@ describe("main() orchestration (injected fakes — no DB, no model, no API)", ()
     expect(code).toBe(0);
     expect(output).toContain("Status: SUPERSEDED");
     expect(output).toContain("fetchUser");
+    expect(client.rpc).toHaveBeenNthCalledWith(1, "mark_erasure_coverage_unknown", { p_org_id: "o1", p_reason: "protected_read" });
+    expect(client.rpc).toHaveBeenNthCalledWith(2, "entity_status", { match_org: "o1", entity_name: "getUser" });
   });
 
   test("query-only mode dispatches to vector search + renders matches; uses injected encode (no model download)", async () => {
@@ -216,6 +224,8 @@ describe("main() orchestration (injected fakes — no DB, no model, no API)", ()
     expect(encoded).toBe("where deploy"); // the injected encoder was used, not the real ONNX one
     expect(output).toContain("Semantic search");
     expect(output).toContain("fact:f-1");
+    expect(client.rpc).toHaveBeenNthCalledWith(1, "mark_erasure_coverage_unknown", { p_org_id: "o1", p_reason: "protected_read" });
+    expect(client.rpc).toHaveBeenNthCalledWith(3, "mark_erasure_coverage_unknown", { p_org_id: "o1", p_reason: "protected_read" });
   });
 
   test("query and entity-neighbour output omit unresolved fact pointers", async () => {
@@ -236,5 +246,8 @@ describe("main() orchestration (injected fakes — no DB, no model, no API)", ()
     expect(entity.code).toBe(0);
     expect(entity.output).toContain("fact:f-active");
     expect(entity.output).not.toContain("f-suppressed");
+    for (const [fn, args] of vi.mocked(client.rpc).mock.calls) {
+      if (fn === "mark_erasure_coverage_unknown") expect(args).toEqual({ p_org_id: "o1", p_reason: "protected_read" });
+    }
   });
 });

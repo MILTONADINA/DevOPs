@@ -21,6 +21,7 @@ const keysDeep = (value: unknown): string[] => (value !== null && typeof value =
  * starts at `changeCountAt` on, the count is `countAs` whatever the rows are, or every page that starts at `stallAt` or later comes back empty.
  */
 interface Faults {
+  coverage?: { data: unknown; error: { message: string } | null };
   error?: string;
   omitCount?: boolean;
   changeCountAt?: number;
@@ -50,11 +51,20 @@ const MAX_RANGE_READS = 50;
  * `pages`; gte(), lt() and order() are recorded there, not applied. It resolves { data, error, count } when it is awaited: `count` is the number of matching rows when a range() read's
  * select() asked for { count: "exact" }, and null when it did not. `faults` makes a read misbehave (see Faults). The MAX_RANGE_READS-plus-first range() read is refused.
  */
-function recordingClient(tables: Record<string, Row[]>, faults: Faults = {}): { client: SupabaseClient; selects: string[]; pages: Page[] } {
+function recordingClient(tables: Record<string, Row[]>, faults: Faults = {}): { client: SupabaseClient; selects: string[]; pages: Page[]; operations: string[] } {
   const selects: string[] = [];
   const pages: Page[] = [];
+  const operations: string[] = [];
   const client = {
+    async rpc(name: string, args: { p_org_id?: string; p_reason?: string }) {
+      expect(name).toBe("mark_erasure_coverage_unknown");
+      expect(typeof args.p_org_id === "string" && args.p_org_id.length > 0).toBe(true);
+      expect(args.p_reason).toBe("protected_read");
+      operations.push("mark");
+      return faults.coverage ?? { data: true, error: null };
+    },
     from(table: string) {
+      operations.push(`read:${table}`);
       const filters: Array<[string, unknown]> = [];
       let max = Number.POSITIVE_INFINITY;
       let since: unknown;
@@ -115,7 +125,7 @@ function recordingClient(tables: Record<string, Row[]>, faults: Faults = {}): { 
       return query;
     },
   } as unknown as SupabaseClient;
-  return { client, selects, pages };
+  return { client, selects, pages, operations };
 }
 
 /** An explicit session of org o1, the row the scope check in getSessionStats looks for. */
@@ -153,6 +163,38 @@ describe("createSupabaseSessionsDeps.getSessionStats", () => {
     expect(stats).not.toBeNull();
     expect(keysDeep(stats).filter((key) => FEE_KEY.test(key))).toEqual([]);
     expect(stats).toEqual({ sessionId: "s1", billingRecords: 2, originalTokens: 100_000, quarantinedTokens: 15_000, savingsUsd: 1.28 });
+  });
+});
+
+describe("usage read coverage (session-erasure AC-B3)", () => {
+  const readers = ["summary", "developers", "records", "session stats"] as const;
+  async function read(name: typeof readers[number], client: SupabaseClient): Promise<unknown> {
+    const deps = createSupabaseUsageDeps(client);
+    if (name === "summary") return deps.listUsageRecords("o1");
+    if (name === "developers") return deps.developerBreakdown("o1");
+    if (name === "records") return deps.listRecords("o1", { limit: 10, offset: 0 });
+    return createSupabaseSessionsDeps(client).getSessionStats("o1", "s1");
+  }
+  test.each(readers)("%s commits uncertainty before the first protected usage query", async (name) => {
+    const { client, operations } = recordingClient({ sessions: [SESSION], billing_records: USAGE_ROWS });
+    await read(name, client);
+    expect(operations.filter((op) => op !== "read:sessions")[0]).toBe("mark");
+    expect(operations).toContain("read:billing_records");
+    expect(operations.filter((op) => op === "mark")).toHaveLength(1);
+  });
+  test.each(readers)("%s refuses protected I/O after a failed or malformed acknowledgement", async (name) => {
+    for (const coverage of [{ data: false, error: null }, { data: null, error: null }, { data: true, error: { message: "private DB text" } }]) {
+      const { client, operations } = recordingClient({ sessions: [SESSION], billing_records: USAGE_ROWS }, { coverage });
+      await expect(read(name, client)).rejects.toThrow("erasure coverage");
+      expect(operations).not.toContain("read:billing_records");
+      expect(operations).toContain("mark");
+    }
+  });
+  test("metadata-only plan and foreign-session checks do not create content copies", async () => {
+    const { client, operations } = recordingClient({ organizations: [{ id: "o1", plan: "growth" }], sessions: [SESSION] });
+    expect(await createSupabaseUsageDeps(client).getOrgPlan("o1")).toBe("growth");
+    expect(await createSupabaseSessionsDeps(client).getSessionStats("foreign", "s1")).toBeNull();
+    expect(operations).toEqual(["read:organizations", "read:sessions"]);
   });
 });
 

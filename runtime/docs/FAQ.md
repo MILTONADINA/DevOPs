@@ -79,13 +79,19 @@ Sessions are scoped to a session ID. Within a session, context from one project 
 ### How do I delete my data?
 
 There is no account to cancel: DevOps runs on your machine, and its data is
-in a database you control. Session erasure through the API is not implemented
-or verified yet. C2/M1 makes usage rows unsigned and mutable; C4-A/M2 retires
+in a database you control. The initial managed explicit-session class passed
+controlled authenticated API erasure verification on 2026-10-03. C2/M1 makes
+usage rows unsigned and mutable; C4-A/M2 retires
 the invoice schema and removes the financial preflight blocker. Usage remains
-ordinary session-linked data. Preflight still reports incomplete inventory
-and unavailable execution; DELETE only ends a session. The retained
-requirements are in `specs/memory/session-erasure.md`.
-Real-data recovery and end-to-end deletion timing are also unverified. Do not rely on it for a
+ordinary session-linked data. Read-only preflight reports ready/blocked with
+scoped counts and managed-store classifications; POST performs erasure while
+DELETE only ends a session. Eligibility requires trusted activation of a fresh
+isolated source/process/store generation. Pre-existing/imported/conversation
+sessions and unknown copies remain ineligible. General managed onboarding and
+restarts are not supported by the initial single-use launcher. See the
+[limited erasure runbook](../../docs/runbooks/LOCAL_STRATUM.md#limited-managed-erasure-candidate)
+and `specs/memory/session-erasure.md`.
+Real-data recovery and the one-year deletion benchmark remain unverified. Do not rely on it for a
 regulated erasure workflow until the v0.9 erasure item and its
 one-year/<30-second check are complete.
 

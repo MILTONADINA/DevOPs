@@ -103,7 +103,7 @@ export interface BuildProxyOptions {
    */
   memory?: MemoryDeps;
   /**
-   * The sessions API (list / metadata / stats). When omitted, not registered. The commercial
+   * The sessions API (list / metadata / stats). When omitted, only personal erasure refusal is registered. The commercial
    * deploy supplies createSupabaseSessionsDeps(client).
    */
   sessions?: SessionsDeps;
@@ -417,6 +417,11 @@ export function buildProxy(opts: BuildProxyOptions = {}): FastifyInstance {
 
   if (opts.sessions) {
     void app.register(makeSessionsRoute(opts.sessions));
+  } else if (!authConfigured) {
+    // AC-B10: personal mode cannot authorize erasure, even without a database adapter.
+    const refuseErasure = (reply: FastifyReply): FastifyReply => reply.code(403).send({ type: "error", error: { type: "request_error", message: "organization-level API key required" } });
+    app.get("/v1/sessions/:id/erasure-preflight", (_req, reply) => refuseErasure(reply));
+    app.post("/v1/sessions/:id/erasure", (_req, reply) => refuseErasure(reply));
   }
 
   if (opts.webhooks) {
