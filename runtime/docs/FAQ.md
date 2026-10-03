@@ -80,11 +80,12 @@ Sessions are scoped to a session ID. Within a session, context from one project 
 
 There is no account to cancel: DevOps runs on your machine, and its data is
 in a database you control. Session erasure through the API is not implemented
-or verified yet. Today the local database has immutable billing records
-linked to organization and session IDs, so it cannot replace those IDs in
-place; the planned payment removal turns those rows into ordinary
-session-linked usage data (`../specs/ops/payment-removal.md`, REQ-8).
-Export and deletion timing are also unverified. Do not rely on it for a
+or verified yet. C2/M1 makes usage rows unsigned and mutable; C4-A/M2 retires
+the invoice schema and removes the financial preflight blocker. Usage remains
+ordinary session-linked data. Preflight still reports incomplete inventory
+and unavailable execution; DELETE only ends a session. The retained
+requirements are in `specs/memory/session-erasure.md`.
+Real-data recovery and end-to-end deletion timing are also unverified. Do not rely on it for a
 regulated erasure workflow until the v0.9 erasure item and its
 one-year/<30-second check are complete.
 

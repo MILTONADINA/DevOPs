@@ -22,19 +22,18 @@ Both read `SUPABASE_URL` and `SUPABASE_SERVICE_KEY` from the process
 environment, so run them through `npm run db:with-env -- ...`. A dry-run
 restore needs neither, because it returns before reading them.
 
-Sources: `runtime/package.json:47-48`, `runtime/scripts/backup-org.ts:8`,
-`runtime/scripts/backup-org.ts:168-173`, `runtime/scripts/restore-org.ts:9`,
-`runtime/scripts/restore-org.ts:241-251`.
+Sources: `runtime/package.json:47-48`, `runtime/scripts/backup-org.ts`,
+`runtime/scripts/restore-org.ts`.
 
 ## What a backup contains
 
 A backup is one JSON object with three keys: `orgId`, `exportedAt`, and
 `tables`. `tables` maps each table name to an array of rows. The file holds
-23 tables:
+21 tables:
 
 - `organizations`, selected by `id`.
-- These 21 tables, selected by `org_id`: `developers`, `org_config`,
-  `sessions`, `billing_records`, `invoices`, `invoice_send_claims`, `function_changes`,
+- These 19 tables, selected by `org_id`: `developers`, `org_config`,
+  `sessions`, `billing_records`, `function_changes`,
   `tech_decisions`, `policy_updates`, `todos`, `variable_changes`,
   `operational_references`, `knowledge_entities`, `knowledge_edges`,
   `knowledge_entity_sessions`, `knowledge_edge_sessions`,
@@ -57,9 +56,7 @@ with default permissions, which is why the LOCAL_STRATUM procedure sets
 The file holds organization data, including `api_keys` rows with their key
 hashes and `billing_records`. Treat it as sensitive.
 
-Sources: `runtime/scripts/backup-org.ts:22-49`,
-`runtime/scripts/backup-org.ts:95-113`, `runtime/scripts/backup-org.ts:124-156`,
-`runtime/scripts/backup-org.ts:176-185`, `runtime/.gitignore:71-72`,
+Sources: `runtime/scripts/backup-org.ts`, `runtime/.gitignore:71-72`,
 `runtime/src/proxy/auth.ts:33-42`, `docs/runbooks/LOCAL_STRATUM.md:62-67`.
 
 ## What a backup does not contain
@@ -78,14 +75,14 @@ Sources: `runtime/scripts/backup-org.ts:22-49`,
 
 Sources: `runtime/src/usage/durable-usage-outbox.ts`,
 `runtime/scripts/backup-org.ts`,
-`runtime/scripts/restore-org.ts:75-84`, `runtime/src/proxy/index.ts:450-451`,
+`runtime/scripts/restore-org.ts`, `runtime/src/proxy/index.ts:450-451`,
 `runtime/src/proxy/index.ts:504`, `runtime/.gitignore:43-49`,
 `runtime/scripts/local-compose.ts:113`, `docs/runbooks/LOCAL_STRATUM.md:75-78`.
 
 ## Verify a backup
 
 1. Require exit code 0 and the final summary line from the backup command:
-   `<N> row(s) across <M> tables → <path>`. `M` is 23 for a current export.
+   `<N> row(s) across <M> tables → <path>`. `M` is 21 after C4-A/M2.
 2. Confirm the file at that path exists and is not empty.
 3. Validate the file without writing anything:
 
@@ -102,25 +99,27 @@ The dry run checks the file only. It rejects:
 
 - a missing or empty `orgId`, or an `organizations` array that is not exactly
   one row with that ID;
-- a missing expected table, or any table restore does not support;
+- a missing active table, or a table name other than the active manifest and
+  the two explicitly retired invoice tables;
 - a file without `operational_references` (an export from before that table
   existed);
-- a file without `invoice_send_claims` (an export from before PB-65, 2026-09-25).
-  The current manifest still requires that retained table. C3 removes the
-  payment sender; C4/M2 will retire the table and add legacy-table skipping;
-- any row in an organization-scoped table, or in `source_fact_links`, whose
-  `org_id` differs from `orgId`;
+- any malformed retired-table container/row, or an organization-scoped row
+  (including a legacy invoice row) whose `org_id` differs from `orgId`;
 - decision supersession links that are missing, duplicated, cross-project,
   not newer than the decision they replace, or lack a reviewer, at least 20
   characters of evidence, and a review time;
 - conversation sessions whose API key is not in the file, and `pruning_logs`
   rows whose session is not in the file.
 
-It does not prove that foreign keys or all inserts will succeed on a target
+Either retired table may be absent. If `invoices` or `invoice_send_claims`
+is present as a valid row array, restore skips it and prints its name and row
+count, including zero for an empty array. It never queries or inserts a
+retired table. This applies to dry and real restores.
+
+The dry run does not prove that foreign keys or all inserts will succeed on a target
 (`docs/runbooks/LOCAL_STRATUM.md:102-104`).
 
-Sources: `runtime/scripts/backup-org.ts:193`, `runtime/scripts/restore-org.ts:67-159`,
-`runtime/scripts/restore-org.ts:234-244`.
+Sources: `runtime/scripts/backup-org.ts`, `runtime/scripts/restore-org.ts`.
 
 ## What a restore does
 
@@ -151,20 +150,23 @@ key was revoked after the backup; each key then keeps its backed-up
 inserts, so a key that already exists in the target makes the insert fail and
 restore stops, as described above.
 
-Sources: `runtime/scripts/restore-org.ts:21-49`, `runtime/scripts/restore-org.ts:173-192`,
-`runtime/scripts/restore-org.ts:254-286`, `runtime/scripts/backup-org.ts:42`.
+Sources: `runtime/scripts/restore-org.ts`, `runtime/scripts/backup-org.ts`.
 
-Invoice tables remain exported and restored through C3 until C4/M2; restore does not skip
-`invoices` or `invoice_send_claims`. Old rows containing retired fee/signature
-columns are accepted, provided the backup otherwise passes validation. This
-does not relax missing-table, cross-organization, malformed-fact or FK checks.
+C4-A/M2 removes `invoices` and `invoice_send_claims` from the schema and new
+exports. Legacy backups may contain either retired table; real and dry-run
+restore report each present table and skipped row count, including zero.
+Skipped rows do not contribute to insertion totals and their contents are not
+printed. Old usage rows containing retired fee/signature columns are also
+accepted and reported. Active-table, cross-organization, malformed-fact and
+FK checks remain in force.
 
 The focused synthetic legacy-usage check is
 `npm run db:with-env -- node test/integration/local-legacy-usage-restore.mjs`
-from `runtime/`. It uses its own organization, constructs pre-C2 usage columns,
-checks stripped-column reports in dry and real modes, verifies retained inputs
-and regenerated estimates, and verifies invoice/claim rows remain restored.
-It does not use a real organization backup.
+from `runtime/`. It uses its own organization and constructs synthetic legacy
+invoice/claim arrays and pre-C2 usage columns. It checks table-skip and
+column-strip reports in dry and real modes, then verifies retained usage
+inputs, regenerated estimates, project identity and pruning references.
+It does not use a real organization backup or recreate retired tables.
 
 ## The disposable recovery check
 
@@ -177,21 +179,21 @@ In order, it:
    conversation session, graph entities and an edge with extra session links,
    facts, an operational reference, audit results (one `CONFLICT`, one
    `UNVERIFIED`), and a reviewed decision supersession
-   (`runtime/test/integration/local-backup-recovery.mjs:67-116`).
+   (`runtime/test/integration/local-backup-recovery.mjs`).
 2. Writes a project-local dotenv override that points `SUPABASE_URL` at a
    closed port. The check fails if either CLI loads it, which shows that
-   process credentials win (`runtime/test/integration/local-backup-recovery.mjs:118-121`,
-   `runtime/test/integration/local-backup-recovery.mjs:44-51`).
-3. Runs `backup-org.ts` and checks exact row counts for 13 of the 23
+   process credentials win (`runtime/test/integration/local-backup-recovery.mjs`).
+3. Runs `backup-org.ts`, checks that retired invoice tables are absent, and
+   checks exact row counts for 13 of the 21
    tables: `organizations`, `sessions`, `api_keys`, `function_changes`,
    `tech_decisions`, `operational_references`, `knowledge_entities`,
    `knowledge_edges`, `knowledge_entity_sessions`, `knowledge_edge_sessions`,
    `source_fact_links`, `audit_statuses`, and `audit_conflicts`. It also
    checks the exact IDs and times of the operational reference and source
    link. It does not count `developers`, `org_config`, `billing_records`,
-   `invoices`, `policy_updates`, `todos`, `variable_changes`,
+   `policy_updates`, `todos`, `variable_changes`,
    `memory_vectors`, or `pruning_logs`
-   (`runtime/test/integration/local-backup-recovery.mjs:122-137`).
+   (`runtime/test/integration/local-backup-recovery.mjs`).
 4. Confirms restore exits 1 with the expected error for a backup missing
    `audit_statuses` and for a backup whose `audit_statuses` rows name another
    organization. After the first attempt it checks only that the source
@@ -199,22 +201,22 @@ In order, it:
    database. The check itself does not prove that neither attempt wrote
    anything. In the code, both errors come from `validateBackup`, and restore
    returns on a validation error before it creates a database client
-   (`runtime/test/integration/local-backup-recovery.mjs:139-157`,
-   `runtime/scripts/restore-org.ts:80`, `runtime/scripts/restore-org.ts:91`,
-   `runtime/scripts/restore-org.ts:226-232`, `runtime/scripts/restore-org.ts:252`).
+   (`runtime/test/integration/local-backup-recovery.mjs`,
+   `runtime/scripts/restore-org.ts`).
 5. Deletes the organization, confirms it is gone, runs `restore-org.ts`, and
    checks suppression, audit status, the unacknowledged alert, the decision
    supersession review fields, graph session links, the source link's ID and
-   time, and the session erasure inventory (`runtime/test/integration/local-backup-recovery.mjs:159-189`).
+   time, inactive restored API keys, and the session erasure inventory (`runtime/test/integration/local-backup-recovery.mjs`).
 6. Deletes the organization again, restores a copy whose `source_fact_links`
    list is empty, and checks that no links remain
-   (`runtime/test/integration/local-backup-recovery.mjs:190-194`).
-7. Always deletes its rows and temporary files, even on failure
-   (`runtime/test/integration/local-backup-recovery.mjs:196-202`).
+   (`runtime/test/integration/local-backup-recovery.mjs`).
+7. Always attempts scoped row cleanup. Removes temporary files after success;
+   preserves the synthetic files when the check or cleanup fails
+   (`runtime/test/integration/local-backup-recovery.mjs`).
 
 On success it prints
-`local audited organization, graph provenance, and source-link backup and restore passed`
-(`runtime/test/integration/local-backup-recovery.mjs:195`).
+`local audited organization, graph provenance, and source-link backup and restore passed; retired tables omitted and fixture cleaned`
+(`runtime/test/integration/local-backup-recovery.mjs`).
 
 Source for the npm script: `runtime/package.json:64`.
 
@@ -223,28 +225,30 @@ Source for the npm script: `runtime/package.json:64`.
 - **Real data and clean machines are not verified.** The recovery check uses
   a fixture on the same running stack. Clean-machine and real-data recovery
   remain open under `plan.md` §7c "Backup + restore" (`plan.md:413`).
-- **The current table manifest is required.** An older export missing a
-  required table fails validation and needs an explicit migration of the file.
-  Retired usage columns alone do not cause rejection after C2
-  (`runtime/scripts/restore-org.ts:75-84`).
+- **The current active-table manifest is required.** An older export missing
+  a required active table fails validation and needs an explicit migration of
+  the file. The two retired invoice tables are optional and skipped/reported;
+  retired usage columns are stripped/reported and do not cause rejection
+  (`runtime/scripts/restore-org.ts`).
 - **No merge.** Restore cannot update an organization that already exists
-  (`runtime/scripts/restore-org.ts:4-7`, `runtime/scripts/restore-org.ts:267`).
+  (`runtime/scripts/restore-org.ts`).
 - **No partial rollback.** A failed restore leaves the rows it already
-  inserted (`runtime/scripts/restore-org.ts:254-268`).
+  inserted (`runtime/scripts/restore-org.ts`).
 - **The recovery check only runs on the default stack.** It requires
   `SUPABASE_URL` to be exactly `http://127.0.0.1:54321`, so it refuses an
   isolated instance started with `DEVOPS_LOCAL_INSTANCE` and
-  `DEVOPS_LOCAL_PORT` (`runtime/test/integration/local-backup-recovery.mjs:11-13`,
+  `DEVOPS_LOCAL_PORT` (`runtime/test/integration/local-backup-recovery.mjs`,
   `runtime/scripts/local-compose.ts:10-21`).
 - **Gaps listed above.** The usage outbox, captured session files, and the
   model cache are outside the backup
   ([What a backup does not contain](#what-a-backup-does-not-contain)).
-  Historical invoice claims (`invoice_send_claims`) remain included through
-  C3 so a restore preserves the retained schema's records. C4/M2 removes those
-  tables and their export entries together.
+  C4-A/M2 retires historical invoice/claim data from the live schema. Legacy
+  copies can still contain those rows; restore reports that it skips them.
+  This is not proof that every backup, external copy or session was erased.
 - **No scheduled backups.** No script in `runtime/scripts/` or `scripts/`
   runs a backup on a schedule. Backups happen when an operator runs one.
 
-`runtime/docs/MEMORY_AND_EVAL_COMMANDS.md` now says 23 tables, matching the
-code. The code exports 23 (`runtime/scripts/backup-org.ts:22-43`,
-`runtime/scripts/backup-org.ts:127`, `runtime/scripts/backup-org.ts:143-153`).
+The current 21-table manifest is in `runtime/scripts/backup-org.ts` and is
+reflected in `runtime/docs/MEMORY_AND_EVAL_COMMANDS.md`. Actual session erasure
+and the one-year/<30-second benchmark remain unfinished under
+`specs/memory/session-erasure.md`.

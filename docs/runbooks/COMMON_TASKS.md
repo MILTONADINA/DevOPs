@@ -261,9 +261,10 @@ To apply migrations safely:
 A migration that adds an organization table does not add it to backups. The
 backup table list is fixed in code (`runtime/scripts/backup-org.ts:22-43`), so
 the new table is left out until someone adds it to that list. The current list
-includes `invoice_send_claims` and `invoices`; they remain until C4/M2 removes
-them. Restore requires the current table manifest, while C2 accepts and reports
-retired `cq_fee_usd` and `signed_hash` columns from older usage rows
+omits the invoice tables retired by C4-A/M2. Restore requires every active
+table, but accepts and reports skipped `invoices`/`invoice_send_claims` arrays
+from older exports (including present empty arrays). It also accepts and
+reports retired `cq_fee_usd` and `signed_hash` columns from older usage rows
 (`runtime/scripts/restore-org.ts`,
 [BACKUP_RESTORE.md](BACKUP_RESTORE.md#known-limits)).
 

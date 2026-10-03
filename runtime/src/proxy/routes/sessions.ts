@@ -139,7 +139,7 @@ export function makeSessionsRoute(deps: SessionsDeps): FastifyPluginCallback {
     });
 
     app.get("/v1/sessions/:id/erasure-preflight", async (req, reply) => {
-      // Inventory includes organization-wide graph and financial counts. A project-bound key
+      // Inventory includes organization-wide graph and usage counts. A project-bound key
       // must not inspect them, and personal mode has no authenticated organization identity.
       if (req.authEnforced !== true || !req.orgId || req.projectScopeId !== undefined) {
         return err(reply, 403, "organization-level API key required");
@@ -149,12 +149,11 @@ export function makeSessionsRoute(deps: SessionsDeps): FastifyPluginCallback {
       const inventory = await deps.inspectErasure(req.orgId, id);
       if (inventory === null) return err(reply, 404, "session not found for this org");
       const reasons: string[] = [];
-      if ((inventory.counts["billing_records"] ?? 0) > 0) reasons.push("billing_retention_undecided");
       if (inventory.graph_ownership === "ambiguous") reasons.push("graph_ownership_ambiguous");
       if ([inventory.external_copies, inventory.backups, inventory.in_memory].some((value) => value !== "inventoried")) reasons.push("stores_not_inventoried");
       reasons.push("erasure_execution_unavailable");
       return {
-        status: reasons.includes("billing_retention_undecided") ? "blocked_billing_retention" : "blocked_incomplete_inventory",
+        status: "blocked_incomplete_inventory",
         reasons,
         inventory,
       };

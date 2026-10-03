@@ -302,10 +302,19 @@ writer. Neither writer is compatible with the other schema; deliver this
 writer and migration together
 (`runtime/supabase/migrations/20261003000000_unsigned_usage_ledger.sql`).
 
-**Remaining invoice schema.** C1 removed payment HTTP routes; C3 removes the
-invoice engine, Stripe library, payment types and operator scripts. Invoice
-tables and the existing erasure retention blocker remain until C4. Backups and
-restores still include those tables. DevOps has no payment workflow.
+**Retired invoice schema.** C1 removed payment HTTP routes; C3 removes the
+invoice engine, Stripe library, payment types and operator scripts. C4-A/M2
+drops `reconcile_claimed_invoice`, `record_invoice_payment`,
+`invoice_send_claims` and `invoices`, and removes the invoice classes from
+the scoped erasure inventory. Historical migrations remain unchanged.
+DevOps has no payment workflow.
+
+**Erasure remains incomplete.** Preflight no longer has a financial blocker;
+`billing_records` is ordinary session-linked usage and keeps its numeric
+inventory count. Graph uncertainty, unknown RAM/external/backup coverage and
+`erasure_execution_unavailable` still block erasure. DELETE only sets
+`ended_at`. The actual API deletion and one-year/<30-second benchmark remain
+required by `specs/memory/session-erasure.md`; C4-A does not satisfy those gates.
 
 **Usage reads.** `runtime/src/proxy/routes/usage.ts` serves
 `GET /v1/billing/summary` and `GET /v1/billing/records` with token totals and
@@ -315,7 +324,7 @@ key receives 403. The session stats also expose only counts and estimated USD
 savings. None of these readers imports a billing module.
 
 **What is local-only.** The outbox lives on the proxy's disk and the usage
-and remaining invoice tables in the local Compose database. This document records
+table in the local Compose database. This document records
 no Stripe send and no paid invoice. Commercial startup refuses to run when the `VERCEL`
 environment variable is set to a value other than `0`
 (`runtime/src/proxy/index.ts`, `assertCommercialStartup` and
@@ -356,9 +365,12 @@ ADR-0020). The operator owns backups. A production storage plan is open.
 re-inserts such a file into a clean target (`runtime/package.json:47-48`,
 `runtime/scripts/backup-org.ts:1-14`, `runtime/scripts/restore-org.ts:1-13`).
 The export covers a fixed table list (`runtime/scripts/backup-org.ts:22-43`).
-The export includes `billing_records`, `invoices` and `invoice_send_claims`;
-the invoice tables stay in backups until C4 drops them. Restore strips and
-reports retired fee/signature columns from old usage rows, and strips the
+The 21-table export includes `billing_records` and omits the retired
+`invoices` and `invoice_send_claims` tables. Restore accepts those two tables
+in legacy backups and reports each present table's skipped row count, even
+when zero, in both real and dry-run modes. It does not insert retired rows.
+Restore also strips and reports retired fee/signature columns from old usage
+rows, and strips the
 surviving generated columns for database recomputation. It keeps all other
 inputs and identifiers. Events waiting in the on-disk outbox are files rather
 than table rows and are outside this export. Preserve that directory separately
@@ -391,7 +403,7 @@ Status text is copied from each file's status line.
 | 0018 | The Upstream Anthropic Key in Commercial Mode — Per-Deployment for the Pilot, Per-Request Pass-Through to Scale | Accepted (per-deployment key for the first design partner; per-request pass-through is the documented scale path, default-OFF until taken up) | |
 | 0019 | Multi-Provider Gateway — Anthropic-Shaped Surface, Provider Adapters Behind It | Accepted (Anthropic-in / any-provider-out; an OpenAI-compatible INBOUND surface is a documented, additive follow-on) | |
 | 0020 | Local Supabase stack after hosted project retirement | Accepted for local development; production topology open | |
-| 0021 | Session erasure needs a separate financial retention boundary | Proposed; technical inventory complete, policy and implementation open | |
+| 0021 | Session erasure needs a separate financial retention boundary | Superseded by ADR-0025 and payment-removal REQ-8 (C4-A, 2026-10-03) | Nonfinancial duties continue in `specs/memory/session-erasure.md`; endpoint/benchmark open |
 | 0022 | Versioned client encryption primitive before TEE integration | accepted for offline implementation; request-path activation is gated. | |
 | 0023 | Provenance-gated exchange selection, and what Tier-C gates | proposed (2026-09-25). The owner delegated these decisions to the orchestrator's recommendation and may override any of them. | |
 | 0024 | Tier-2 long-history recall assembly (option A), gated | proposed (2026-09-25). The owner delegated this to the orchestrator's recommendation and may override it. | |

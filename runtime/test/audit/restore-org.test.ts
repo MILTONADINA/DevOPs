@@ -133,13 +133,13 @@ describe("stripGeneratedCols", () => {
 });
 
 describe("legacy usage restore (specs/ops/payment-removal.md#REQ-9)", () => {
-  test.each([true, false])("reports only retired columns present in dryRun=%s and preserves invoice tables through C4", async (dryRun) => {
+  test.each([true, false].flatMap((dryRun) => ["missing", "empty", "populated"].map((legacyTables) => ({ dryRun, legacyTables }))))("reports retired columns and skipped $legacyTables tables before inserts in dryRun=$dryRun", async ({ dryRun, legacyTables }) => {
     const { mkdtempSync, rmSync, writeFileSync } = await vi.importActual<typeof import("node:fs")>("node:fs");
     const dir = mkdtempSync(join(process.cwd(), "../.workflow/state/legacy-restore-"));
     const file = join(dir, "synthetic.backup.json");
     const usage = { id: "b1", org_id: "o1", session_id: "s1", original_tokens: 100, quarantined_tokens: 40, api_price_per_token: 0.02, usage_event_id: "u1" };
     const invoice = { id: "i1", org_id: "o1", stripe_invoice_id: "synthetic-invoice", amount_cents: 24, status: "paid" };
-    const claim = { org_id: "o1", period_start: "2026-08-01T00:00:00Z", period_end: "2026-09-01T00:00:00Z" };
+    const claim = { org_id: "o1", period_start: "2026-08-01T00:00:00Z", period_end: "2026-09-01T00:00:00Z", legacy_note: "private-claim-value" };
     const backup: BackupFile = {
       orgId: "o1", exportedAt: "2026-09-25T00:00:00Z",
       tables: Object.fromEntries([["organizations", [{ id: "o1" }]], ...ORG_SCOPED_TABLES.map((table) => [table, []]), ["pruning_logs", []]]),
@@ -149,15 +149,26 @@ describe("legacy usage restore (specs/ops/payment-removal.md#REQ-9)", () => {
       { ...usage, token_delta: 60, cost_delta_usd: 1.2, cq_fee_usd: "retired-fee-value", signed_hash: "retired-signature-value" },
       { ...usage, id: "b2", usage_event_id: "u2", signed_hash: null },
     ];
-    backup.tables["invoices"] = [invoice];
-    backup.tables["invoice_send_claims"] = [claim];
+    delete backup.tables["invoices"];
+    delete backup.tables["invoice_send_claims"];
+    if (legacyTables !== "missing") {
+      backup.tables["invoices"] = legacyTables === "empty" ? [] : [invoice];
+      backup.tables["invoice_send_claims"] = legacyTables === "empty" ? [] : [claim];
+    }
+    const messages: string[] = [];
     const inserts: { table: string; rows: unknown[] }[] = [];
-    const from = vi.fn((table: string) => ({
-      insert: vi.fn(async (rows: unknown[]) => { inserts.push({ table, rows }); return { error: null }; }),
-      delete: vi.fn(() => ({ eq: vi.fn(async () => ({ error: null })) })),
-    }));
+    const from = vi.fn((table: string) => {
+      expect(["invoices", "invoice_send_claims"]).not.toContain(table);
+      for (const retired of ["invoices", "invoice_send_claims"]) {
+        if (legacyTables !== "missing") expect(messages.join("")).toContain(`skipped retired table ${retired} (${legacyTables === "empty" ? 0 : 1} row(s))`);
+      }
+      return {
+        insert: vi.fn(async (rows: unknown[]) => { inserts.push({ table, rows }); return { error: null }; }),
+        delete: vi.fn(() => ({ eq: vi.fn(async () => ({ error: null })) })),
+      };
+    });
     vi.mocked(createClient).mockReturnValue({ from } as unknown as ReturnType<typeof createClient>);
-    const output = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    const output = vi.spyOn(process.stdout, "write").mockImplementation((value) => { messages.push(String(value)); return true; });
     vi.stubEnv("SUPABASE_URL", "http://127.0.0.1:54321");
     vi.stubEnv("SUPABASE_SERVICE_KEY", "synthetic-test-only");
     try {
@@ -170,16 +181,22 @@ describe("legacy usage restore (specs/ops/payment-removal.md#REQ-9)", () => {
       expect(text).not.toContain("retired-fee-value");
       expect(text).not.toContain("retired-signature-value");
       expect(text).not.toContain("synthetic-test-only");
+      expect(text).not.toContain("synthetic-invoice");
+      expect(text).not.toContain("private-claim-value");
       expect(text).not.toContain("retired column billing_records.token_delta");
       expect(text).not.toContain("retired column billing_records.cost_delta_usd");
+      if (legacyTables === "missing") expect(text).not.toContain("skipped retired table");
+      else {
+        for (const table of ["invoices", "invoice_send_claims"]) expect(text).toContain(`skipped retired table ${table} (${legacyTables === "empty" ? 0 : 1} row(s))`);
+      }
       if (dryRun) {
         expect(from).not.toHaveBeenCalled();
-        expect(text).toContain("DRY RUN");
+        expect(createClient).not.toHaveBeenCalled();
+        expect(text).toContain("DRY RUN — would insert 4 row(s) across 3 tables");
       } else {
         expect(inserts.find(({ table }) => table === "billing_records")?.rows).toEqual([usage, { ...usage, id: "b2", usage_event_id: "u2" }]);
-        expect(inserts.find(({ table }) => table === "invoices")?.rows).toEqual([invoice]);
-        expect(inserts.find(({ table }) => table === "invoice_send_claims")?.rows).toEqual([claim]);
-        expect(text).toContain("Restored 6 row(s) across 5 tables");
+        expect(inserts.map(({ table }) => table)).toEqual(["organizations", "sessions", "billing_records"]);
+        expect(text).toContain("Restored 4 row(s) across 3 tables");
       }
     } finally {
       output.mockRestore();
@@ -259,7 +276,7 @@ describe("restorePlan", () => {
 });
 
 // PB-64 and PB-65 (2026-09-25): a restore cannot know about revocations made after the backup, so API
-// keys come back inactive unless the operator asks otherwise; invoice claims are part of the backup.
+// keys come back inactive unless the operator asks otherwise; C4 retires invoice claims.
 describe("backup and restore hardening (PB-64, PB-65)", () => {
   const base = (keys: unknown[]): BackupFile => ({
     orgId: "o1",
@@ -279,9 +296,40 @@ describe("backup and restore hardening (PB-64, PB-65)", () => {
     expect((plan.find((p) => p.table === "api_keys")!.rows[0] as { is_active: boolean }).is_active).toBe(true);
   });
 
-  test("invoice_send_claims is backed up and restored right after invoices", () => {
-    expect(ORG_SCOPED_TABLES).toContain("invoice_send_claims");
-    expect(RESTORE_ORDER.indexOf("invoice_send_claims")).toBe(RESTORE_ORDER.indexOf("invoices") + 1);
+  test("specs/ops/payment-removal.md#REQ-9 — retired invoice tables never enter the active restore plan", () => {
+    const backup = base([]);
+    backup.tables["invoices"] = [{ id: "i1", org_id: "o1" }];
+    backup.tables["invoice_send_claims"] = [{ org_id: "o1" }];
+    expect(restorePlan(backup)).toEqual([{ table: "organizations", rows: [{ id: "o1" }] }]);
+  });
+});
+
+describe("retired table validation (specs/ops/payment-removal.md#REQ-9)", () => {
+  function currentBackup(): BackupFile {
+    const tables = Object.fromEntries([["organizations", [{ id: "o1" }]], ...ORG_SCOPED_TABLES.map((table) => [table, []]), ["pruning_logs", []]]);
+    delete tables["invoices"];
+    delete tables["invoice_send_claims"];
+    return { orgId: "o1", exportedAt: "legacy-time-unvalidated", tables };
+  }
+  test("accepts a new backup without either retired table", () => {
+    const backup = currentBackup();
+    expect(validateBackup(backup)).toBe(backup);
+  });
+  test.each(["invoices", "invoice_send_claims"])("accepts %s independently, empty or populated, without changing the input", (table) => {
+    for (const rows of [[], [{ org_id: "o1", historical_extra: "not inserted" }]]) {
+      const backup = currentBackup();
+      backup.tables[table] = rows;
+      const before = structuredClone(backup);
+      expect(validateBackup(backup)).toBe(backup);
+      expect(restorePlan(backup)).toEqual([{ table: "organizations", rows: [{ id: "o1" }] }]);
+      expect(backup).toEqual(before);
+    }
+  });
+  test.each(["invoices", "invoice_send_claims"])("rejects malformed %s containers and rows, including missing or foreign org", (table) => {
+    for (const rows of [null, {}, false, 3, "bad", [null], [[]], [false], [3], ["bad"], [{}], [{ org_id: "o2" }]]) {
+      const backup = currentBackup();
+      expect(() => validateBackup({ ...backup, tables: { ...backup.tables, [table]: rows } })).toThrow(new RegExp(`${table} (must be an array|row must be an object|organization mismatch)`));
+    }
   });
 });
 

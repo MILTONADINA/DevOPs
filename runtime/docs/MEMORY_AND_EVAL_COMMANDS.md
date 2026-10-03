@@ -27,14 +27,18 @@ the local database; provider-backed messages need a configured provider.
 Clean-machine and cross-platform timing gates remain open.
 
 `npm run backup -- --org-id <uuid> [--pretty]` exports one org's full row-set across all
-23 tables to a timestamped JSON in the gitignored `backups/` (disaster recovery / data
+21 tables to a timestamped JSON in the gitignored `backups/` (disaster recovery / data
 portability / GDPR export). **FREE**, read-only (SELECT only); needs Supabase creds.
 `npm run restore -- --file <path> [--dry-run] [--keep-key-state]` re-inserts a backup (API keys come back inactive unless `--keep-key-state`) in FK-dependency order
 — preserving UUIDs (so cross-table references stay valid) and stripping generated
 usage columns plus retired `cq_fee_usd`/`signed_hash` columns — into a CLEAN target.
 Real and dry-run output names each retired column stripped and its row count.
-Invoice tables remain part of the backup/restore manifest until C4. A disposable local backup → delete → restore
-round-trip is referential-integrity-verified; real-data recovery is unverified.
+C4-A/M2 removes `invoices` and `invoice_send_claims` from the schema and new
+exports. Restore accepts either retired table in an older backup and reports
+its skipped row count, including zero for a present empty table. Active-table
+validation, key deactivation and provenance restoration remain required.
+The disposable recovery harness checks the retained data round trip;
+real-data recovery remains unverified.
 
 C2 records unsigned usage through `src/usage/`, with exact token counts and a
 pinned USD estimate. Migration M1 removes the signature, fee column and
@@ -51,8 +55,11 @@ and does not measure model quality.
 
 C3 removes the legacy `invoice`, `verify-billing` and `verify-stripe` npm
 scripts and their payment implementation. Use the unsigned usage checks above
-for persistence and replay. DevOps has no payment workflow (ADR-0025); invoice
-tables remain in backups/restores until C4.
+for persistence and replay. DevOps has no payment workflow (ADR-0025).
+C4-A removes invoice schema and the financial preflight blocker, but does not
+implement API erasure. Preflight still reports incomplete inventory and
+unavailable execution; DELETE only ends a session. Actual deletion and the
+one-year/<30-second benchmark remain open (`specs/memory/session-erasure.md`).
 
 The proxy exposes the **usage read API** when `buildProxy({ usage })` is supplied:
 `GET /v1/billing/summary` (`?month=YYYY-MM`, optional `since`/`until`, all time
