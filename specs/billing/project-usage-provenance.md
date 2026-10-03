@@ -1,10 +1,12 @@
-# Trusted project provenance for usage billing
+# Trusted project provenance for usage
 
-**Scope:** Commercial message usage is charged at the organization level, but
-each append-only record references a usage session. Preserve the authenticated
-project on that session so future financial audit and lawful erasure can tell
-which project generated a record. Existing unbound buckets remain unbound;
-invoices and financial APIs remain organization-wide.
+**Amended**: 2026-10-03 by `specs/ops/payment-removal.md` C2: REQ-4/5 remove signatures and fees while retaining trusted project scope and usage-session identity. Payment HTTP routes were removed in C1.
+
+**Scope:** Team message usage is recorded at organization scope and references
+a usage session. Preserve the authenticated project on that session so usage
+inspection and session inventory can identify its source. Existing unbound
+buckets remain unbound. The retained usage read API is organization-wide and
+denies project-bound keys.
 
 ## REQ-1 — Pass trusted project identity to the recorder
 
@@ -12,8 +14,9 @@ WHEN a successful commercial `/v1/messages` request records usage, THE SYSTEM
 SHALL pass the authenticated API key's organization-qualified project ID to
 the recorder for both normal and streaming responses. Headers, query values,
 and request body fields SHALL NOT supply or override that identity. Unbound
-keys SHALL pass no project identity. Billing shall remain off the response
-path and shall not run for failed upstream responses.
+keys SHALL pass no project identity. Database replay SHALL remain off the
+response path after durable journaling; failed upstream responses SHALL NOT
+produce usage events.
 
 ## REQ-2 — One immutable bucket per project
 
@@ -25,7 +28,7 @@ projects and for the unbound scope SHALL use distinct sessions; requests in
 the same scope SHALL converge on one session across processes. The database
 SHALL enforce this uniqueness with NULL treated as one unbound scope and keep
 the existing immutability of a session's project identity. A conflict re-read
-SHALL filter by the exact project identity before assigning a billing record
+SHALL filter by the exact project identity before assigning a usage record
 to the winning session.
 
 ## Acceptance criteria

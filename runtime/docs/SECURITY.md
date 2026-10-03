@@ -27,7 +27,7 @@ We call this architecture **ZK-Context** — not Zero-Knowledge in the formal cr
 | Malicious Pinecone access | Vector lookup | Embeddings are not reversible to plaintext |
 | Client device compromise | Local key extraction | Separate concern — client OS security |
 | Fake enclave attack | Spoofed TEE endpoint | Attestation document verification required |
-| Billing fraud | Inflate original token counts | Token counts signed at proxy ingress before decryption |
+| Usage corruption | Alter token counts or replay an event with different inputs | C2 keeps exact counts, trusted org/project and event-ID uniqueness; the writer verifies replay inputs. Rows are unsigned and mutable, with no cryptographic tamper-evidence claim. |
 
 ---
 

@@ -39,9 +39,8 @@ VALUES (:'org_a'::uuid, :'session_a'::uuid, 'fact', :'reference_a',
 INSERT INTO public.pruning_logs(session_id, turns_total, lambda_used, gain_shift_used, theta_used)
 VALUES (:'session_a'::uuid, 1, 0.97, 0, 1) RETURNING id AS log_a \gset
 INSERT INTO public.billing_records(org_id, session_id, pruning_log_id, original_tokens,
-  quarantined_tokens, api_price_per_token, signed_hash)
-VALUES (:'org_a'::uuid, :'session_a'::uuid, :'log_a'::uuid, 100, 20, 0.00001,
-  'inventory-fixture-signature');
+  quarantined_tokens, api_price_per_token)
+VALUES (:'org_a'::uuid, :'session_a'::uuid, :'log_a'::uuid, 100, 20, 0.00001);
 
 SELECT set_config('devops_test.erasure_inventory',
   public.inspect_session_erasure(:'org_a'::uuid, :'session_a'::uuid)::text, true) \gset

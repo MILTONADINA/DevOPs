@@ -158,19 +158,11 @@ User: Fact under review: {fact_json}
 
 ### Cost Budget
 
-Opus escalation must not exceed 2% of CQ revenue. Monitor monthly:
-
-```sql
-SELECT 
-  SUM(opus_audit_cost_usd) as monthly_opus_cost,
-  SUM(cq_fee_usd) * 0.02 as audit_budget,
-  CASE WHEN SUM(opus_audit_cost_usd) > SUM(cq_fee_usd) * 0.02 
-       THEN 'OVER BUDGET' ELSE 'OK' END as status
-FROM billing_records
-WHERE created_at > NOW() - INTERVAL '30 days';
-```
-
-If over budget, lower the Llama confidence threshold (from 0.85 toward 0.90) to reduce escalations.
+The original fee-revenue budget proposal is retired by ADR-0025. C2 removes
+`cq_fee_usd`; unsigned usage rows expose estimated token-cost differences, not
+revenue or an audit-spend allowance. Do not query a fee column or use estimated
+savings to authorize model spending. LLM audit tiers are not wired into the
+request path; any future integration needs an explicit operator budget.
 
 ---
 

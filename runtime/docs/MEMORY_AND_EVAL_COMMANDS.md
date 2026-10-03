@@ -30,26 +30,23 @@ Clean-machine and cross-platform timing gates remain open.
 23 tables to a timestamped JSON in the gitignored `backups/` (disaster recovery / data
 portability / GDPR export). **FREE**, read-only (SELECT only); needs Supabase creds.
 `npm run restore -- --file <path> [--dry-run] [--keep-key-state]` re-inserts a backup (API keys come back inactive unless `--keep-key-state`) in FK-dependency order
-— preserving UUIDs (so cross-table references stay valid) and stripping billing's generated
-columns — into a CLEAN target. A disposable local backup → delete → restore
+— preserving UUIDs (so cross-table references stay valid) and stripping generated
+usage columns plus retired `cq_fee_usd`/`signed_hash` columns — into a CLEAN target.
+Real and dry-run output names each retired column stripped and its row count.
+Invoice tables remain part of the backup/restore manifest until C4. A disposable local backup → delete → restore
 round-trip is referential-integrity-verified; real-data recovery is unverified.
 
-The legacy `npm run invoice -- --org-id <uuid> [--since <iso>] [--until <iso>]
-[--csv <path>] [--send]` script remains until payment-removal C3. It computes
-its historical 20%-of-savings invoice with a plan minimum; `--csv` exports the
-signed audit trail, and `--send` still calls Stripe with a test key. DevOps has
-no payment workflow (ADR-0025). C1 removes the inbound Stripe HTTP route, so
-the proxy no longer receives payment events. `npm run verify-stripe` remains a
-legacy operator check of the Stripe client and webhook library until C3; it
-does not prove a registered proxy route.
+C2 records unsigned usage through `src/usage/`, with exact token counts and a
+pinned USD estimate. Migration M1 removes the signature, fee column and
+mutation-blocking triggers; the usage-event unique index and replay input checks
+prevent a duplicate event from being accepted as different content.
 
-Billing records are **HMAC-signed** (src/billing/recorder.ts: `recordBilling` signs each row's
-immutable inputs with `CQ_BILLING_SIGNING_SECRET`; the generated columns are DB-derived). `npm run
-verify-billing -- --org-id <uuid>` recomputes every record's signature and flags any tampering —
-the dispute-proof check ("we provably cannot retroactively modify the data"). **FREE**, read-only.
-It uses only explicit process environment settings and exits nonzero when
-`SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, or `CQ_BILLING_SIGNING_SECRET` is missing;
-an unset verifier is not a passing integrity check.
+The legacy `invoice`, `verify-billing` and `verify-stripe` npm scripts remain
+until C3. Invoice and signature verification commands cannot process the
+post-M1 schema because they expect the removed fee/signature columns.
+`verify-stripe` exercises the retained Stripe library with a test key, not a
+registered proxy route. These legacy commands are outside local team onboarding.
+DevOps has no payment workflow (ADR-0025); invoice tables remain until C4.
 
 The proxy exposes the **usage read API** when `buildProxy({ usage })` is supplied:
 `GET /v1/billing/summary` (`?month=YYYY-MM`, optional `since`/`until`, all time
@@ -58,7 +55,8 @@ records). Both require an organization-level key when auth is enabled; a
 project-bound key receives 403. Without auth, explicitly supplied usage deps
 retain the `?org-id` fallback. USD fields are estimates, for information only.
 The removed CFO page, invoice, audit CSV and invoice-list HTTP routes are not
-registered. The invoice CLI still uses its separate billing factory until C3.
+registered. Its retained invoice CLI factory is incompatible with M1 and is
+scheduled for removal in C3.
 
 Other opt-in proxy APIs (all org-scoped via the auth gate): **config** (`buildProxy({ config })`)
 — `GET`/`PATCH /v1/config` for pruning params (λ/θ/gain_shift) + flags; **memory**
@@ -78,15 +76,15 @@ Anthropic SDK counts are exact when available; other counts are estimates.
 is **SSRF-guarded** (rejects localhost / private / cloud-metadata targets). Set the url + secret via
 `PATCH /v1/config`.
 
-**Commercial mode:** `CQ_COMMERCIAL=true npm run dev` (with Supabase credentials
-and `CQ_BILLING_SIGNING_SECRET` set; the signing secret remains required until C2) boots the proxy
+**Commercial mode:** `CQ_COMMERCIAL=true npm run db:with-env -- npm run dev`
+(with the local stack running) boots the proxy without a signing secret
 with the multi-tenant auth gate (protecting `/v1/*`) and the config, memory, usage,
 sessions and webhook-test APIs wired over Supabase —
 mint a key with `npm run create-api-key`, then call `/v1/*` with `Authorization: Bearer <key>`.
 Without the flag, the proxy is the unauthenticated Phase-1 personal measurement server (unchanged).
 
 `npm run create-org -- --name "<Org>" --plan starter|growth|enterprise|custom [--with-key]` creates a
-partner org (the plan sets the invoice monthly-minimum floor) and, with `--with-key`, mints its first
+team organization (the plan sets request, token and concurrent-session limits) and, with `--with-key`, mints its first
 API key in one step — the onboarding entry point (`COMMERCIAL_ONBOARDING.md`). **FREE**.
 
 `npm run create-api-key -- --org-id <uuid> --name "<label>" [--env test]` mints a multi-tenant
@@ -97,15 +95,13 @@ and prints the raw key once. The proxy enforces it when `buildProxy({ auth })` i
 `npm run api-keys -- --org-id <uuid> --list` lists an org's keys (never the secret/hash); `--revoke
 <key-id>` deactivates one — the auth gate (which filters `is_active=true`) rejects it immediately.
 
-Add to `runtime/.env` (gitignored — never commit):
+Run database commands through `npm run db:with-env -- ...` after `npm run db:start`.
+The wrapper supplies the local `SUPABASE_URL` and `SUPABASE_SERVICE_KEY` to its
+child process. Provider-backed commands additionally need their explicitly
+configured provider settings; no hosted Supabase project is needed. The proxy,
+backup and restore commands do not load `.env` files.
 
-```
-SUPABASE_URL=https://<project>.supabase.co        # free-tier project is fine
-SUPABASE_SERVICE_KEY=sb_secret_...                # service-role key (bypasses RLS)
-ANTHROPIC_API_KEY=sk-ant-...                       # ONLY for the NEEDS-CREDITS commands
-```
-
-The schema lives in `supabase/migrations/` (already applied to the live project).
+The schema lives in `supabase/migrations/`; the local migration runner applies it.
 The ONNX embedding model (~23 MB) downloads once to the gitignored `models/` on the
 first command that encodes.
 

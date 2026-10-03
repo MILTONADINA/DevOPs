@@ -29,6 +29,27 @@ A specific, detected instance of memory drift: a stored fact that conflicts with
 
 ---
 
+## Usage Terms
+
+**Usage Ledger**
+The table still named `billing_records`, written through `src/usage/` in team
+mode. After C2/M1 it stores unsigned token inputs and a pinned per-token price,
+with generated token delta and estimated USD savings. The fee/signature columns
+and mutation-blocking triggers are removed. The unique event ID and input
+comparison protect replay; they do not make rows tamper-evident.
+
+**Durable Usage Outbox**
+Private project-local files acknowledged with fsync before successful response
+completion. Events keep their original ID, UTC time and price across restart;
+database failure retains them for retry. No billing signing secret is needed.
+
+**Estimated USD Savings**
+A token difference multiplied by the pinned estimated price. It is information
+for the operator, never a fee or amount due. With pruning inactive, original
+and quarantined token counts are equal and savings are zero.
+
+---
+
 ## Algorithm Terms
 
 **KadaneDial**
