@@ -75,10 +75,15 @@ reach the validated result.
 
 ## The gate that is never inner-loop-autonomous
 
-**Production deploy** — any `vercel deploy --prod`, `wrangler deploy`,
-`npm publish`, or release-tag push. Enforced mechanically by
-`hooks/universal/pre-tool/deploy-gate.sh`, not by asking a subagent to
-"be careful." Requires one human approval marker for the current cycle.
+**Production deploy** — the deployment/publication, GitHub release, Supabase
+database push and tag/ambiguous-push forms defined in REQ-M16. The ordinary
+branch exception applies only to a bare pushed NAME after safe local lookup
+proves a branch exists and no same-named tag exists. A colon refspec requires an
+explicit `refs/heads/` destination for ordinary admission; other destinations
+remain gated. Explicit protected destinations remain subject to the sealed hook.
+`hooks/universal/pre-tool/deploy-gate.sh` requires one matching human approval
+marker for the sole validated running cycle. Unhalted `gh pr merge` is exempt
+under roadmap Decision 13; required merge checks remain a separate gate.
 This gate does not loosen automatically. See the Phase 2 criteria in the
 approved plan for the only path to changing this, and it explicitly
 excludes this gate regardless of stability metrics.
@@ -126,8 +131,11 @@ tracked here rather than silently assumed fixed.
 
 ## Kill switch
 
-`.workflow/state/graph-halt` (presence = halted). Managed via
-`/graph-halt` and `/graph-resume`. Checked by `deploy-gate.sh` for every
-deploy-shaped or `git push`/`commit`/`tag` command — scoped to consequential
-actions, not every Bash call, so a halted graph doesn't also block a human
-operator from running ordinary read commands while investigating.
+`.workflow/state/graph-halt` (presence = halted). Managed by the human through
+`/graph-halt` and `/graph-resume`. Before its deploy-only return, `deploy-gate.sh`
+blocks the recognized consequential forms in REQ-M16: deployment/publication,
+Git push/commit/tag and supported destructive ref/history operations, GitHub
+release mutations, Supabase database pushes and `gh pr merge`. A marker cannot
+override halt. Ordinary diagnostics and inert text remain available; the
+unhalted merge-marker exemption remains intact. This does not cancel an already
+running child, roll back work or implement the separate general cycle/tool lock.

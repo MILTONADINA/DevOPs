@@ -48,6 +48,56 @@ ASI03 row).
 
 Full threat-model context: [`docs/threat-models/phase-2/A-pentest-stack.md`](threat-models/phase-2/A-pentest-stack.md).
 
+## Graph Bash gate boundary (MR-3)
+
+[REQ-M16](../specs/graph/M-masterpiece-standard.md) scopes the registered graph
+Bash hooks. Command JSON crosses the host wrapper into a single inert argument;
+the adjacent Node classifier reads contained cycle/ref metadata and returns one
+validated decision. It never evaluates the proposed command or contacts a
+remote. [The installer](../analyzer/install.ts) copies the required companion
+beside either selected graph hook; installation does not establish tool wiring.
+See [CLAUDE.md](../CLAUDE.md) for actual registration.
+
+**Status: implemented within the stated boundary.** The final 179 focused
+cases passed with no failures or skips, bound to the
+[classifier](../hooks/universal/pre-tool/graph-command-classifier.mjs),
+[deploy wrapper](../hooks/universal/pre-tool/deploy-gate.sh) and
+[sealed-ref wrapper](../hooks/universal/pre-tool/block-sealed-refs.sh);
+local evidence is `.workflow/proofs/mr3-2026-10-03/focused-green-terminal-binding.json`.
+Separate full-suite, review and CI results still govern delivery.
+
+| Threat | Bounded control | Remaining limit |
+| --- | --- | --- |
+| Authority spoofing (STRIDE spoofing; ASI03/09) | One validated running record; no environment/current-cycle fallback | Plain marker presence does not authenticate a human or bind approval to HEAD |
+| Ref tampering / tool misuse (STRIDE tampering; ASI02) | Exact explicit sealed destinations and scoped halt before deploy-only admission; forced bulk/mirror ambiguity refuses | Non-force bulk destinations are not enumerated; arbitrary script files, aliases/functions and generated programs are not inspected |
+| Lookup disclosure (STRIDE information disclosure) | Project-contained Git context/metadata, fixed read-only argv and removal of inherited routing/config overrides | This is not a universal filesystem or concurrent-path-race sandbox |
+| Decision confusion (STRIDE elevation of privilege) | Exactly one valid companion response; missing/broken helper refuses invocation | File-tool authority protection and general cross-tool enforcement remain separate |
+| False refusal / resource loss (STRIDE denial of service; ASI07) | Ordinary diagnostics and inert text remain available during halt | No cancellation of an existing child or rollback of completed work |
+| Repudiation | Existing escaped local decision events | Events are mutable and best effort; no immutable audit or universal command redaction claim |
+
+Prompt injection can induce a proposed command (ASI01/04); these hooks constrain
+only the recognized resulting Bash forms. They do not establish agent identity,
+inter-agent privilege isolation or coverage of arbitrary tools/programs.
+Under the repository's ASI mapping, ASI05 memory and ASI08 recursive-agent
+operation are unchanged; ASI06 shared-agent privilege and ASI10 uncovered-tool
+risks remain outside this slice.
+The current wrappers still have malformed/nonstring JSON and failed-extraction
+limits; valid-input wrapper fixtures do not close them. Approval signatures,
+protected state paths, broader tool parity and proof-ledger accounting remain
+MR-5/MR-4/MR-6/MR-10. Unhalted `gh pr merge` remains marker-exempt under Decision 13;
+a halted merge is refused, and required GitHub merge checks remain independent.
+Ordinary non-force `--tags`, `--follow-tags` and `--all` pushes are deploy-gated,
+but the sealed hook does not enumerate their implicit destinations. Explicit
+protected right-hand refspec destinations remain blocked. This is not a claim
+that every implicit Git mutation is mediated.
+
+The focused fixtures under `tests/hooks/` exercise synthetic command/authority
+and installation boundaries without performing deployments or destructive
+commands. Their results must be reported with the tested source binding; an
+advisory DeepTeam/Claude skip is not semantic-security evidence. Roadmap
+Decision 9 keeps both reviews visibly skipped while unfunded; funding remains
+the owner's decision, with no new paid red-team requirement for this slice.
+
 ## Skills
 
 - `security/owasp-asi-threat-model` — STRIDE + ASI 2026 modeling

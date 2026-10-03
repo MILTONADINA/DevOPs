@@ -53,9 +53,12 @@ tracked in this repo and wires these hooks:
   blocks destructive git operations against sealed refs (the v0.2.0 tag,
   archival branches). Exit 2 with an explanation. References blueprint §3.
 - PreToolUse on `Bash` → `hooks/universal/pre-tool/deploy-gate.sh` — the
-  graph-engineering production-deploy gate: deploy-shaped commands need one
-  human approval marker, and `.workflow/state/graph-halt` halts everything
-  consequential. It used to also require billing-path commits/pushes to
+  graph-engineering production-deploy gate: recognized deploy commands need one
+  human approval marker for the sole validated running cycle.
+  `.workflow/state/graph-halt` blocks the recognized consequential Bash forms
+  in REQ-M16 while preserving ordinary diagnostics. Unhalted `gh pr merge`
+  remains outside marker gating under roadmap Decision 13. It used to also
+  require billing-path commits/pushes to
   carry two approval markers from distinct approvers (four-eyes); the owner
   retired that check on 2026-09-26, open source with no payment
   (`runtime/docs/decisions/0025-open-source-local-first-no-payment.md`), so
@@ -86,6 +89,20 @@ cannot be resolved or a hook script is missing; a bare "HOOK … failing
 closed" error on every Bash command therefore means the checkout is
 broken, not that the gate logic is. Hook edits in `settings.json` are
 picked up by the running session (verified 2026-09-15).
+
+The two graph hooks require Node and the adjacent
+`graph-command-classifier.mjs`. Selecting either through `analyzer/install.ts`
+copies that companion beside it; a missing/unrunnable helper or invalid response
+refuses invocation. Parsing covers the finite literal forms in REQ-M16; it does
+not inspect arbitrary script files, aliases/functions or generated programs.
+Ordinary non-force `git push --tags`, `--follow-tags` and `--all` require deploy
+approval, but the sealed-ref hook does not enumerate their implicit destinations.
+Forced bulk or mirror ambiguity is refused; an explicit protected right-hand
+refspec destination remains blocked. This does not mediate all implicit Git
+mutations. The existing JSON wrappers still have malformed/nonstring-input and failed
+extraction limits; valid-input delivery tests do not close those transport
+gaps. Plain marker authenticity, protected file-tool paths, broader tool parity
+and proof-ledger accounting remain MR-5, MR-4, MR-6 and MR-10 work.
 
 ### Slash commands
 

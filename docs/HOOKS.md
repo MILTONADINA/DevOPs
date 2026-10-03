@@ -35,6 +35,40 @@ disabled by the agent.
 |------|---------|
 | `write-baton.sh` | Compose handoff document |
 
+## Graph Bash hooks
+
+Actual registration determines which hooks run; see [`CLAUDE.md`](../CLAUDE.md)
+for this checkout's wiring. The graph's `deploy-gate.sh` and
+`block-sealed-refs.sh` implement the finite literal-command policy in
+[REQ-M16](../specs/graph/M-masterpiece-standard.md). The first checks scoped halt
+and deploy authority; the second protects the exact sealed tag/branch identities.
+Ordinary diagnostics and inert text remain available during halt. A marker
+does not override halt or sealed-ref protection.
+
+Ordinary non-force pushes using `--tags`, `--follow-tags` or `--all` require
+deploy approval. The sealed-ref hook does not enumerate their implicit
+destinations. Forced bulk or mirror ambiguity is refused, and an explicit
+protected right-hand refspec destination stays blocked. This compatibility
+policy does not mediate every implicit Git mutation.
+
+Only a bare pushed NAME receives the branch exception after local lookup proves
+a branch exists and no same-named tag exists. A colon refspec requires an
+explicit `refs/heads/` right-hand destination for ordinary admission; otherwise
+it is deploy-gated, even if a local branch has that name. The independent sealed
+hook still refuses an explicit protected destination.
+
+These two hooks require Node (the repository supports `>=22.12.0`) and an adjacent
+`graph-command-classifier.mjs`. Selecting either graph hook through
+`analyzer/install.ts` copies its required companion to `.claude/hooks/`; a
+missing companion fails installation. Missing/unrunnable helpers and invalid
+responses refuse hook invocation. Dry-run writes nothing to the target.
+Installing the files does not register them with every agent or tool.
+
+Arbitrary script contents, aliases/functions and generated programs are outside
+this parser. The current JSON wrappers retain malformed/nonstring-input and
+failed-extraction limits. Plain marker authenticity, protected file-tool paths
+and broader tool coverage remain separate MR-5/MR-4/MR-6 work.
+
 ## Adding hooks
 
 See `CONTRIBUTING.md`. Hooks must:

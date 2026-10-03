@@ -22,8 +22,19 @@ echo '{"ts":'"$(date -u +%s)"',"approver":"<your identifier>","cycle":"<cycle id
   > .workflow/state/graph-approvals/<cycle id>.deploy
 ```
 
-Markers are cycle-scoped (`<cycle id>` must match the cycle currently
-running) and are not reused across cycles — each new deploy needs a
-fresh approval.
+The marker name must match the sole valid `running` record under
+`.workflow/state/graph-cycles/*/run.json`, including its directory and recorded
+cycle ID. Missing, invalid, unreadable, redirected or ambiguous run authority
+refuses deployment. `current.deploy` and `DEVOPS_GRAPH_CYCLE_ID` do not select a
+cycle. Null optional Workflow run/journal IDs are valid for a newly launched
+record.
+
+Approval remains human-only and cycle-scoped. Obtain fresh approval for each
+deploy; the hook checks marker presence and does not mechanically consume it
+once per action. Plain marker files do not authenticate the approver:
+signatures and file-tool protection remain MR-5/MR-4. A marker never overrides
+`graph-halt` or the separate sealed-ref hook. Unhalted `gh pr merge` remains
+exempt from this marker requirement under roadmap Decision 13 and must satisfy
+the required merge checks.
 
 Run as: `/sprint-approve <cycle-id>`

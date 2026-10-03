@@ -312,6 +312,19 @@ function main() {
   }
 
   // Hooks + subagents (no verification at v0.2.0; surgical scope per NFR-F5).
+  // REQ-M16: these two hooks invoke a fixed sibling companion. Validate it
+  // before copying either dependent hook; it is not another registered hook.
+  const needsGraphClassifier = hooks.some(h =>
+    h === 'universal/pre-tool/deploy-gate.sh' || h === 'universal/pre-tool/block-sealed-refs.sh');
+  if (needsGraphClassifier) {
+    const companion = 'graph-command-classifier.mjs';
+    const src = path.join(DEVOPS_ROOT, 'hooks/universal/pre-tool', companion);
+    if (!fs.existsSync(src) || !fs.statSync(src).isFile()) {
+      console.error(`required graph hook companion missing: ${companion}`);
+      process.exit(1);
+    }
+    if (!flags.dryRun) copy(src, path.join(PROJECT_ROOT, '.claude/hooks', companion));
+  }
   let hooksInstalled = 0;
   for (const h of hooks) {
     const src = path.join(DEVOPS_ROOT, 'hooks', h);
