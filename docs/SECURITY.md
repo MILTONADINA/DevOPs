@@ -77,6 +77,34 @@ until MR-4, and settings can change after preflight. GitHub's required checks
 remain the merge gate; this additional check detects the specified drift at
 preflight time.
 
+### Workflow proof declarations (MR9-A)
+
+The standalone [reader](../scripts/graph-proof-inputs.mjs) accepts two explicit
+local inputs and emits tester/security declarations with exact byte hashes and
+`verification: "not_run"`, under [the dedicated spec](../specs/graph/proof-inputs.md).
+For instruction injection and privilege escalation, commands remain inert
+JSON data: the reader invokes no shell, tool, network or model, writes no files
+and sets no cycle status or readiness. Reported nonzero exits and zero scan
+counts remain declarations; independent execution and measurement are pending.
+
+For cross-project disclosure and resource exhaustion, inputs must be regular
+files beneath the script's project root without symlink redirects, within the
+256 KiB run-record and 8 MiB journal limits. Descriptor checks and bounded reads
+reject observed replacement/growth; UTF-8, line limits and native-event
+validation reject malformed inputs. Failure diagnostics contain only fixed
+codes. Successful JSON contains command text and is encoded, not redacted.
+These controls do not authenticate journal origin or provide an atomic
+filesystem sandbox. `JSON.parse` uses the final value of duplicate object
+members; hashes identify the original bytes without removing that limitation.
+
+Extraction requires complete non-resumed role coverage and binds each label's
+current attempt by key and agent identity. It does not establish cross-role
+causal freshness after a planner/coder restart. Native journals contain no final
+Workflow `cycleOutcome`/`readyForPR` return, so M6's aggregate premise still needs
+reconciliation. Current Workflow schemas and `/sprint` integration are unchanged;
+legacy inputs without the required nested declarations are refused. M2 reruns,
+scan measurement and M6 status/history derivation remain unfinished work.
+
 ### Tier-3 LLM-orchestrated pentest
 
 Beyond the static tier-3 scanners, DevOPs ships configurations for four
