@@ -160,8 +160,8 @@ npm run db:with-env -- npm run create-org -- --name "Org Name" --plan starter
 ```
 
 `--plan` accepts `starter`, `growth`, `enterprise`, or `custom` and rejects
-anything else. The plan sets the invoice floor. Require the
-`Organization created:` line and record the printed `id`. `--with-key` also
+anything else. The plan sets request rates, token budgets and concurrent-session
+limits. Require the `Organization created:` line and record the printed `id`. `--with-key` also
 mints an unbound key in the same step.
 
 `create-org` loads `dotenv/config`, so it also reads a `runtime/.env` if one
@@ -260,11 +260,11 @@ To apply migrations safely:
 
 A migration that adds an organization table does not add it to backups. The
 backup table list is fixed in code (`runtime/scripts/backup-org.ts:22-43`), so
-the new table is left out until someone adds it to that list. That is how
-`invoice_send_claims` is outside the backup today
-([BACKUP_RESTORE.md](BACKUP_RESTORE.md#what-a-backup-does-not-contain)). Once
-the list is changed, restore rejects backups taken before the change, because
-it accepts only the current table list (`runtime/scripts/restore-org.ts:75-84`,
+the new table is left out until someone adds it to that list. The current list
+includes `invoice_send_claims` and `invoices`; they remain until C4/M2 removes
+them. Restore requires the current table manifest, while C2 accepts and reports
+retired `cq_fee_usd` and `signed_hash` columns from older usage rows
+(`runtime/scripts/restore-org.ts`,
 [BACKUP_RESTORE.md](BACKUP_RESTORE.md#known-limits)).
 
 If a migration fails, read the error, fix the file or the data, and run

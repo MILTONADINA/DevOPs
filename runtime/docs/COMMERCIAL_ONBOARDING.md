@@ -6,17 +6,17 @@ enables organization API keys, plan-based resource limits and database-backed
 usage. Its name stays unchanged during payment removal.
 
 Payment-removal C1 removes the CFO page, invoice HTTP reads and inbound Stripe
-webhook. Token usage and estimated USD savings remain. The signed ledger and
-`CQ_BILLING_SIGNING_SECRET` remain until C2, the legacy invoice and Stripe
-scripts until C3, and the invoice tables until C4. See
+webhook. C2 persists unsigned token usage and estimated USD savings without
+`CQ_BILLING_SIGNING_SECRET`. The legacy invoice and Stripe scripts remain
+until C3, and the invoice tables until C4. See
 [`specs/ops/payment-removal.md`](../../specs/ops/payment-removal.md).
 
 ## 1. Start the local proxy
 
 Run the local Compose database and proxy from `runtime/`. The hosted Supabase
-project is retired. Configure your provider credentials and
-`CQ_BILLING_SIGNING_SECRET` in your process environment before starting; the
-proxy does not load `.env` files.
+project is retired. Configure provider settings in the process environment
+before starting; the proxy does not load `.env` files. Team usage persistence
+requires database credentials and a persistent outbox, with no signing secret.
 
 ```bash
 cd runtime
@@ -24,7 +24,14 @@ npm run db:start
 CQ_COMMERCIAL=true npm run db:with-env -- npm run dev
 ```
 
-`db:start` applies the committed migrations. Confirm liveness at
+`db:start` applies the committed migrations. When upgrading from C1, stop the
+old proxy first and preserve its outbox. Apply M1 and start the C2 writer
+together: the old writer needs columns M1 removes, and the new writer cannot
+insert into the old signature-required schema. Pending outbox files retain
+their format, event ID, occurrence time and pinned price and replay on restart.
+Do not downgrade the writer against M1 or delete pending events.
+
+Confirm liveness at
 `http://127.0.0.1:4080/health`; `dependencies.database` should be `ok` in team
 mode. The machine-readable contract is at `GET /openapi.json` and its browser
 view is at `/docs`.
@@ -111,9 +118,10 @@ There is no Stripe endpoint to configure and no payment acceptance step.
 ## Remaining legacy operator code
 
 `npm run invoice`, `npm run verify-stripe` and `npm run verify-billing` still
-exist during C1. The invoice CLI can compute its historical fees and call
-Stripe; `verify-stripe` exercises the retained library with a test key, not a
-registered proxy route. These commands are not part of team onboarding.
-The signed records, invoice engine and invoice tables have not yet been
-removed; their retirement follows C2–C4. The current v1.0.0 goal is a working
+exist until C3. After M1, invoice and signature verification commands cannot
+process the usage schema: they expect the removed fee/signature columns.
+`verify-stripe` exercises the retained library with a test key, not a registered
+proxy route. These commands are not part of team onboarding. Invoice tables
+remain in backups/restores until C4; session erasure still reports its existing
+retention blocker until that cycle changes the erasure boundary. The current v1.0.0 goal is a working
 local setup on macOS, Linux and WSL2 (root `plan.md` §9).

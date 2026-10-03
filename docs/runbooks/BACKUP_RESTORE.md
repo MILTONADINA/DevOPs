@@ -133,7 +133,7 @@ Five tables are handled differently:
 
 | Table | Behavior |
 | --- | --- |
-| `billing_records` | The generated columns `token_delta`, `cost_delta_usd`, and `cq_fee_usd` are removed before insert. The database recomputes them. |
+| `billing_records` | Strip generated `token_delta` and `cost_delta_usd` so the database recomputes them. Strip the retired `cq_fee_usd` and `signed_hash` columns from pre-C2 backups; real and dry-run output names each stripped retired column and its row count. Keep IDs, token inputs, pinned price, event identity and provenance. |
 | `tech_decisions` | Rows are inserted with supersession fields set to null. After all decisions exist, each reviewed link is written back with its original reviewer, evidence, and review time, and the update must match exactly one row. |
 | `knowledge_entity_sessions`, `knowledge_edge_sessions` | Upsert that ignores duplicates, because database triggers recreate the first session link when the parent entity or edge is inserted. |
 | `source_fact_links` | The target organization's links are deleted, then the backed-up rows are inserted with their original IDs and times. If the backup's list is empty, links that triggers created are deleted at the end. |
@@ -155,6 +155,18 @@ restore stops, as described above.
 
 Sources: `runtime/scripts/restore-org.ts:21-49`, `runtime/scripts/restore-org.ts:173-192`,
 `runtime/scripts/restore-org.ts:254-286`, `runtime/scripts/backup-org.ts:42`.
+
+Invoice tables remain exported and restored until C4/M2; C2 does not skip
+`invoices` or `invoice_send_claims`. Old rows containing retired fee/signature
+columns are accepted, provided the backup otherwise passes validation. This
+does not relax missing-table, cross-organization, malformed-fact or FK checks.
+
+The focused synthetic legacy-usage check is
+`npm run db:with-env -- node test/integration/local-legacy-usage-restore.mjs`
+from `runtime/`. It uses its own organization, constructs pre-C2 usage columns,
+checks stripped-column reports in dry and real modes, verifies retained inputs
+and regenerated estimates, and verifies invoice/claim rows remain restored.
+It does not use a real organization backup.
 
 ## The disposable recovery check
 
@@ -213,8 +225,9 @@ Source for the npm script: `runtime/package.json:64`.
 - **Real data and clean machines are not verified.** The recovery check uses
   a fixture on the same running stack. Clean-machine and real-data recovery
   remain open under `plan.md` §7c "Backup + restore" (`plan.md:413`).
-- **Only the current table manifest restores.** An older export fails
-  validation and needs an explicit migration of the file
+- **The current table manifest is required.** An older export missing a
+  required table fails validation and needs an explicit migration of the file.
+  Retired usage columns alone do not cause rejection after C2
   (`runtime/scripts/restore-org.ts:75-84`).
 - **No merge.** Restore cannot update an organization that already exists
   (`runtime/scripts/restore-org.ts:4-7`, `runtime/scripts/restore-org.ts:267`).

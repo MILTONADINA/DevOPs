@@ -11,7 +11,7 @@ vi.unmock("@fastify/cors");
 const { buildProxy } = await import("../../src/proxy/app");
 const captureMod = await import("../../src/proxy/capture");
 import type { MessagesDeps, ForwardResult, TokenCountResult, StreamForwardResult } from "../../src/proxy/forward";
-import type { UsageEvent } from "../../src/billing/usage-recorder";
+import type { UsageEvent } from "../../src/usage/usage-recorder";
 
 let app: FastifyInstance | undefined;
 afterEach(async () => {

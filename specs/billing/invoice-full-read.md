@@ -1,8 +1,10 @@
 # Complete billing invoice reads
 
-**Amended**: 2026-10-03 by `specs/ops/payment-removal.md` REQ-1: the CFO invoice
-and CSV HTTP paths were removed. REQ-2 now covers the usage summary served by
-`runtime/src/proxy/routes/usage.ts` and the invoice CLI, which remains until C3.
+**Amended**: 2026-10-03 by `specs/ops/payment-removal.md`: C1 removed the CFO
+invoice and CSV HTTP paths; REQ-2 covers the retained usage summary in
+`runtime/src/proxy/routes/usage.ts`. C2/M1 removes fee/signature columns, so the
+legacy invoice CLI cannot process the current schema. It remains as source
+until C3; its requirements below describe the pre-M1 contract.
 
 **Scope:** Complete reads for organization usage summaries and the retained
 invoice CLI.

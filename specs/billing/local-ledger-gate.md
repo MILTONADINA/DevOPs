@@ -1,18 +1,24 @@
-# Local append-only billing ledger gate
+# Local unsigned usage ledger gate
 
-**Scope:** `plan.md` §8, v0.9 billing schema ship gate. This verifies the
-already-applied local PostgreSQL migration without retaining a billing row.
+**Amended**: 2026-10-03 by `specs/ops/payment-removal.md` C2: REQ-4 replaces the mutation/signature gate with unsigned mutable usage. The old verification CLI source remains until C3 but cannot process the post-M1 schema.
 
-## REQ-1 — Reject ledger mutation
+**Scope:** Local PostgreSQL usage schema verification after C2/M1, without
+retaining fixture rows. The table name stays `billing_records`.
 
-WHEN a billing record exists inside a disposable local database transaction,
-THE DATABASE SHALL reject UPDATE, DELETE, and TRUNCATE with an explicit
-append-only error, including an INSERT ... ON CONFLICT DO UPDATE attempt
-and the database administrator role. The
-generated token delta, cost delta, and CQ fee SHALL match their immutable
-input columns. The verifier SHALL roll back all fixture rows.
+## REQ-1 — Unsigned mutable usage with exact derived values
 
-## REQ-2 — Honest signature verification startup
+WHEN a usage record exists inside a disposable local database transaction,
+THE DATABASE SHALL accept an unsigned insert and allow scoped UPDATE and DELETE.
+The generated token delta and estimated USD cost delta SHALL match their input
+columns. The fee/signature columns and mutation-blocking triggers/function
+SHALL be absent; RLS, the session foreign key and unique usage-event index
+SHALL remain. The verifier SHALL roll back all fixture rows and SHALL NOT
+truncate a shared table to prove trigger absence.
+
+## REQ-2 — Legacy signature verification startup
+
+This requirement describes the retained pre-M1 CLI only; it is superseded for
+current usage by payment-removal REQ-4 and removed with its CLI in C3.
 
 WHEN the billing signature verifier is invoked, THE VERIFIER SHALL use only
 explicit process environment credentials. It SHALL NOT load a `.env` file.
@@ -20,7 +26,10 @@ IF the database URL, service key, or dedicated signing secret is missing,
 THEN it SHALL exit nonzero and state which setting is required. It SHALL NOT
 report a skipped verification as success.
 
-## REQ-3 — Verify every record
+## REQ-3 — Legacy verification pagination
+
+This requirement describes the retained pre-M1 CLI only. Current usage summary
+pagination remains covered by `invoice-full-read.md` REQ-2.
 
 WHEN an organization has more billing records than one REST response can
 contain, THE VERIFIER SHALL read stable ordered pages through the exact row
@@ -30,12 +39,14 @@ than report a partial ledger as valid.
 
 ## Acceptance criteria
 
-- A PostgreSQL fixture transaction proves UPDATE, UPSERT, DELETE, and TRUNCATE raise, checks
-  generated values, and rolls back the organization, session, and billing row.
+- A PostgreSQL fixture transaction proves unsigned insert, exact generated
+  token/estimated-cost values, allowed UPDATE/DELETE, preserved event uniqueness
+  and absent mutation guards/retired columns, then rolls back all fixture rows.
 - The same fixture proves a billing row prevents deletion of its referenced
   session, making the open erasure-schema dependency explicit.
-- A focused test first fails on the current zero-exit skip, then proves
-  missing credentials and signing secret yield nonzero status without a DB
-  connection.
-- A capped fake REST client puts a bad signature after record 1,000; the
+- Retained legacy CLI unit tests prove missing credentials and signing secret
+  yield nonzero status without a DB connection.
+- A retained legacy fake REST test puts a bad signature after record 1,000; the
   verifier finds it and refuses missing counts or incomplete pages.
+
+Legacy CLI unit assertions do not prove compatibility with the post-M1 database.

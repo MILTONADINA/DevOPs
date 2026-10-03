@@ -1,10 +1,11 @@
 # Idempotent commercial usage events
 
-**Scope:** Prepare append-only billing for safe replay after an ambiguous
-database result. This change identifies each new commercial message usage
-event; it does not yet provide a durable queue or guarantee that a process
-crash cannot lose an event. Historical ledger rows have no event ID and retain
-their existing signatures.
+**Amended**: 2026-10-03 by `specs/ops/payment-removal.md` C2: REQ-4 replaces HMAC replay comparison with persisted-input comparison and preserves the event-ID index. Signature verification is legacy source retained until C3 and is incompatible with M1.
+
+**Scope:** Safe usage replay after an ambiguous database result. This spec
+identifies each new team message event; `durable-usage-outbox.md` supplies the
+persistent queue. M1 removes signatures from all rows. Historical rows with no
+event ID remain readable; new request events carry a server-generated ID.
 
 ## REQ-1 — Stable event identity on the request path
 
@@ -12,34 +13,39 @@ WHEN a successful authenticated normal or streaming `/v1/messages` request
 records usage, THE SYSTEM SHALL generate a server-side UUID and UTC occurrence
 time once for that response and pass them with the measured usage. A client
 header, query value, or body field SHALL NOT choose either value. Failed
-upstream responses SHALL NOT produce a billing event. The ID and occurrence
+upstream responses SHALL NOT produce a usage event. The ID and occurrence
 time SHALL remain stable if the recorder retries the same event.
 
-## REQ-2 — Signed, append-only replay identity
+## REQ-2 — Unsigned replay identity
 
-WHEN a billing input carries a usage event UUID, THE SYSTEM SHALL store it
-beside the signed immutable fields and include it in the HMAC payload. THE
-DATABASE SHALL allow at most one ledger row per non-NULL usage event ID. The
+WHEN a usage input carries a usage event UUID, THE SYSTEM SHALL store it with
+its organization, session, token counts, pinned price and optional pruning log.
+THE DATABASE SHALL allow at most one usage row per non-NULL event ID. The
 occurrence time SHALL determine the usage bucket's UTC day, including when
-the same event is replayed after midnight.
+the event is replayed after midnight.
 WHEN the insert reports a uniqueness conflict, THE RECORDER SHALL read the
-existing row by event ID and return its ID only if its organization and signed
-inputs match exactly. It SHALL fail closed for a missing or mismatched row,
-and for unrelated database errors. Existing rows with NULL event ID SHALL
-retain the legacy signature and validation path.
+existing row by event ID and return its nonempty ID only if its organization,
+session, original/quarantined tokens and event ID match. It SHALL also preserve
+the pinned-price and pruning-log integrity checks using persisted inputs;
+price comparison SHALL respect database numeric precision. Missing or
+mismatched rows and unrelated database errors SHALL fail closed. No signature
+SHALL be computed or compared.
 
-## REQ-3 — Audit verification
+## REQ-3 — Legacy audit verification boundary
 
-WHEN the read-only billing verifier checks a new row, IT SHALL include its
-usage event ID in the signing inputs. It SHALL continue validating legacy
-rows with NULL event ID using the original payload.
+The former signature-verification requirement is superseded by
+`specs/ops/payment-removal.md#req-4`. Its CLI and old payment tests remain until
+C3; they do not establish integrity of post-M1 unsigned rows. Current replay
+verification is REQ-2 and payment-removal AC-4.
 
 ## Acceptance criteria
 
-- **AC-1:** Red/green normal and streaming route tests show generated UUIDs
-  rather than client-supplied IDs.
-- **AC-2:** Red/green recorder tests prove replay returns one matching row,
-  rejects conflicting content, and signs the event identity without changing
-  legacy signatures.
-- **AC-3:** The local migration adds the nullable unique event ID without
-  updating existing ledger rows, and the verifier test catches ID tampering.
+- **AC-1:** Red/green normal and streaming route tests show generated UUIDs rather than
+  client-supplied IDs.
+- **AC-2:** Red/green recorder tests prove replay returns one matching row, rejects each
+  conflicting input, and inserts no signature or fee. Storage precision and
+  malformed/missing replay results are covered.
+- **AC-3:** M1 keeps the nullable unique event-ID index while removing signatures
+  and mutation guards. A local writer insert/replay check proves one matching
+  row; unrelated or mismatching conflicts fail. Historical NULL IDs remain
+  valid table data without pretending they supply event replay identity.

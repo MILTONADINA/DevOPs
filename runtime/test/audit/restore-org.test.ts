@@ -4,8 +4,11 @@
 
 import { describe, test, expect, vi } from "vitest";
 import { join } from "node:path";
+import { createClient } from "@supabase/supabase-js";
 import { parseArgs, validateBackup, stripGeneratedCols, restorePlan, decisionSupersessionUpdates, main, RESTORE_ORDER } from "../../scripts/restore-org";
 import { ORG_SCOPED_TABLES, type BackupFile } from "../../scripts/backup-org";
+
+vi.mock("@supabase/supabase-js", () => ({ createClient: vi.fn() }));
 
 test("real restore fails without credentials while dry run validates the file", async () => {
   const { mkdtempSync, rmSync, writeFileSync } = await vi.importActual<typeof import("node:fs")>("node:fs");
@@ -109,17 +112,81 @@ describe("validateBackup", () => {
 });
 
 describe("stripGeneratedCols", () => {
-  test("removes billing GENERATED columns; leaves others untouched", () => {
-    const rows = [{ id: "b1", original_tokens: 100, quarantined_tokens: 40, token_delta: 60, cost_delta_usd: 1.2, cq_fee_usd: 0.24, signed_hash: "h" }];
+  test("strips generated and retired usage columns without changing source data (specs/ops/payment-removal.md#REQ-9)", () => {
+    const inputs = { id: "b1", org_id: "o1", session_id: "s1", original_tokens: 100, quarantined_tokens: 40, api_price_per_token: 0.02, pruning_log_id: "p1", usage_event_id: "u1", created_at: "2026-09-25T00:00:00Z" };
+    const legacy = { ...inputs, token_delta: 60, cost_delta_usd: 1.2, cq_fee_usd: 0.24, signed_hash: "legacy-test-signature" };
+    const rows = [legacy];
+    const before = structuredClone(rows);
     const [r] = stripGeneratedCols("billing_records", rows) as Record<string, unknown>[];
     expect(r).not.toHaveProperty("token_delta");
     expect(r).not.toHaveProperty("cost_delta_usd");
     expect(r).not.toHaveProperty("cq_fee_usd");
-    expect(r).toMatchObject({ id: "b1", original_tokens: 100, signed_hash: "h" }); // kept
+    expect(r).not.toHaveProperty("signed_hash");
+    expect(r).toEqual(inputs);
+    expect(rows).toEqual(before);
+    expect(r).not.toBe(legacy);
   });
   test("non-generated tables pass through unchanged", () => {
     const rows = [{ id: "s1", model: "x" }];
     expect(stripGeneratedCols("sessions", rows)).toBe(rows);
+  });
+});
+
+describe("legacy usage restore (specs/ops/payment-removal.md#REQ-9)", () => {
+  test.each([true, false])("reports only retired columns present in dryRun=%s and preserves invoice tables through C4", async (dryRun) => {
+    const { mkdtempSync, rmSync, writeFileSync } = await vi.importActual<typeof import("node:fs")>("node:fs");
+    const dir = mkdtempSync(join(process.cwd(), "../.workflow/state/legacy-restore-"));
+    const file = join(dir, "synthetic.backup.json");
+    const usage = { id: "b1", org_id: "o1", session_id: "s1", original_tokens: 100, quarantined_tokens: 40, api_price_per_token: 0.02, usage_event_id: "u1" };
+    const invoice = { id: "i1", org_id: "o1", stripe_invoice_id: "synthetic-invoice", amount_cents: 24, status: "paid" };
+    const claim = { org_id: "o1", period_start: "2026-08-01T00:00:00Z", period_end: "2026-09-01T00:00:00Z" };
+    const backup: BackupFile = {
+      orgId: "o1", exportedAt: "2026-09-25T00:00:00Z",
+      tables: Object.fromEntries([["organizations", [{ id: "o1" }]], ...ORG_SCOPED_TABLES.map((table) => [table, []]), ["pruning_logs", []]]),
+    };
+    backup.tables["sessions"] = [{ id: "s1", org_id: "o1", model: "local-check" }];
+    backup.tables["billing_records"] = [
+      { ...usage, token_delta: 60, cost_delta_usd: 1.2, cq_fee_usd: "retired-fee-value", signed_hash: "retired-signature-value" },
+      { ...usage, id: "b2", usage_event_id: "u2", signed_hash: null },
+    ];
+    backup.tables["invoices"] = [invoice];
+    backup.tables["invoice_send_claims"] = [claim];
+    const inserts: { table: string; rows: unknown[] }[] = [];
+    const from = vi.fn((table: string) => ({
+      insert: vi.fn(async (rows: unknown[]) => { inserts.push({ table, rows }); return { error: null }; }),
+      delete: vi.fn(() => ({ eq: vi.fn(async () => ({ error: null })) })),
+    }));
+    vi.mocked(createClient).mockReturnValue({ from } as unknown as ReturnType<typeof createClient>);
+    const output = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    vi.stubEnv("SUPABASE_URL", "http://127.0.0.1:54321");
+    vi.stubEnv("SUPABASE_SERVICE_KEY", "synthetic-test-only");
+    try {
+      writeFileSync(file, JSON.stringify(backup));
+      expect(validateBackup(backup)).toBe(backup);
+      expect(await main(["--file", file, ...(dryRun ? ["--dry-run"] : [])])).toBe(0);
+      const text = output.mock.calls.map(([value]) => String(value)).join("");
+      expect(text).toContain("stripped retired column billing_records.cq_fee_usd from 1 row(s)");
+      expect(text).toContain("stripped retired column billing_records.signed_hash from 2 row(s)");
+      expect(text).not.toContain("retired-fee-value");
+      expect(text).not.toContain("retired-signature-value");
+      expect(text).not.toContain("synthetic-test-only");
+      expect(text).not.toContain("retired column billing_records.token_delta");
+      expect(text).not.toContain("retired column billing_records.cost_delta_usd");
+      if (dryRun) {
+        expect(from).not.toHaveBeenCalled();
+        expect(text).toContain("DRY RUN");
+      } else {
+        expect(inserts.find(({ table }) => table === "billing_records")?.rows).toEqual([usage, { ...usage, id: "b2", usage_event_id: "u2" }]);
+        expect(inserts.find(({ table }) => table === "invoices")?.rows).toEqual([invoice]);
+        expect(inserts.find(({ table }) => table === "invoice_send_claims")?.rows).toEqual([claim]);
+        expect(text).toContain("Restored 6 row(s) across 5 tables");
+      }
+    } finally {
+      output.mockRestore();
+      vi.unstubAllEnvs();
+      vi.mocked(createClient).mockReset();
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 

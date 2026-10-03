@@ -1,9 +1,13 @@
 # Drain accepted commercial usage on shutdown
 
+**Amended**: 2026-10-03 by `specs/ops/payment-removal.md` C2: the usage writer is unsigned under REQ-4/5. This spec keeps the direct asynchronous-recorder drain contract; `durable-usage-outbox.md` governs fail-closed journaling on the production path.
+
 **Scope:** Usage recording is asynchronous so a successful upstream response
 does not wait for the billing database. A graceful proxy close must give
-already-started writes time to finish. This does not change the append-only
-ledger, invoice calculation, or request response shape.
+already-started writes time to finish. C2 preserves that drain and response
+behavior while replacing the writer. Durable journal failure must still fail
+the response under `durable-usage-outbox.md`; asynchronous database replay
+failure must preserve the journal entry.
 
 ## REQ-1 — Track and drain accepted writes
 
