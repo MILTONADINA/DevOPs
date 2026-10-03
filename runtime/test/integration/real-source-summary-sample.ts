@@ -15,7 +15,7 @@ if (!endpoint || !model) throw new Error("CQ_LOCAL_BASE_URL and CQ_SOURCE_SUMMAR
 const samples: [string, RegExp][] = [
   ["runtime/rust/hot-path/src/lib.rs", /sha.?256|hash/i],
   ["runtime/src/audit/git-attestation.ts", /git|commit/i],
-  ["runtime/src/billing/calculator.ts", /fee|billing/i],
+  ["runtime/src/usage/pricing.ts", /pric|token/i],
   ["runtime/src/memory/graph-embedding.ts", /embedding|encoder/i],
   ["runtime/src/memory/source-summary.ts", /summar/i],
   ["runtime/src/proxy/auth.ts", /key|auth/i],

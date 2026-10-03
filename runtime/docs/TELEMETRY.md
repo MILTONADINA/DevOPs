@@ -235,12 +235,6 @@ of these calls.
 - **Webhook test delivery.** `POST /v1/webhooks/test` sends a signed sample
   event to the org's configured webhook URL. It runs only when an operator
   calls that endpoint. No other code path in the proxy delivers webhooks.
-- **Legacy Stripe scripts.** C1 removes the inbound Stripe route and its
-  proxy setting. The proxy makes no outbound Stripe call. Calls to
-  `https://api.stripe.com` still exist in the operator scripts
-  `scripts/invoice.ts` and `scripts/verify-stripe.ts`, retained until C3. The
-  invoice command cannot process the post-M1 schema; `verify-stripe` is a
-  separate legacy library check and is not run by team startup.
 - **Memory extraction model.** With `CQ_MEMORY_EXTRACT_MODEL`, turns go to a
   local model for fact extraction. Startup rejects any endpoint that is not
   plain HTTP on `127.0.0.1`, `localhost` or `[::1]`.
@@ -258,12 +252,15 @@ Sources:
 - `runtime/src/proxy/index.ts:184-187` (commercial mode), `runtime/src/proxy/index.ts:190-195` (startup requirements), `runtime/src/proxy/index.ts:563`, `runtime/vercel-src/entry.ts:33-35` (checked at startup on both entries; serverless `VERCEL` default), `runtime/src/proxy/index.ts:396-403` (Supabase client)
 - `runtime/docs/decisions/0020-local-storage-after-hosted-retirement.md`, `runtime/docs/LOCAL_STORAGE.md` (local stack, `127.0.0.1:54321`)
 - `runtime/src/proxy/routes/webhooks.ts:53`, `runtime/src/proxy/routes/webhooks.ts:87`, `runtime/src/webhooks/deliver.ts:81`
-- `runtime/src/billing/stripe.ts:45`, `runtime/src/billing/stripe.ts:55`, `runtime/scripts/invoice.ts:18-20`, `runtime/scripts/verify-stripe.ts:19`
 - `runtime/src/proxy/index.ts:112-119`, `runtime/src/proxy/index.ts:456-464` (loopback-only extraction)
 - `runtime/src/proxy/index.ts:424`, `runtime/src/pruner/encoder.ts:99` (`allowRemoteModels = false`)
 - `runtime/src/proxy/routes/messages.ts:117-118` (query is the latest user message text), `runtime/src/proxy/shadow-observer.ts:104`, `runtime/src/proxy/shadow-observer.ts:153-154` (truncate to 1,200 characters and send), `runtime/src/memory/warm/query-fact-exchanges.ts:9-16` (RPC call with `search_text`), `runtime/src/proxy/index.ts:432` (wiring), `runtime/supabase/migrations/20260924235800_shadow_hot_query_lookup.sql:3-8` (read-only `STABLE` SQL function)
 
 ### Not outbound
+
+**Stripe.** C1 removed the inbound Stripe route, and C3 removes the payment
+library and operator scripts. The runtime has no Stripe delivery path and
+needs no Stripe key (`specs/ops/payment-removal.md` REQ-1/7).
 
 - The dashboard pages call `fetch('/dashboard/api')` and similar relative
   URLs from the browser. Those requests go to the proxy itself.

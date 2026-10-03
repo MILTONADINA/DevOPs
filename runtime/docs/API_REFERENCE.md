@@ -182,8 +182,8 @@ usage dependencies and no auth can use the `?org-id` fallback.
 
 Payment removal C1 (`specs/ops/payment-removal.md` REQ-1) removes `/billing`,
 `/v1/billing/invoice`, `/v1/billing/audit.csv`, `/v1/billing/invoices`, and
-`POST /stripe/webhook`. Those routes are no longer registered. The invoice
-CLI remains until C3 but cannot process the post-M1 schema. C2 writes unsigned
+`POST /stripe/webhook`. Those routes are no longer registered. C3 removes the
+invoice CLI and other payment commands. C2 writes unsigned
 usage records without fee/signature columns or a signing secret. Invoice tables
 and the existing session-erasure retention blocker remain until C4.
 

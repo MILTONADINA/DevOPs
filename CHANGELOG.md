@@ -18,6 +18,21 @@ product. See `docs/LAUNCH_READINESS.md` for current, frequently-updated
 status — this file intentionally does not duplicate that detail while the
 phase is open.
 
+### Changed — unsigned usage and payment module retirement (specs/ops/payment-removal.md, C2/C3)
+
+- **Breaking:** M1 removes usage signatures, fee columns and mutation guards.
+  Upgrade the unsigned writer and schema together; preserve the durable outbox
+  during restart. Team usage needs no billing signing secret. Token counts,
+  pinned prices and estimated USD differences remain.
+- Legacy backups strip and report retired usage columns. Invoice tables still
+  export and restore until the coordinated C4 migration.
+- **Breaking:** removed the legacy payment library, invoice CLI, billing/Stripe
+  verification commands, CLI-only read factory and payment types. Usage reads,
+  generic outbound webhook signing, provider routing and PruningLog remain.
+- Retired payment and duplicate old-module tests after preserving nonpayment
+  coverage, including negative usage deltas and aggregation before rounding.
+  C4's invoice schema and actual session-erasure work remain open.
+
 ### Changed — payment HTTP surface removal (specs/ops/payment-removal.md, C1)
 
 - **Breaking:** removed the CFO page (`/billing`), invoice, invoice-list and

@@ -41,12 +41,18 @@ pinned USD estimate. Migration M1 removes the signature, fee column and
 mutation-blocking triggers; the usage-event unique index and replay input checks
 prevent a duplicate event from being accepted as different content.
 
-The legacy `invoice`, `verify-billing` and `verify-stripe` npm scripts remain
-until C3. Invoice and signature verification commands cannot process the
-post-M1 schema because they expect the removed fee/signature columns.
-`verify-stripe` exercises the retained Stripe library with a test key, not a
-registered proxy route. These legacy commands are outside local team onboarding.
-DevOps has no payment workflow (ADR-0025); invoice tables remain until C4.
+From `runtime/`, `npm run db:verify-unsigned-usage` checks the actual team-mode
+entrypoint without a signing secret. It uses the local database, a private
+fixture outbox and a loopback model stub; it proves a message creates an
+unsigned row, matching replays are idempotent, conflicting inputs are refused,
+and token/USD estimates survive. It creates and cleans up only its own
+organization; failures preserve fixture evidence. It makes no paid model call
+and does not measure model quality.
+
+C3 removes the legacy `invoice`, `verify-billing` and `verify-stripe` npm
+scripts and their payment implementation. Use the unsigned usage checks above
+for persistence and replay. DevOps has no payment workflow (ADR-0025); invoice
+tables remain in backups/restores until C4.
 
 The proxy exposes the **usage read API** when `buildProxy({ usage })` is supplied:
 `GET /v1/billing/summary` (`?month=YYYY-MM`, optional `since`/`until`, all time
@@ -55,8 +61,7 @@ records). Both require an organization-level key when auth is enabled; a
 project-bound key receives 403. Without auth, explicitly supplied usage deps
 retain the `?org-id` fallback. USD fields are estimates, for information only.
 The removed CFO page, invoice, audit CSV and invoice-list HTTP routes are not
-registered. Its retained invoice CLI factory is incompatible with M1 and is
-scheduled for removal in C3.
+registered. C3 also removes the unused invoice CLI factory.
 
 Other opt-in proxy APIs (all org-scoped via the auth gate): **config** (`buildProxy({ config })`)
 — `GET`/`PATCH /v1/config` for pruning params (λ/θ/gain_shift) + flags; **memory**

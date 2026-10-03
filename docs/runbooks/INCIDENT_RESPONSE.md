@@ -188,9 +188,8 @@ looks up the key hash among active keys on every request and keeps no cache.
 The key list does not show real use: `last_used` is not written per request.
 
 C2 usage rows are unsigned; the proxy does not consume
-`CQ_BILLING_SIGNING_SECRET`. The retained `verify-billing` command cannot
-process the post-M1 schema and is scheduled for removal in C3. Do not add a
-signing secret to troubleshoot current usage persistence. Check the database,
+`CQ_BILLING_SIGNING_SECRET`. C3 removes the legacy `verify-billing` command.
+Do not add a signing secret to troubleshoot current usage persistence. Check the database,
 migration version and durable outbox instead.
 
 Restore makes backed-up keys inactive by default. If `--keep-key-state` was
@@ -204,7 +203,7 @@ Sources: `runtime/src/proxy/auth.ts:33-42`, `runtime/src/proxy/auth.ts:66-83`,
 `runtime/scripts/api-keys.ts:1-9`, `runtime/scripts/api-keys.ts:58-65`,
 `runtime/src/proxy/index.ts:14-18`,
 `runtime/src/proxy/index.ts:447-449`, `runtime/src/proxy/providers/router.ts:80-82`,
-`runtime/scripts/verify-billing.ts:1-9`, `runtime/scripts/verify-billing.ts:95-108`,
+`runtime/src/usage/recorder.ts`, `runtime/src/usage/durable-usage-outbox.ts`,
 `runtime/scripts/local-compose.ts:134-136`, `runtime/scripts/local-compose.ts:157-159`,
 `docs/runbooks/LOCAL_STRATUM.md:117`.
 

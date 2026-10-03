@@ -39,6 +39,24 @@ describe("summarizeUsage", () => {
     });
   });
 
+  // C3 preservation: clamping retained token/cost deltas to the retired fee floor would lose this negative usage.
+  test("specs/ops/payment-removal.md#AC-6 increased token usage remains a negative delta and USD estimate (regression guard)", () => {
+    expect(summarizeUsage([record({ original_tokens: 1_000, quarantined_tokens: 4_000, cost_delta_usd: -0.06 })])).toEqual({
+      total_original_tokens: 1_000,
+      total_quarantined_tokens: 4_000,
+      total_token_delta: -3_000,
+      total_cost_delta_usd: -0.06,
+      total_sessions: 1,
+      average_pruning_effectiveness_pct: -300,
+    });
+  });
+
+  // C3 preservation: rounding each 0.025 row first yields 0.60 instead of rounding the raw sum to 0.50.
+  test("specs/ops/payment-removal.md#AC-6 USD estimates sum raw deltas before rounding the total (regression guard)", () => {
+    const records = Array.from({ length: 20 }, (_, i) => record({ session_id: `s${i}`, cost_delta_usd: 0.025 }));
+    expect(summarizeUsage(records).total_cost_delta_usd).toBe(0.5);
+  });
+
   // Mutation: rounding the token totals to cents. Token counts are whole numbers in practice; these are exact binary fractions, so any rounding of a total or of the delta shows.
   test("specs/ops/payment-removal.md#AC-6 token totals are the plain sums and are never rounded (regression guard)", () => {
     const summary = summarizeUsage([
