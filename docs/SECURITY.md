@@ -16,6 +16,21 @@ enforced until it moves left.
 | 2 | every PR | gitleaks (diff) and Semgrep (`p/owasp-top-ten`, `p/r2c-security-audit`, `p/secrets`) in `security-scan.yml` | both are required status checks on `main` and fail on any finding (Semgrep since #178) | npm/pip/cargo audit, axe-core |
 | 3 | daily and pre-release | gitleaks full-history scan (scheduled, `.gitleaksignore` baseline); DeepTeam red-team, which skips when no provider key is set | the history scan fails its run on a leak; DeepTeam gates nothing while it skips | Trivy, Nuclei, ZAP (roadmap MR-21) |
 
+### Semgrep diagnostic output boundary (MR-7 prerequisite)
+
+The [CI scan](../.github/workflows/security-scan.yml) prints each report error
+as one JSON-escaped `SCAN_DIAGNOSTIC` line. For log tampering and instruction
+injection (STRIDE tampering; ASI04), the fixed prefix and escaped newlines keep
+embedded text within diagnostic data; readers must treat it as untrusted data.
+For information disclosure, error objects may include repository snippets,
+paths and rule metadata: this output is not redacted. The reviewed job scans
+a fresh checkout, without operator mounts, application execution or restored
+private artifacts; this scope does not authorize scanning an operator checkout.
+No command, privilege, approval or scanner-exit decision is added by logging.
+The existing gate still permits nonfatal errors; strict error refusal and
+scanned-path floors remain separate M14 work. Visibility does not establish
+scan completeness or resolve the reported errors.
+
 ### Tier-3 LLM-orchestrated pentest
 
 Beyond the static tier-3 scanners, DevOPs ships configurations for four
