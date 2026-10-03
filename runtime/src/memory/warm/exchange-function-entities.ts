@@ -1,11 +1,13 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { validProjectScope } from "../../proxy/auth";
+import { markErasureCoverageUnknown } from "../erasure-coverage";
 
 /** Resolve exclusive active Function facts from trusted commercial exchange IDs. */
 export function createExchangeFunctionLookup(client: SupabaseClient) {
   return async (orgId: string, sessionId: string, projectScope: string | null, exchangeIds: string[]): Promise<Map<string, string>> => {
     if (projectScope !== null && !validProjectScope(projectScope)) throw new Error("invalid project scope for exchange lookup");
     if (exchangeIds.length === 0) return new Map();
+    await markErasureCoverageUnknown(client, orgId, "protected_read");
     const { data, error } = await client.rpc("find_exchange_function_entities", {
       match_org: orgId,
       match_session: sessionId,
@@ -23,6 +25,7 @@ export function createFactExchangeCoverageLookup(client: SupabaseClient) {
     if (projectScope !== null && !validProjectScope(projectScope)) throw new Error("invalid project scope for fact coverage lookup");
     if (exchangeIds.length === 0) return new Map();
     if (exchangeIds.length > 128) throw new Error("fact coverage lookup exceeds hot-window bound");
+    await markErasureCoverageUnknown(client, orgId, "protected_read");
     const { data, error } = await client.rpc("find_active_fact_exchanges", {
       match_org: orgId,
       match_session: sessionId,
@@ -47,6 +50,7 @@ export function createProjectFunctionSupersessionLookup(client: SupabaseClient) 
   return async (orgId: string, projectScope: string | null, names: string[]): Promise<{ superseded: string; supersededBy: string }[]> => {
     if (projectScope !== null && !validProjectScope(projectScope)) throw new Error("invalid project scope for function supersession lookup");
     if (names.length === 0) return [];
+    await markErasureCoverageUnknown(client, orgId, "protected_read");
     const { data, error } = await client.rpc("find_project_function_superseded", { match_org: orgId, match_project_scope: projectScope, names });
     if (error) throw new Error(`find_project_function_superseded failed: ${error.message}`);
     return ((data ?? []) as { superseded: string; superseded_by: string }[]).map((row) => ({ superseded: row.superseded, supersededBy: row.superseded_by }));
@@ -58,6 +62,7 @@ export function createFreshFunctionSupersessionLookup(client: SupabaseClient) {
   return async (orgId: string, sessionId: string, projectScope: string | null, exchangeIds: string[]): Promise<{ superseded: string; supersededBy: string }[]> => {
     if (projectScope !== null && !validProjectScope(projectScope)) throw new Error("invalid project scope for fresh function supersession lookup");
     if (exchangeIds.length === 0) return [];
+    await markErasureCoverageUnknown(client, orgId, "protected_read");
     const { data, error } = await client.rpc("find_fresh_exchange_function_superseded", {
       match_org: orgId,
       match_session: sessionId,

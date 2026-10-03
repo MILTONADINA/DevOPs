@@ -7,7 +7,7 @@ import { buildStartOptions } from "../../src/proxy/index";
 
 const url = process.env["SUPABASE_URL"];
 const key = process.env["SUPABASE_SERVICE_KEY"];
-if (url !== "http://127.0.0.1:54321" || !key || !process.env["DEVOPS_STRATUM_PROJECT_ROOT"]) {
+if (url !== `http://127.0.0.1:${process.env["DEVOPS_LOCAL_PORT"] ?? "54321"}` || !key || !process.env["DEVOPS_STRATUM_PROJECT_ROOT"]) {
   throw new Error("run through npm run db:with-env from runtime/");
 }
 const db = createClient(url, key, { auth: { persistSession: false } });
@@ -77,8 +77,13 @@ try {
   assert((await app.inject({ method: "GET", url: preflightUrl, headers: headers("vega") })).statusCode === 403, "project key inspected organization erasure inventory");
   const preflight = await app.inject({ method: "GET", url: preflightUrl, headers: headers("legacy") });
   assert(preflight.statusCode === 200, `organization erasure preflight failed: ${preflight.statusCode} ${preflight.body}`);
-  assert(preflight.json().status === "blocked_incomplete_inventory" && preflight.json().inventory.session_id === legacyId &&
+  assert(preflight.json().status === "blocked" && preflight.json().inventory.session_id === legacyId &&
     preflight.json().inventory.org_id === org && preflight.json().reasons.includes("stores_not_inventoried"), "erasure preflight overstated readiness or lost scope");
+  assert(preflight.json().classifications.scope === "managed_explicit_session_v1" &&
+    ["in_memory", "external_copies", "backups"].every((store) => preflight.json().classifications[store] === "unknown"),
+    "unknown legacy organization acquired managed-store coverage");
+  assert(Object.values(preflight.json().inventory.counts).every((count) => typeof count === "number" && Number.isSafeInteger(count) && count >= 0) &&
+    typeof preflight.json().inventory.counts.billing_records === "number", "erasure inventory lost numeric usage/class counts");
   const legacyList = await app.inject({ method: "GET", url: "/v1/sessions", headers: headers("legacy") });
   assert(legacyList.json().sessions.length === 1 && legacyList.json().sessions[0].id === legacyId, "unbound list crossed into a project");
   assert((await app.inject({ method: "DELETE", url: `/v1/sessions/${legacyId}`, headers: headers("legacy") })).statusCode === 200, "unbound key cannot end own session");

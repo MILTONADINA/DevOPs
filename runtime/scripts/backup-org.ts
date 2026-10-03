@@ -1,9 +1,9 @@
 /**
  * Org-scoped logical backup / export (v0.8.x operator-readiness: "backup tested").
  *
- * Exports ALL of one org's rows across every org-scoped table to a single timestamped
+ * Exports one org's 21 application tables, excluding protected erasure authority, to a timestamped
  * JSON file — a portable, human-readable snapshot for disaster recovery, data portability,
- * and GDPR export. READ-ONLY (SELECT only — zero write risk); FREE; gated on Supabase creds.
+ * and GDPR export. Marks erasure coverage unknown before reading content; gated on Supabase creds.
  *
  *   npm run backup -- --org-id <uuid> [--out <path>] [--pretty]
  *
@@ -18,6 +18,7 @@
 import { writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { markErasureCoverageUnknown } from "../src/memory/erasure-coverage";
 
 /** Org-scoped tables filtered directly by `org_id` (organizations is by `id`; pruning_logs by session). */
 export const ORG_SCOPED_TABLES = [
@@ -113,7 +114,7 @@ async function selectAll(client: SupabaseClient, table: string, column: string, 
 }
 
 /**
- * Export one org's full row-set across every org-scoped table.
+ * Export one org's 21 application tables; protected erasure authority is excluded.
  *
  * @param client - a service-role Supabase client.
  * @param orgId - the org to export.
@@ -122,6 +123,7 @@ async function selectAll(client: SupabaseClient, table: string, column: string, 
  * @throws {Error} if any table read fails (fail-loud — never write a partial backup silently).
  */
 export async function exportOrg(client: SupabaseClient, orgId: string, exportedAt: string): Promise<BackupFile> {
+  await markErasureCoverageUnknown(client, orgId, "backup_export");
   const tables: Record<string, unknown[]> = {};
 
   tables["organizations"] = await selectAll(client, "organizations", "id", orgId, ["id"]);
@@ -191,7 +193,7 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
   }
   out("-".repeat(50));
   out(`${totalRows(backup)} row(s) across ${Object.keys(backup.tables).length} tables → ${path}`);
-  out("(restore is the documented follow-up; this export is read-only + safe.)");
+  out("(erasure coverage is now unknown; restore is the documented follow-up.)");
   return 0;
 }
 

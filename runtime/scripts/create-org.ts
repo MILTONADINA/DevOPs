@@ -11,6 +11,7 @@
 
 import "dotenv/config";
 import { createClient } from "@supabase/supabase-js";
+import { z } from "zod";
 import { generateApiKey } from "../src/proxy/auth";
 
 const PLANS = ["starter", "growth", "enterprise", "custom"] as const;
@@ -72,9 +73,12 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
   }
   const client = createClient(url, key);
 
-  const { data, error } = await client.from("organizations").insert({ name: args.name, plan: args.plan }).select("id").limit(1);
-  if (error) throw new Error(`insert org failed: ${error.message}`);
-  const orgId = ((data ?? [])[0] as { id: string } | undefined)?.id ?? "?";
+  // The database mints identity and coverage together; generic inserts stay unknown.
+  const { data, error } = await client.rpc("create_managed_organization", { p_name: args.name, p_plan: args.plan });
+  if (error) throw new Error(`organization constructor failed: ${error.message}`);
+  const identity = z.string().uuid().safeParse(((data ?? [])[0] as { id?: unknown } | undefined)?.id);
+  if (!identity.success) throw new Error("organization constructor returned no valid identity");
+  const orgId = identity.data;
 
   out("Organization created:");
   out(`  id:    ${orgId}`);

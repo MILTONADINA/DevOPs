@@ -13,6 +13,11 @@ function cappedClient(opts: { stallAt?: number; omitCount?: boolean; withLogs?: 
     organizations: [{ id: ORG }], developers: ids(1_001, "developer"), sessions, pruning_logs: logs,
   };
   return {
+    async rpc(name: string, args: unknown) {
+      expect(name).toBe("mark_erasure_coverage_unknown");
+      expect(args).toEqual({ p_org_id: ORG, p_reason: "backup_export" });
+      return { data: true, error: null };
+    },
     from(table: string) {
       let filter: (row: Record<string, unknown>) => boolean = () => true;
       let ordered: string[] = [];

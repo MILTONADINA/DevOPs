@@ -14,8 +14,13 @@ explicit unbound scope, and two distinct decision UUIDs, THE COMMAND SHALL
 read only the two decisions in that binding. It SHALL display bounded current
 decision text, timestamps, and link state for review. IF either decision is
 missing, suppressed, out of scope, ordered incorrectly, or already linked,
-THEN it SHALL exit nonzero without calling the write RPC. The default command
-SHALL be a read-only preview.
+THEN it SHALL exit nonzero without calling the supersession write RPC. The
+default command SHALL preview the pair without modifying decision content or
+reviewed links. In accordance with `session-erasure.md` REQ-8, each exported
+protected read entry SHALL first durably mark organization-wide erasure
+coverage unknown; IF that transition is not acknowledged, THEN it SHALL fail
+before reading, returning, or displaying protected data. This metadata write
+is required for preview as well as apply, before any supersession mutation.
 
 ## REQ-2 — Record only explicit reviewed evidence
 
@@ -36,8 +41,10 @@ validation SHALL run before a database client is created.
 
 ## Acceptance
 
-- Focused tests prove validation and dry-run before any RPC, exact binding,
-  explicit evidence, and fail-closed RPC behavior.
+- Focused tests prove input validation before client creation, acknowledged
+  coverage invalidation before protected reads, and exact pair validation
+  before the supersession write RPC. Preview changes no decision content or
+  reviewed link; explicit evidence and fail-closed RPC behavior are preserved.
 - A disposable local Compose fixture proves a reviewed pair is linked,
   immutable, and excluded from current SessionStart recall; fixture rows are
   removed afterward.

@@ -24,6 +24,7 @@ import { isIPv6 } from "node:net";
 import os from "node:os";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { logger } from "../lib/logger";
+import { assertErasureStartup } from "../lib/erasure-generation";
 import { buildProxy, type BuildProxyOptions } from "./app";
 import { createDefaultMessagesDeps } from "./default-deps";
 import { isLoopbackBindAddress, resolvePort, resolveRateLimitMax } from "./network-settings";
@@ -555,6 +556,7 @@ export async function start(): Promise<void> {
   assertUpstreamAllowed(host, port, env);
 
   assertCommercialStartup(env);
+  await assertErasureStartup(process.env, createClient);
   const base = baseOptions({ port, host, sessionsDir, messages: createDefaultMessagesDeps() });
   const app = buildProxy(buildStartOptions(env, base, createClient));
 

@@ -209,9 +209,12 @@ token-arbitrage billing system: HMAC-signed records, an append-only ledger,
 monthly invoices, a CFO dashboard with the fee, Stripe and pricing tiers. The
 project is now open source with no payment. The payment layer was
 built ahead; C1–C3 are merged, including the payment application module removal.
-C4-A removes invoice schema and coordinates legacy backup recovery (locally
-verified, CI/merge pending);
-C4-B still needs to deliver actual API erasure. The
+C4-A removes invoice schema and coordinates legacy backup recovery (merged in
+PR #224 at `3e570a2`). C4-B's initial managed explicit-session class passed actual
+authenticated API erasure, shared/foreign-data survival, rollback and stable
+retry on a fresh isolated, source-bound instance. Clean runtime1,623 and isolated
+Linux root473 pass. Final security/governance checks, CI/merge, wider coverage
+and the one-year benchmark remain open. The
 requirements are in `../../specs/ops/payment-removal.md`, and the root
 `plan.md` §8 is the checklist.
 
@@ -233,15 +236,17 @@ measured and nothing billed.
   entry point verified)
 - [x] Delete the payment modules and their tests (C3 merged in PR #223 at
   `28ea1aa`; measured runtime floor 1,388 declared from 1,521; required CI passed)
-- [ ] Remove the invoice tables and the billing-retention erasure blocker (C4-A
-  locally verified with coordinated legacy restore; runtime 1,403/root 473,
-  SQL/recovery/setup/entry-point proofs pass; required CI and merge pending)
+- [x] Remove the invoice tables and the billing-retention erasure blocker (C4-A
+  merged in PR #224 at `3e570a2`, with coordinated legacy restore;
+  runtime 1,403/root 473 and SQL/recovery/setup/entry-point proofs passed)
 - [ ] Keep exact token counts, with token and USD estimates shown as
   information only
 - [ ] Session erasure endpoint. Unsigned usage rows are ordinary session-linked
-  data. C4-A removes the financial preflight reason but keeps unknown-store and
-  unavailable-executor blocks. Actual API erasure, shared-data safety and the
-  one-year timing proof remain open under `../../specs/memory/session-erasure.md`.
+  data. The controlled initial explicit-session class now has real API deletion,
+  shared-data safety, rollback and retry proof. Unknown stores and unsafe
+  dependencies block execution. Broader historical/conversation/copy coverage,
+  general managed onboarding/restarts, final gates and the one-year timing
+  proof remain open under `../../specs/memory/session-erasure.md`.
 
 ### Acceptance Criteria
 

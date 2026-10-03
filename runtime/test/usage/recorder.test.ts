@@ -15,27 +15,35 @@ const ROW = {
 interface Result { data: unknown; error: { code?: string; message: string } | null }
 const DUPLICATE: Result = { data: null, error: { code: "23505", message: "duplicate event" } };
 
-function fakeClient(insertResult: Result = { data: [{ id: ROW.id }], error: null }, replayResult: Result = { data: [ROW], error: null }): {
-  client: SupabaseClient; writes: Record<string, unknown>[]; filters: Array<[string, unknown]>; signals: AbortSignal[]; lookups: string[];
+function fakeClient(insertResult: Result = { data: [{ id: ROW.id }], error: null }, replayResult: Result = { data: [ROW], error: null }, coverageResult: Result = { data: true, error: null }): {
+  client: SupabaseClient; writes: Record<string, unknown>[]; filters: Array<[string, unknown]>; signals: AbortSignal[]; lookups: string[]; operations: string[];
 } {
   const writes: Record<string, unknown>[] = [];
   const filters: Array<[string, unknown]> = [];
   const signals: AbortSignal[] = [];
   const lookups: string[] = [];
+  const operations: string[] = [];
   const result = (value: Result) => Object.assign(Promise.resolve(value), {
     abortSignal(signal: AbortSignal) { signals.push(signal); return Promise.resolve(value); },
   });
-  const client = { from(table: string) {
+  const client = { rpc(name: string, args: unknown) {
+    expect(name).toBe("mark_erasure_coverage_unknown");
+    expect(args).toEqual({ p_org_id: INPUT.orgId, p_reason: "protected_read" });
+    operations.push("mark");
+    return result(coverageResult);
+  }, from(table: string) {
     expect(table).toBe("billing_records");
     return {
-      insert(row: Record<string, unknown>) { writes.push(row); return { select: () => ({ limit: () => result(insertResult) }) }; },
+      insert(row: Record<string, unknown>) { operations.push("insert"); writes.push(row); return { select: () => ({ limit: () => result(insertResult) }) }; },
       select(columns: string) {
+        operations.push("read");
         lookups.push(columns);
-        return { eq(column: string, value: unknown) { filters.push([column, value]); return { limit: () => result(replayResult) }; } };
+        const query = { eq(column: string, value: unknown) { filters.push([column, value]); return query; }, limit: () => result(replayResult) };
+        return query;
       },
     };
   } } as unknown as SupabaseClient;
-  return { client, writes, filters, signals, lookups };
+  return { client, writes, filters, signals, lookups, operations };
 }
 
 describe("unsigned usage recorder — specs/ops/payment-removal.md#AC-4", () => {
@@ -61,7 +69,7 @@ describe("unsigned usage recorder — specs/ops/payment-removal.md#AC-4", () => 
   test("returns the durable ID on identical replay and looks up its event identity", async () => {
     const { client, filters, lookups } = fakeClient(DUPLICATE);
     expect(await recordUsage({ client }, INPUT)).toEqual({ id: ROW.id });
-    expect(filters).toEqual([["usage_event_id", INPUT.usageEventId]]);
+    expect(filters).toEqual([["org_id", INPUT.orgId], ["usage_event_id", INPUT.usageEventId]]);
     expect(lookups[0]?.split(",")).toEqual(expect.arrayContaining(Object.keys(ROW)));
   });
 
@@ -123,11 +131,27 @@ describe("unsigned usage recorder — specs/ops/payment-removal.md#AC-4", () => 
     await expect(recordUsage({ client }, INPUT)).rejects.toThrow("recordUsage replay lookup failed: database unavailable");
   });
 
-  test("shares the same abort signal between insert and replay lookup", async () => {
+  test("shares the same abort signal between insert, coverage marking and replay lookup", async () => {
     const { client, signals } = fakeClient(DUPLICATE);
     const signal = new AbortController().signal;
     expect(await recordUsage({ client, signal }, INPUT)).toEqual({ id: ROW.id });
-    expect(signals).toEqual([signal, signal]);
+    expect(signals).toEqual([signal, signal, signal]);
+  });
+
+  test("marks before replay content is read; ID-only insertion needs no copy marker", async () => {
+    const first = fakeClient();
+    await recordUsage({ client: first.client }, INPUT);
+    expect(first.operations).toEqual(["insert"]);
+    const replay = fakeClient(DUPLICATE);
+    await recordUsage({ client: replay.client }, INPUT);
+    expect(replay.operations).toEqual(["insert", "mark", "read"]);
+  });
+
+  test.each([{ data: false, error: null }, { data: null, error: null }, { data: true, error: { message: "private SQL" } }])("failed marking refuses replay lookup and confirmation", async (coverage) => {
+    const { client, operations, lookups } = fakeClient(DUPLICATE, { data: [ROW], error: null }, coverage);
+    await expect(recordUsage({ client }, INPUT)).rejects.toThrow("erasure coverage");
+    expect(operations).toEqual(["insert", "mark"]);
+    expect(lookups).toEqual([]);
   });
 
   test.each(["originalTokens", "quarantinedTokens", "apiPricePerToken"] as const)("retains finite/nonnegative %s input validation without the fee calculator", async (field) => {

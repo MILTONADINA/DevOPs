@@ -18,6 +18,21 @@ product. See `docs/LAUNCH_READINESS.md` for current, frequently-updated
 status — this file intentionally does not duplicate that detail while the
 phase is open.
 
+### Added — limited managed session erasure (specs/memory/session-erasure.md, C4-B)
+
+- Organization-only authenticated erasure for newly enrolled explicit sessions
+  in a privileged, source-bound local generation. Preparation creates a durable
+  fence; atomic deletion returns a stable receipt across transport loss/retry.
+- Preserve shared and foreign data, reject late identity/source resurrection,
+  and mark coverage permanently uncertain before protected application copying.
+  Restore retains compatibility and cannot enroll imported identities.
+- Seven additive migrations retain the historical schema ledger. The original
+  operator database remains unactivated; the controlled real HTTP proof uses a
+  fresh isolated stack and stops/disables its generation afterward.
+- Broader historical/conversation/copy coverage, managed onboarding/restarts and
+  the representative one-year performance gate remain open. Client responses,
+  privileged snapshots and physical remnants are explicit exclusions.
+
 ### Changed — invoice schema and legacy recovery (specs/ops/payment-removal.md, C4-A)
 
 - **Breaking:** M2 drops invoice reconciliation/payment RPCs and invoice tables

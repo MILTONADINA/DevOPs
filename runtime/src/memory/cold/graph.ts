@@ -17,7 +17,9 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { z } from "zod";
 import { validProjectScope } from "../../proxy/auth";
+import { markErasureCoverageUnknown } from "../erasure-coverage";
 
 /** Knowledge-graph node kinds: the node types in docs/MEMORY_ARCHITECTURE.md, plus File. */
 export type EntityKind = "Function" | "Commit" | "Decision" | "Developer" | "Policy" | "Project" | "File";
@@ -122,6 +124,19 @@ export interface KnowledgeGraph {
  * @returns a {@link KnowledgeGraph}.
  */
 export function createKnowledgeGraph(client: SupabaseClient): KnowledgeGraph {
+  async function managedWrite(kind: "entity" | "edge", orgId: string, sessionId: string | undefined, input: Record<string, unknown>): Promise<string | null> {
+    try {
+      const { data, error } = await client.rpc(`write_managed_graph_${kind}`, { p_org_id: orgId, p_session_id: sessionId ?? null, p_input: input });
+      if (error !== null) throw new Error("managed graph write unavailable");
+      // Only explicit unknown coverage authorizes the guarded legacy path. A
+      // covered writer keeps reuse reads and provenance writes inside SQL.
+      if (data === null) return null;
+      return z.string().uuid().parse(data);
+    } catch {
+      throw new Error("managed graph write unavailable");
+    }
+  }
+
   async function linkSession(table: "knowledge_entity_sessions" | "knowledge_edge_sessions", orgId: string, rowId: string, sessionId: string): Promise<void> {
     const idColumn = table === "knowledge_entity_sessions" ? "entity_id" : "edge_id";
     const { error } = await client.from(table).upsert({ org_id: orgId, [idColumn]: rowId, session_id: sessionId }, { onConflict: `org_id,${idColumn},session_id`, ignoreDuplicates: true });
@@ -130,6 +145,16 @@ export function createKnowledgeGraph(client: SupabaseClient): KnowledgeGraph {
 
   return {
     async ensureEntity(input: EnsureEntityInput): Promise<string> {
+      const managed = await managedWrite("entity", input.orgId, input.sessionId, {
+        kind: input.kind,
+        name: input.name,
+        project_scope: input.projectScope ?? null,
+        scope_verified: input.projectScope !== undefined,
+        ...(input.filePath === undefined ? {} : { file_path: input.filePath }),
+        ...(input.summary === undefined ? {} : { summary: input.summary }),
+      });
+      if (managed !== null) return managed;
+      await markErasureCoverageUnknown(client, input.orgId, "protected_read");
       let query = client
         .from("knowledge_entities")
         .select("id,file_path,summary,provenance_complete")
@@ -179,6 +204,15 @@ export function createKnowledgeGraph(client: SupabaseClient): KnowledgeGraph {
     },
 
     async addEdge(input: AddEdgeInput): Promise<string> {
+      const managed = await managedWrite("edge", input.orgId, input.sessionId, {
+        from_entity: input.fromEntity,
+        to_entity: input.toEntity,
+        edge_type: input.edgeType,
+        project_scope: input.projectScope ?? null,
+        scope_verified: input.projectScope !== undefined,
+      });
+      if (managed !== null) return managed;
+      await markErasureCoverageUnknown(client, input.orgId, "protected_read");
       let query = client
         .from("knowledge_edges")
         .select("id,provenance_complete")
@@ -223,6 +257,7 @@ export function createKnowledgeGraph(client: SupabaseClient): KnowledgeGraph {
 
     async findSuperseded(orgId: string, entityNames: string[]): Promise<Supersession[]> {
       if (entityNames.length === 0) return [];
+      await markErasureCoverageUnknown(client, orgId, "protected_read");
       const { data, error } = await client.rpc("find_superseded", { match_org: orgId, names: entityNames });
       if (error) throw new Error(`findSuperseded failed: ${error.message}`);
       return ((data ?? []) as { superseded: string; superseded_by: string }[]).map((r) => ({
@@ -234,6 +269,7 @@ export function createKnowledgeGraph(client: SupabaseClient): KnowledgeGraph {
     async findProjectSuperseded(orgId: string, projectScope: string | null, entityNames: string[]): Promise<Supersession[]> {
       if (projectScope !== null && !validProjectScope(projectScope)) throw new Error("invalid project scope for supersession lookup");
       if (entityNames.length === 0) return [];
+      await markErasureCoverageUnknown(client, orgId, "protected_read");
       const { data, error } = await client.rpc("find_project_superseded", { match_org: orgId, match_project_scope: projectScope, names: entityNames });
       if (error) throw new Error(`findProjectSuperseded failed: ${error.message}`);
       return ((data ?? []) as { superseded: string; superseded_by: string }[]).map((row) => ({
@@ -243,6 +279,7 @@ export function createKnowledgeGraph(client: SupabaseClient): KnowledgeGraph {
     },
 
     async entityStatus(orgId: string, name: string): Promise<EntityStatusEdge[]> {
+      await markErasureCoverageUnknown(client, orgId, "protected_read");
       const { data, error } = await client.rpc("entity_status", { match_org: orgId, entity_name: name });
       if (error) throw new Error(`entityStatus failed: ${error.message}`);
       return ((data ?? []) as { direction: string; edge_type: string; other_name: string }[]).map((r) => ({

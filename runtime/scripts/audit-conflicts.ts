@@ -7,16 +7,17 @@
  * `WHERE acknowledged = FALSE` is built for exactly this) and lets an operator acknowledge one.
  * Pairs with `npm run audit:repo -- --facts <json> --persist` (the writer).
  *
- *   npm run audit:conflicts                              # unacknowledged conflicts (all orgs)
  *   npm run audit:conflicts -- --org-id <uuid> --limit 20
- *   npm run audit:conflicts -- --all                     # include already-acknowledged
- *   npm run audit:conflicts -- --ack <conflict-id> [--by <developer-uuid>]
+ *   npm run audit:conflicts -- --org-id <uuid> --all      # include already-acknowledged
+ *   npm run audit:conflicts -- --org-id <uuid> --ack <conflict-id> [--by <developer-uuid>]
  *
- * Gated only on Supabase creds (skips cleanly without them); NO Anthropic API.
+ * Requires --org-id. Listing marks erasure coverage unknown before reading content.
+ * A scoped command skips cleanly without Supabase creds; NO Anthropic API.
  */
 
 import "dotenv/config";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { markErasureCoverageUnknown } from "../src/memory/erasure-coverage";
 
 interface Args {
   orgId?: string;
@@ -77,7 +78,7 @@ export function renderConflictRow(r: ConflictRow): string {
   return `  ${r.detected_at}  ${r.fact_table}/${r.fact_id.slice(0, 8)}${commit}${ack}\n      claimed: ${truncate(r.claimed_state, 90)}\n      actual:  ${truncate(r.actual_state, 90)}`;
 }
 
-/** Acknowledge a conflict by id (org-scoped when --org-id is given). Returns rows affected. */
+/** Acknowledge a conflict by id; main requires its organization scope. Returns rows affected. */
 async function acknowledge(client: SupabaseClient, args: Args, nowIso: string): Promise<number> {
   let q = client
     .from("audit_conflicts")
@@ -95,11 +96,10 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
   };
   const args = parseArgs(argv);
 
-  // --ack requires --org-id: the conflict id is a GLOBAL primary key, so acking without an org scope
-  // could silence ANOTHER org's drift alert (the org scope was applied only optionally — make it
-  // mandatory on the write path, mirroring backup-org's required --org-id).
-  if (args.ackId !== undefined && (args.orgId === undefined || args.orgId === "")) {
-    out("--ack requires --org-id (refusing to acknowledge a conflict across orgs).");
+  // Both paths require scope: acknowledgement must not silence another org's alert,
+  // and listing must mark that org's erasure coverage before copying conflict content.
+  if (args.orgId === undefined || args.orgId.trim() === "") {
+    out(args.ackId !== undefined ? "--ack requires --org-id (refusing to acknowledge a conflict across orgs)." : "Listing conflicts requires --org-id.");
     return 1;
   }
 
@@ -117,6 +117,7 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
     return n > 0 ? 0 : 1;
   }
 
+  await markErasureCoverageUnknown(client, args.orgId, "protected_read");
   let q = client
     .from("audit_conflicts")
     .select("id, detected_at, fact_table, fact_id, claimed_state, actual_state, conflict_commit, acknowledged")
@@ -137,7 +138,7 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
   }
   for (const r of rows) {
     out(renderConflictRow(r));
-    out(`      id: ${r.id}  (acknowledge with: npm run audit:conflicts -- --ack ${r.id})`);
+    out(`      id: ${r.id}  (acknowledge with: npm run audit:conflicts -- --org-id ${args.orgId} --ack ${r.id})`);
   }
   out("");
   out(`${rows.length} conflict(s)${args.limit === rows.length ? ` (capped at --limit ${args.limit}; more may exist)` : ""}.`);

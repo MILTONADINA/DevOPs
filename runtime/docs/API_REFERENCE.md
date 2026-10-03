@@ -166,18 +166,51 @@ organization-level key. Personal mode and project-bound keys receive 403;
 foreign, missing and internal sessions receive 404. Query parameters cannot
 substitute another organization.
 
-After C4-A/M2 the response remains `blocked_incomplete_inventory`. Reasons
-include `graph_ownership_ambiguous` when applicable, `stores_not_inventoried`
-while external copies/backups/RAM are unknown, and
-`erasure_execution_unavailable`. `inventory.counts.billing_records` remains a
+With the managed executor configured, HTTP 200 returns `status: "ready"` or
+`"blocked"`, `reasons`, scoped `inventory` and managed-store `classifications`.
+The inventory describes database rows; it does not itself prove RAM, external
+copy or backup coverage. The separate classifications require a trusted
+deployment/enrollment/database boundary and enforced exclusions for the initial
+managed explicit-session class. Unknown stores, stale coverage or unsafe graph
+dependencies block execution. `inventory.counts.billing_records` remains a
 numeric usage count; a positive count does not create a financial blocker.
-This route deletes nothing and does not establish erasure readiness.
+This route changes no state and deletes nothing. The POST rechecks eligibility;
+a prior ready response does not authorize deletion. An unavailable inspection
+returns 503. An explicitly constructed app without the managed executor retains
+the older `blocked_incomplete_inventory` fallback.
+
+### POST /v1/sessions/:id/erasure
+
+Erases an eligible explicit session using an authenticated organization-level
+key. Accepts no query or body fields; an absent body or empty object is allowed.
+Personal and project-bound requests receive 403. Foreign, missing or internal
+sessions receive 404 unless the authenticated organization has a completed
+receipt for that erased explicit session. Scope/coverage overrides receive 400.
+
+| Status | Meaning |
+|---|---|
+| 200 | Stable `complete` receipt with scope, organization/session/request IDs, completion time, actual deleted/retained counts and exclusions; retry returns the same stored receipt. |
+| 409 | `blocked` with safe nonfinancial reasons for unknown coverage or an unsafe dependency; no content deleted. |
+| 503 | `incomplete`, `retryable: true`; required execution is unavailable or incomplete. Retry resolves any committed fence or completion. |
+
+A durable fence precedes atomic database content deletion. Completion retains
+linkable receipt/tombstone metadata and safe shared survivors. Client-held
+responses, privileged host/database snapshots and physical heap/OS remnants are
+excluded from the guarantee; they are not described as erased. Ordinary session
+GET returns 404 after completion, while the POST can still return its receipt.
+
+The initial managed explicit-session class passed controlled authenticated HTTP
+verification on 2026-10-03. It requires default-disabled privileged activation
+of a fresh isolated source/process/store generation. Protected copies mark
+coverage unknown. Historical/conversation sessions, general managed
+onboarding/restarts, broader copy coverage and the one-year benchmark remain
+open; see the [limited erasure runbook](../../docs/runbooks/LOCAL_STRATUM.md#limited-managed-erasure-candidate).
 
 ### DELETE /v1/sessions/:id
 
 Ends an explicit session by setting `ended_at`; it does not delete the session
-or its content. No actual erasure endpoint is implemented yet. The retained
-requirements are in `specs/memory/session-erasure.md`.
+or its content. Erasure uses the separate POST operation above. Requirements
+are in `specs/memory/session-erasure.md`.
 
 ### GET /v1/sessions
 
@@ -205,8 +238,11 @@ Payment removal C1 (`specs/ops/payment-removal.md` REQ-1) removes `/billing`,
 `POST /stripe/webhook`. Those routes are no longer registered. C3 removes the
 invoice CLI and other payment commands. C2 writes unsigned
 usage records without fee/signature columns or a signing secret. C4-A/M2
-retires the invoice tables/RPCs and the financial preflight blocker. Actual
-API erasure and the one-year performance benchmark remain unfinished.
+retires the invoice tables/RPCs and the financial preflight blocker. The initial
+managed explicit-session class has actual API erasure proof; broader coverage
+and the one-year performance benchmark remain open. Protected usage/statistics
+reads durably mark erasure coverage unknown before returning data, and fail
+closed if that marker cannot be acknowledged.
 
 ### GET /v1/billing/summary
 

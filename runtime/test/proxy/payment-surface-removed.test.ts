@@ -116,6 +116,11 @@ describe("payment surface removed: OpenAPI document (REQ-1)", () => {
 function usageClient(): { client: SupabaseClient; tables: string[] } {
   const tables: string[] = [];
   const client = {
+    rpc(name: string, args: unknown) {
+      expect(name).toBe("mark_erasure_coverage_unknown");
+      expect(args).toEqual({ p_org_id: "org-payment-removed", p_reason: "protected_read" });
+      return Promise.resolve({ data: true, error: null });
+    },
     from(table: string) {
       tables.push(table);
       const answer = table === "organizations" ? { data: [{ plan: "growth" }], error: null, count: null } : { data: [], error: null, count: 0 };

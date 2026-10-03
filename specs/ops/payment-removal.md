@@ -273,7 +273,7 @@ prints nothing and the typecheck passes.
 a session is erased through the API **Then** the coverage guard passes, and the
 erasure preflight reports no billing-retention blocker.
 
-**Verified by:** C4, runtime/test/integration/local-session-erasure-inventory.sql plus the sessions-route test. Test titles name `specs/ops/payment-removal.md#AC-8`.
+**Verified by:** C4, runtime/test/integration/local-session-erasure-inventory.sql, the sessions-route test and the actual authenticated HTTP driver runtime/test/integration/local-session-erasure-api.ts with its normal-writer fixture runtime/test/integration/erasure-api-fixture.ts. The 2026-10-03 initial-class run is recorded in `.workflow/proofs/c4b-2026-10-03/erasure-api-a1f74062-1674-44f2-90f1-4425f7d57180.json`; this small fixture does not establish the separate one-year benchmark or wider coverage. Test titles name `specs/ops/payment-removal.md#AC-8`.
 
 ### AC-9 (REQ-9)
 **Given** a backup exported before C2 that contains `invoices`,

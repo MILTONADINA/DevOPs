@@ -214,6 +214,17 @@ export function makeFakeSupabase(
     },
     rpc(fn: string, args: Record<string, unknown>) {
       const handler = rpcHandlers[fn];
+      // Explicitly acknowledge the new copy boundary; never silently accept unknown RPCs.
+      if (!handler && fn === "mark_erasure_coverage_unknown") {
+        const valid = typeof args["p_org_id"] === "string" && args["p_org_id"].length > 0 &&
+          (args["p_reason"] === "protected_read" || args["p_reason"] === "backup_export");
+        return Promise.resolve({ data: valid, error: null });
+      }
+      // These old fixtures have no trusted enrollment metadata. The managed
+      // writer explicitly returns NULL; the adapter must then mark before reads.
+      if (!handler && (fn === "write_managed_graph_entity" || fn === "write_managed_graph_edge")) {
+        return Promise.resolve({ data: null, error: null });
+      }
       if (!handler) return Promise.resolve({ data: null, error: { message: `no rpc handler: ${fn}` } });
       return Promise.resolve({ data: handler(args), error: null });
     },

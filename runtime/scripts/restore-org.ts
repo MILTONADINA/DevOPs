@@ -12,6 +12,8 @@
  * insert so the DB recomputes them. Pre-C2 backups' retired fee/signature columns are stripped
  * and reported as well. C4's retired invoice tables are validated, reported and skipped.
  * Decision supersession references are restored after all decisions exist.
+ * Before active inserts, database admission rejects known erased identities and records
+ * unknown coverage for the imported organization. This is not an atomic bulk restore.
  */
 
 import { readFileSync } from "node:fs";
@@ -253,6 +255,57 @@ export function decisionSupersessionUpdates(backup: BackupFile): ReviewedSuperse
   });
 }
 
+/** PostgreSQL accepts braces, case variants and hyphens after any four hex digits. */
+function canonicalUuid(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const inner = value.startsWith("{") && value.endsWith("}") ? value.slice(1, -1) : value;
+  if (!/^[0-9a-f]{4}(?:-?[0-9a-f]{4}){7}$/i.test(inner)) return null;
+  const hex = inner.replaceAll("-", "").toLowerCase();
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
+/** Pointer-only admission inputs; never transmit backed-up content to the authority RPC. */
+export function restoreErasureIdentities(backup: BackupFile): { p_org_id: string; p_session_ids: string[]; p_fact_ids: string[]; p_entity_ids: string[] } {
+  const sessions = new Set<string>();
+  const facts = new Set<string>();
+  const entities = new Set<string>();
+  const add = (set: Set<string>, value: unknown): void => {
+    if (value == null) return;
+    if (typeof value !== "string" || value === "") throw new Error("restore identity invalid");
+    // Real UUID columns are also checked by the RPC's UUID[] argument parser.
+    set.add(canonicalUuid(value) ?? value);
+  };
+  for (const table of RESTORE_ORDER) {
+    for (const value of backup.tables[table] ?? []) {
+      const row = value as Record<string, unknown>;
+      add(sessions, row["session_id"]);
+      if (table === "sessions") add(sessions, row["id"]);
+      if (Object.hasOwn(TABLE_FACT_TYPES, table)) add(facts, row["id"]);
+      if (table === "tech_decisions") add(facts, row["supersedes_id"]);
+      if (table === "audit_conflicts" || table === "audit_statuses") add(facts, row["fact_id"]);
+      if (table === "knowledge_entities") add(entities, row["id"]);
+      if (table === "knowledge_edges") {
+        add(entities, row["from_entity"]);
+        add(entities, row["to_entity"]);
+      }
+      if (table === "knowledge_entity_sessions") add(entities, row["entity_id"]);
+      if (table === "source_fact_links") {
+        add(entities, row["file_entity_id"]);
+        add(facts, row["function_change_id"]);
+        add(facts, row["tech_decision_id"]);
+      }
+      if (table === "memory_vectors") {
+        const reference = canonicalUuid(row["source_ref"]);
+        // Unrelated non-UUID legacy pointers remain unknown. A UUID turn pointer
+        // must not evade known tombstones by relabeling a retired fact/entity.
+        if (reference && (row["source_type"] === "fact" || row["source_type"] === "turn")) facts.add(reference);
+        if (reference && (row["source_type"] === "entity" || row["source_type"] === "turn")) entities.add(reference);
+      }
+    }
+  }
+  return { p_org_id: canonicalUuid(backup.orgId) ?? backup.orgId, p_session_ids: [...sessions].sort(), p_fact_ids: [...facts].sort(), p_entity_ids: [...entities].sort() };
+}
+
 export async function main(argv: string[] = process.argv.slice(2)): Promise<number> {
   const out = (s: string): void => {
     process.stdout.write(`${s}\n`);
@@ -304,6 +357,12 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
     return 1;
   }
   const client: SupabaseClient = createClient(url, key);
+  try {
+    const admission = await client.rpc("prepare_erasure_restore", restoreErasureIdentities(backup));
+    if (admission?.data !== true || admission.error !== null) throw new Error("unacknowledged restore admission");
+  } catch {
+    throw new Error("restore erasure admission failed; no rows inserted");
+  }
 
   let inserted = 0;
   for (const { table, rows } of plan) {
