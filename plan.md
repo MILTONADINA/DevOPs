@@ -453,32 +453,30 @@ needs.
 **Ship gate**: every requirement of `specs/ops/payment-removal.md` is met (payment surface absent, usage ledger unsigned, USD kept as estimates, backups from before the removal still restore, gateway untouched, test floors lowered only through declared lowerings); organizations and API keys work in team mode on a local install; session erasure runs in <30s on 1-year data without a financial ledger.
 **Effort remaining**: not estimated. The former ~30h estimate covered the billing scope and is withdrawn.
 
-**Current state (code on `main`, 2026-09-26).** The payment layer is still in
-the tree: `runtime/src/billing/` (Stripe client and webhook, invoice
-generation and ledger, fee calculator, HMAC recorder), the `/billing` CFO page
-and `/v1/billing/*` routes, `POST /stripe/webhook`, the invoice tables, and the
-append-only trigger on `billing_records`. That trigger was checked off here
-before 2026-09-26 as "Append-only Postgres trigger"; C2 removes it. Withdrawn
-with the billing scope: the HMAC recorder, fee calculator, invoice stub,
-complete invoice read gate and CFO dashboard skeleton items. The team-mode
-pieces that stay already exist in code: hash-only API-key auth, org-scoped
-`/v1/*` APIs, per-plan rate limits, concurrent-session caps and token budgets
-(`docs/LAUNCH_READINESS.md`, v1.0.0 row history).
+**Current implementation (C1, 2026-10-03).** The payment HTTP surface is
+removed. The two retained `/v1/billing/*` usage reads and session statistics
+report token counts and USD estimates without fee fields. The plan reader
+uses the sessions dependencies. The remaining payment code is
+`runtime/src/billing/`, the invoice CLI and its read factory, invoice tables,
+and the signed append-only usage ledger. C2–C4 remove those components.
+Organization API keys, scoped APIs and resource limits remain. Verification
+and the merge gate are recorded in `docs/handoff/README.md`.
 
 ### 8a. Payment removal (graph cycles; requirements in `specs/ops/payment-removal.md`)
 
-- [ ] **C1 — Remove the payment HTTP surface.** The CFO page, invoice, audit
+- [x] **C1 — Remove the payment HTTP surface.** The CFO page, invoice, audit
   CSV, invoice-list and Stripe webhook routes, the fee fields and the
-  `invoice.ready` webhook event go; the plan reader moves first; a token-only
-  usage read API stays (REQ-1 to REQ-3).
+  `invoice.ready` and `tee.attestation_failed` webhook events are removed; the
+  plan reader uses sessions dependencies; a token-only usage read API stays
+  (REQ-1 to REQ-3, REQ-6).
 - [ ] **C2 — Unsigned usage ledger.** Copy the usage recorder and outbox out
   of `runtime/src/billing/`; migration M1 drops the signature, the fee column
   and the append-only enforcement; team mode stops requiring
   `CQ_BILLING_SIGNING_SECRET` (REQ-4, REQ-5).
-- [ ] **Retire the billing four-eyes gate.** Authorized by the owner on
-  2026-09-26. A separate graph cycle changes `deploy-gate.sh` and
-  `governance/graph/`, and it lands before C1: it also adds the declared
-  test-floor lowering mechanism (REQ-12) that C1 needs. The gateway path
+- [x] **Retire the billing four-eyes gate.** Landed in PR #212 (`10855fc`),
+  after owner authorization on 2026-09-26. The deploy gate and graph-halt stay;
+  the declared test-floor lowering mechanism (REQ-12) is available. C1 raises
+  the runtime floor to 1,433, so it needs no lowering. The gateway path
   (`runtime/src/proxy/providers/`) is not payment code.
 - [ ] **C3 — Delete the payment modules** (`runtime/src/billing/`,
   `runtime/scripts/invoice.ts`) and their tests (REQ-7).

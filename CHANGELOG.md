@@ -18,6 +18,23 @@ product. See `docs/LAUNCH_READINESS.md` for current, frequently-updated
 status — this file intentionally does not duplicate that detail while the
 phase is open.
 
+### Changed — payment HTTP surface removal (specs/ops/payment-removal.md, C1)
+
+- **Breaking:** removed the CFO page (`/billing`), invoice, invoice-list and
+  audit CSV HTTP routes, and `POST /stripe/webhook`. The proxy no longer uses
+  `STRIPE_WEBHOOK_SECRET`; OpenAPI omits the removed payment routes and schema.
+- Kept `/v1/billing/summary` and `/v1/billing/records` as usage reads. They
+  report token counts and estimated USD savings without fee or signature
+  fields, and still refuse project-bound keys with 403. Session stats retain
+  token counts and estimated USD savings without `feeUsd`.
+- Plan lookup for request limits and token budgets now uses the sessions
+  dependencies; the plan limits and starter fallback remain in place.
+- Removed `invoice.ready` and `tee.attestation_failed` webhook types and
+  the fee field from the `session.ended` sample.
+- Signed ledger writes and their signing secret remain until C2. The invoice
+  CLI, Stripe library and payment modules remain until C3; invoice tables
+  remain until C4. C1 does not remove those components.
+
 ### Security — local network hardening (specs/security/stratum-local-network.md)
 
 - **Breaking:** the bind-host setting is now `DEVOPS_PROXY_HOST`. `HOST` is

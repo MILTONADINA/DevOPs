@@ -151,7 +151,7 @@ Sources: `runtime/package.json:20`, `runtime/package.json:27-33`,
 `runtime/scripts/eval-dev.ts:43-46`, `runtime/scripts/eval-dev.ts:74`,
 `runtime/scripts/eval-tierb.ts:27-30`, `runtime/scripts/eval-locomo.ts:169-183`,
 `runtime/scripts/eval-longmemeval.ts:81-95`,
-`runtime/docs/COMMERCIAL_ONBOARDING.md:100`, `runtime/docs/LOCAL_STORAGE.md:102`.
+`runtime/docs/COMMERCIAL_ONBOARDING.md:84-86`, `runtime/docs/LOCAL_STORAGE.md:102`.
 
 ## Create an organization
 

@@ -197,6 +197,26 @@ describe("both usage paths", () => {
     await app.close();
   });
 
+  // Mutation: removing resolveOrg's authEnforced guard would let a spoofed query select another org.
+  test("specs/ops/payment-removal.md#AC-3 auth on with missing orgId rejects a spoofed ?org-id before any read on both paths (regression guard)", async () => {
+    const { deps } = fakeDeps();
+    const reads = [vi.spyOn(deps, "getOrgPlan"), vi.spyOn(deps, "listUsageRecords"), vi.spyOn(deps, "listRecords"), vi.spyOn(deps, "developerBreakdown")];
+    // Fault injection: the auth hook still marks requests as enforced, but a mistaken public-path
+    // configuration bypasses key resolution. The routes must refuse the query-string fallback.
+    const app = buildProxy({ rateLimit: false, cors: false, auth: { resolve, publicPaths: PATHS.map((path) => `/v1/billing/${path}`) }, usage: deps });
+    try {
+      await app.ready();
+      for (const path of PATHS) {
+        const response = await app.inject({ method: "GET", url: `/v1/billing/${path}?org-id=o1` });
+        expect(response.statusCode, path).toBe(400);
+        expect(response.json().error.message).toBe("org id required (authenticate, or pass ?org-id)");
+      }
+      for (const read of reads) expect(read).not.toHaveBeenCalled();
+    } finally {
+      await app.close();
+    }
+  });
+
   // Mutation: dropping the "no org" 400 from either route (the summary would read the plan of an undefined org and answer 404, the records would answer 200 with an empty page).
   test("specs/ops/payment-removal.md#AC-3 400 when no org can be resolved (no auth, no ?org-id), on both paths (regression guard)", async () => {
     const app = buildProxy({ rateLimit: false, cors: false, usage: fakeDeps().deps });

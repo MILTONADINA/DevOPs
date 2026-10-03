@@ -1,61 +1,57 @@
-# Handoff: current state (2026-09-30)
+# Handoff: C1 closeout and next steps (2026-10-03)
 
-This page is for the next coding agent (Codex or another tool) that picks up this repository. The operating rules are in [`AGENTS.md`](../../AGENTS.md); read it first. This page gives the state of the work, the open branches, the next steps and the owner decisions recorded so far. It holds no secrets.
+Read [`AGENTS.md`](../../AGENTS.md) and the local `.workflow/state/baton.md` first. This page describes the C1 change and its remaining roadmap. Git and the PR checks determine the current merge state; the verification below does not declare the whole project finished.
 
-## Branches and PRs
+## Branches and provenance
 
-| Ref | Commit | State |
-|---|---|---|
-| `main` | `3ac20df` | Protected. Required checks: `validate`, `runtime-test`, `setup-linux`, `gitleaks`, `semgrep`, `dependency-audit` (strict, with admins enforced). |
-| `dev` | `3ac20df` | Same as `main`. |
-| `feature` | this handoff, on top of the WIP commit `7565ca4` | **Not for merge as-is**: it carries unfinished cycle C1. |
+The repository uses only `main`, `dev`, and `feature`. Changes reach protected `main` through a squash-merged PR with `validate`, `runtime-test`, `setup-linux`, `gitleaks`, `semgrep`, and `dependency-audit` green. Keep `dev` synchronized after landing.
 
-No PRs are open. The repository uses three branches only (`main`, `dev`, `feature`). Changes reach `main` by squash-merged PRs with every required check green.
+- C1 base: `3ac20df17ebfc8e7f1614c23a1bbeecbaff7084e` (S1, PR #219; includes #220's undici fix).
+- Claude's stopped checkpoint: `7565ca4`, followed by handoff `1e5f2a8`, both preserved on `feature`.
+- Codex resumed that checkpoint on 2026-10-03, finished T4–T7, and added a regression test for auth-enabled requests without an organization. This was a cross-tool continuation with independent review and validation agents, not a replay of Claude Workflow `wf_51c12945-ff7`. The old Workflow record remains historical/indeterminate.
+- Do not apply the old baton's `git reset --soft HEAD~1`: it no longer identifies the WIP code boundary.
 
-## Merged recently (newest first)
+## C1 implementation and verification
 
-| PR | What |
+Spec: [`specs/ops/payment-removal.md`](../../specs/ops/payment-removal.md), REQ-1, REQ-2, REQ-3, REQ-6 and the applicable every-cycle REQ-10–15. The spec stays **approved** because C2–C4 remain open.
+
+- Removed the CFO page, payment HTTP reads, inbound Stripe route, payment OpenAPI schema and two retired webhook event types.
+- Retained `/v1/billing/summary` and `/v1/billing/records` as usage reads, with token totals and estimated USD values. Project-bound keys still receive 403. Session stats have no `feeUsd`.
+- Plan lookup now uses the sessions dependencies; request limits, token budgets and session caps retain their behavior.
+- The invoice CLI's two-method billing factory remains until C3. Signed usage writes, the signing secret, billing modules and invoice tables remain for C2–C4.
+- Updated the API/operator docs, both affected billing specs and the spec-status baseline. The added missing-org regression guard fails when the auth fallback guard is deliberately removed from an isolated copy.
+
+Local gates were independently reproduced:
+
+| Gate | Result |
 |---|---|
-| #220 | `undici` 7.29.1 through `wrangler` 4.144.0 (a high advisory), lockfile only. |
-| #219 | Security cycle S1: the local proxy is locked to loopback by default (`specs/security/stratum-local-network.md`). It adds CORS rules, a Host allow-list, a 400 for duplicate Host headers, and startup refusals for unsafe settings. `runtime/Dockerfile` is removed. |
-| #218 | The repository hygiene check tolerates unstaged deletions. |
-| #216 | The repository hygiene check (`specs/ops/repo-hygiene.md`). Scripts with a shebang are executable, the version is 0.3.0 everywhere, and the root tests run by glob. |
-| #215 | CI lint gate for `runtime/src`, with zero warnings allowed (`specs/ops/ci-product-suites.md` REQ-3). |
-| #213, #214 | `stratum/` moved to `runtime/`; the package is `@miltonadina/devops-runtime` (ADR-0026). |
+| Runtime suite, clean locked install without optional real datasets | 1,433 passed; 5 skipped; 5 todo |
+| Base runtime suite at `3ac20df` | 1,415 passed; 5 skipped; 5 todo |
+| Root suite, isolated Linux / Node 24 | 473 passed; 17 skipped; 0 failures |
+| Typecheck, source lint and expanded Vercel-adapter typecheck | Pass |
+| SQL integration | All 14 files passed and rolled back |
+| Root setup smoke | Pass; 0 migrations applied; database volume preserved |
+| Real team-mode `npm run dev` | Health 200 with database healthy; Stripe/CFO 404; usage read 401 without key |
+| Floors, spec status/baseline, repository hygiene, added-test assertions | Pass |
 
-Test floors in `governance/test-floors.json` are root 473 and runtime 1415. CI fails a suite whose passing count drops below its floor. A floor may fall only through a declared `lowerings` entry.
+The runtime floor rises from 1,415 to 1,433; no lowering entry is needed. Root remains 473. The adapter's pre-existing TS2322 is fixed as authorized in the original planner answers. The initial root test environment failed because its temporary fixtures require independent Git roots and POSIX executable permissions; the passing environment uses a cached Node Linux image, isolated tracked-file clone, project-backed temporary/home directories and tmpfs for permission-sensitive state. No acceptance assertion was relaxed.
 
-## Work in progress: payment removal, cycle C1
+Detailed commands, exits, source manifests, test disposition and independent reports are local under `.workflow/proofs/c1-resume-2026-10-03/`. Named-file Gitleaks scans are clean. The limited local Semgrep scan has one unchanged INFO finding in a webhook unit test, reviewed as non-blocking; the full required CI Semgrep packs still gate the PR. Local proof is not a substitute for those required GitHub checks.
 
-- **Spec:** [`specs/ops/payment-removal.md`](../../specs/ops/payment-removal.md), approved by the owner in spec batch 1. C1 implements REQ-1, REQ-2, REQ-3 and REQ-6, plus the every-cycle rules REQ-10 to REQ-15.
-- **Build plan:** [`c1-payment-surface-backlog.md`](c1-payment-surface-backlog.md). It holds the decisions (D1 to D9), the tasks (T1 to T7) and the proof rules. Five planner questions were answered after it was written; they are listed below.
-- **State on `feature` (WIP commit `7565ca4`):**
-  - Done and tester-verified: T2 (the plan reader reads from the sessions deps); T1a and T1b (the payment routes, the Stripe webhook, the OpenAPI payment paths and the two webhook event types are removed); T3a to T3c (`routes/usage.ts`, `usage/summary.ts`, `routes/org-scope.ts`, the fee-free session stats, and their tests).
-  - Written but not verified: T4 (`routes/billing.ts` trimmed to the factory that `scripts/invoice.ts` still uses).
-  - Not started: T5 (spec amendments and docs), T6 (the floor lowering entry), T7 (the proof on the running system), and an independent review, security scan and validation.
-- **Answers to the planner's five questions:**
-  1. Fix the pre-existing type error in `runtime/vercel-src/entry.ts` (`let ready` must accept what `app.ready()` returns) as part of that file's edit, so the adapter typecheck exits 0.
-  2. The `developerBreakdown` case leaves `runtime/test/billing/billing-deps-read.test.ts` and moves to `runtime/test/proxy/usage-deps-read.test.ts` without its fee field.
-  3. The OpenAPI 200 descriptions on the usage paths say "USD figures are estimates, for information only". The no-fee regex check on the whole document stays as written.
-  4. The `STRIPE_WEBHOOK_SECRET` grep covers `runtime/src/proxy` and `runtime/vercel-src` only; test fixtures that prove the variable is ignored may name it. For `index.ts`, the no-billing-import check excludes its two `../billing/usage-recorder` and `../billing/durable-usage-outbox` imports, which belong to C2.
-  5. Relocated tests keep their non-fee assertions. Assertions on `cq_fee_usd`, `signed_hash` and `total_cq_fee_usd` become absence checks.
-- **To continue:**
-  1. Check out `feature`. Leave the WIP commit or reset it; either way, the next commit must describe the whole C1 change.
-  2. Finish T4 to T7 as the backlog says.
-  3. Have the result reviewed and validated independently before the PR: nothing certifies itself.
-  4. T7 needs the local Supabase-compatible Compose stack (Docker) for the SQL tests, `npm run setup` and a team-mode boot.
+## Next action
 
-## After C1
+If the C1 PR has not landed, finish its required GitHub checks and merge under the recorded standing owner authorization. Then start **C2** from synchronized `main`/`dev`/`feature`, reading the entire payment-removal spec before planning.
 
-Per the spec:
-- **C2:** unsigned usage ledger (migration M1), and the usage modules move out of `runtime/src/billing/`.
-- **C3:** delete `runtime/src/billing/`, `runtime/scripts/invoice.ts`, `runtime/src/proxy/routes/billing.ts` and the payment types.
-- **C4:** migration M2, simpler session erasure, and backup restore of old backups.
+C2 pairs the unsigned writer with migration M1 in the same change: remove immutability triggers/function before dropping `cq_fee_usd` and `signed_hash`; keep usage-event uniqueness and compare replay inputs; keep the durable outbox; stop requiring the signing secret only when persistence is wired. Copy usage modules out of `runtime/src/billing/` without staging that directory. Preserve providers, frozen fixtures and all existing migrations. Apply REQ-9's legacy-backup compatibility at the column-removal boundary. Repeat the spec's running-system gates for C2.
 
 Then:
-- claim retirement;
-- the naming cycle (`specs/ops/one-platform-naming.md`): `DEVOPS_*` settings aliases and capitalised "Stratum" prose;
-- v0.4 pruner cycles 1b and 2.
+
+1. **C3:** delete payment modules/types, `runtime/scripts/invoice.ts`, `runtime/src/proxy/routes/billing.ts`, related scripts and payment-only tests. PB-122 records the CLI-only factory/test deletion.
+2. **C4:** migration M2, invoice-table removal, session-erasure simplification, old-backup restore handling and ADR-0021 retirement.
+3. Claim retirement, MR-3, remaining spec approvals and security/hygiene cycles in the local roadmap.
+4. Naming aliases (`DEVOPS_*`) and remaining capitalized Stratum prose; v0.4 pruner cycles 1b and 2. No pruning quality gate is declared passed by C1.
+
+The detailed original [C1 backlog](c1-payment-surface-backlog.md) remains historical planning context. Its five planner answers were: fix the adapter type error; move the developer breakdown test; use “USD figures are estimates, for information only”; allow test-only webhook-secret fixtures and preserve C2's two billing imports; invert retired fee/signature assertions while retaining non-fee assertions. The recorded implementation and proof reflect those answers.
 
 ## Owner decisions on record
 
