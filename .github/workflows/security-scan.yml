@@ -80,6 +80,8 @@ jobs:
           scanned = len(d.get("paths", {}).get("scanned", []))
           fatal = [e for e in d.get("errors", []) if str(e.get("level", "")).lower() not in ("warn", "warning", "info")]
           print(f"semgrep: exit {rc}, {scanned} files scanned, {len(d.get('results', []))} findings, {len(d.get('errors', []))} errors ({len(fatal)} fatal)")
+          for e in d.get("errors", []):
+              print("SCAN_DIAGNOSTIC " + json.dumps(e, sort_keys=True))
           for r in d.get("results", []):
               print(f"FINDING {r['extra'].get('severity')} {r['check_id']} {r['path']}:{r['start']['line']}")
           for e in fatal:
