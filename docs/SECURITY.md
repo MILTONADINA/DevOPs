@@ -16,7 +16,7 @@ enforced until it moves left.
 | 2 | every PR | gitleaks (diff) and Semgrep (`p/owasp-top-ten`, `p/r2c-security-audit`, `p/secrets`) in `security-scan.yml` | both are required status checks on `main` and fail on any finding (Semgrep since #178) | npm/pip/cargo audit, axe-core |
 | 3 | daily and pre-release | gitleaks full-history scan (scheduled, `.gitleaksignore` baseline); DeepTeam red-team, which skips when no provider key is set | the history scan fails its run on a leak; DeepTeam gates nothing while it skips | Trivy, Nuclei, ZAP (roadmap MR-21) |
 
-### Semgrep diagnostic output boundary (MR-7 prerequisite)
+### Semgrep report and execution boundary (MR-7 Semgrep slice)
 
 The [CI scan](../.github/workflows/security-scan.yml) prints each report error
 as one JSON-escaped `SCAN_DIAGNOSTIC` line. For log tampering and instruction
@@ -31,9 +31,27 @@ Workflow shell blocks receive the pull-request base SHA through step `env` and
 read event/run identifiers from quoted runner variables. GitHub expression
 syntax stays in YAML fields, keeping that metadata out of shell source and
 allowing nested Bash parsing; scanner rules and test coverage are unchanged.
-The existing gate still permits nonfatal errors; strict error refusal and
-scanned-path floors remain separate M14 work. Visibility does not establish
-scan completeness or resolve the reported errors.
+The host Node22 checker rejects every finding and nonempty error array,
+including warnings, plus malformed reports, duplicate or invalid scanned paths,
+missing test trees and a count below `governance/scan-floors.yml`. Its initial
+1046 minimum comes from PR #230's error-free required scan; a count does not
+establish complete coverage. Scanner nonzero exit statuses survive invalid
+reports/configuration. Finding summaries escape control characters and omit
+matched-source bodies. The checker reads its two explicit input files only.
+
+For tampering and stale-report replay, the same digest-pinned scanner now runs
+as one Docker step with a read-only `/src` checkout and a fresh writable
+`/report` directory. It cannot change the host checker or committed floor
+through the checkout mount. Container-only Git trust names `/src` exactly;
+no host-global Git settings, operator home or Docker socket is mounted or
+changed. Host Node avoids assuming a Node executable in the musl scanner
+image. Docker launch and scanner failures reach the checker as nonzero status;
+missing output fails closed. Registry packs are still remotely resolved, so
+pinning the image does not freeze rule content. This narrows the scan boundary;
+it does not establish safety of arbitrary container code or every scan target.
+
+DeepTeam/Claude's visible unfunded skips and the rest of MR-7 remain separate
+under owner Decision 9. This Semgrep gate does not claim those reviews ran.
 
 ### Tier-3 LLM-orchestrated pentest
 
