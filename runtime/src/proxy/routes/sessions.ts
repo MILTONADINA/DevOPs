@@ -13,6 +13,7 @@
 import type { FastifyInstance, FastifyPluginCallback, FastifyReply, FastifyRequest } from "fastify";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { planLimits } from "../rate-limit-tiers";
+import { resolveOrg } from "./org-scope";
 
 export interface SessionSummary {
   id: string;
@@ -32,7 +33,6 @@ export interface SessionStats {
   originalTokens: number;
   quarantinedTokens: number;
   savingsUsd: number;
-  feeUsd: number;
 }
 
 export interface SessionErasureInventory {
@@ -67,15 +67,6 @@ export interface SessionsDeps {
    * (a DB advisory lock) so the cap cannot be raced — unlike a separate count-then-insert (TOCTOU).
    */
   createSessionIfUnderCap: (orgId: string, model: string, limit: number, projectScope?: string | null) => Promise<SessionSummary | null>;
-}
-
-function resolveOrg(req: FastifyRequest): string | undefined {
-  if (typeof req.orgId === "string" && req.orgId !== "") return req.orgId;
-  // Auth ENFORCED (commercial): the org comes from the key, never a client-supplied ?org-id (cross-tenant
-  // guard if the gate is ever bypassed). Personal mode (authEnforced unset) keeps the ?org-id convenience.
-  if (req.authEnforced === true) return undefined;
-  const v = (req.query as Record<string, unknown>)["org-id"];
-  return typeof v === "string" && v !== "" ? v : undefined;
 }
 
 function authenticatedProjectScope(req: FastifyRequest): string | null | undefined {
@@ -266,9 +257,9 @@ export function createSupabaseSessionsDeps(client: SupabaseClient): SessionsDeps
     async getSessionStats(orgId, id, projectScope) {
       // Scope check first: only an org's own session yields stats (no cross-tenant peeking).
       if ((await getSession(orgId, id, projectScope)) === null) return null;
-      const { data, error } = await client.from("billing_records").select("original_tokens, quarantined_tokens, cost_delta_usd, cq_fee_usd").eq("org_id", orgId).eq("session_id", id);
+      const { data, error } = await client.from("billing_records").select("original_tokens, quarantined_tokens, cost_delta_usd").eq("org_id", orgId).eq("session_id", id);
       if (error) throw new Error(`getSessionStats failed: ${error.message}`);
-      const rows = (data ?? []) as { original_tokens: number; quarantined_tokens: number; cost_delta_usd: number; cq_fee_usd: number }[];
+      const rows = (data ?? []) as { original_tokens: number; quarantined_tokens: number; cost_delta_usd: number }[];
       const round2 = (n: number): number => Math.round((n + Number.EPSILON) * 100) / 100;
       return {
         sessionId: id,
@@ -276,12 +267,6 @@ export function createSupabaseSessionsDeps(client: SupabaseClient): SessionsDeps
         originalTokens: rows.reduce((s, r) => s + r.original_tokens, 0),
         quarantinedTokens: rows.reduce((s, r) => s + r.quarantined_tokens, 0),
         savingsUsd: round2(rows.reduce((s, r) => s + r.cost_delta_usd, 0)),
-        feeUsd: round2(
-          Math.max(
-            0,
-            rows.reduce((s, r) => s + r.cq_fee_usd, 0),
-          ),
-        ),
       };
     },
     async inspectErasure(orgId, id) {

@@ -1,163 +1,119 @@
-# COMMERCIAL_ONBOARDING.md — Onboard a Design Partner to the Deployed Product
+# COMMERCIAL_ONBOARDING.md — Local team-mode onboarding
 
-The operational runbook for the commercial pipeline: deploy → mint a key → the partner integrates →
-their usage appears → send the invoice → collect payment. This is the path to **v1.0.0** ("first real
-invoice sent + paid by a design partner"). Every command/endpoint below is implemented + tested; the
-only steps that need an external account are flagged **[needs: …]**.
+DevOps runs on your own machine, is open source, and has no payment workflow
+(owner decision 2026-09-26, ADR-0025). The existing `CQ_COMMERCIAL` setting
+enables organization API keys, plan-based resource limits and database-backed
+usage. Its name stays unchanged during payment removal.
 
-This doc is the technical "how", current as of the v1.0.0 commercial build. The design-partner
-program document it used to point to was deleted on 2026-09-26.
+Payment-removal C1 removes the CFO page, invoice HTTP reads and inbound Stripe
+webhook. Token usage and estimated USD savings remain. The signed ledger and
+`CQ_BILLING_SIGNING_SECRET` remain until C2, the legacy invoice and Stripe
+scripts until C3, and the invoice tables until C4. See
+[`specs/ops/payment-removal.md`](../../specs/ops/payment-removal.md).
 
-> **Owner decision (2026-09-26, ADR-0025, `docs/decisions/0025-open-source-local-first-no-payment.md`):**
-> the project is open source with no payment and no deployment. The invoice and payment steps
-> below describe code that graph cycles C1–C4 will remove (`../specs/ops/payment-removal.md`);
-> v1.0.0 no longer requires a paid invoice. The organization, key and integration steps stay as
-> self-hosted team mode. This runbook changes with the cycles that change the code.
+## 1. Start the local proxy
 
-> **Current deployment boundary (2026-09-24):** the paid Supabase project is
-> retired. Local PostgreSQL runs through the project-local Compose stack.
-> Commercial billing requires a persistent project-local usage outbox; the old
-> Vercel deployment and its ephemeral `/tmp` storage cannot satisfy that gate.
-> A public design-partner deployment and payment remain unverified.
-
----
-
-## 0. The single-partner (pilot) architecture — read first
-
-Per **ADR-0018**, the first partner runs on a **dedicated instance**:
-
-- The server's `ANTHROPIC_API_KEY` is **the partner's own Anthropic key** — so their traffic forwards
-  on their key, their Anthropic bill reflects any pruning savings, and CQ bills 20% of that saving.
-- The partner authenticates to **us** with a **CQ key** (`cq_…`), which they set as the `apiKey` in
-  their Claude Code / Anthropic SDK while pointing `base_url` at the deployed proxy.
-
-So there are two keys: the partner's real Anthropic key lives in the server env (a dedicated instance),
-and the CQ key lives in the partner's client config. (Multi-tenant pass-through — no shared instance,
-no handing over the Anthropic key — is the documented scale path in ADR-0018, default-off for now.)
-
----
-
-## 1. Start the local commercial proxy  [needs: a persistent host]
-
-Run the local Compose database and proxy from `runtime/`. The proxy creates
-`data/usage-outbox/` with private permissions and replays pending billing events
-on startup and every ten seconds. Keep this directory on persistent storage;
-back it up alongside the database. A failed disk journal returns an explicit
-message error instead of acknowledging unrecorded usage.
+Run the local Compose database and proxy from `runtime/`. The hosted Supabase
+project is retired. Configure your provider credentials and
+`CQ_BILLING_SIGNING_SECRET` in your process environment before starting; the
+proxy does not load `.env` files.
 
 ```bash
 cd runtime
 npm run db:start
-# Supply provider credentials and CQ_BILLING_SIGNING_SECRET in the operator environment.
 CQ_COMMERCIAL=true npm run db:with-env -- npm run dev
 ```
 
 `db:start` applies the committed migrations. Confirm liveness at
-`http://127.0.0.1:4080/health`; commercial mode also checks the database.
-The machine-readable contract is at `GET /openapi.json`.
+`http://127.0.0.1:4080/health`; `dependencies.database` should be `ok` in team
+mode. The machine-readable contract is at `GET /openapi.json` and its browser
+view is at `/docs`.
 
-For an external partner, provision a persistent host, a private database, and
-a durable volume for the outbox before exposing the proxy. The earlier Vercel
-instructions in `docs/VERCEL_DEPLOY.md` are archived because its ephemeral
-filesystem cannot recover usage after instance loss.
+The proxy creates `data/usage-outbox/` with private permissions and replays
+pending usage events on startup and every ten seconds. Keep that directory
+on persistent storage and back it up alongside the database. A failed disk
+journal returns an explicit message error instead of acknowledging unrecorded
+usage. Vercel's ephemeral storage is refused for this mode.
 
-## 2. Create the partner's org + API key
+The proxy binds loopback by default. See
+[API_REFERENCE.md](API_REFERENCE.md#authentication) for the Host, CORS and
+authentication requirements if another device needs access.
 
-Create the org with its plan (the plan sets the monthly minimum — starter $0 / growth $99 /
-enterprise $499) and mint its first key in one step (the raw key is shown ONCE — give it to the
-partner over a secure channel):
+## 2. Create an organization and API key
 
-```bash
-npm run create-org -- --name "<Partner Agency>" --plan growth --with-key
-# → org id + cq_live_……  (store the hash only; we cannot recover the raw key)
-```
-
-Or create the org alone, then add keys later:
-
-```bash
-npm run create-org    -- --name "<Partner Agency>" --plan growth
-npm run create-api-key -- --org-id <org-uuid> --name "<Partner> Claude Code"
-```
-
-Manage keys later with `npm run api-keys -- --org-id <id> --list | --revoke <key-id>`.
-
-## 3. The partner integrates
-
-They point their Anthropic SDK / Claude Code at the deployed proxy, using the **CQ key** as the apiKey:
+The plan controls request rates, token budgets and concurrent-session limits.
+Create an organization and its first key together. The raw key is printed
+once; only its hash is stored.
 
 ```bash
-export ANTHROPIC_BASE_URL=https://<host>
-export ANTHROPIC_API_KEY=cq_live_……   # the CQ key we minted (NOT their Anthropic key)
-claude    # or any Anthropic-SDK app
+npm run db:with-env -- npm run create-org -- --name "<Team>" --plan growth --with-key
 ```
 
-Their requests now flow through `/v1/messages`: authenticated (CQ key → org), forwarded to Anthropic
-(on the server's `ANTHROPIC_API_KEY`), measured (exact SDK token counts), rate/budget-limited per their
-plan, and **persisted** — each request appends a signed `billing_record` (their usage).
+Or create the organization and key separately:
 
-Commercial responses include `x-cq-conversation-id`. A client that wants later
+```bash
+npm run db:with-env -- npm run create-org -- --name "<Team>" --plan growth
+npm run db:with-env -- npm run create-api-key -- --org-id '<org-uuid>' --name "Claude Code"
+```
+
+Use `npm run db:with-env -- npm run api-keys -- --org-id '<org-uuid>' --list`
+to list keys, or replace `--list` with `--revoke '<key-id>'` to revoke one.
+
+## 3. Connect the client
+
+In the client's own shell, point Claude Code or an Anthropic SDK client at the
+local proxy and use the organization API key:
+
+```bash
+export ANTHROPIC_BASE_URL=http://127.0.0.1:4080
+export ANTHROPIC_API_KEY='<organization-api-key>'
+claude
+```
+
+The proxy's process uses its configured provider credentials upstream. Keep
+that process separate from the client's shell settings: setting the proxy's
+upstream URL to itself is a startup error. Requests to `/v1/messages` are
+authenticated, measured and constrained by the organization's resource limits,
+and successful usage is journaled before the response completes.
+
+Team-mode responses include `x-cq-conversation-id`. A client that wants later
 requests observed in the same shadow context sends that ID as the
-`x-cq-conversation-id` request header. The server creates an ID when the header
-is absent; a malformed ID or one belonging to another key or project is
-rejected before forwarding. Standard SDK clients that do not echo this header
-start a fresh observed conversation for each request. Set
-`CQ_SHADOW_OBSERVE=true` only when the local ONNX model cache is installed;
-observation logs numeric selection counts and never changes model input or
-billing. Pruning remains disabled until its quality gate passes.
+`x-cq-conversation-id` request header. The server creates an ID when it is
+absent; malformed IDs and IDs belonging to another key or project are rejected
+before forwarding. Clients that do not echo it start a fresh observed
+conversation on each request. Set `CQ_SHADOW_OBSERVE=true` only when the local
+ONNX model cache is installed. Observation does not change model input;
+pruning stays disabled until its quality gate passes.
 
-## 4. Confirm their usage is visible
+## 4. Read usage
 
-- **API (authenticated with the CQ key — the reliable path):** `GET /v1/billing/invoice`, `GET /v1/billing/summary`, `GET /v1/sessions`.
-- **Operator (direct DB read, no HTTP):** `npm run invoice -- --org-id <org-uuid>` — the CFO report + amount due.
-- **CFO dashboard** (`https://<host>/billing`): the HTML page is public, but in commercial mode its data fetch is now **auth-gated** — the previous unauthenticated `?org-id` read was a cross-tenant hole, closed in the review-#7 security fix, so the browser dashboard needs auth before it renders data (PB-50: a small dashboard-auth UX follow-up). Until that lands, use the authenticated API or `npm run invoice` above.
-
-> Until pruning is activated (gated on the Tier-A eval — ADR-0009/0014), `quarantined = original`, so
-> **savings are $0** and the amount due is the plan minimum. The dashboard truthfully shows usage with
-> 0% effectiveness; this is expected pre-pruning. Set `CQ_INPUT_PRICE_PER_TOKEN` to the partner's rate
-> before any savings-based billing.
-
-## 5. Send the first invoice  [needs: a Stripe key]
-
-Verify the Stripe integration end-to-end first (one command):
+Use an unbound organization key for `GET /v1/billing/summary` and
+`GET /v1/billing/records`. A project-bound key receives 403 on both paths.
+For example:
 
 ```bash
-STRIPE_SECRET_KEY=sk_test_… npm run verify-stripe   # sends a $1 test invoice + checks the webhook path
+curl 'http://127.0.0.1:4080/v1/billing/summary?month=2026-10' \
+  -H 'Authorization: Bearer <organization-api-key>'
+curl 'http://127.0.0.1:4080/v1/billing/records?limit=20' \
+  -H 'Authorization: Bearer <organization-api-key>'
 ```
 
-Generate + send the real invoice for the period (the engine floors at the plan minimum):
+The summary reports token totals, effectiveness and a per-developer token
+breakdown. `total_cost_delta_usd` in the summary, `cost_delta_usd` in records,
+and `savingsUsd` in session statistics are estimates for information only.
+Without active pruning, the usage recorder sets quarantined tokens equal to
+original tokens, so savings and effectiveness are zero.
 
-```bash
-npm run invoice -- --org-id <org-uuid> --send   # computes from billing_records; --send goes via Stripe
-```
+The `/billing` page and `/v1/billing/invoice`, `/v1/billing/audit.csv`,
+`/v1/billing/invoices` and `POST /stripe/webhook` are no longer registered.
+There is no Stripe endpoint to configure and no payment acceptance step.
 
-Register the deployed `https://<host>/stripe/webhook` URL in the Stripe Dashboard and set its signing
-secret as `STRIPE_WEBHOOK_SECRET`. When the partner pays, Stripe POSTs `invoice.paid` → the webhook
-verifies the signature → marks the invoice **paid** in the `invoices` table.
+## Remaining legacy operator code
 
-## 6. Confirm payment → v1.0.0 reached
-
-- `GET /v1/billing/invoices?org-id=<org-uuid>&status=paid` shows the paid invoice, or
-- query `invoices` directly: a row with `status='paid'` + `paid_at` set.
-
-**That paid invoice is the v1.0.0 acceptance criterion.**
-
----
-
-## Decision to settle before step 5: free pilot vs. paid pilot
-
-Settled on 2026-09-26: there is no paid pilot and no payment of any kind (ADR-0025). v1.0.0 is
-redefined as a working local setup on macOS, Linux and WSL2 (root `plan.md` §9).
-
----
-
-## Verification commands referenced above
-
-| Command | Purpose |
-|---|---|
-| `curl https://<host>/health` | Liveness (+ DB dependency in commercial mode) |
-| `npm run create-org -- --name "<Org>" --plan <plan> [--with-key]` | Create a partner org (+ optional first key) |
-| `npm run create-api-key -- --org-id <id> --name "<label>"` | Mint a CQ key (shown once) |
-| `npm run api-keys -- --org-id <id> --list \| --revoke <key-id>` | Key lifecycle |
-| `npm run verify-stripe` | TEST-MODE Stripe send + webhook-signature round-trip |
-| `npm run invoice -- --org-id <id> [--send] [--csv]` | Compute / send the invoice; audit CSV |
-| `npm run verify-billing -- --org-id <id>` | Re-verify every billing record's signature (dispute-proof) |
+`npm run invoice`, `npm run verify-stripe` and `npm run verify-billing` still
+exist during C1. The invoice CLI can compute its historical fees and call
+Stripe; `verify-stripe` exercises the retained library with a test key, not a
+registered proxy route. These commands are not part of team onboarding.
+The signed records, invoice engine and invoice tables have not yet been
+removed; their retirement follows C2–C4. The current v1.0.0 goal is a working
+local setup on macOS, Linux and WSL2 (root `plan.md` §9).

@@ -4,11 +4,11 @@
  * Every event is `{ event, id, created_at, org_id, data }`. The envelope is pure (id + timestamp
  * are injected, never generated here, so it stays deterministic + testable). SAMPLE_EVENT_DATA
  * backs the `/v1/webhooks/test` endpoint. Event SOURCES (the audit engine firing conflict.detected,
- * the monthly job firing invoice.ready, etc.) are wired with their subsystems at activation — this
- * is the signing + delivery + envelope layer, built ahead.
+ * the session lifecycle firing session.ended, etc.) are wired with their subsystems at activation —
+ * this is the signing + delivery + envelope layer, built ahead.
  */
 
-export const WEBHOOK_EVENT_TYPES = ["conflict.detected", "fact.suppressed", "eval.completed", "session.ended", "invoice.ready", "tee.attestation_failed"] as const;
+export const WEBHOOK_EVENT_TYPES = ["conflict.detected", "fact.suppressed", "eval.completed", "session.ended"] as const;
 
 export type WebhookEventType = (typeof WEBHOOK_EVENT_TYPES)[number];
 
@@ -76,23 +76,7 @@ export const SAMPLE_EVENT_DATA: Record<WebhookEventType, Record<string, unknown>
     total_quarantined_tokens: 21300,
     token_delta: 166100,
     estimated_savings_usd: 4.98,
-    cq_fee_usd: 0.996,
     facts_extracted: 7,
     conflicts_detected: 1,
-  },
-  "invoice.ready": {
-    invoice_id: "00000000-0000-0000-0000-0000000000b1",
-    period: "2026-04",
-    total_original_tokens: 12_400_000,
-    total_quarantined_tokens: 1_860_000,
-    total_savings_usd: 315.2,
-    total_cq_fee_usd: 63.04,
-    due_date: "2026-05-15",
-  },
-  "tee.attestation_failed": {
-    session_id: "00000000-0000-0000-0000-0000000000a1",
-    reason: "pcr_mismatch",
-    expected_pcr0: "expected-hash",
-    received_pcr0: "received-hash",
   },
 };

@@ -31,14 +31,35 @@ describe("events", () => {
     expect(isWebhookEventType(42)).toBe(false);
   });
   test("buildEvent assembles the envelope; every event type has sample data", () => {
-    expect(buildEvent("invoice.ready", "o1", { x: 1 }, "evt_1", "2026-05-01T00:00:00Z")).toEqual({
-      event: "invoice.ready",
+    expect(buildEvent("session.ended", "o1", { x: 1 }, "evt_1", "2026-05-01T00:00:00Z")).toEqual({
+      event: "session.ended",
       id: "evt_1",
       created_at: "2026-05-01T00:00:00Z",
       org_id: "o1",
       data: { x: 1 },
     });
     for (const t of WEBHOOK_EVENT_TYPES) expect(SAMPLE_EVENT_DATA[t]).toBeTypeOf("object");
+  });
+
+  // The four types that remain once the two payment-era types are gone, sorted so that the test pins the set and not the order it is listed in.
+  const SURVIVING_TYPES = ["conflict.detected", "eval.completed", "fact.suppressed", "session.ended"];
+
+  test("specs/ops/payment-removal.md#AC-1 — WEBHOOK_EVENT_TYPES and SAMPLE_EVENT_DATA hold exactly the four non-payment event types", () => {
+    expect([...WEBHOOK_EVENT_TYPES].sort()).toEqual(SURVIVING_TYPES);
+    expect(Object.keys(SAMPLE_EVENT_DATA).sort()).toEqual(SURVIVING_TYPES);
+  });
+
+  test("specs/ops/payment-removal.md#AC-1 — isWebhookEventType rejects the removed invoice.ready and tee.attestation_failed types", () => {
+    expect(isWebhookEventType("invoice.ready")).toBe(false);
+    expect(isWebhookEventType("tee.attestation_failed")).toBe(false);
+  });
+
+  test("specs/ops/payment-removal.md#AC-1 — no sample payload has a key that matches /fee/i, so none carries cq_fee_usd", () => {
+    // Every key at every depth, so a fee key nested inside a payload is found as well.
+    const keysOf = (value: unknown): string[] => (value !== null && typeof value === "object" ? Object.entries(value).flatMap(([key, child]) => [key, ...keysOf(child)]) : []);
+    const keys = Object.values(SAMPLE_EVENT_DATA).flatMap(keysOf);
+    expect(keys).toContain("estimated_savings_usd"); // the walk does see keys, and the USD estimates that REQ-6 keeps are still there
+    expect(keys.filter((key) => /fee/i.test(key))).toEqual([]);
   });
 });
 

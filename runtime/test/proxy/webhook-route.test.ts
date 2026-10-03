@@ -32,10 +32,10 @@ describe("POST /v1/webhooks/test", () => {
       key === "unbound" ? { orgId: "o1", keyId: "b" } : null,
     }, webhooks: deps });
     await app.ready();
-    const denied = await app.inject({ method: "POST", url: "/v1/webhooks/test?org-id=o1&project-scope=", headers: { authorization: "Bearer bound", "x-project-scope": "", "content-type": "application/json" }, payload: { event_type: "invoice.ready", project_scope: null } });
+    const denied = await app.inject({ method: "POST", url: "/v1/webhooks/test?org-id=o1&project-scope=", headers: { authorization: "Bearer bound", "x-project-scope": "", "content-type": "application/json" }, payload: { event_type: "session.ended", project_scope: null } });
     expect(denied.statusCode).toBe(403);
     expect(captured).toEqual({});
-    const allowed = await app.inject({ method: "POST", url: "/v1/webhooks/test", headers: { authorization: "Bearer unbound", "content-type": "application/json" }, payload: { event_type: "invoice.ready" } });
+    const allowed = await app.inject({ method: "POST", url: "/v1/webhooks/test", headers: { authorization: "Bearer unbound", "content-type": "application/json" }, payload: { event_type: "session.ended" } });
     expect(allowed.statusCode).toBe(200);
     expect(captured["org"]).toBe("o1");
     await app.close();
@@ -57,7 +57,7 @@ describe("POST /v1/webhooks/test", () => {
   test("400 with no org", async () => {
     const app = buildProxy({ rateLimit: false, cors: false, webhooks: fakeDeps().deps });
     await app.ready();
-    const res = await app.inject({ method: "POST", url: "/v1/webhooks/test", headers: { "content-type": "application/json" }, payload: { event_type: "invoice.ready" } });
+    const res = await app.inject({ method: "POST", url: "/v1/webhooks/test", headers: { "content-type": "application/json" }, payload: { event_type: "conflict.detected" } });
     expect(res.statusCode).toBe(400);
     await app.close();
   });
@@ -74,7 +74,7 @@ describe("POST /v1/webhooks/test", () => {
   test("400 when the org has no webhook configured", async () => {
     const app = buildProxy({ rateLimit: false, cors: false, webhooks: fakeDeps({ noConfig: true }).deps });
     await app.ready();
-    expect((await app.inject(post("invoice.ready"))).statusCode).toBe(400);
+    expect((await app.inject(post("eval.completed"))).statusCode).toBe(400);
     await app.close();
   });
 

@@ -118,7 +118,6 @@ Panels:
 - Per-project breakdown
 - Active Historical Drift conflicts (unacknowledged)
 - Pending todos (from structured fact extraction)
-- Invoice preview for current month
 
 ---
 

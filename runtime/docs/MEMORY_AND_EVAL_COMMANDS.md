@@ -34,17 +34,14 @@ portability / GDPR export). **FREE**, read-only (SELECT only); needs Supabase cr
 columns — into a CLEAN target. A disposable local backup → delete → restore
 round-trip is referential-integrity-verified; real-data recovery is unverified.
 
-`npm run invoice -- --org-id <uuid> [--since <iso>] [--until <iso>] [--csv <path>] [--send]`
-computes an org's **token-arbitrage invoice** (20% of savings, with the plan's
-monthly-minimum floor; scheduled for removal under ADR-0025) from its append-only `billing_records` and prints the CFO
-report; `--csv` writes the signed-hash audit trail. **FREE**, read-only. The Stripe **send is
-implemented** (`src/billing/stripe.ts`: customer → invoiceitem → invoice → finalize, behind the
-InvoiceSink seam, fake-fetch-tested incl. dollars→cents; a `sk_live_` key is refused until verified
-in test mode), and the **inbound `invoice.paid` webhook** (`POST /stripe/webhook`, signature-verified)
-records payment into the `invoices` table. `npm run verify-stripe` is the one-command TEST-MODE check:
-given a `sk_test_` key it sends a $1 test invoice against the real Stripe API and round-trips the
-webhook signature/routing; **gated-skip without a key** (never fabricates). An actual paid invoice
-still needs a deployed endpoint + a design partner.
+The legacy `npm run invoice -- --org-id <uuid> [--since <iso>] [--until <iso>]
+[--csv <path>] [--send]` script remains until payment-removal C3. It computes
+its historical 20%-of-savings invoice with a plan minimum; `--csv` exports the
+signed audit trail, and `--send` still calls Stripe with a test key. DevOps has
+no payment workflow (ADR-0025). C1 removes the inbound Stripe HTTP route, so
+the proxy no longer receives payment events. `npm run verify-stripe` remains a
+legacy operator check of the Stripe client and webhook library until C3; it
+does not prove a registered proxy route.
 
 Billing records are **HMAC-signed** (src/billing/recorder.ts: `recordBilling` signs each row's
 immutable inputs with `CQ_BILLING_SIGNING_SECRET`; the generated columns are DB-derived). `npm run
@@ -54,10 +51,14 @@ It uses only explicit process environment settings and exits nonzero when
 `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, or `CQ_BILLING_SIGNING_SECRET` is missing;
 an unset verifier is not a passing integrity check.
 
-The proxy also exposes the **CFO billing API** when `buildProxy({ billing })` is supplied:
-`GET /v1/billing/invoice` (the computed Invoice JSON) and `GET /v1/billing/audit.csv` (the
-signed-hash audit trail download) — org-scoped via the auth gate (or `?org-id`). It composes
-the same invoice engine + read path as `npm run invoice`.
+The proxy exposes the **usage read API** when `buildProxy({ usage })` is supplied:
+`GET /v1/billing/summary` (`?month=YYYY-MM`, optional `since`/`until`, all time
+when no bounds are supplied) and `GET /v1/billing/records` (paginated usage
+records). Both require an organization-level key when auth is enabled; a
+project-bound key receives 403. Without auth, explicitly supplied usage deps
+retain the `?org-id` fallback. USD fields are estimates, for information only.
+The removed CFO page, invoice, audit CSV and invoice-list HTTP routes are not
+registered. The invoice CLI still uses its separate billing factory until C3.
 
 Other opt-in proxy APIs (all org-scoped via the auth gate): **config** (`buildProxy({ config })`)
 — `GET`/`PATCH /v1/config` for pruning params (λ/θ/gain_shift) + flags; **memory**
@@ -67,18 +68,20 @@ Other opt-in proxy APIs (all org-scoped via the auth gate): **config** (`buildPr
 takes an injectable deps object (a fake in tests; a `createSupabase*Deps(client)` helper in prod)
 and is omitted by default.
 
-Billing also exposes (per `docs/API_REFERENCE.md`): `GET /v1/billing/summary` (`?month=YYYY-MM`),
-`GET /v1/billing/records` (paginated raw records), and `POST /v1/tokens/count` (`buildProxy({ tokens })`
-— exact token count for a `{model, messages}` body without proxying).
+`POST /v1/tokens/count` (`buildProxy({ tokens })`) returns `input_tokens` and
+`token_count_method` for a `{model, messages}` body without forwarding it.
+Anthropic SDK counts are exact when available; other counts are estimates.
 
 **Webhooks** (`buildProxy({ webhooks })`): `POST /v1/webhooks/test` sends a signed sample event
-(6 types per `docs/WEBHOOKS.md`) to the org's configured `webhook_url`. Every event carries an
+(4 types per `docs/WEBHOOKS.md`) to the org's configured `webhook_url`. Every event carries an
 `X-CQ-Signature: sha256=<hmac>` header (HMAC-SHA256 of the body, per-org `webhook_secret`); delivery
 is **SSRF-guarded** (rejects localhost / private / cloud-metadata targets). Set the url + secret via
 `PATCH /v1/config`.
 
-**Commercial mode:** `CQ_COMMERCIAL=true npm run dev` (with Supabase creds set) boots the proxy
-with the multi-tenant auth gate (protecting `/v1/*`) + all of the above APIs wired over Supabase —
+**Commercial mode:** `CQ_COMMERCIAL=true npm run dev` (with Supabase credentials
+and `CQ_BILLING_SIGNING_SECRET` set; the signing secret remains required until C2) boots the proxy
+with the multi-tenant auth gate (protecting `/v1/*`) and the config, memory, usage,
+sessions and webhook-test APIs wired over Supabase —
 mint a key with `npm run create-api-key`, then call `/v1/*` with `Authorization: Bearer <key>`.
 Without the flag, the proxy is the unauthenticated Phase-1 personal measurement server (unchanged).
 
