@@ -156,10 +156,11 @@ jobs:
       # runs unconditionally (no path filter).
       - id: path-filter
         name: REQ-B1 path filter (agent-behavior PRs only; push-to-main bypasses)
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           set -euo pipefail
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
             CHANGED="$(git diff --name-only "${BASE_SHA}" HEAD || echo '')"
             AGENT_PATTERN='^(skills/|hooks/|subagents/|constitution/|mcp-configs/|analyzer/|governance/owasp-asi-2026/)'
             if echo "$CHANGED" | grep -qE "$AGENT_PATTERN"; then
@@ -172,7 +173,7 @@ jobs:
           else
             # push to main, schedule, etc. -- REQ-B2 backstop, always run
             echo "should_run=true" >> "$GITHUB_OUTPUT"
-            echo "REQ-B2 trigger: ${{ github.event_name }} event"
+            echo "REQ-B2 trigger: ${GITHUB_EVENT_NAME} event"
           fi
 
       - name: Setup Python
@@ -225,7 +226,7 @@ jobs:
           if [ -f .workflow/proofs/red-team/findings.jsonl ]; then
             MED_LOW=$(grep -cE '"severity":\s*"(medium|low)"' .workflow/proofs/red-team/findings.jsonl || echo 0)
             echo "Red-team scan: ${MED_LOW} medium/low finding(s) (non-blocking)."
-            echo "Detailed report uploaded as artifact deepteam-${{ github.run_id }} (90d retention)."
+            echo "Detailed report uploaded as artifact deepteam-${GITHUB_RUN_ID} (90d retention)."
           fi
           if [ -f .workflow/proofs/red-team/budget-exhausted.md ]; then
             echo "WARNING: budget brake fired -- see uploaded budget-exhausted.md artifact (REQ-B5)."

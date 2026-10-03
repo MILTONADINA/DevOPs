@@ -27,6 +27,10 @@ paths and rule metadata: this output is not redacted. The reviewed job scans
 a fresh checkout, without operator mounts, application execution or restored
 private artifacts; this scope does not authorize scanning an operator checkout.
 No command, privilege, approval or scanner-exit decision is added by logging.
+Workflow shell blocks receive the pull-request base SHA through step `env` and
+read event/run identifiers from quoted runner variables. GitHub expression
+syntax stays in YAML fields, keeping that metadata out of shell source and
+allowing nested Bash parsing; scanner rules and test coverage are unchanged.
 The existing gate still permits nonfatal errors; strict error refusal and
 scanned-path floors remain separate M14 work. Visibility does not establish
 scan completeness or resolve the reported errors.
