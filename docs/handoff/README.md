@@ -1,6 +1,6 @@
-# Handoff: C4-B managed erasure verification (2026-10-03)
+# Handoff: historical claim dispositions and MR-3 (2026-10-03)
 
-Read [`AGENTS.md`](../../AGENTS.md) and the local `.workflow/state/baton.md` first. This page records the current C4-B candidate and preserves the earlier dated snapshots below. Git and the PR checks determine the current merge state; the verification below does not declare the whole project finished.
+Read [`AGENTS.md`](../../AGENTS.md) and the local `.workflow/state/baton.md` first. C4-B is merged. The next delivery records historical claim dispositions, followed by MR-3 hook hardening. Earlier dated snapshots remain below; none declares the whole project finished.
 
 ## Branches and provenance
 
@@ -11,16 +11,20 @@ The repository uses only `main`, `dev`, and `feature`. Changes reach protected `
 - Codex resumed that checkpoint on 2026-10-03, finished T4–T7, and added a regression test for auth-enabled requests without an organization. This was a cross-tool continuation with independent review and validation agents, not a replay of Claude Workflow `wf_51c12945-ff7`. The old Workflow record remains historical/indeterminate.
 - Do not apply the old baton's `git reset --soft HEAD~1`: it no longer identifies the WIP code boundary.
 
-## Current C4-B candidate and next steps
+## Merged C4-B and historical claim dispositions
 
 C4-A merged in [PR #224](https://github.com/MILTONADINA/DevOPs/pull/224) at
-`3e570a2e0e780b7c1557e95ad07f2b315c1f5b05`. C4-B is based on that commit;
-its local evidence does not mean its PR has merged or the project is complete.
+`3e570a2e0e780b7c1557e95ad07f2b315c1f5b05`. C4-B merged in
+[PR #225](https://github.com/MILTONADINA/DevOPs/pull/225) at
+`90d0de548a586468353ee9abf6835e21ed16528e`, with the same tree as tested head
+`5e50b7654a9e4aafb1e1d7ffb580e8602d2aad6e`. All six required checks passed;
+main/dev/feature were synchronized. Claim007 and the independent final review
+are in the local proof directory.
 The controlling requirements and all fourteen C4-B acceptance criteria are in
 [`specs/memory/session-erasure.md`](../../specs/memory/session-erasure.md).
 Payment-removal REQ-8/9/14/15 and AC-8 remain the delivery anchors.
 
-The candidate adds default-disabled, privileged source-bound activation;
+The delivery adds default-disabled, privileged source-bound activation;
 server-minted organization authority; normal capped explicit-session enrollment;
 permanent uncertainty before protected copying; ownership/write fences; atomic
 private-content deletion; and a durable scoped completion receipt. Ordinary
@@ -65,9 +69,12 @@ onboarding/restart operations and the representative one-year performance gate
 remain open. The receipt explicitly excludes client-held responses, privileged
 snapshots and physical remnants; these are not described as erased or anonymous.
 
-Next: finish the remaining security/governance gates and exact-head CI,
-record approval, merge and synchronize main/dev/feature. Then continue the
-separate obsolete-claim ledger action, MR-3 and the remaining approved roadmap.
+The separate [historical disposition ledger](../../governance/claim-retirements.json)
+records the runtime-move attempt and obsolete invoice scopes, with retained or
+deferred outcomes for mixed claims. [Its documentation](../../verification/CLAIM_RETIREMENTS.md)
+explains that original evidence stays unchanged and the validator does not read
+the sidecar. It adds no passing proof count. This data/doc delivery has its own
+review and CI gates; then continue MR-3 and the remaining roadmap.
 The old Claude Workflow run remains historical/indeterminate; do not reset or
 resume it. Use the local baton for exact process handles, current proof bindings
 and any later progress. Earlier sections below are dated historical evidence.
@@ -293,18 +300,20 @@ verified; the PR records their current state.
 
 ## Next action
 
-Finish C4-B's final security/governance review, structured claims and required
-checks on the exact PR head; merge under standing owner authorization and
-synchronize main/dev/feature. Consult Git/PR state and the local baton before
-repeating completed checks. C4-A is already merged; the controlled C4-B actual
-API proof and local runtime/root/system gates now pass as recorded above.
+Finish the historical disposition ledger's independent review, exact-source
+proof and required CI; merge under standing owner authorization and synchronize
+main/dev/feature. Then implement MR-3 hook hardening under the roadmap's explicit
+early-draft allowance. Reconcile Decision13's unhalted merge-marker exclusion
+and the safe diagnostic behavior during a halt before writing its failing tests.
+The masterpiece spec remains draft. Consult the local baton for current handles
+and do not repeat C4-B's passing runtime, root, SQL or actual HTTP proof.
 
 Preserve the limited erasure guarantee, immutable applied migrations and
 original operator database. The one-year/<30-second benchmark is a separate
 remaining v0.9 gate. Broader historical/conversation/copy coverage and managed
 onboarding/restart operations remain unsupported by this initial proof.
 
-After C4-B: historical claim retirement, MR-3, remaining approved roadmap and
+After the bounded ledger: MR-3, remaining roadmap and
 security/hygiene work; naming aliases/current prose; v0.4 pruner cycles1b/2 and
 quality gates; clean-machine macOS/Linux/WSL2 and real-use release gates. The
 mission is the whole remaining roadmap. Do not resume old Claude Workflow
