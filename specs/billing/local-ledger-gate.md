@@ -1,6 +1,8 @@
 # Local unsigned usage ledger gate
 
-**Amended**: 2026-10-03 by `specs/ops/payment-removal.md` C2: REQ-4 replaces the mutation/signature gate with unsigned mutable usage. The old verification CLI source remains until C3 but cannot process the post-M1 schema.
+**Status**: approved (retained unsigned usage contract; payment-removal C3, owner decision 2026-09-26)
+
+**Amended**: 2026-10-03 by `specs/ops/payment-removal.md`: C2 REQ-4 replaces the mutation/signature gate with unsigned mutable usage. C3 REQ-7 removes the legacy verification CLI and retires only its requirements and acceptance criteria below.
 
 **Scope:** Local PostgreSQL usage schema verification after C2/M1, without
 retaining fixture rows. The table name stays `billing_records`.
@@ -15,27 +17,19 @@ SHALL be absent; RLS, the session foreign key and unique usage-event index
 SHALL remain. The verifier SHALL roll back all fixture rows and SHALL NOT
 truncate a shared table to prove trigger absence.
 
-## REQ-2 — Legacy signature verification startup
+## REQ-2 — Retired signature verification startup
 
-This requirement describes the retained pre-M1 CLI only; it is superseded for
-current usage by payment-removal REQ-4 and removed with its CLI in C3.
+Superseded by payment-removal REQ-4/5/7 and ADR-0025. The signature verifier
+and its missing-signing-secret startup tests are removed with C3. The current
+team-mode database and durable-journal guards remain in
+`commercial-fail-closed.md`; startup needs no signing secret.
 
-WHEN the billing signature verifier is invoked, THE VERIFIER SHALL use only
-explicit process environment credentials. It SHALL NOT load a `.env` file.
-IF the database URL, service key, or dedicated signing secret is missing,
-THEN it SHALL exit nonzero and state which setting is required. It SHALL NOT
-report a skipped verification as success.
+## REQ-3 — Retired signature verification pagination
 
-## REQ-3 — Legacy verification pagination
-
-This requirement describes the retained pre-M1 CLI only. Current usage summary
-pagination remains covered by `invoice-full-read.md` REQ-2.
-
-WHEN an organization has more billing records than one REST response can
-contain, THE VERIFIER SHALL read stable ordered pages through the exact row
-count and check each signature. IF the count is missing, changes during
-paging, or a page stalls before the count, THEN verification SHALL fail rather
-than report a partial ledger as valid.
+Superseded with the signature verifier by payment-removal REQ-7 and ADR-0025.
+Complete current usage-summary pagination remains required by
+`invoice-full-read.md` REQ-2, including missing/changing counts and stalled
+pages. Unsigned replay integrity remains in `usage-event-idempotency.md`.
 
 ## Acceptance criteria
 
@@ -44,9 +38,7 @@ than report a partial ledger as valid.
   and absent mutation guards/retired columns, then rolls back all fixture rows.
 - The same fixture proves a billing row prevents deletion of its referenced
   session, making the open erasure-schema dependency explicit.
-- Retained legacy CLI unit tests prove missing credentials and signing secret
-  yield nonzero status without a DB connection.
-- A retained legacy fake REST test puts a bad signature after record 1,000; the
-  verifier finds it and refuses missing counts or incomplete pages.
 
-Legacy CLI unit assertions do not prove compatibility with the post-M1 database.
+**Verified by:** `runtime/test/integration/local-billing-ledger.sql`. The
+session foreign-key/erasure dependency remains until the coordinated C4 work;
+C3 does not change schema or remove that SQL acceptance check.

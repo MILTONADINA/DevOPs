@@ -40,7 +40,7 @@ A working build, not a sketch. On the current branch:
 - **Memory** — the three tiers are live on Supabase (hot RAM · warm fact tables · cold pgvector + knowledge graph, per ADR-0013); Pinecone/Neo4j remain swappable seams.
 - **Pruner** — CQ-Extended KadaneDial + a local ONNX encoder, built + eval-harnessed, but **not yet in the request path** (it ships only after a published Tier-A eval passes <5% faithfulness degradation — constitution).
 - **Audit** — deterministic Git-attestation (Tier-1) runs free (`npm run audit:repo`, `audit:conflicts`); the Llama/Opus tiers are gated on credits.
-- **Usage and remaining payment code** — C1 removes the CFO page, invoice HTTP reads, inbound Stripe webhook and fee fields from API and webhook samples. `GET /v1/billing/summary` and `GET /v1/billing/records` now report organization usage with token counts and estimated USD savings. C2 journals usage inputs in a private durable outbox and replays them through `src/usage/` to unsigned `billing_records`, without `CQ_BILLING_SIGNING_SECRET`. Migration M1 removes the signature, fee column and mutation-blocking triggers while preserving exact tokens and estimated USD savings. The invoice engine, Stripe client and operator scripts remain until C3, but invoice/signature verification commands are incompatible with the post-M1 schema. Invoice tables remain until C4 (`../specs/ops/payment-removal.md`). The project is open source with no payment (ADR-0025); the billing-path four-eyes approval gate was already retired separately.
+- **Usage** — The CFO page, invoice HTTP reads, inbound Stripe webhook and fee fields are absent from the API and webhook samples. `GET /v1/billing/summary` and `GET /v1/billing/records` report organization usage with token counts and estimated USD savings. Usage inputs are journaled in a private durable outbox and replayed through `src/usage/` to unsigned `billing_records`, without `CQ_BILLING_SIGNING_SECRET`. Migration M1 removes the signature, fee column and mutation-blocking triggers while preserving exact tokens and estimated USD savings. C3 removes the invoice engine, Stripe client and payment operator scripts. Invoice tables remain until C4 (`../specs/ops/payment-removal.md`). The project is open source with no payment (ADR-0025); the billing-path four-eyes approval gate was already retired separately.
 - **Local onboarding** — DevOps runs through `npm run setup` and Docker Compose; there is no packaged image and no public URL (ADR-0025; `../specs/security/stratum-local-network.md` REQ-6). **`docs/COMMERCIAL_ONBOARDING.md`** covers organizations, API keys, local integration and usage reads. Machine-readable contract at `GET /openapi.json`; browsable at `GET /docs`.
 
 Full operator + API surface: [`docs/MEMORY_AND_EVAL_COMMANDS.md`](docs/MEMORY_AND_EVAL_COMMANDS.md); team-mode onboarding: [`docs/COMMERCIAL_ONBOARDING.md`](docs/COMMERCIAL_ONBOARDING.md). **Gated on external inputs:** Anthropic credits (judged eval ship-decision · audit Tier-2/3 · live ingestion). The ZK-Context (AWS Nitro TEE) plan and the paid-partner path were dropped on 2026-09-26 (ADR-0025).
@@ -191,8 +191,7 @@ npm run db:with-env -- npm run create-api-key -- --org-id <uuid> --name "my key"
 ## Cost
 
 The DevOps runtime is free and open source (MIT). The project charges no fee and bills
-nobody; the invoice code still in the tree is scheduled for removal (see
-Status above). The proxy shows token counts and USD estimates so you can see what your own
+nobody. The proxy shows token counts and USD estimates so you can see what your own
 provider usage costs; you pay your LLM provider directly. See
 [`docs/decisions/0025-open-source-local-first-no-payment.md`](docs/decisions/0025-open-source-local-first-no-payment.md).
 

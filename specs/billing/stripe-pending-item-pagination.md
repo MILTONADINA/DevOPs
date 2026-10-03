@@ -1,5 +1,13 @@
 # Complete Stripe pending-item retry check
 
+**Status**: superseded (payment-removal C3; owner decision 2026-09-26, ADR-0025)
+
+**Superseded by:** `specs/ops/payment-removal.md` REQ-7 removes this payment
+application contract and its implementation. The historical requirements below
+are retained for traceability, not current acceptance gates. Existing invoice
+tables, RPC migrations and backup/restore records remain until C4/M2 under
+REQ-8/9/10; this supersession does not remove or rewrite that schema history.
+
 **Scope:** `plan.md` §9 v1.0 invoice sending. Stripe's list endpoint returns
 at most 100 invoice items per page and an explicit `has_more` cursor signal.
 Idempotency keys may be removed after 24 hours, so the org/period metadata

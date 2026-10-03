@@ -3,8 +3,8 @@
 This document mixes original design sketches with implementation notes.
 [ARCHITECTURE.md](ARCHITECTURE.md) describes the running code. The C2 usage
 sections below reflect M1; other planned components are not implied to be
-implemented. The retained payment types/modules remain until C3 and cannot
-process the post-M1 usage schema.
+implemented. C3 removes the payment types/modules; the nonpayment `PruningLog`
+interface remains in `src/types/billing.ts`. Invoice tables remain until C4.
 
 ## Stack Decisions and Rationale
 

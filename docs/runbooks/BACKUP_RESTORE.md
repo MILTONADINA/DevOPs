@@ -76,10 +76,8 @@ Sources: `runtime/scripts/backup-org.ts:22-49`,
 - **A consistent point in time.** Tables are read one after another, so the
   file is not an atomic cross-table snapshot.
 
-Sources: `runtime/supabase/migrations/20260924235900_invoice_send_claims.sql:1-4`,
-`runtime/src/billing/invoice-ledger.ts:71-94`, `runtime/src/billing/invoice-ledger.ts:124-127`,
-`runtime/src/billing/invoice-ledger.ts:146`, `runtime/src/billing/invoice-ledger.ts:166-168`,
-`runtime/scripts/invoice.ts:180-188`,
+Sources: `runtime/src/usage/durable-usage-outbox.ts`,
+`runtime/scripts/backup-org.ts`,
 `runtime/scripts/restore-org.ts:75-84`, `runtime/src/proxy/index.ts:450-451`,
 `runtime/src/proxy/index.ts:504`, `runtime/.gitignore:43-49`,
 `runtime/scripts/local-compose.ts:113`, `docs/runbooks/LOCAL_STRATUM.md:75-78`.
@@ -108,8 +106,8 @@ The dry run checks the file only. It rejects:
 - a file without `operational_references` (an export from before that table
   existed);
 - a file without `invoice_send_claims` (an export from before PB-65, 2026-09-25).
-  This refusal is deliberate. The claims are what stop a second invoice for the
-  same organization and period, so a restore without them could send one twice;
+  The current manifest still requires that retained table. C3 removes the
+  payment sender; C4/M2 will retire the table and add legacy-table skipping;
 - any row in an organization-scoped table, or in `source_fact_links`, whose
   `org_id` differs from `orgId`;
 - decision supersession links that are missing, duplicated, cross-project,
@@ -156,7 +154,7 @@ restore stops, as described above.
 Sources: `runtime/scripts/restore-org.ts:21-49`, `runtime/scripts/restore-org.ts:173-192`,
 `runtime/scripts/restore-org.ts:254-286`, `runtime/scripts/backup-org.ts:42`.
 
-Invoice tables remain exported and restored until C4/M2; C2 does not skip
+Invoice tables remain exported and restored through C3 until C4/M2; restore does not skip
 `invoices` or `invoice_send_claims`. Old rows containing retired fee/signature
 columns are accepted, provided the backup otherwise passes validation. This
 does not relax missing-table, cross-organization, malformed-fact or FK checks.
@@ -241,8 +239,9 @@ Source for the npm script: `runtime/package.json:64`.
 - **Gaps listed above.** The usage outbox, captured session files, and the
   model cache are outside the backup
   ([What a backup does not contain](#what-a-backup-does-not-contain)).
-  Held invoice claims (`invoice_send_claims`) are included since PB-65, so a
-  restore keeps the double-billing guard for claimed periods.
+  Historical invoice claims (`invoice_send_claims`) remain included through
+  C3 so a restore preserves the retained schema's records. C4/M2 removes those
+  tables and their export entries together.
 - **No scheduled backups.** No script in `runtime/scripts/` or `scripts/`
   runs a backup on a schedule. Backups happen when an operator runs one.
 

@@ -24,7 +24,6 @@ repo-relative `path:line`. It describes code paths and reports no test run.
 | Pruner | `runtime/src/pruner/` | KadaneDial selection, encoder, supersession. Not in the request path |
 | Audit engine | `runtime/src/audit/` | Deterministic git attestation of facts. LLM tiers are not wired |
 | Usage | `runtime/src/usage/` | Durable outbox, unsigned records, pinned estimated prices and token summaries |
-| Legacy payment code | `runtime/src/billing/` | Invoice/Stripe modules retained until C3; no longer the team usage path |
 | Storage | `runtime/supabase/` | Migrations and the local Compose stack |
 
 ## 2. Entry points and modes
@@ -303,11 +302,10 @@ writer. Neither writer is compatible with the other schema; deliver this
 writer and migration together
 (`runtime/supabase/migrations/20261003000000_unsigned_usage_ledger.sql`).
 
-**Legacy invoices.** C1 removed payment HTTP routes. The invoice engine,
-Stripe library and operator scripts remain under `runtime/src/billing/` until
-C3. Invoice and signature verification commands expect the retired columns and
-cannot process the post-M1 schema. Invoice tables and the existing erasure
-retention blocker remain until C4. DevOps has no payment workflow.
+**Remaining invoice schema.** C1 removed payment HTTP routes; C3 removes the
+invoice engine, Stripe library, payment types and operator scripts. Invoice
+tables and the existing erasure retention blocker remain until C4. Backups and
+restores still include those tables. DevOps has no payment workflow.
 
 **Usage reads.** `runtime/src/proxy/routes/usage.ts` serves
 `GET /v1/billing/summary` and `GET /v1/billing/records` with token totals and
