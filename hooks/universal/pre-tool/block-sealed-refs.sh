@@ -20,113 +20,52 @@
 #   .workflow/state/baton.md (per-session reminder of sealed-ref discipline)
 
 set -euo pipefail
-# An inherited GIT_DIR/GIT_WORK_TREE would redirect git to another repository
-# regardless of cwd (third adversarial pass, 2026-09-15).
-unset GIT_DIR GIT_WORK_TREE
 
 COMMAND="${1:-}"
+CLASSIFIER="$(dirname -- "${BASH_SOURCE[0]}")/graph-command-classifier.mjs"
+classifier_fault() {
+    echo "DevOPs SEALED-REF BLOCK: graph-command-classifier.mjs is missing, failed, or returned an invalid decision" >&2
+    exit 2
+}
 
-# Refs that must never be modified (substring match)
-SEALED_REFS=(
-    "v0.2.0"
-    "phase-2-security-depth"
-    "stratum-merge"
-)
-
-# Patterns that would modify a ref (paired with a sealed ref in the command)
-DESTRUCTIVE_GIT_PATTERNS=(
-    "git[[:space:]]+tag[[:space:]]+-d"
-    "git[[:space:]]+tag[[:space:]]+-f"
-    "git[[:space:]]+tag[[:space:]]+--delete"
-    "git[[:space:]]+tag[[:space:]]+--force"
-    "git[[:space:]]+push[[:space:]]+.*--force"
-    "git[[:space:]]+push[[:space:]]+.*--delete"
-    "git[[:space:]]+push[[:space:]]+.*-f([[:space:]]|$)"
-    "git[[:space:]]+push[[:space:]]+.*-d([[:space:]]|$)"
-    "git[[:space:]]+branch[[:space:]]+-D"
-    "git[[:space:]]+branch[[:space:]]+--delete[[:space:]]+--force"
-    "git[[:space:]]+update-ref[[:space:]]+-d"
-    "git[[:space:]]+reset[[:space:]]+--hard"
-    "git[[:space:]]+filter-branch"
-    "git[[:space:]]+filter-repo"
-)
-
-# Quick exit: not a git command, allow.
-#
-# SECURITY (found by the graph's own security stage, 2026-09-14, while
-# auditing a sibling hook with the identical pattern): this filter was
-# anchored to the START of the command, so `cd . && git tag -d v0.2.0` (or
-# any prefix before `git`) bypassed sealed-ref protection entirely. Fixed
-# to match `git` as a whole word anywhere in the command, not just as the
-# first token. See hooks/universal/pre-tool/deploy-gate.sh for the same
-# fix and fuller writeup, and .claude/settings.json for the companion fix
-# (the wrapper only read the first line of a multi-line command).
-if ! echo "$COMMAND" | grep -qE '(^|[;&|(]|[[:space:]])git([[:space:]]|$)'; then
-    exit 0
-fi
-
-# Check if any sealed ref appears in the command
-sealed_ref_hit=""
-for ref in "${SEALED_REFS[@]}"; do
-    if echo "$COMMAND" | grep -qF -- "$ref"; then
-        sealed_ref_hit="$ref"
-        break
-    fi
-done
-
-# No sealed ref involved → allow
-if [[ -z "$sealed_ref_hit" ]]; then
-    exit 0
-fi
-
-# Sealed ref involved — check for destructive pattern
-destructive_match=""
-for pattern in "${DESTRUCTIVE_GIT_PATTERNS[@]}"; do
-    if echo "$COMMAND" | grep -qE "$pattern"; then
-        destructive_match="$pattern"
-        break
-    fi
-done
-
-# Read-only operations on sealed refs are fine (git log, git show, git rev-parse, etc.)
-if [[ -z "$destructive_match" ]]; then
-    exit 0
-fi
-
-# Sealed ref + destructive pattern = BLOCK
+# The shared literal parser compares exact mutation destinations, not substrings.
+RESULT="$(node "$CLASSIFIER" sealed "$COMMAND")" || classifier_fault
+jq -es '
+    length == 1 and (.[0] |
+    type == "object" and (.decision == "allow" or .decision == "block") and
+    (.reason | type == "string") and (.logAllowed | type == "boolean") and
+    (.cycle == null) and (.marker == null) and
+    (if .decision == "block" then
+        (.sealedRef == null or .sealedRef == "refs/tags/v0.2.0" or
+         .sealedRef == "refs/heads/phase-2-security-depth" or
+         .sealedRef == "refs/heads/stratum-merge")
+     else .sealedRef == null end))
+' <<< "$RESULT" >/dev/null || classifier_fault
+[[ "$(jq -r '.decision' <<< "$RESULT")" == allow ]] && exit 0
+SEALED_REF="$(jq -r '.sealedRef' <<< "$RESULT")"
+SEALED_REF_JSON="$(jq -c '.sealedRef' <<< "$RESULT")"
+[[ "$SEALED_REF" == null ]] && SEALED_REF="unresolved (classification refused)"
+REASON="$(jq -r '.reason' <<< "$RESULT")"
 cat >&2 <<EOF
 ╔═══════════════════════════════════════════════════════════════════╗
 ║  DevOPs SEALED-REF BLOCK                                          ║
 ╠═══════════════════════════════════════════════════════════════════╣
 ║  Command: $COMMAND
-║  Sealed ref involved: $sealed_ref_hit
-║  Destructive pattern: $destructive_match
-║                                                                   ║
-║  This command would modify a SEALED ref:                          ║
-║    - v0.2.0 tag at aca4982 (project ship attestation)             ║
-║    - phase-2-security-depth (archival; never modify)              ║
-║    - stratum-merge (archival; never modify)                       ║
-║                                                                   ║
-║  These refs are part of the project's chain-of-custody. They      ║
-║  anchor claim traceability + the v0.2.0 attestation. Modifying    ║
-║  them breaks audit trail.                                         ║
-║                                                                   ║
-║  References:                                                      ║
-║    blueprint.md §3 (locked-in scope: archival refs)               ║
-║    docs/LAUNCH_READINESS.md (sealed-tag + archival-branch tables) ║
-║                                                                   ║
-║  If you genuinely need to modify a sealed ref (you almost         ║
-║  certainly do not): do it manually outside the agent session,     ║
-║  document the rationale in baton.md, and update blueprint §3.     ║
+║  Sealed ref involved: $SEALED_REF
+║  Reason: $REASON
+║
+║  These refs anchor claim traceability and the v0.2.0 attestation:
+║    refs/tags/v0.2.0
+║    refs/heads/phase-2-security-depth
+║    refs/heads/stratum-merge
+║  See blueprint.md §3 and docs/LAUNCH_READINESS.md.
 ╚═══════════════════════════════════════════════════════════════════╝
 EOF
 
-# Log the block
-mkdir -p .workflow/state
-# jq --arg escapes every field; the prior `jq -R .` was line-oriented and
-# split multi-line commands across several JSONL lines (found 2026-09-14).
-jq -cn --arg ts "$(date -u +%s)" --arg ref "$sealed_ref_hit" --arg pattern "$destructive_match" --arg command "$COMMAND" \
-    '{ts:($ts|tonumber),event:"sealed_ref_block",ref:$ref,pattern:$pattern,command:$command}' \
-    >> .workflow/state/events.jsonl 2>/dev/null || true
-
+if [[ "$(jq -r '.logAllowed' <<< "$RESULT")" == true ]]; then
+    mkdir -p .workflow/state &&
+    jq -cn --arg ts "$(date -u +%s)" --argjson ref "$SEALED_REF_JSON" --arg pattern "$REASON" --arg command "$COMMAND" \
+        '{ts:($ts|tonumber),event:"sealed_ref_block",ref:$ref,pattern:$pattern,command:$command}' \
+        >> .workflow/state/events.jsonl 2>/dev/null || true
+fi
 exit 2

@@ -1,6 +1,8 @@
 # governance/graph/autonomy-config.yml
 #
-# Machine-readable gate configuration for the graph-engineering pipeline.
+# Gate-policy documentation for the graph-engineering pipeline.
+# The graph hooks/classifier do not load this YAML; REQ-M16 defines their
+# finite literal-command policy. The examples below are not an executable parser.
 # See governance/graph/role-mapping.md for the human-readable rationale and
 # ~/.claude/plans/indexed-launching-cocke.md (outside this repository) for the full approved plan.
 #
@@ -42,6 +44,24 @@ gates:
       - "npm publish"
       - "git push .* --tags"
       - "git push .* refs/tags/"
+      - "git push .* --follow-tags"
+      - "git push .* --all"
+      - "git push .* tag NAME"
+      - "gh release (create|edit|delete|upload)"
+      - "supabase db push"
+    # Only a bare pushed NAME can use the lookup exception: refs/heads/NAME must
+    # exist and refs/tags/NAME must not. A colon refspec requires explicit
+    # refs/heads/ on its RHS for ordinary admission; otherwise it remains gated,
+    # regardless of a same-named local branch. Explicit protected RHS stays blocked.
+    # Tag, both, neither, HEAD and unsafe/unreadable contexts are gated. Git-directory,
+    # common-directory and ref metadata must stay inside the project; inherited
+    # Git routing/config overrides do not supply lookup authority. See REQ-M16.
+    # Select exactly one valid running run.json; environment/current markers
+    # are not fallback authority. Unhalted gh pr merge remains exempt (Decision13).
+    # Non-force --tags/--follow-tags/--all require deploy approval; the sealed hook
+    # does not enumerate their implicit destinations. Forced bulk/mirror ambiguity
+    # refuses; an explicit protected RHS still blocks. Not all implicit mutations
+    # are mediated by this bounded parser.
 
   # Billing four-eyes gate retired 2026-09-26 by owner decision (open source, no payment); see ADR-0025.
 
@@ -54,6 +74,10 @@ kill_switch:
   halt_file: ".workflow/state/graph-halt"
   commands: ["/graph-halt", "/graph-resume"]
   checked_by: "hooks/universal/pre-tool/deploy-gate.sh"
+  # Covers recognized consequential Bash forms before deploy-only admission,
+  # including release/database/ref mutations and gh pr merge while halted.
+  # Ordinary diagnostics/inert text stay available; a marker cannot override
+  # halt. This does not cancel an existing child or gate every tool/program.
 
 resilience:
   preflight: "scripts/graph-preflight.sh"

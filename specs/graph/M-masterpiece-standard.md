@@ -2,7 +2,7 @@
 
 **Spec ID**: graph/M-masterpiece-standard
 **Status**: draft (awaiting owner approval; see Owner questions in `governance/graph/masterpiece-roadmap.md`)
-**Last updated**: 2026-09-25
+**Last updated**: 2026-10-03
 **Owner**: miltonadina
 **Reviewers**: miltonadina (orchestrator session: Claude Opus 5.5)
 
@@ -238,16 +238,30 @@ The signing key SHALL be one an agent cannot use: a FIDO `sk-` key, or a passphr
 **Falsified by:** a marker whose content is `{}`, or one with a valid signature over a different `sha`, admitting a deploy-shaped command.
 
 ### REQ-M16 (Ubiquitous): Gate hooks are hardened and regression-tested
-THE SYSTEM SHALL add `tests/hooks/deploy-gate.test.mjs` and `tests/hooks/block-sealed-refs.test.mjs` to `npm test`. They are built from the 2026-09-25 probe matrix, and each bypass is committed as a failing case before its fix. `deploy-gate.sh` SHALL:
-- check `graph-halt` before its pre-filter (`:99-106`; `graph-halt.md:9`);
-- match `gh pr merge`, `gh release`, `supabase db push`, `git -C <dir> …`, tag pushes by name, and `:ref`/`+ref` refspecs;
-- take `CYCLE_ID` from the single `running` `graph-cycles/*/run.json`, failing closed when there are zero or several (today it falls back to `current`).
+
+THE SYSTEM SHALL run `tests/hooks/deploy-gate.test.mjs` and `tests/hooks/block-sealed-refs.test.mjs` through `npm test`. THE SYSTEM SHALL commit each newly closed bypass as a failing regression case before its fix. The acceptance matrix below reconciles the 2026-09-25 probes with the owner's merge decision and safe diagnostic controls.
+
+1. **Scoped halt.** WHILE `.workflow/state/graph-halt` exists, THE SYSTEM SHALL reject each recognized consequential command with exit 2 before any deploy-only early return. This set includes the existing deployment/publication commands, `git push`, `git commit`, `git tag`, recognized destructive Git ref/history operations, `gh release` mutations, `supabase db push`, and `gh pr merge`, including supported literal `git -C` forms. THE SYSTEM SHALL preserve the halt explanation and refusal event. A deploy marker SHALL NOT override a halt. THE SYSTEM SHALL permit identified inert text and ordinary diagnostic forms such as `git status`, `git -C . status`, `git log`, `git show`, `git rev-parse`, `ls`, and an inert `echo` while halted.
+
+2. **Deploy and merge distinction.** WHEN no halt is active, THE SYSTEM SHALL require a deploy marker for the existing Vercel/Wrangler/npm publication patterns, `gh release` mutations, `supabase db push`, and tag or ambiguously classified Git pushes as defined below. WHEN no halt is active, THE SYSTEM SHALL allow `gh pr merge` without a deploy marker or running-cycle prerequisite, under roadmap Decision 13. Required GitHub merge checks remain a separate gate. This clause does not implement MR-6's running-cycle commit/MCP lock.
+
+3. **Literal push classification.** THE SYSTEM SHALL gate explicit tag pushes, including `--tags`, explicit `refs/tags/` targets and `tag NAME` syntax. For an unqualified literal pushed name, THE SYSTEM SHALL allow the ordinary branch exception only when a safe local lookup proves that `refs/heads/NAME` exists and `refs/tags/NAME` does not exist in the command's project-local Git context. IF the name is a tag, exists in both namespaces, exists in neither namespace, is `HEAD` shorthand, or cannot be resolved safely, THEN THE SYSTEM SHALL classify that push as gated. THE SYSTEM SHALL preserve the ordinary explicit `HEAD:refs/heads/feature` branch-push control, including its existing force-with-lease option, subject to the independent sealed-ref hook. The branch exception SHALL NOT depend on a version-like tag-name pattern.
+
+4. **Read-only classification boundary.** THE SYSTEM SHALL resolve supported literal `git -C` operands within the project root before using local refs for the branch exception. IF a required context is invalid, unreadable, dynamically specified or redirects outside that root, including through a symlink, THEN THE SYSTEM SHALL withhold the branch exception. THE SYSTEM SHALL withhold the branch exception if `.git`, a Git-directory file, the common directory or ref metadata redirects the lookup outside that root. THE SYSTEM SHALL perform any ref lookup through fixed read-only argument vectors with inherited Git routing/configuration overrides removed. THE SYSTEM SHALL NOT evaluate the supplied command text or contact a remote to classify it.
+
+5. **Running-cycle authority.** WHEN a command requires a deploy marker, THE SYSTEM SHALL select the cycle from exactly one valid `running` record in `.workflow/state/graph-cycles/*/run.json`. A valid record has `schema_version: 1`, a `cycleId` matching `[a-zA-Z0-9_-]+` and its enclosing directory, and a status in `running`, `blocked`, `completed`, `failed`, or `indeterminate`; if `args.cycleId` is present it matches the same cycle. Null or absent optional Workflow run/journal IDs SHALL remain valid. IF there are zero or multiple running records, an invalid/unreadable candidate record, or redirected/symlinked authority, THEN THE SYSTEM SHALL reject the deploy with exit 2. Valid nonrunning records SHALL NOT count as running. THE SYSTEM SHALL use only the selected cycle's `.workflow/state/graph-approvals/<cycleId>.deploy` marker. Neither `DEVOPS_GRAPH_CYCLE_ID` nor `current.deploy` SHALL supply fallback authority. These record checks SHALL NOT add a deploy-marker prerequisite to safe diagnostics, an ordinary nonhalted branch push, or an unhalted `gh pr merge`.
+
+6. **Sealed refs and inert text.** THE SYSTEM SHALL reject supported destructive operations whose target is an exact sealed ref in `block-sealed-refs.sh`, including deletion/forced push refspecs, `update-ref` and literal `git -C` forms. THE SYSTEM SHALL preserve the previously supported destructive tag, push, branch, update-ref, reset and filter-history protections. THE SYSTEM SHALL allow inert text such as `echo git tag -d v0.2.0` and similarly named unsealed targets. A valid deploy marker SHALL NOT override sealed-ref protection. THE SYSTEM SHALL inspect supported compound-command and command-substitution forms rather than treating every command beginning with `echo` as inert.
+
+7. **Scope and authority limits.** THE SYSTEM SHALL document the finite literal-command coverage and the script-file-wrapper bypass. This gate does not certify arbitrary shell programs, aliases, functions, generated commands or interpreter payloads as safe. MR-3 SHALL preserve the existing human-only approval/resume policy without claiming signed-marker authenticity, protected file-tool paths, a transactional cycle lock, cancellation of an already running child, rollback, or universal tool coverage. Those guarantees remain separate roadmap work.
+
+8. **Required hook companion.** WHEN the installer selects `universal/pre-tool/deploy-gate.sh` or `universal/pre-tool/block-sealed-refs.sh`, THE SYSTEM SHALL install the required `graph-command-classifier.mjs` companion beside that hook in `.claude/hooks/`. IF a selected graph hook's required companion is unavailable, THEN THE SYSTEM SHALL fail installation rather than report a usable graph hook. THE SYSTEM SHALL preserve dry-run's no-target-mutation guarantee. A graph hook SHALL reject invocation when its required classifier cannot run. This bounded dependency copy SHALL NOT alter hook wiring, unrelated hook/subagent installation or skill verification.
 
 The earlier requirement to diff a push with no upstream against `origin/main` served only the billing four-eyes check, and it was dropped when that gate was retired on 2026-09-26 (ADR-0025).
 
-`block-sealed-refs.sh` SHALL match refspec deletions, `update-ref` and `git -C`, and SHALL NOT block inert text such as `echo git tag -d v0.2.0`. The script-file-wrapper bypass SHALL be documented as a known limit.
-**Enforced by:** the hooks plus `tests/hooks/*`.
-**Falsified by:** any row of the probe matrix exiting 0 when it should block, or exiting 2 for `echo git tag -d v0.2.0`.
+**Enforced by:** `hooks/universal/pre-tool/deploy-gate.sh`, `hooks/universal/pre-tool/block-sealed-refs.sh`, their `graph-command-classifier.mjs` companion, and `tests/hooks/*` through root `npm test`; `analyzer/install.ts` and focused companion-installation fixtures; supported installed Bash-wrapper delivery has separate fixture evidence.
+
+**Falsified by:** any acceptance case below returning the wrong status, selecting an unrelated marker, mutating fixture authority files, evaluating supplied command text, or making a ref-classification lookup outside the project context or over the network.
 
 ### REQ-M17 (Unwanted behaviour): No autonomous stage, commit, push, merge or PR while a cycle runs; one cycle at a time
 IF any `.workflow/state/graph-cycles/*/run.json` has status `running`, THEN THE SYSTEM SHALL block:
@@ -415,7 +429,31 @@ THE SYSTEM SHALL correct, at the latest in the cycle that implements the matchin
 **Given** a test key listed in a fixture `allowed_signers` and a marker signed over `{cycle, sha: HEAD, action: 'deploy'}` **When** a deploy-shaped command runs **Then** the gate allows it. **Given** a `{}` marker, an unsigned marker, a signature over another `sha`, or a key not listed **Then** the gate exits 2.
 
 ### AC-M16.1 (REQ-M16)
-**Given** the probe matrix, each case with `graph-halt` present or absent as it specifies (`git -C . commit`, `gh pr merge`, `gh release create`, `supabase db push`, `git push origin v1.0.0`, `git push origin :v0.2.0`, `git push origin :refs/tags/v0.2.0`, `git push origin +HEAD:stratum-merge`, `git -C . tag -d v0.2.0`, `git update-ref refs/tags/v0.2.0 HEAD`) **When** `npm test` runs `tests/hooks/*` **Then** each case exits 2, and `echo git tag -d v0.2.0` exits 0. **Given** zero or two `running` run records **Then** a deploy-shaped command exits 2.
+
+**Given** synthetic isolated project fixtures and command strings supplied as hook arguments, **When** the focused hook tests and root `npm test` run, **Then** the following outcomes hold without executing the supplied release, deploy, push or destructive command:
+
+| Command / condition | Hook and fixture | Required result |
+| --- | --- | --- |
+| `git -C . commit -m probe` | Deploy hook; halt present | Exit 2 with halt explanation |
+| `gh pr merge 123 --squash` | Deploy hook; halt present, even with a marker | Exit 2 with halt explanation |
+| `gh pr merge 123 --squash` | Deploy hook; no halt, no cycle or marker | Exit 0 |
+| `gh release create v1.0.0`; `supabase db push` | Deploy hook; one valid running cycle, no halt, no marker | Each exits 2 for missing approval |
+| `git push origin v1.0.0`; push of a non-version tag name | Deploy hook; actual local tag fixtures, one running cycle, no marker | Each exits 2 for missing approval |
+| `git push origin :v0.2.0`; `git push origin :refs/tags/v0.2.0`; `git push origin +HEAD:stratum-merge`; `git -C . tag -d v0.2.0`; `git update-ref refs/tags/v0.2.0 HEAD` | Sealed-ref hook directly; no halt required | Each exits 2 for its sealed target, including when a deploy marker exists |
+| `echo git tag -d v0.2.0` | Each hook directly; no halt and halt fixtures | Exit 0; no destructive action is invoked |
+| `echo harmless; git tag -d v0.2.0`, newline-separated equivalent, and literal text `echo "$(git tag -d v0.2.0)"` | Sealed-ref hook; strings passed as data | Exit 2; no command substitution is executed by the test or hook |
+| Ordinary `git status`, `git -C . status`, `git log`, `git show`, `git rev-parse`, `ls` | Deploy hook; halt present | Exit 0 |
+| `git push origin feature` | Deploy hook; safe local branch `feature` exists, no same-named tag, no halt/cycle/marker | Exit 0 |
+| Unqualified push name that is tag-only, both branch and tag, neither, `HEAD`, or has unsafe/unreadable Git context | Deploy hook; no marker | Exit 2 as a gated push; no external lookup |
+| Existing `git push -q origin HEAD:refs/heads/feature --force-with-lease=feature:0123456789abcdef0123456789abcdef01234567` | Deploy hook; no halt, no upstream/cycle/marker | Exit 0 |
+| Existing four deploy forms (Vercel, Wrangler, npm publish, `git push --tags`) | One valid running record; matching marker absent/present | Existing exit-2 reason/banner and exit-0 assertions retained |
+| Deploy with zero or two running records; corrupt/invalid/unreadable record; mismatching directory or `args.cycleId`; symlinked state/cycle/run authority | Deploy hook; include distracting environment/current/wrong-cycle markers | Exit 2; no fallback selection |
+| Deploy with exactly one valid running record, null optional Workflow IDs, valid nonrunning peers, and the matching marker | Deploy hook; no halt; conflicting environment identity also exercised | Exit 0 |
+| Deploy with one valid running record plus a corrupt record, or only a wrong-cycle marker | Deploy hook; no halt | Exit 2; corruption is not skipped |
+
+The regression suite SHALL retain all twelve original deploy-test instances and their substantive assertions, including the retired billing-path fixture's exact own-repository TOPLEVEL/STAGED checks. The ordinary literal branch case above is a new positive control; the old no-upstream case is an explicitly qualified destination and SHALL remain intact. The suite SHALL cover a non-version tag, exact sealed targets versus similar unsealed names, supported quoted/repeated `-C`, an out-of-project/symlink context denial, existing destructive categories, existing deployment prefixes/compound forms, and ordinary nondeploy behavior with invalid cycle state. Hook calls SHALL leave the fixture halt, approval markers and run records unchanged; only the documented event append is allowed. At least one bounded JSON-input wrapper fixture SHALL demonstrate delivery through the installed Bash wrappers without executing the command text. Missing or malformed wrapper input and arbitrary script payloads remain documented limits unless separately authorized and tested.
+
+**Given** an isolated installer target whose profile selects either graph hook individually or both, **When** the installer copies the selected hooks, **Then** the exact classifier companion is present beside them and an installed hook can classify a harmless fixture command. **Given** a missing required companion, **Then** installation fails. **Given** dry-run or a profile selecting neither graph hook, **Then** the target receives no classifier copy from this rule. Existing unrelated hook/subagent and skill-verification assertions remain intact. Direct hook fixtures also prove missing/unrunnable companion refusal. These tests precede the bounded installer change; they do not require rewiring `.claude/settings.json`.
 
 ### AC-M17.1 (REQ-M17)
 **Given** a scratch repository and a one-task Workflow whose agent runs `git commit --allow-empty -m probe` while a `running` run record exists **When** it runs **Then** the recorded claim states whether the hook fired (exit 2) or not. If not, the coder and tester `agent()` calls in `sprint-cycle.js` carry `isolation: 'worktree'`, which a test asserts.
