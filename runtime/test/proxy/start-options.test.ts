@@ -1,10 +1,10 @@
 // Tests for the entry-point wiring (commercialEnabled, buildStartOptions). Importing
 // index.ts does NOT boot a server (the entry guard only starts when run as the entry).
 
-import { describe, test, expect, vi } from "vitest";
+import { describe, test, expect, vi, afterEach } from "vitest";
 vi.unmock("node:fs");
 vi.unmock("fs");
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import type { networkInterfaces } from "node:os";
 import { join } from "node:path";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -22,10 +22,31 @@ import {
   assertUpstreamAllowed,
   baseOptions,
   type ClientFactory,
+  type StartEnv,
 } from "../../src/proxy/index";
 
 const base = { messages: {} as never, dashboard: { readSessions: () => [] } } as unknown as BuildProxyOptions;
 const fakeClient = {} as unknown as SupabaseClient;
+
+// Every team-mode message fixture owns its journal, even without a signing secret.
+const fixtureDirs: string[] = [];
+const fixtureOutboxes: Array<NonNullable<NonNullable<BuildProxyOptions["messages"]>["usageOutbox"]>> = [];
+function fixtureDir(): string {
+  mkdirSync(join(process.cwd(), "data"), { recursive: true });
+  const dir = mkdtempSync(join(process.cwd(), "data", "usage-start-test-"));
+  fixtureDirs.push(dir);
+  return dir;
+}
+function isolatedOptions(env: StartEnv, source: BuildProxyOptions, makeClient: ClientFactory): BuildProxyOptions {
+  const opts = buildStartOptions({ ...env, CQ_USAGE_OUTBOX_DIR: fixtureDir() }, source, makeClient);
+  if (opts.messages?.usageOutbox) fixtureOutboxes.push(opts.messages.usageOutbox);
+  return opts;
+}
+afterEach(async () => {
+  for (const outbox of fixtureOutboxes.splice(0)) await outbox.close();
+  for (const dir of fixtureDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  if (base.messages) delete base.messages.usageOutbox;
+});
 
 // ===== specs/security/stratum-local-network.md — AC-4 (REQ-3: no unauthenticated remote bind) =====
 //
@@ -411,13 +432,14 @@ describe("commercialEnabled", () => {
 });
 
 describe("assertCommercialStartup", () => {
-  test("requires database credentials and signing secret only for commercial runtime", () => {
+  test("specs/ops/payment-removal.md#AC-5 — team startup requires database credentials but no signing secret", () => {
     expect(() => assertCommercialStartup({})).not.toThrow();
     expect(() => assertCommercialStartup({ CQ_COMMERCIAL: "true" })).toThrow(/database|Supabase/i);
-    expect(() => assertCommercialStartup({ CQ_COMMERCIAL: "true", SUPABASE_URL: "u", SUPABASE_SERVICE_KEY: "k" })).toThrow(/signing secret/i);
-    expect(() => assertCommercialStartup({ CQ_COMMERCIAL: "true", SUPABASE_URL: "u", SUPABASE_SERVICE_KEY: "k", CQ_BILLING_SIGNING_SECRET: "   " })).toThrow(/signing secret/i);
-    expect(() => assertCommercialStartup({ CQ_COMMERCIAL: "true", SUPABASE_URL: "u", SUPABASE_SERVICE_KEY: "k", CQ_BILLING_SIGNING_SECRET: "s" })).not.toThrow();
-    expect(() => assertCommercialStartup({ CQ_COMMERCIAL: "true", SUPABASE_URL: "u", SUPABASE_SERVICE_KEY: "k", CQ_BILLING_SIGNING_SECRET: "s", VERCEL: "1" })).toThrow(/ephemeral|Vercel/i);
+    const env = { CQ_COMMERCIAL: "true", SUPABASE_URL: "u", SUPABASE_SERVICE_KEY: "k" };
+    expect(() => assertCommercialStartup(env)).not.toThrow();
+    const legacyEnv = { ...env, CQ_BILLING_SIGNING_SECRET: "   " };
+    expect(() => assertCommercialStartup(legacyEnv)).not.toThrow();
+    expect(() => assertCommercialStartup({ ...env, VERCEL: "1" })).toThrow(/ephemeral|Vercel/i);
   });
 });
 
@@ -433,10 +455,10 @@ describe("resolveListenHost — HOST (deprecated one-release alias, REQ-3) with 
 });
 
 describe("buildStartOptions", () => {
-  test("commercial billing wires a project-local outbox and rejects ephemeral Vercel runtime", async () => {
+  test("specs/ops/payment-removal.md#AC-5 — team usage wires a project-local outbox without a signing secret and rejects ephemeral Vercel runtime", async () => {
     mkdirSync(join(process.cwd(), "data"), { recursive: true }); // gitignored: absent in a fresh checkout
     const dir = mkdtempSync(join(process.cwd(), "data", "usage-start-test-"));
-    const env = { CQ_COMMERCIAL: "true", SUPABASE_URL: "u", SUPABASE_SERVICE_KEY: "k", CQ_BILLING_SIGNING_SECRET: "test-secret", CQ_USAGE_OUTBOX_DIR: dir };
+    const env = { CQ_COMMERCIAL: "true", SUPABASE_URL: "u", SUPABASE_SERVICE_KEY: "k", CQ_USAGE_OUTBOX_DIR: dir };
     try {
       const opts = buildStartOptions(env, { messages: {} as NonNullable<BuildProxyOptions["messages"]> }, (() => fakeClient) as ClientFactory);
       expect(opts.messages?.usageOutbox?.enqueue).toBeTypeOf("function");
@@ -449,18 +471,32 @@ describe("buildStartOptions", () => {
     const messages = {} as NonNullable<BuildProxyOptions["messages"]>;
     const env = { CQ_COMMERCIAL: "true", SUPABASE_URL: "u", SUPABASE_SERVICE_KEY: "k",
       CQ_MEMORY_EXTRACT_MODEL: "local/check", CQ_LOCAL_BASE_URL: "http://127.0.0.1:11434/v1" };
-    const configured = buildStartOptions(env, { messages }, (() => fakeClient) as ClientFactory);
+    const configured = isolatedOptions(env, { messages }, (() => fakeClient) as ClientFactory);
     expect(configured.messages?.recordMemory).toBeTypeOf("function");
-    const unconfigured = buildStartOptions({ CQ_COMMERCIAL: "true", SUPABASE_URL: "u", SUPABASE_SERVICE_KEY: "k" },
+    const unconfigured = isolatedOptions({ CQ_COMMERCIAL: "true", SUPABASE_URL: "u", SUPABASE_SERVICE_KEY: "k" },
       { messages: {} as NonNullable<BuildProxyOptions["messages"]> }, (() => fakeClient) as ClientFactory);
     expect(unconfigured.messages?.recordMemory).toBeUndefined();
-    expect(() => buildStartOptions({ ...env, CQ_LOCAL_BASE_URL: "https://example.com/v1" },
+    expect(() => isolatedOptions({ ...env, CQ_LOCAL_BASE_URL: "https://example.com/v1" },
       { messages: {} as NonNullable<BuildProxyOptions["messages"]> }, (() => fakeClient) as ClientFactory)).toThrow();
+  });
+
+  // New C2 acceptance: invalid settings must fail before creating a journal or replay timer.
+  test.each([
+    { CQ_MEMORY_EXTRACT_MODEL: "remote/model" },
+    { CQ_LOCAL_BASE_URL: "https://example.com/v1" },
+    { CQ_AUDIT_REPO_ROOT: "../escape", DEVOPS_STRATUM_PROJECT_ROOT: process.cwd() },
+  ])("specs/ops/payment-removal.md#AC-5 — invalid settings %j refuse before journal allocation", (invalid) => {
+    const dir = join(fixtureDir(), "outbox");
+    const env = { CQ_COMMERCIAL: "true", SUPABASE_URL: "u", SUPABASE_SERVICE_KEY: "k",
+      CQ_BILLING_SIGNING_SECRET: "legacy-unused-test-value", CQ_USAGE_OUTBOX_DIR: dir,
+      CQ_MEMORY_EXTRACT_MODEL: "local/check", CQ_LOCAL_BASE_URL: "http://127.0.0.1:11434/v1", ...invalid };
+    expect(() => buildStartOptions(env, { messages: {} as NonNullable<BuildProxyOptions["messages"]> }, () => fakeClient)).toThrow();
+    expect(existsSync(dir)).toBe(false);
   });
 
   test("personal mode: returns only the base; never constructs a client", () => {
     const makeClient = vi.fn() as unknown as ClientFactory;
-    const opts = buildStartOptions({}, base, makeClient);
+    const opts = isolatedOptions({}, base, makeClient);
     expect(opts.messages).toBe(base.messages);
     expect(opts.auth).toBeUndefined();
     expect(opts.config).toBeUndefined();
@@ -476,7 +512,7 @@ describe("buildStartOptions", () => {
 
   test("specs/ops/payment-removal.md#AC-1 and specs/ops/payment-removal.md#AC-3 — commercial mode: builds the client ONCE and wires auth(/v1)+config+memory+usage+sessions, with no billing or stripeWebhook option", () => {
     const makeClient = vi.fn(() => fakeClient);
-    const opts = buildStartOptions({ CQ_COMMERCIAL: "true", SUPABASE_URL: "u", SUPABASE_SERVICE_KEY: "k" }, base, makeClient as unknown as ClientFactory);
+    const opts = isolatedOptions({ CQ_COMMERCIAL: "true", SUPABASE_URL: "u", SUPABASE_SERVICE_KEY: "k" }, base, makeClient as unknown as ClientFactory);
     expect(makeClient).toHaveBeenCalledTimes(1);
     expect(makeClient).toHaveBeenCalledWith("u", "k");
     expect(opts.auth?.protectedPrefixes).toEqual(["/v1/"]);
@@ -498,8 +534,8 @@ describe("buildStartOptions", () => {
     // a key StartEnv does declare (CQ_COMMERCIAL), because TypeScript refuses an object that shares no property with the all-optional StartEnv.
     const teamEnv = { CQ_COMMERCIAL: "true", SUPABASE_URL: "u", SUPABASE_SERVICE_KEY: "k", STRIPE_WEBHOOK_SECRET: "whsec_x" };
     const personalEnv = { CQ_COMMERCIAL: "false", STRIPE_WEBHOOK_SECRET: "whsec_x" };
-    const team = buildStartOptions(teamEnv, base, (() => fakeClient) as unknown as ClientFactory);
-    const personal = buildStartOptions(personalEnv, base, (() => fakeClient) as unknown as ClientFactory);
+    const team = isolatedOptions(teamEnv, base, (() => fakeClient) as unknown as ClientFactory);
+    const personal = isolatedOptions(personalEnv, base, (() => fakeClient) as unknown as ClientFactory);
     expect(team).not.toHaveProperty("stripeWebhook");
     expect(personal).not.toHaveProperty("stripeWebhook");
   });

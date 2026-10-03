@@ -1,5 +1,11 @@
 # TECHNICAL_SPEC.md — Implementation Specification
 
+This document mixes original design sketches with implementation notes.
+[ARCHITECTURE.md](ARCHITECTURE.md) describes the running code. The C2 usage
+sections below reflect M1; other planned components are not implied to be
+implemented. The retained payment types/modules remain until C3 and cannot
+process the post-M1 usage schema.
+
 ## Stack Decisions and Rationale
 
 | Component | Choice | Rationale |
@@ -14,7 +20,7 @@
 | Fact extractor | Llama 4-8B | Cost: ~$0.001/extraction. Sufficient for structured output |
 | Audit model | Claude Opus | Highest accuracy for conflict detection, used sparingly |
 | TEE | AWS Nitro Enclaves | Verifiable attestation, no operator access |
-| Billing ledger | Supabase (separate schema) | Append-only, auditable, Postgres triggers for immutability |
+| Usage ledger | Local Postgres `public.billing_records` | Unsigned token inputs, pinned USD estimates, unique event identity |
 
 ---
 
@@ -94,24 +100,24 @@ export interface CQProxyResponse {
 }
 ```
 
-### Billing Types
+### Usage inputs (C2)
+
+The writer input is `UsageInput` in `src/usage/recorder.ts`; it does not import
+the legacy `src/types/billing.ts`. Generated token and estimated-cost deltas
+are returned by the database and usage read API, never inserted by the writer.
+The following pruning-log interface is a design sketch; consult source for
+runtime types.
 
 ```typescript
-// src/types/billing.ts
-
-export interface BillingRecord {
-  id: string;                    // uuid
-  created_at: number;            // Unix ms
-  session_id: string;
-  org_id: string;
-  original_tokens: number;       // signed at proxy ingress
-  quarantined_tokens: number;    // signed at proxy egress
-  token_delta: number;           // original - quarantined
-  api_price_per_token: number;   // snapshot at request time
-  cost_delta_usd: number;        // token_delta × price
-  cq_fee_usd: number;            // cost_delta × 0.20
-  pruning_log_id: string;        // ref to audit log
-  signed_hash: string;           // HMAC-SHA256 of this record
+// src/usage/recorder.ts
+export interface UsageInput {
+  sessionId: string;
+  orgId: string;
+  usageEventId?: string;       // server-generated UUID on the request path
+  originalTokens: number;
+  quarantinedTokens: number;
+  apiPricePerToken: number;    // pinned USD estimate per input token
+  pruningLogId?: string;
 }
 
 export interface PruningLog {
@@ -223,7 +229,7 @@ CREATE TABLE sessions (
   ended_at      TIMESTAMPTZ
 );
 
--- Billing records (append-only via trigger)
+-- C2 usage record shape (illustrative; migrations define all constraints/RLS)
 CREATE TABLE billing_records (
   id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -233,15 +239,15 @@ CREATE TABLE billing_records (
   quarantined_tokens    INTEGER NOT NULL,
   token_delta           INTEGER GENERATED ALWAYS AS (original_tokens - quarantined_tokens) STORED,
   api_price_per_token   NUMERIC(12,8) NOT NULL,
-  cost_delta_usd        NUMERIC(12,6) GENERATED ALWAYS AS (token_delta * api_price_per_token) STORED,
-  cq_fee_usd            NUMERIC(12,6) GENERATED ALWAYS AS (cost_delta_usd * 0.20) STORED,
+  cost_delta_usd        NUMERIC(12,6) GENERATED ALWAYS AS ((original_tokens - quarantined_tokens) * api_price_per_token) STORED,
   pruning_log_id        UUID,
-  signed_hash           TEXT NOT NULL
+  usage_event_id        UUID
 );
 
--- Current migration 20260530040000_audit_security_hardening.sql replaces the
--- original silent rules with BEFORE UPDATE/DELETE/TRUNCATE triggers that raise
--- an explicit append-only error. See that migration for executable DDL.
+-- 20261003000000_unsigned_usage_ledger.sql removes the old mutation triggers,
+-- their function, cq_fee_usd and signed_hash. Token/cost generation, foreign
+-- keys, RLS and the partial unique usage-event index remain. Existing
+-- migrations are replayed unchanged before M1; this sketch is not a migration.
 
 -- Pruning logs
 CREATE TABLE pruning_logs (
@@ -301,8 +307,8 @@ Full reference in `docs/API_REFERENCE.md`. Key proxy routes:
 POST   /v1/messages           → Anthropic-compatible proxy endpoint
 GET    /v1/sessions/:id       → Session metadata
 GET    /v1/sessions/:id/stats → Token counts and savings for a session
-GET    /v1/billing/summary    → Monthly billing summary for org
-GET    /v1/billing/records    → Paginated billing record list
+GET    /v1/billing/summary    → Organization token usage and estimated USD savings
+GET    /v1/billing/records    → Paginated unsigned usage records
 GET    /dashboard             → Waste dashboard UI
 GET    /health                → Proxy health check
 ```

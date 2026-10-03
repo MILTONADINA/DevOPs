@@ -1,11 +1,17 @@
 # MONITORING.md — Observability and Alerting
 
+This page contains monitoring proposals, not a deployed metrics exporter,
+alert service or scheduled job. [TELEMETRY.md](TELEMETRY.md) lists actual
+emissions. Under C2, usage is unsigned and carries no fee; signature/fee
+checks are retired. The local journal still fails closed and retains events
+on replay failure.
+
 ## Philosophy
 
 If it isn't measured, it isn't managed. CQ has three things that can go wrong silently:
 
 1. **Pruning degrades quality** — the AI gives worse answers and nobody notices until the customer churns
-2. **Token counts drift** — billing math becomes wrong and we either undercharge (bad for us) or overcharge (bad for trust)
+2. **Token counts drift** — usage reports and estimated savings become inaccurate
 3. **Memory facts corrupt** — Historical Drift goes undetected and the AI confidently hallucinates
 
 The monitoring system exists to catch all three before the customer does.
@@ -24,14 +30,13 @@ The monitoring system exists to catch all three before the customer does.
 | `eval.faithfulness` | Daily eval run score | < 0.90 → page on-call |
 | `eval.answer_relevancy` | Daily eval run score | < 0.88 → page on-call |
 
-### Billing Integrity
+### Usage Integrity (proposed metrics)
 
 | Metric | Description | Alert threshold |
 |---|---|---|
-| `billing.token_count_mismatch` | Difference between our count and Anthropic's reported count | Any non-zero value → alert immediately |
-| `billing.unsigned_records` | Billing records missing a signed hash | Any non-zero → alert immediately |
-| `billing.negative_delta` | Sessions where quarantined > original tokens | Any non-zero → alert (pruner adding tokens?) |
-| `billing.opus_cost_pct` | Opus audit spend as % of CQ fee revenue | > 2% → alert, tune confidence threshold |
+| `usage.token_count_mismatch` | Difference between exact counts for the same provider input; do not compare a labeled preflight estimate as exact | Investigate unexpected exact-count differences |
+| `usage.negative_delta` | Sessions where quarantined > original tokens | Any non-zero → investigate |
+| `usage.pending_events` | Events retained in the durable outbox | Investigate persistent backlog/replay errors; preserve files |
 
 ### Memory and Audit Health
 
@@ -61,9 +66,9 @@ The monitoring system exists to catch all three before the customer does.
 
 | Level | When to use |
 |---|---|
-| `error` | Unrecoverable failures — TEE attestation failure, billing record not written, Zod validation crash |
+| `error` | Unrecoverable failures — TEE attestation failure, usage record not written, Zod validation crash |
 | `warn` | Recoverable anomalies — Opus escalation triggered, Tier 3 fallback used, zero spans from KadaneDial |
-| `info` | Normal operations — session started/ended, billing record written, fact extracted |
+| `info` | Normal operations — session started/ended, usage record written, fact extracted |
 | `debug` | Verbose internals — individual turn scores, KadaneDial iteration steps. Disabled in production. |
 
 ### What to Never Log
@@ -75,7 +80,8 @@ The monitoring system exists to catch all three before the customer does.
 
 ### Log Format
 
-All logs are structured JSON via `pino`:
+Proxy logs use structured JSON via `pino`. This proposed usage event is not
+currently emitted; the actual per-turn fields are documented in TELEMETRY.md:
 
 ```json
 {
@@ -83,11 +89,11 @@ All logs are structured JSON via `pino`:
   "time": "2026-04-06T14:23:00.000Z",
   "session_id": "uuid",
   "org_id": "uuid",
-  "event": "billing.record.written",
+  "event": "usage.record.written",
   "original_tokens": 8420,
   "quarantined_tokens": 1180,
   "token_delta": 7240,
-  "cq_fee_usd": 0.043
+  "estimated_cost_delta_usd": 0.2172
 }
 ```
 
@@ -105,9 +111,9 @@ Panels:
 - Request volume by org (last 24h, 7d, 30d)
 - Pruning effectiveness distribution (histogram)
 - Audit conflict rate over time
-- Billing record integrity check (any unsigned? any negative deltas?)
+- Usage integrity and pending outbox events (unsigned rows are expected)
 - Eval score trend (daily runs, last 30 days)
-- Top 10 orgs by token delta (our biggest revenue sources)
+- Top 10 organizations by token delta (estimated savings for information)
 - Error rate by endpoint
 
 ### User Dashboard (local, at `http://localhost:4080/dashboard`)
@@ -125,9 +131,9 @@ Panels:
 
 ### Alert Channels
 
-- **PagerDuty (P1):** Any billing integrity issue, TEE attestation failure, eval score drop
+- **PagerDuty (P1):** Any usage integrity issue, TEE attestation failure, eval score drop
 - **Slack #cq-alerts (P2):** Pruning latency, memory promotion failure, error rate spike
-- **Slack #cq-daily (info):** Daily eval scores, daily billing summary, conflict count
+- **Slack #cq-daily (info):** Daily eval scores, daily usage summary, conflict count
 
 ### On-Call Runbooks
 
@@ -146,11 +152,11 @@ Panels:
 #### Token count mismatch detected
 
 ```
-1. STOP: Do not write any more billing records until resolved
+1. Stop the proxy if the mismatch affects persisted exact counts; preserve its outbox
 2. Check: is @anthropic-ai/tokenizer on the correct version?
 3. Check: are we using the correct model string when counting?
 4. Compare: manually count a small session and compare to Anthropic's reported count
-5. If drift is systematic: all billing records since the drift started must be audited
+5. If drift is systematic: inspect affected usage records and pinned estimates
 6. Notify affected customers before they ask
 ```
 
@@ -181,7 +187,8 @@ Panels:
 
 ## Daily Automated Checks
 
-Run every night at 03:00 UTC via a scheduled Cloudflare Worker:
+The original proposal was a nightly job; no such job is configured. This
+pseudocode must not be treated as a deployed operational check:
 
 ```typescript
 // Pseudocode for daily health check job
@@ -193,11 +200,10 @@ async function dailyHealthCheck() {
     await page('#cq-alerts', 'CRITICAL: eval golden queries failing');
   }
 
-  // 2. Billing integrity check
-  const unsigned = await countUnsignedBillingRecords();
+  // 2. Usage integrity; unsigned rows are expected after C2.
   const negativeDeltas = await countNegativeDeltaRecords();
-  if (unsigned > 0 || negativeDeltas > 0) {
-    await page('#cq-alerts', `BILLING INTEGRITY: ${unsigned} unsigned, ${negativeDeltas} negative delta`);
+  if (negativeDeltas > 0) {
+    await page('#cq-alerts', `USAGE INTEGRITY: ${negativeDeltas} negative delta`);
   }
 
   // 3. Unacknowledged conflict count

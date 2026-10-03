@@ -23,7 +23,8 @@ repo-relative `path:line`. It describes code paths and reports no test run.
 | Memory | `runtime/src/memory/` | Tier-1 RAM window, Tier-2 fact tables, Tier-3 graph and vectors |
 | Pruner | `runtime/src/pruner/` | KadaneDial selection, encoder, supersession. Not in the request path |
 | Audit engine | `runtime/src/audit/` | Deterministic git attestation of facts. LLM tiers are not wired |
-| Billing | `runtime/src/billing/` | Usage outbox, signed records, invoice engine, Stripe client |
+| Usage | `runtime/src/usage/` | Durable outbox, unsigned records, pinned estimated prices and token summaries |
+| Legacy payment code | `runtime/src/billing/` | Invoice/Stripe modules retained until C3; no longer the team usage path |
 | Storage | `runtime/supabase/` | Migrations and the local Compose stack |
 
 ## 2. Entry points and modes
@@ -40,9 +41,9 @@ registered, and the rate limit is per IP, default 100 per minute
 configured provider (`runtime/src/proxy/default-deps.ts:26-29`).
 
 **Commercial mode** requires `CQ_COMMERCIAL=true` (or `1`) and both Supabase
-settings (`runtime/src/proxy/index.ts:184-187`). Startup also demands
-`CQ_BILLING_SIGNING_SECRET` and refuses to run on Vercel
-(`runtime/src/proxy/index.ts:190-195`). Commercial mode adds:
+settings. Startup requires persistent usage storage and refuses Vercel;
+`CQ_BILLING_SIGNING_SECRET` is not required (`runtime/src/proxy/index.ts`,
+`assertCommercialStartup` and `buildStartOptions`). Commercial mode adds:
 
 - An API-key gate on `/v1/*` (`runtime/src/proxy/index.ts:397`). The key comes
   from `Authorization: Bearer` or `x-api-key` and is looked up by SHA-256 hash
@@ -114,7 +115,7 @@ Steps for the non-streaming path (`runtime/src/proxy/routes/messages.ts:401-486`
    If redaction throws, the turn is dropped and nothing unredacted is written
    (`runtime/src/proxy/capture.ts:133-150`). Redaction applies to the capture
    file only. The upstream request is forwarded unchanged.
-7. **Usage.** The billed input count is the upstream `usage.input_tokens`,
+7. **Usage.** The recorded input count is the upstream `usage.input_tokens`,
    with the pre-flight count as a fallback (`runtime/src/proxy/routes/messages.ts:462`).
    In commercial mode the event is journaled before the response is sent. If
    the journal fails, the client gets a 503 (`runtime/src/proxy/routes/messages.ts:477-479`).
@@ -265,44 +266,48 @@ Tier 2 (Llama spot-check) and Tier 3 (Opus escalation) have prompt-building and
 parsing code but are wired nowhere in the request path
 (`runtime/src/audit/llama-check.ts:9-13`, `runtime/src/audit/opus-escalation.ts:9-12`).
 
-## 8. Billing
+## 8. Usage persistence and remaining payment code
 
-**Usage outbox.** In commercial mode each successful request becomes a usage
-event in a local directory, default `data/usage-outbox`
-(`runtime/src/proxy/index.ts:450-454`). The outbox must sit inside the project
-root and uses mode 0700 (`runtime/src/billing/durable-usage-outbox.ts:62-69`).
-Each event is written to a temp file, fsynced, and renamed
-(`runtime/src/billing/durable-usage-outbox.ts:129-142`). A replay loop sends
-events to the database every 10 s by default and deletes each file after it
-is recorded (`runtime/src/billing/durable-usage-outbox.ts:76-98`,
-`runtime/src/billing/durable-usage-outbox.ts:112-114`).
+**Usage outbox.** Team mode journals each successful request's usage in a local
+directory, default `data/usage-outbox`, before successful response completion.
+The directory must be private (0700), writable and inside the project root;
+event files are private (0600). A temporary file is written, fsynced and
+renamed, then the directory is fsynced. Replay runs on startup and every 10 s
+by default. A file is removed and the directory fsynced only after the database
+confirms persistence or a verified duplicate. Failures retain the event and
+log an error. The format stays compatible with pre-C2 queued inputs
+(`runtime/src/usage/durable-usage-outbox.ts`). A journal failure retains the
+client-visible `billing_unavailable` error; database latency stays off the
+successful response path after journaling.
 
-**Records.** The usage recorder writes HMAC-signed rows to `billing_records`
-and groups sessions per org, UTC day, model and project
-(`runtime/src/billing/usage-recorder.ts:1-17`). Each row sets quarantined
-tokens equal to original tokens, so the token delta and the fee are zero
-until pruning is active (`runtime/src/billing/usage-recorder.ts:10-13`).
-The table is append-only and signing uses a dedicated secret
-(`runtime/src/billing/recorder.ts:1-13`). The fee is 20% of savings, floored
-at zero (`runtime/src/billing/calculator.ts:1-15`). A zero fee does not mean
-a zero invoice. The invoice amount due is the larger of the plan's monthly
-minimum and the summed fee (`runtime/src/billing/invoice.ts:67-68`). The
-minimums are $0 for `starter`, $99 for `growth`, $499 for `enterprise` and $0
-for `custom` (`runtime/src/types/billing.ts:24-28`). So while pruning is
-inactive, a `growth` or `enterprise` org is still billed its minimum. Only a
-$0 invoice is skipped: the CLI does not send it, and `sendStripeInvoice`
-refuses it before any Stripe call (`runtime/scripts/invoice.ts:175-177`,
-`runtime/src/billing/stripe.ts:273-275`).
+**Records.** The unsigned writer inserts one `billing_records` row per event.
+Its inputs are organization, usage session, original/quarantined token counts,
+pinned estimated price, optional pruning log and usage event ID. Daily usage
+sessions are scoped by organization, UTC occurrence day, model and authenticated
+project. Original time and price survive replay. Without active pruning,
+quarantined tokens equal original tokens and estimated savings are zero
+(`runtime/src/usage/usage-recorder.ts`, `runtime/src/usage/pricing.ts`).
 
-**Invoices.** `invoice.ts` is a pure engine that builds totals, line items and
-the signed audit CSV (`runtime/src/billing/invoice.ts:1-9`). `invoice-ledger.ts`
-claims an (org, period) before any Stripe call to block duplicate sends
-(`runtime/src/billing/invoice-ledger.ts:1-13`). `npm run invoice -- --send`
-requires an `sk_test_` key (`runtime/scripts/invoice.ts:100`), and the Stripe
-client refuses `sk_live_` keys unless `allowLiveKey` is set
-(`runtime/src/billing/stripe.ts:267-268`). C1 removes the inbound Stripe HTTP
-route and the invoice HTTP reads. The invoice engine, Stripe library and CLI
-remain until C3; invoice tables remain until C4.
+On an event-ID uniqueness conflict, the writer reads the stored row and checks
+its nonempty ID, organization, session, token counts, event ID, optional pruning
+log and pinned price. Price comparison respects the database's `NUMERIC(12,8)`
+precision. A mismatch or missing result is an error, never acknowledgement
+(`runtime/src/usage/recorder.ts`).
+
+**Schema boundary.** C2 migration M1 removes the three mutation-blocking
+triggers, their function, `cq_fee_usd` and `signed_hash`, in that order. RLS,
+foreign keys, the unique usage-event index, and generated `token_delta` and
+`cost_delta_usd` remain. Usage rows are mutable and no HMAC is calculated.
+Stop the old proxy while preserving its outbox, apply M1, then run the C2
+writer. Neither writer is compatible with the other schema; deliver this
+writer and migration together
+(`runtime/supabase/migrations/20261003000000_unsigned_usage_ledger.sql`).
+
+**Legacy invoices.** C1 removed payment HTTP routes. The invoice engine,
+Stripe library and operator scripts remain under `runtime/src/billing/` until
+C3. Invoice and signature verification commands expect the retired columns and
+cannot process the post-M1 schema. Invoice tables and the existing erasure
+retention blocker remain until C4. DevOps has no payment workflow.
 
 **Usage reads.** `runtime/src/proxy/routes/usage.ts` serves
 `GET /v1/billing/summary` and `GET /v1/billing/records` with token totals and
@@ -311,11 +316,12 @@ and reads every row in stable ID order with an exact count. A project-bound
 key receives 403. The session stats also expose only counts and estimated USD
 savings. None of these readers imports a billing module.
 
-**What is local-only.** The outbox lives on the proxy's disk and the billing
-tables in the local Compose database. This document records no Stripe send and
-no paid invoice. Commercial startup refuses to run when the `VERCEL`
+**What is local-only.** The outbox lives on the proxy's disk and the usage
+and remaining invoice tables in the local Compose database. This document records
+no Stripe send and no paid invoice. Commercial startup refuses to run when the `VERCEL`
 environment variable is set to a value other than `0`
-(`runtime/src/proxy/index.ts:194`, `runtime/src/proxy/index.ts:448`). That is
+(`runtime/src/proxy/index.ts`, `assertCommercialStartup` and
+`buildStartOptions`). That is
 the only host check. On any other host with an ephemeral disk, commercial startup proceeds
 and the outbox is not durable.
 
@@ -343,7 +349,7 @@ gateway (`runtime/supabase/docker-compose.local.yml:4-34`). Only the gateway
 publishes a port, on `127.0.0.1:54321` (`runtime/supabase/docker-compose.local.yml:37`).
 `npm run db:start` starts the containers, checks the real Docker bindings, and
 applies pending migrations in filename order (`runtime/docs/LOCAL_STORAGE.md:9-23`,
-`runtime/scripts/local-compose.ts:29-30`, `runtime/scripts/local-compose.ts:111-117`). The schema is 61 files in
+`runtime/scripts/local-compose.ts:29-30`, `runtime/scripts/local-compose.ts:111-117`). The schema is the ordered history in
 `runtime/supabase/migrations/`. The database uses trust auth inside its Docker
 network, so the stack is for development only (`runtime/docs/LOCAL_STORAGE.md:31-33`,
 ADR-0020). The operator owns backups. A production storage plan is open.
@@ -352,13 +358,14 @@ ADR-0020). The operator owns backups. A production storage plan is open.
 re-inserts such a file into a clean target (`runtime/package.json:47-48`,
 `runtime/scripts/backup-org.ts:1-14`, `runtime/scripts/restore-org.ts:1-13`).
 The export covers a fixed table list (`runtime/scripts/backup-org.ts:22-43`).
-Two billing stores are not in it. The first is `invoice_send_claims`, the
-pre-Stripe duplicate-send guard from section 8
-(`runtime/supabase/migrations/20260924235900_invoice_send_claims.sql:1-4`,
-`runtime/src/billing/invoice-ledger.ts:12-13`). The second is any usage event
-still waiting in the on-disk outbox, which is a set of files, not table rows
-(`runtime/src/proxy/index.ts:449-451`). A restore from `npm run backup` alone
-loses both, and neither CLI warns about it.
+The export includes `billing_records`, `invoices` and `invoice_send_claims`;
+the invoice tables stay in backups until C4 drops them. Restore strips and
+reports retired fee/signature columns from old usage rows, and strips the
+surviving generated columns for database recomputation. It keeps all other
+inputs and identifiers. Events waiting in the on-disk outbox are files rather
+than table rows and are outside this export. Preserve that directory separately
+when backing up or upgrading (`runtime/scripts/backup-org.ts`,
+`runtime/scripts/restore-org.ts`, `runtime/src/usage/durable-usage-outbox.ts`).
 
 ## 11. ADR index
 

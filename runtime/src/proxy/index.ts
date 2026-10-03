@@ -35,8 +35,8 @@ import { createSupabaseMemoryDeps } from "./routes/memory";
 import { createSupabaseUsageDeps } from "./routes/usage";
 import { createSupabaseSessionsDeps } from "./routes/sessions";
 import { createSupabaseWebhookDeps } from "./routes/webhooks";
-import { createSupabaseUsageRecorder } from "../billing/usage-recorder";
-import { createLocalUsageOutbox } from "../billing/durable-usage-outbox";
+import { createSupabaseUsageRecorder } from "../usage/usage-recorder";
+import { createLocalUsageOutbox } from "../usage/durable-usage-outbox";
 import { createTokenBudget } from "./token-budget";
 import { createSupabaseHealthCheck } from "./routes/health";
 import { createFactExtractor } from "../memory/warm/extractor";
@@ -57,8 +57,6 @@ export interface StartEnv {
   CQ_COMMERCIAL?: string | undefined;
   SUPABASE_URL?: string | undefined;
   SUPABASE_SERVICE_KEY?: string | undefined;
-  /** Dedicated billing-record signing secret. When set in commercial mode, the request path persists usage. */
-  CQ_BILLING_SIGNING_SECRET?: string | undefined;
   CQ_USAGE_OUTBOX_DIR?: string | undefined;
   VERCEL?: string | undefined;
   /** Local model used only for structured fact extraction. */
@@ -186,12 +184,11 @@ export function commercialEnabled(env: StartEnv): boolean {
   return on && typeof env.SUPABASE_URL === "string" && env.SUPABASE_URL !== "" && typeof env.SUPABASE_SERVICE_KEY === "string" && env.SUPABASE_SERVICE_KEY !== "";
 }
 
-/** Production entrypoints must never expose commercial messages without a billable store. */
+/** Production entrypoints require a database and persistent usage storage in team mode. */
 export function assertCommercialStartup(env: StartEnv): void {
   if (env.CQ_COMMERCIAL !== "true" && env.CQ_COMMERCIAL !== "1") return;
   if (!env.SUPABASE_URL?.trim() || !env.SUPABASE_SERVICE_KEY?.trim()) throw new Error("commercial startup requires Supabase database credentials");
-  if (!env.CQ_BILLING_SIGNING_SECRET?.trim()) throw new Error("commercial startup requires a dedicated billing signing secret");
-  if (env.VERCEL && env.VERCEL !== "0") throw new Error("commercial billing requires persistent storage; Vercel serverless storage is ephemeral");
+  if (env.VERCEL && env.VERCEL !== "0") throw new Error("commercial usage requires persistent storage; Vercel serverless storage is ephemeral");
 }
 
 // isLoopbackBindAddress, resolvePort and resolveRateLimitMax are defined in ./network-settings.ts, a
@@ -379,7 +376,7 @@ export type ClientFactory = (url: string, key: string) => SupabaseClient;
 /**
  * Assemble buildProxy options from env: always the base (messages + dashboard); in COMMERCIAL mode,
  * additionally the multi-tenant auth gate (protecting /v1/*) + the config/memory/usage/sessions
- * APIs over Supabase (the usage API is served under /v1/billing/*). Billing mode opens a private
+ * APIs over Supabase (the usage API is served under /v1/billing/*). Team mode opens a private
  * local outbox; inject a fake client in tests.
  *
  * @param env - the relevant environment.
@@ -419,6 +416,7 @@ export function buildStartOptions(env: StartEnv, base: BuildProxyOptions, makeCl
     opts.rateLimitByPlan = { getPlan };
     opts.health = { checkDatabase: createSupabaseHealthCheck(client) };
     if (base.messages !== undefined) {
+      if (env.VERCEL && env.VERCEL !== "0") throw new Error("commercial usage requires persistent storage; Vercel serverless storage is ephemeral");
       base.messages.resolveConversation = createSupabaseConversationResolver(client);
       if (env.CQ_SHADOW_OBSERVE === "true" || env.CQ_SHADOW_OBSERVE === "1") {
         const encoder = createOnnxEncoder({ cacheDir: path.join(process.cwd(), "models"), localOnly: true });
@@ -442,17 +440,6 @@ export function buildStartOptions(env: StartEnv, base: BuildProxyOptions, makeCl
       opts.tokens = { countTokens: base.messages.countTokens };
       // Per-org token-budget gate on /v1/messages (commercial).
       base.messages.tokenBudget = createTokenBudget({ getPlan });
-      // Persist each request's usage to Supabase (signed billing_record) so a partner sees their
-      // activity + the invoice has a basis. Needs the dedicated billing-signing secret.
-      if (typeof env.CQ_BILLING_SIGNING_SECRET === "string" && env.CQ_BILLING_SIGNING_SECRET !== "") {
-        if (env.VERCEL && env.VERCEL !== "0") throw new Error("commercial billing requires persistent storage; Vercel serverless storage is ephemeral");
-        const recorder = createSupabaseUsageRecorder({ client, signingSecret: env.CQ_BILLING_SIGNING_SECRET, queryTimeoutMs: 15_000 });
-        base.messages.usageOutbox = createLocalUsageOutbox({
-          dir: env.CQ_USAGE_OUTBOX_DIR ?? path.join(process.cwd(), "data", "usage-outbox"),
-          recordUsage: recorder.recordUsage,
-          onError: (error, eventId) => logger.error({ err: error.message, eventId }, "usage outbox replay failed"),
-        });
-      }
       if (env.CQ_MEMORY_EXTRACT_MODEL) {
         if (!env.CQ_MEMORY_EXTRACT_MODEL.startsWith("local/") || env.CQ_MEMORY_EXTRACT_MODEL.length <= 6) {
           throw new Error("CQ_MEMORY_EXTRACT_MODEL must use a local/<model> identifier");
@@ -463,6 +450,14 @@ export function buildStartOptions(env: StartEnv, base: BuildProxyOptions, makeCl
         const auditRepoRoot = env.CQ_AUDIT_REPO_ROOT ? resolveAuditRepoRoot(env.CQ_AUDIT_REPO_ROOT, env.DEVOPS_STRATUM_PROJECT_ROOT ?? "") : undefined;
         base.messages.recordMemory = createSupabaseMessageMemoryRecorder(client, extractor, auditRepoRoot);
       }
+      // Open the durable journal only after all startup settings have passed validation.
+      // Usage persistence is required in team mode and has no signing-secret dependency (C2).
+      const recorder = createSupabaseUsageRecorder({ client, queryTimeoutMs: 15_000 });
+      base.messages.usageOutbox = createLocalUsageOutbox({
+        dir: env.CQ_USAGE_OUTBOX_DIR ?? path.join(process.cwd(), "data", "usage-outbox"),
+        recordUsage: recorder.recordUsage,
+        onError: (error, eventId) => logger.error({ err: error.message, eventId }, "usage outbox replay failed"),
+      });
     }
   }
   return opts;
@@ -506,7 +501,6 @@ export async function start(): Promise<void> {
     CQ_COMMERCIAL: process.env["CQ_COMMERCIAL"],
     SUPABASE_URL: process.env["SUPABASE_URL"],
     SUPABASE_SERVICE_KEY: process.env["SUPABASE_SERVICE_KEY"],
-    CQ_BILLING_SIGNING_SECRET: process.env["CQ_BILLING_SIGNING_SECRET"],
     CQ_USAGE_OUTBOX_DIR: process.env["CQ_USAGE_OUTBOX_DIR"],
     VERCEL: process.env["VERCEL"],
     CQ_MEMORY_EXTRACT_MODEL: process.env["CQ_MEMORY_EXTRACT_MODEL"],

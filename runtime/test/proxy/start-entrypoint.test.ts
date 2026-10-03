@@ -169,9 +169,9 @@ describe("REQ-3 startup refusal — spawned entry point (specs/security/stratum-
 
 // AC-4's bullet "the same [DEVOPS_PROXY_HOST=0.0.0.0] with auth configured starts" has no spawn. assertRemoteBindAllowed's "auth configured ... allows a non-loopback bind" unit test in start-options.test.ts
 // proves it, and the opt-in spawn above shows once that an allowed bind reaches a real app.listen() through the real wiring. A commercial-mode spawn needs meaningfully more scaffolding than the three
-// spawns above: assertCommercialStartup() requires CQ_BILLING_SIGNING_SECRET, and buildStartOptions() then creates the local usage outbox, whose construction reads CQ_USAGE_OUTBOX_DIR (default
-// <cwd>/data/usage-outbox) and starts replaying any queued event files through the Supabase usage recorder (a real database call per file), before app.listen(). A hermetic spawn would need the billing
-// secret and a fresh, empty outbox directory (never the default one, which can hold real queued files), for a fact that is a pure boolean decision and needs no process-level proof.
+// spawns above: buildStartOptions() always creates the local usage outbox in team mode, whose construction reads CQ_USAGE_OUTBOX_DIR (default
+// <cwd>/data/usage-outbox) and starts replaying any queued event files through the Supabase usage recorder (a real database call per file), before app.listen(). A hermetic spawn would need
+// a fresh, empty outbox directory (never the default one, which can hold real queued files), for a fact that is a pure boolean decision and needs no process-level proof.
 
 // ===== specs/security/stratum-local-network.md — AC-5 (REQ-4: numeric settings fail closed) =====
 //

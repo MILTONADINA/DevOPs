@@ -1,9 +1,11 @@
 # Durable local commercial usage outbox
 
-**Scope:** Commercial billing runs on the operator's project-local, persistent
+**Amended**: 2026-10-03 by `specs/ops/payment-removal.md` C2: REQ-4/5 replace the signed recorder with unsigned input-verified replay; the journal contract is unchanged.
+
+**Scope:** Team usage persistence runs on the operator's project-local, persistent
 filesystem and local PostgreSQL stack. A successful message must not depend on
 an in-flight database promise surviving process death. This does not make an
-ephemeral serverless filesystem suitable for commercial billing.
+ephemeral serverless filesystem suitable for durable usage persistence.
 
 ## REQ-1 — Commit usage before successful response completion
 
@@ -19,7 +21,7 @@ it SHALL NOT silently acknowledge an unjournaled successful response.
 ## REQ-2 — Restart replay and idempotent acknowledgement
 
 WHEN the proxy starts or a retry interval fires, THE SYSTEM SHALL replay each
-complete pending outbox event through the signed billing recorder, using the
+complete pending outbox event through the unsigned usage recorder, using the
 original ID, UTC time, and price. It SHALL remove and fsync the file only after
 the recorder confirms success, including a verified duplicate. A database
 error SHALL leave the event on disk for a later retry. A malformed event SHALL
@@ -29,9 +31,9 @@ unavailable database to recover before shutdown.
 
 ## REQ-3 — Local deployment boundary
 
-WHEN commercial usage billing is enabled, THE SYSTEM SHALL require a persistent
+WHEN team usage persistence is enabled, THE SYSTEM SHALL require a persistent
 project-local outbox directory that is writable at startup. A serverless runtime
-with only ephemeral storage SHALL fail commercial billing startup until a
+with only ephemeral storage SHALL fail team usage startup until a
 persistent outbox backend is configured. Personal mode SHALL remain unaffected.
 
 ## Acceptance criteria
@@ -40,6 +42,7 @@ persistent outbox backend is configured. Personal mode SHALL remain unaffected.
   before reporting success; a failed journal write yields an explicit error.
 - **AC-2:** A fake-database failure leaves the file, restart replays the same
   event ID/time/price, and verified success removes it. A crash after DB commit
-  but before removal is safe through the unique signed ledger identity.
+  but before removal is safe through the unique event ID and matching persisted
+  inputs. Pre-C2 event files retain their original format and replay inputs.
 - **AC-3:** Local tests verify private atomic files and ignore incomplete temp
   files; startup rejects an unwritable or ephemeral outbox in commercial mode.

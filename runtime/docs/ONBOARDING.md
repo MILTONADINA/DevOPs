@@ -101,12 +101,13 @@ Open the JSON and look at the raw API traffic. This is the most important thing 
 | `src/pruner/encoder.ts` | ONNX model — performance-critical path |
 | `src/memory/warm/extractor.ts` | Fact extraction — the alternative to summarization |
 | `src/audit/git-attestation.ts` | Ground truth verification |
-| `src/billing/recorder.ts` | Billing integrity — touch this with care |
+| `src/usage/recorder.ts` | Unsigned usage rows and replay identity |
+| `src/usage/durable-usage-outbox.ts` | Durable acknowledgement, restart replay and private local files |
 | `src/types/` | All TypeScript interfaces — read these before implementing anything |
 
 ### Files That Require Extra Care
 
-**`src/billing/recorder.ts`** — billing records are append-only with HMAC signing. Any bug here has financial consequences. No `any` types. Full test coverage required. Every change requires a second reviewer.
+**`src/usage/recorder.ts` and `src/usage/durable-usage-outbox.ts`** — preserve exact token counts, the pinned USD estimate, trusted organization/project identity and idempotent replay. C2 writes unsigned rows and needs no signing secret. The journal must be durable before successful response completion; database failure must leave the event available for replay. Deliver writer changes together with their compatible schema. The old `src/billing/` code stays untouched until C3; invoice/signature verification commands cannot use the post-M1 schema.
 
 **`src/pruner/kadanedial.ts`** — any change requires running the full eval suite before committing. Read `docs/ALGORITHM.md` completely before touching this file.
 

@@ -209,7 +209,7 @@ token-arbitrage billing system: HMAC-signed records, an append-only ledger,
 monthly invoices, a CFO dashboard with the fee, Stripe and pricing tiers. The
 project is now open source with no payment. Much of that billing layer was
 built ahead and is still in the tree; graph cycles C1–C4 remove it. The
-requirements are in `../specs/ops/payment-removal.md`, and the root
+requirements are in `../../specs/ops/payment-removal.md`, and the root
 `plan.md` §8 is the checklist.
 
 History: before this redefinition, Phase 6 recorded one completed item: "Make
@@ -226,19 +226,20 @@ measured and nothing billed.
 - [x] Remove the payment HTTP surface: the CFO page, invoice and Stripe
   routes, and the fee fields (C1; see `../../docs/handoff/README.md` for verification)
 - [ ] Make the usage ledger unsigned: no HMAC, no fee column, no append-only
-  enforcement (C2)
+  enforcement (C2 locally verified with M1, unsigned replay and no-secret
+  entry point; required CI and merge pending)
 - [ ] Delete the payment modules and their tests (C3)
 - [ ] Remove the invoice tables and the billing-retention erasure blocker (C4)
 - [ ] Keep exact token counts, with token and USD estimates shown as
   information only
-- [ ] Session erasure endpoint. Today the immutable billing row references
-  organization/session IDs and cannot rewrite them in place; after C2 and C4
-  the usage rows are ordinary session-linked data. No compliant erasure
+- [ ] Session erasure endpoint. After C2 unsigned usage rows retain
+  organization/session foreign keys and the API retention blocker; C4 removes
+  that financial boundary and treats usage as ordinary session-linked data. No compliant erasure
   timing proof exists.
 
 ### Acceptance Criteria
 
-- [ ] Every requirement of `../specs/ops/payment-removal.md` is met
+- [ ] Every requirement of `../../specs/ops/payment-removal.md` is met
 - [ ] Organizations and API keys work in team mode on a local install
 - [ ] Session erasure completes within 30 seconds for a 1-year history
 

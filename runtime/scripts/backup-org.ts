@@ -7,9 +7,10 @@
  *
  *   npm run backup -- --org-id <uuid> [--out <path>] [--pretty]
  *
- * RESTORE is the documented follow-up, deliberately separate: billing_records is append-only
- * (a DELETE/UPDATE no-op rule) with GENERATED columns (token_delta/cost_delta/cq_fee), and the
- * cross-table FKs need dependency-ordered re-insertion — a careful write-path. This export half
+ * RESTORE is the documented follow-up, deliberately separate: billing_records has GENERATED
+ * token_delta/cost_delta_usd columns, and pre-C2 backups may contain retired fee/signature
+ * columns. Restore strips those and uses FK-dependent insertion order. Invoice tables stay
+ * in the export until payment-removal C4 drops them. This export half
  * is independently valuable and safe. Output lands in the gitignored `backups/` (may hold real
  * org data — never commit).
  */

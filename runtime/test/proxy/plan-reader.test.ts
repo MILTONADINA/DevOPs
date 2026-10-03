@@ -10,17 +10,21 @@
 // dependencies gets a different limit and fails. sessions.getPlan is spied on AFTER buildStartOptions returns, so the reader
 // has to call it as a method when a request arrives; a function reference captured while the options were built is not the spy.
 //
-// The environment has no CQ_BILLING_SIGNING_SECRET: with one, buildStartOptions creates a real usage outbox directory under
-// <cwd>/data. Each case builds its own options and app and uses its own organization id, because the rate limiter's window
+// Team-mode messages always create a durable outbox; budget fixtures use private empty directories and close them.
+// Each case builds its own options and app and uses its own organization id, because the rate limiter's window
 // and the token budget's 60-second plan cache would otherwise carry over from one case to the next.
 
 import { describe, test, expect, afterEach, vi } from "vitest";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { join } from "node:path";
 import type { FastifyInstance } from "fastify";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { BuildProxyOptions } from "../../src/proxy/app";
 import type { ClientFactory } from "../../src/proxy/index";
 import type { ConfigDeps } from "../../src/proxy/routes/config";
 
+vi.unmock("node:fs");
+vi.unmock("fs");
 vi.unmock("fastify");
 vi.unmock("@fastify/cors");
 vi.unmock("@fastify/rate-limit");
@@ -35,12 +39,16 @@ const KEY = "plan-reader-key";
 const LOOKUP_FAILED = "getOrgPlan failed — defaulting to starter tier";
 
 let app: FastifyInstance | undefined;
+const outboxDirs: string[] = [];
+const outboxes: Array<NonNullable<NonNullable<BuildProxyOptions["messages"]>["usageOutbox"]>> = [];
 afterEach(async () => {
   vi.restoreAllMocks();
   if (app) {
     await app.close();
     app = undefined;
   }
+  for (const outbox of outboxes.splice(0)) await outbox.close();
+  for (const dir of outboxDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
 /**
@@ -136,11 +144,19 @@ describe("plan reader: per-plan request rate limit in team mode (REQ-2)", () => 
 });
 
 describe("plan reader: token budget in team mode (REQ-2)", () => {
-  const messages = (): NonNullable<BuildProxyOptions["messages"]> => ({}) as NonNullable<BuildProxyOptions["messages"]>;
+  function budgetOptions(plan: string): BuildProxyOptions {
+    mkdirSync(join(process.cwd(), "data"), { recursive: true });
+    const dir = mkdtempSync(join(process.cwd(), "data", "usage-plan-test-"));
+    outboxDirs.push(dir);
+    const opts = buildStartOptions({ ...TEAM_ENV, CQ_USAGE_OUTBOX_DIR: dir },
+      { messages: {} as NonNullable<BuildProxyOptions["messages"]> }, clientAnsweringPlan(plan));
+    if (opts.messages?.usageOutbox) outboxes.push(opts.messages.usageOutbox);
+    return opts;
+  }
 
   test("specs/ops/payment-removal.md#AC-2 — a growth-plan organization may spend 60,000 tokens in a minute, the plan read through opts.sessions", async () => {
     const orgId = "org-budget-growth";
-    const opts = buildStartOptions(TEAM_ENV, { messages: messages() }, clientAnsweringPlan("starter"));
+    const opts = budgetOptions("starter");
     const planSpy = vi.spyOn(opts.sessions!, "getPlan").mockResolvedValue("growth");
 
     const decision = await opts.messages!.tokenBudget!.tryConsume(orgId, 60_000);
@@ -150,7 +166,7 @@ describe("plan reader: token budget in team mode (REQ-2)", () => {
 
   test("specs/ops/payment-removal.md#AC-2 — a starter-plan organization may not spend 60,000 tokens in a minute, the plan read through opts.sessions", async () => {
     const orgId = "org-budget-starter";
-    const opts = buildStartOptions(TEAM_ENV, { messages: messages() }, clientAnsweringPlan("growth"));
+    const opts = budgetOptions("growth");
     const planSpy = vi.spyOn(opts.sessions!, "getPlan").mockResolvedValue("starter");
 
     const decision = await opts.messages!.tokenBudget!.tryConsume(orgId, 60_000);

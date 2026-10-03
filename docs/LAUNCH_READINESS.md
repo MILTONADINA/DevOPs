@@ -30,6 +30,17 @@ payment HTTP surface; the remaining payment code is scheduled for C2–C4.
 The historical hour
 totals in the roadmap table below are withdrawn, not recalculated.
 
+**2026-10-03 C2 local verification snapshot before merge:** C1 and its
+Node-compatible dependency remediation landed in PR #221 (`18ba62b`). C2's
+unsigned writer/M1, no-secret startup, retained token/USD estimates and
+legacy-column restore compatibility now pass local verification: 1,521 runtime
+tests (5 skipped, 5 todo), 473 root tests (17 skipped), all 14 SQL fixtures,
+setup, synthetic legacy restore, conversation/audit/survival checks and actual
+proxy message/restart replay. The original Compose database volume is preserved.
+Required C2 final-head CI and merge still gate landing. C3/C4, session erasure,
+quality and clean-machine release gates remain; see `docs/handoff/README.md`.
+No readiness percentage is changed.
+
 **2026-10-03 C1 local verification snapshot before merge:**
 [PR #221](https://github.com/MILTONADINA/DevOPs/pull/221) carries this change;
 consult the PR for its current checks and merge state. C1 removes the CFO

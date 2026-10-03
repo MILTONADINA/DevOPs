@@ -1,6 +1,8 @@
 // Real proxy route -> loopback extraction model -> local PostgreSQL fact check.
 import { randomUUID } from "node:crypto";
+import { mkdirSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { createServer } from "node:http";
+import { resolve } from "node:path";
 import { createClient } from "@supabase/supabase-js";
 import { buildProxy } from "../../src/proxy/app";
 import { hashApiKey } from "../../src/proxy/auth";
@@ -8,12 +10,15 @@ import { createCaptureStore } from "../../src/proxy/capture";
 import { buildStartOptions } from "../../src/proxy/index";
 import { createSupabaseMessageMemoryRecorder } from "../../src/proxy/message-memory";
 
+const root = resolve(process.cwd(), "..");
 const url = process.env["SUPABASE_URL"];
 const key = process.env["SUPABASE_SERVICE_KEY"];
-if (url !== "http://127.0.0.1:54321" || !key || !process.env["DEVOPS_STRATUM_PROJECT_ROOT"]) {
+if (url !== "http://127.0.0.1:54321" || !key || process.env["DEVOPS_STRATUM_PROJECT_ROOT"] !== root) {
   throw new Error("run through npm run db:with-env from runtime/");
 }
 const db = createClient(url, key, { auth: { persistSession: false } });
+mkdirSync(resolve("data/sessions"), { recursive: true });
+const outboxDir = mkdtempSync(resolve("data/sessions", "local-message-memory-"));
 const org = randomUUID();
 const rawKey = `cq_test_${randomUUID()}`;
 let sessionId: string | undefined;
@@ -52,6 +57,7 @@ function checked<T>(result: { data: T; error: { message: string } | null }, step
   return result.data;
 }
 
+let options: ReturnType<typeof buildStartOptions> | undefined;
 let app: ReturnType<typeof buildProxy> | undefined;
 let readApp: ReturnType<typeof buildProxy> | undefined;
 let failure: unknown;
@@ -67,7 +73,8 @@ try {
     forward: async () => ({ status: 200, data: { content: [{ type: "text", text: "assistant answer" }], usage: { input_tokens: 2, output_tokens: 3 } } }),
     forwardStream: async () => ({ status: 503, data: null }),
   };
-  const options = buildStartOptions({ CQ_COMMERCIAL: "true", SUPABASE_URL: url, SUPABASE_SERVICE_KEY: key,
+  options = buildStartOptions({ CQ_COMMERCIAL: "true", SUPABASE_URL: url, SUPABASE_SERVICE_KEY: key,
+    CQ_USAGE_OUTBOX_DIR: outboxDir,
     CQ_MEMORY_EXTRACT_MODEL: "local/check", CQ_LOCAL_BASE_URL: `http://127.0.0.1:${address.port}/v1` },
     { cors: false, rateLimit: false, messages },
     (clientUrl, clientKey) => createClient(clientUrl, clientKey, { auth: { persistSession: false } }));
@@ -75,6 +82,7 @@ try {
   if (!recorder || !options.messages) throw new Error("commercial recorder was not wired");
   let exchangeId: string | undefined;
   options.messages.recordMemory = async (event) => { exchangeId ??= event.exchangeId; await recorder(event); };
+  if (!options.messages?.usageOutbox) throw new Error("usage persistence was not wired without a signing secret");
   app = buildProxy(options);
   const answer = await app.inject({ method: "POST", url: "/v1/messages", headers: { authorization: `Bearer ${rawKey}` },
     payload: { model: "local/check", messages: [{ role: "user", content: "older question" },
@@ -88,7 +96,21 @@ try {
   }
   await app.close();
   app = undefined;
-  const sessions = checked(await db.from("sessions").select("id,org_id,kind").eq("org_id", org), "read conversation session");
+  // specs/ops/payment-removal.md#AC-5: unsigned usage buckets stay separate from conversation memory.
+  const allSessions = checked(await db.from("sessions").select("id,org_id,kind,model,created_at,project_scope").eq("org_id", org), "read fixture sessions");
+  const usageSessions = allSessions.filter((session) => session.kind === "usage");
+  const usage = checked(await db.from("billing_records").select("*").eq("org_id", org), "read unsigned usage");
+  if (allSessions.some((session) => session.kind !== "conversation" && session.kind !== "usage") ||
+      usage.length !== 2 || new Set(usage.map((row) => row.usage_event_id)).size !== 2 ||
+      usageSessions.length === 0 || usageSessions.some((session) => session.project_scope !== null || session.model !== "local/check" || !usage.some((row) => row.session_id === session.id)) ||
+      new Set(usageSessions.map((session) => session.created_at.slice(0, 10))).size !== usageSessions.length ||
+      usage.some((row) => !usageSessions.some((session) => session.id === row.session_id) ||
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(row.usage_event_id ?? "") ||
+        row.original_tokens !== 2 || row.quarantined_tokens !== 2 || row.token_delta !== 0 ||
+        !(Number(row.api_price_per_token) > 0) || row.cost_delta_usd === null || Number(row.cost_delta_usd) !== 0 || "signed_hash" in row || "cq_fee_usd" in row)) {
+    throw new Error("request usage was not persisted once per event in separate unsigned daily buckets");
+  }
+  const sessions = allSessions.filter((session) => session.kind === "conversation");
   if (sessions.length !== 1 || sessions[0].kind !== "conversation" || sessions[0].org_id !== org ||
       sessions[0].id !== answer.headers["x-cq-conversation-id"] || sessions[0].id === "not-db-session") {
     throw new Error("request did not use one trusted conversation session");
@@ -136,18 +158,29 @@ try {
       !(await db.from("function_changes").update({ session_id: legacySessionId }).eq("id", facts[0].id)).error) {
     throw new Error("database accepted forged or rewritten exchange provenance");
   }
-  process.stdout.write("local conversation fact provenance and identity rejection passed\n");
+  process.stdout.write("local conversation fact provenance, identity rejection, and 2 unsigned usage events passed\n");
 } catch (error) {
   failure = error;
 } finally {
-  try { await app?.close(); } catch (error) { if (!failure) failure = error; }
-  try { await readApp?.close(); } catch (error) { if (!failure) failure = error; }
+  let cleanupSafe = true;
+  try { await app?.close(); } catch (error) { cleanupSafe = false; if (!failure) failure = error; }
   try {
+    await options?.messages?.usageOutbox?.close();
+    if (readdirSync(outboxDir).length !== 0) {
+      cleanupSafe = false;
+      if (!failure) failure = new Error(`usage outbox did not drain; fixture retained at ${outboxDir}`);
+    }
+  } catch (error) { cleanupSafe = false; if (!failure) failure = error; }
+  if (!cleanupSafe) process.stderr.write(`fixture ${org} retained for recovery; usage outbox: ${outboxDir}\n`);
+  try { await readApp?.close(); } catch (error) { if (!failure) failure = error; }
+  if (cleanupSafe) try {
     checked(await db.from("function_changes").delete().eq("org_id", org), "delete facts");
+    checked(await db.from("billing_records").delete().eq("org_id", org), "delete fixture usage");
     checked(await db.from("sessions").delete().eq("org_id", org), "delete sessions");
     checked(await db.from("api_keys").delete().eq("org_id", org), "delete key");
     checked(await db.from("organizations").delete().eq("id", org), "delete org");
   } catch (error) { if (!failure) failure = error; }
   model.close();
+  if (!failure) rmSync(outboxDir, { recursive: true, force: true });
 }
 if (failure) throw failure;

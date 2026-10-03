@@ -17,8 +17,8 @@ import type { CaptureStore } from "./capture";
 import type { StreamForwardResult } from "./stream-forward";
 import type { TelemetrySink } from "./telemetry";
 import type { TokenBudget } from "./token-budget";
-import type { UsageEvent } from "../billing/usage-recorder";
-import type { UsageOutbox } from "../billing/durable-usage-outbox";
+import type { UsageEvent } from "../usage/usage-recorder";
+import type { UsageOutbox } from "../usage/durable-usage-outbox";
 import type Anthropic from "@anthropic-ai/sdk";
 
 /** Anthropic-compatible request body the proxy forwards. */
@@ -89,13 +89,13 @@ export interface MessagesDeps {
    * uses usageOutbox so acknowledged responses survive process restarts.
    */
   recordUsage?: (event: UsageEvent) => Promise<void>;
-  /** Synchronously fsynced local billing journal; production commercial usage uses this boundary. */
+  /** Synchronously fsynced local usage journal; production commercial usage uses this boundary. */
   usageOutbox?: Pick<UsageOutbox, "enqueue" | "close">;
   /** Optional commercial local fact extraction after a successful upstream response. */
   recordMemory?: (event: MessageMemoryEvent) => Promise<void>;
   /** Commercial identity resolved from authenticated key bindings before forwarding. */
   resolveConversation?: (input: { orgId: string; keyId: string; projectScopeId?: string; model: string; requestedId?: string }) => Promise<string>;
-  /** Optional local observer; never changes forwarding or billing. */
+  /** Optional local observer; never changes forwarding or usage persistence. */
   observeConversation?: (input: {
     conversationId: string;
     orgId: string;

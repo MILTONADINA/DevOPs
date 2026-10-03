@@ -11,11 +11,11 @@
  * request body.
  *
  * Required env: ANTHROPIC_API_KEY (to boot). Commercial: CQ_COMMERCIAL=true + SUPABASE_URL +
- * SUPABASE_SERVICE_KEY; CQ_BILLING_SIGNING_SECRET for usage persistence; CQ_CAPTURE_DIR=/tmp (serverless
+ * SUPABASE_SERVICE_KEY; CQ_CAPTURE_DIR=/tmp (serverless
  * filesystems are read-only except /tmp).
  *
- * Commercial billing now requires a persistent local outbox. This serverless entry fails startup when
- * billing signing is configured because /tmp is ephemeral and cannot recover acknowledged usage.
+ * Team-mode usage requires a persistent local outbox. This serverless entry refuses team startup
+ * because /tmp is ephemeral and cannot recover acknowledged usage, even without a signing secret.
  */
 
 import type { IncomingMessage, ServerResponse } from "node:http";
@@ -29,7 +29,6 @@ const env: StartEnv = {
   CQ_COMMERCIAL: process.env["CQ_COMMERCIAL"],
   SUPABASE_URL: process.env["SUPABASE_URL"],
   SUPABASE_SERVICE_KEY: process.env["SUPABASE_SERVICE_KEY"],
-  CQ_BILLING_SIGNING_SECRET: process.env["CQ_BILLING_SIGNING_SECRET"],
   VERCEL: process.env["VERCEL"] ?? "1",
 };
 assertCommercialStartup(env);

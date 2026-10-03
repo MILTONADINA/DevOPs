@@ -8,9 +8,9 @@
  *
  *   npm run restore -- --file <path> [--dry-run] [--keep-key-state]
  *
- * billing_records is append-only with GENERATED columns (token_delta/cost_delta_usd/cq_fee_usd);
- * those are stripped before insert (the DB recomputes them). Self-referential nullable FKs
- * Decision supersession references are restored after all decision rows exist.
+ * billing_records has GENERATED columns (token_delta/cost_delta_usd); those are stripped before
+ * insert so the DB recomputes them. Pre-C2 backups' retired fee/signature columns are stripped
+ * and reported as well. Decision supersession references are restored after all decisions exist.
  */
 
 import { readFileSync } from "node:fs";
@@ -47,7 +47,12 @@ export const RESTORE_ORDER = [
 
 /** Columns the DB GENERATEs — must NOT be sent on insert (it recomputes them). */
 const GENERATED_COLS: Record<string, string[]> = {
-  billing_records: ["token_delta", "cost_delta_usd", "cq_fee_usd"],
+  billing_records: ["token_delta", "cost_delta_usd"],
+};
+
+/** M1 removed these columns; old backups remain valid input. */
+const RETIRED_COLS: Record<string, string[]> = {
+  billing_records: ["cq_fee_usd", "signed_hash"],
 };
 
 interface Args {
@@ -174,10 +179,10 @@ export function validateBackup(obj: unknown): BackupFile {
   return b as BackupFile;
 }
 
-/** Strip GENERATED columns from a table's rows (pure; returns new row objects). */
+/** Strip GENERATED and retired columns before insert (pure; returns new row objects). */
 export function stripGeneratedCols(table: string, rows: unknown[]): unknown[] {
-  const drop = GENERATED_COLS[table];
-  if (!drop || drop.length === 0) return rows;
+  const drop = [...(GENERATED_COLS[table] ?? []), ...(RETIRED_COLS[table] ?? [])];
+  if (drop.length === 0) return rows;
   return rows.map((r) => {
     const copy = { ...(r as Record<string, unknown>) };
     for (const c of drop) delete copy[c];
@@ -254,6 +259,12 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
   }
 
   const plan = restorePlan(backup, { keepKeyState: args.keepKeyState });
+  for (const [table, columns] of Object.entries(RETIRED_COLS)) {
+    for (const column of columns) {
+      const count = (backup.tables[table] ?? []).filter((row) => Object.hasOwn(row as object, column)).length;
+      if (count > 0) out(`Note: stripped retired column ${table}.${column} from ${count} row(s) in the restore plan.`);
+    }
+  }
   const keyCount = (backup.tables["api_keys"] ?? []).length;
   if (keyCount > 0 && !args.keepKeyState) {
     out(`Note: ${keyCount} API key(s) will be restored INACTIVE. A backup cannot know about revocations made after it was taken; mint new keys with npm run create-api-key, or re-run with --keep-key-state to restore each key's backed-up state.`);

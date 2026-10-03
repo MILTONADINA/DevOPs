@@ -22,7 +22,7 @@ entry by default (see "Commercial mode only" below).
 | `stratum.turn` record | Every turn that reaches the capture step | Process standard output (pino) | No, unless the operator ships stdout elsewhere |
 | Other log lines | Startup, errors, shadow observation | Process stdout / stderr | Same as above |
 | Capture artifact | Every turn that reaches the capture step | `session-<uuid>.json` on local disk | No |
-| Usage outbox files | Commercial mode (always on; startup requires the billing signing secret) | `data/usage-outbox/` on local disk | No |
+| Usage outbox files | Commercial mode (always on; no signing secret required) | `data/usage-outbox/` on local disk | No |
 | Database rows and lookups | Commercial mode only | The Supabase API at `SUPABASE_URL` | Depends on `SUPABASE_URL` |
 | Webhook test delivery | Only when an operator calls `POST /v1/webhooks/test` | The org's configured webhook URL | Yes |
 
@@ -220,9 +220,9 @@ Sources: `runtime/src/proxy/default-deps.ts:33-34`, `runtime/src/proxy/default-d
 
 Commercial mode is on when `CQ_COMMERCIAL` is `true` or `1` and
 `SUPABASE_URL` and `SUPABASE_SERVICE_KEY` are set. With `CQ_COMMERCIAL` on,
-startup also refuses to run unless `CQ_BILLING_SIGNING_SECRET` is set, and
-refuses when `VERCEL` is set to a value other than `0`. So every running
-commercial proxy writes the usage outbox and `billing_records`. The serverless
+startup requires persistent usage storage and refuses when `VERCEL` is set
+to a value other than `0`. No billing signing secret is required. Every running
+commercial proxy journals usage and replays it to unsigned `billing_records`. The serverless
 entry sets `VERCEL` to `1` when it is unset, so commercial mode fails at
 startup there unless the environment sets `VERCEL=0`. Personal mode makes none
 of these calls.
@@ -238,7 +238,9 @@ of these calls.
 - **Legacy Stripe scripts.** C1 removes the inbound Stripe route and its
   proxy setting. The proxy makes no outbound Stripe call. Calls to
   `https://api.stripe.com` still exist in the operator scripts
-  `scripts/invoice.ts` and `scripts/verify-stripe.ts`, retained until C3.
+  `scripts/invoice.ts` and `scripts/verify-stripe.ts`, retained until C3. The
+  invoice command cannot process the post-M1 schema; `verify-stripe` is a
+  separate legacy library check and is not run by team startup.
 - **Memory extraction model.** With `CQ_MEMORY_EXTRACT_MODEL`, turns go to a
   local model for fact extraction. Startup rejects any endpoint that is not
   plain HTTP on `127.0.0.1`, `localhost` or `[::1]`.
@@ -280,27 +282,28 @@ Sources: `runtime/src/proxy/routes/dashboard.ts:89`, `runtime/src/proxy/routes/g
   host that collects process output (for example a serverless platform's log
   service) receives them; that is the host's behavior, not Stratum's.
 - The capture artifacts in `data/sessions/` (or `CQ_CAPTURE_DIR`).
-- In commercial mode (which requires `CQ_BILLING_SIGNING_SECRET`), the usage outbox: one
-  `<eventId>.json` file per billed response in `data/usage-outbox/` (or
+- In commercial mode, the unsigned usage outbox: one
+  `<eventId>.json` file per successfully measured response in `data/usage-outbox/` (or
   `CQ_USAGE_OUTBOX_DIR`). The directory is mode `0700` and each file `0600`.
   A file holds `orgId`, optional project scope id, `eventId`, `occurredAt`,
   `model`, `inputTokens`, `outputTokens` and the pinned price. It is deleted
   after the row reaches the database.
 
-Sources: `runtime/src/proxy/index.ts:447-454`, `runtime/src/proxy/routes/messages.ts:219-241`, `runtime/src/billing/durable-usage-outbox.ts:66-68`, `runtime/src/billing/durable-usage-outbox.ts:121-132`, `runtime/src/billing/durable-usage-outbox.ts:91-92`, `runtime/.gitignore:49`.
+Sources: `runtime/src/proxy/index.ts:447-454`, `runtime/src/proxy/routes/messages.ts:219-241`, `runtime/src/usage/durable-usage-outbox.ts:66-68`, `runtime/src/usage/durable-usage-outbox.ts:121-132`, `runtime/src/usage/durable-usage-outbox.ts:91-92`, `runtime/.gitignore:49`.
 
 ## Database records (commercial mode)
 
 These rows are written through the Supabase API at `SUPABASE_URL`. In
 development that is the local Compose stack.
 
-- **`billing_records`.** Written on every running commercial proxy, since startup
-  requires `CQ_BILLING_SIGNING_SECRET`. One
-  append-only row per billed response: `session_id`, `org_id`,
-  `original_tokens`, `quarantined_tokens`, `api_price_per_token`,
-  `usage_event_id`, `signed_hash`, plus generated cost columns. No content.
-  Pruning is not active in requests, so `quarantined_tokens` equals
-  `original_tokens` and the savings columns are zero.
+- **`billing_records`.** One unsigned row per measured request: `session_id`,
+  `org_id`, `original_tokens`, `quarantined_tokens`, pinned
+  `api_price_per_token`, `usage_event_id`, optional `pruning_log_id`, and the
+  database-generated `token_delta`/`cost_delta_usd`. No content, fee or signature.
+  M1 removes append-only enforcement; event-ID uniqueness and input comparison
+  still guard replay. USD values are estimates for information. Pruning is not
+  active in requests, so `quarantined_tokens` equals `original_tokens` and the
+  savings columns are zero.
 - **`sessions`.** Daily usage buckets per org, model and project scope;
   conversation sessions; memory sessions. Ids, model and scope; no content.
 - **Facts.** With `CQ_MEMORY_EXTRACT_MODEL`, facts extracted from turns by the
@@ -314,8 +317,8 @@ development that is the local Compose stack.
   `scripts/restore-org.ts` re-inserts rows from an org backup.
 
 Sources:
-- `runtime/supabase/migrations/20260406000000_initial_schema.sql:65-77` (`pruning_logs`), `runtime/supabase/migrations/20260406000000_initial_schema.sql:83-102` (`billing_records`, append-only rules), `runtime/supabase/migrations/20260924110000_billing_usage_event_identity.sql:4`
-- `runtime/src/billing/recorder.ts:102-112` (inserted row), `runtime/src/billing/usage-recorder.ts:95` (usage session), `runtime/src/billing/usage-recorder.ts:140` (no pruning)
+- `runtime/supabase/migrations/20260406000000_initial_schema.sql` (initial tables), `runtime/supabase/migrations/20260924110000_billing_usage_event_identity.sql` (event identity), `runtime/supabase/migrations/20261003000000_unsigned_usage_ledger.sql` (retired columns and mutation guards)
+- `runtime/src/usage/recorder.ts` (unsigned insert and replay comparison), `runtime/src/usage/usage-recorder.ts` (daily usage session and unchanged token counts)
 - `runtime/src/proxy/conversation.ts:40`, `runtime/src/proxy/message-memory.ts:26`, `runtime/src/proxy/message-memory.ts:32-40`
 - `runtime/scripts/verify-tier2.ts:88`, `runtime/scripts/verify-tier2.ts:123`, `runtime/scripts/restore-org.ts:2-6`, `runtime/scripts/restore-org.ts:33`
 

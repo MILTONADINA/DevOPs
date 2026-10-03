@@ -1,4 +1,4 @@
-# Handoff: C1 closeout and next steps (2026-10-03)
+# Handoff: C2 local verification and next steps (2026-10-03)
 
 Read [`AGENTS.md`](../../AGENTS.md) and the local `.workflow/state/baton.md` first. This page records the 2026-10-03 local verification snapshot before merge and the remaining roadmap. Git and the PR checks determine the current merge state; the verification below does not declare the whole project finished.
 
@@ -10,6 +10,60 @@ The repository uses only `main`, `dev`, and `feature`. Changes reach protected `
 - Claude's stopped checkpoint: `7565ca4`, followed by handoff `1e5f2a8`, both preserved on `feature`.
 - Codex resumed that checkpoint on 2026-10-03, finished T4–T7, and added a regression test for auth-enabled requests without an organization. This was a cross-tool continuation with independent review and validation agents, not a replay of Claude Workflow `wf_51c12945-ff7`. The old Workflow record remains historical/indeterminate.
 - Do not apply the old baton's `git reset --soft HEAD~1`: it no longer identifies the WIP code boundary.
+
+## C2 implementation and verification — snapshot before merge
+
+C1 and its compatible dependency remediation merged in [PR #221](https://github.com/MILTONADINA/DevOPs/pull/221)
+at `18ba62ba854a77eddc10d1b3175e7be35c779603`. C2 starts from that exact baseline.
+All six required C1 checks passed; main/dev/feature were synchronized before C2.
+The C1 tables below are historical evidence for that cycle.
+
+C2 implements payment-removal REQ-4/5/6 and REQ-9's column boundary:
+
+- New `runtime/src/usage/` writer, recorder, outbox and pricing modules. Legacy
+  billing modules remain untouched until C3. The outbox bytes and price table
+  retain their prior behavior.
+- M1 `20261003000000_unsigned_usage_ledger.sql` removes only the three mutation
+  triggers, their function, fee and signature columns in the required order.
+  It preserves RLS, constraints, event uniqueness and generated token/USD values.
+- Team messages always wire the private durable journal without a signing
+  secret. Database, network, persistent-storage and Vercel guards remain.
+  Invalid memory/audit settings fail before journal allocation.
+- Replay compares org/session/tokens/event/pruning provenance and pinned price
+  at PostgreSQL NUMERIC precision; malformed/missing confirmation is failure.
+- Old backups strip/report retired columns without their values. Invoice tables
+  still export/restore until C4. Invoice and signature-verification CLIs remain
+  as legacy source until C3 and are incompatible with M1; do not run them.
+- Four local message harnesses isolate journals, distinguish conversation/usage
+  sessions and clean only fixture usage before sessions. Real-model behavior
+  was not evaluated in this cycle.
+
+| C2 local gate | Result |
+|---|---|
+| Focused writer/outbox/pricing, restore and startup tests | Pass; red/green logs retained |
+| Typecheck, source lint, expanded Vercel typecheck | Pass |
+| Runtime, clean locked installation without optional datasets | 1,521 passed; 5 skipped; 5 todo |
+| Root, isolated Linux/Node 24 with clean home | 473 passed; 17 skipped |
+| All SQL integration files | 14 passed with rollback |
+| M1 on existing local Compose | Exactly one migration; same database container/storage |
+| Root setup | Healthy proxy/database; zero additional migrations |
+| Synthetic legacy restore | Retired fields removed, identities/estimates/invoice data retained |
+| Conversation memory, Git audit, 50-turn survival | Pass; 51 conversation sessions and usage events retained in survival proof |
+| Actual `npm run dev` twice, no signing secret | Health/auth/removed-route guards; 23-input-token message; same-ID replay and six mismatch refusals; scoped UPDATE and USD stats; old pending/already-committed journal replay |
+| Numeric round-trip integration | 0.000001005→0.00000101 replay; original project/day/price retained on restart |
+
+The runtime floor rises 1,433→1,521 without deleting tests; root stays 473.
+Local evidence is under `.workflow/proofs/c2-2026-10-03/`, with command/exit
+records, source manifests, disposition and independent review. The isolated
+root suite exposes only project-local files and a clean container home.
+No hosted Supabase, paid model, deployment, operator journal or real dotenv
+was used. M1 is already applied locally; do not reapply/reset the database.
+
+At this snapshot C2 still needs its final-head required GitHub checks and
+squash merge. Writer, migration, startup and restore compatibility must land
+atomically. The approved payment-removal spec is not fully implemented until
+C3/C4 and all applicable gates finish. These checks establish no model quality,
+clean-machine multi-platform release or complete project readiness.
 
 ## C1 implementation and verification
 
@@ -82,12 +136,12 @@ verified; the PR records their current state.
 
 ## Next action
 
-If PR #221 remains open, finish its required GitHub checks on the current
-head and merge under the recorded standing owner authorization. Once it has
-landed, start **C2** from synchronized `main`/`dev`/`feature`,
-reading the entire payment-removal spec before planning.
-
-C2 pairs the unsigned writer with migration M1 in the same change: remove immutability triggers/function before dropping `cq_fee_usd` and `signed_hash`; keep usage-event uniqueness and compare replay inputs; keep the durable outbox; stop requiring the signing secret only when persistence is wired. Copy usage modules out of `runtime/src/billing/` without staging that directory. Preserve providers, frozen fixtures and all existing migrations. Apply REQ-9's legacy-backup compatibility at the column-removal boundary. Repeat the spec's running-system gates for C2.
+Finish C2's independent review, source-bound claims and required checks on its
+final PR head, then merge under standing owner authorization and synchronize
+main/dev/feature. Consult Git/PR state and the local baton before repeating any
+work. Once C2 is merged, continue **C3**, using `.workflow/state/c3-plan.md` if
+present and the approved payment-removal spec. Do not resume old Claude Workflow
+`wf_51c12945-ff7` or reset the preserved C1 checkpoint.
 
 Then:
 
