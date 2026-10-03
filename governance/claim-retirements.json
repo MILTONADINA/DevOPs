@@ -1,0 +1,1039 @@
+{
+  "version": 1,
+  "scope": "Bounded historical dispositions after C4-A and the initial C4-B merge; no validator or passing-count effect.",
+  "requirements": "specs/ops/claim-retirement.md",
+  "delivery_baseline": {
+    "c3": "28ea1aac8117722613e8a483894421fc4c5e481e",
+    "c4a": "3e570a2e0e780b7c1557e95ad07f2b315c1f5b05",
+    "c4b": "90d0de548a586468353ee9abf6835e21ed16528e"
+  },
+  "limitations": [
+    "Original YAML, proof scripts and logs remain unchanged and local; none of their commands was rerun.",
+    "Historical execution validity is not reassessed. A disposition is not a passing or failing behavioral proof.",
+    "The current validator does not consume this ledger; mechanical accounting and committed proofs remain MR-10 work.",
+    "The bounded review selected 46 candidates from 350 top-level YAMLs. It is not a complete audit of all historical claims.",
+    "Broader erasure coverage, managed onboarding/restarts and the one-year benchmark remain open."
+  ],
+  "entries": [
+    {
+      "claim_id": "claim-2026-09-27-214",
+      "claim_path": ".workflow/proofs/claim-2026-09-27-214.yml",
+      "claim_sha256": "ef5f4e869ad72418fd06323ed4ee3c6b663abccbf84e65cf5017be5d5bc184bd",
+      "original_git_sha": "10855fc73ebeec906dd9ec1ce26e005034ce7b02",
+      "original_spec_ref": "specs/graph/M-masterpiece-standard.md#req-m16-ubiquitous-gate-hooks-are-hardened-and-regression-tested",
+      "original_scope": "T0 precondition re-check (git-show-pinned greps at 10855fc + live 12/12 hook suite + planted-positive self-tests): billing four-eyes gate stays fully retired in deploy-gate.sh/autonomy-config.yml; block-sealed-refs.sh's stratum-merge mentions are the branch name, file untouched.",
+      "disposition": "superseded_attempt",
+      "disposition_date": "2026-10-03",
+      "historical_execution_validity": "not reassessed; original recorded result and caveats preserved",
+      "reason": "PB-105 explicitly retires this runtime-move attempt record as current delivery evidence. Independent historical preconditions, tests and observations are not declared false; this action does not reassess their execution.",
+      "authority": [
+        ".workflow/state/polish-backlog.md#PB-105",
+        "specs/ops/one-platform-naming.md#req-5-event-driven-the-directory-becomes-runtime"
+      ],
+      "evidence": [
+        {
+          "path": ".workflow/proofs/claim-2026-09-27-214-test.sh",
+          "sha256": "1ffda4ebdbb4fa37fdfa572ef307b2a6205b98433f6705b79eec0f5ea8c0b9fa"
+        },
+        {
+          "path": ".workflow/proofs/claim-2026-09-27-214-test.log",
+          "sha256": "97a72d4923be6c072987c1b16e73fb734184c2e7a88c6b0c7f8db7cda5599f65"
+        }
+      ],
+      "retired_source_paths": [],
+      "replacement": null,
+      "replacement_note": "No substitute for this specific historical assertion is claimed."
+    },
+    {
+      "claim_id": "claim-2026-09-27-215",
+      "claim_path": ".workflow/proofs/claim-2026-09-27-215.yml",
+      "claim_sha256": "d903eb4b4a5aafb1bc552da759ab6c21afe241669c65f60c13868f30eefc4931",
+      "original_git_sha": "10855fc73ebeec906dd9ec1ce26e005034ce7b02",
+      "original_spec_ref": "specs/ops/one-platform-naming.md#req-5-event-driven-the-directory-becomes-runtime",
+      "original_scope": "Tester (T10, graph cycle phase1-015-runtime-move): independently re-verified the coder's governance/gitleaks-ci.toml edit adding a runtime/test/billing/verify-stripe.test.ts allowlist entry alongside the untouched stratum/ entry. A negative config (live file minus the added block) still flags the fixture at lines 16/20; the live config suppresses it there and repo-wide with zero collateral effect; tier3.toml and .gitleaksignore confirmed untouched; gitleaks git --pre-commit over the working-tree diff finds nothing.",
+      "disposition": "superseded_attempt",
+      "disposition_date": "2026-10-03",
+      "historical_execution_validity": "not reassessed; original recorded result and caveats preserved",
+      "reason": "PB-105 explicitly retires this runtime-move attempt record as current delivery evidence. Independent historical preconditions, tests and observations are not declared false; this action does not reassess their execution.",
+      "authority": [
+        ".workflow/state/polish-backlog.md#PB-105",
+        "specs/ops/one-platform-naming.md#req-5-event-driven-the-directory-becomes-runtime"
+      ],
+      "evidence": [
+        {
+          "path": ".workflow/proofs/claim-2026-09-27-215-test.sh",
+          "sha256": "7606f82cef4306aff25ae3b2147b3cd5c030441801e7ffd8c4d8f1905fedde6c"
+        },
+        {
+          "path": ".workflow/proofs/claim-2026-09-27-215-test.log",
+          "sha256": "4e8ebe0ffab4e7f1d01d323389325e873d2fb785f61ac662e2283c2167361f4a"
+        }
+      ],
+      "retired_source_paths": [],
+      "replacement": null,
+      "replacement_note": "No substitute for this specific historical assertion is claimed."
+    },
+    {
+      "claim_id": "claim-2026-09-27-216",
+      "claim_path": ".workflow/proofs/claim-2026-09-27-216.yml",
+      "claim_sha256": "52f4abbbe7ff1eedd6876e269317447b7df23d793652baa8fdabc70bee87e664",
+      "original_git_sha": "10855fc73ebeec906dd9ec1ce26e005034ce7b02",
+      "original_spec_ref": "specs/ops/one-platform-naming.md#req-5-event-driven-the-directory-becomes-runtime",
+      "original_scope": "Tester (T12, graph cycle stratum-to-runtime rename): independently re-verified the coder's literal stratum/<path> and cd-stratum replacement across 6 doc surfaces plus the new CHANGELOG [Unreleased] entry; AGENTS.md correctly needed no T12 edit.",
+      "disposition": "superseded_attempt",
+      "disposition_date": "2026-10-03",
+      "historical_execution_validity": "not reassessed; original recorded result and caveats preserved",
+      "reason": "PB-105 explicitly retires this runtime-move attempt record as current delivery evidence. Independent historical preconditions, tests and observations are not declared false; this action does not reassess their execution.",
+      "authority": [
+        ".workflow/state/polish-backlog.md#PB-105",
+        "specs/ops/one-platform-naming.md#req-5-event-driven-the-directory-becomes-runtime"
+      ],
+      "evidence": [
+        {
+          "path": ".workflow/proofs/claim-2026-09-27-216-test.sh",
+          "sha256": "b75395acfe4efb09d04d722db56be8b63054758a68a3a29085727ef4cb5e54bb"
+        },
+        {
+          "path": ".workflow/proofs/claim-2026-09-27-216-test.log",
+          "sha256": "a178555db109b6972c33afc41c65799c8c21cd12ae6b6be92d5bfbf81e2a46f1"
+        }
+      ],
+      "retired_source_paths": [],
+      "replacement": null,
+      "replacement_note": "No substitute for this specific historical assertion is claimed."
+    },
+    {
+      "claim_id": "claim-2026-09-27-217",
+      "claim_path": ".workflow/proofs/claim-2026-09-27-217.yml",
+      "claim_sha256": "cfebd82f9e86fe227490aeb4c7462a1595fb15e32d59f28fd572541c3950e059",
+      "original_git_sha": "10855fc73ebeec906dd9ec1ce26e005034ce7b02",
+      "original_spec_ref": "specs/phase-2/A-pentest-stack.md#req-a8",
+      "original_scope": "Security role, graph cycle stratum->runtime: gitleaks Tier-1 + semgrep Tier-2 (owasp-top-ten/r2c-security-audit/secrets) + npm audit over the full diff vs 10855fc: 0 leaks, 0 semgrep findings, 0 audit vulns; no TP-critical.",
+      "disposition": "superseded_attempt",
+      "disposition_date": "2026-10-03",
+      "historical_execution_validity": "not reassessed; original recorded result and caveats preserved",
+      "reason": "PB-105 explicitly retires this runtime-move attempt record as current delivery evidence. Independent historical preconditions, tests and observations are not declared false; this action does not reassess their execution.",
+      "authority": [
+        ".workflow/state/polish-backlog.md#PB-105",
+        "specs/ops/one-platform-naming.md#req-5-event-driven-the-directory-becomes-runtime"
+      ],
+      "evidence": [
+        {
+          "path": ".workflow/proofs/claim-2026-09-27-217-test.sh",
+          "sha256": "fcbbbc1ee4ae1aa27c40374cb23b6f9cc5892cb46ec9df2a79148c7670ce9e0c"
+        },
+        {
+          "path": ".workflow/proofs/claim-2026-09-27-217-test.log",
+          "sha256": "fd89af42b707a1047a5776d6536b5a3eaa928270ba448de26bdffe169e1e3f54"
+        }
+      ],
+      "retired_source_paths": [],
+      "replacement": null,
+      "replacement_note": "No substitute for this specific historical assertion is claimed."
+    },
+    {
+      "claim_id": "claim-2026-09-27-218",
+      "claim_path": ".workflow/proofs/claim-2026-09-27-218.yml",
+      "claim_sha256": "5e9f0a49fb8055be85b7703a0fa406de5cdd7a4556206f93c4f69e3f157bd280",
+      "original_git_sha": "10855fc73ebeec906dd9ec1ce26e005034ce7b02",
+      "original_spec_ref": "specs/ops/one-platform-naming.md#out-of-scope",
+      "original_scope": "Tester (T1, stratum-to-runtime rename cycle): re-verified the coder's restore of D1's 4 history locations (spec, 3 ADRs, CHANGELOG.md/LAUNCH_READINESS.md history sections) to byte-identical origin/main; sibling live edits and ADR-014 confirmed untouched.",
+      "disposition": "superseded_attempt",
+      "disposition_date": "2026-10-03",
+      "historical_execution_validity": "not reassessed; original recorded result and caveats preserved",
+      "reason": "PB-105 explicitly retires this runtime-move attempt record as current delivery evidence. Independent historical preconditions, tests and observations are not declared false; this action does not reassess their execution.",
+      "authority": [
+        ".workflow/state/polish-backlog.md#PB-105",
+        "specs/ops/one-platform-naming.md#req-5-event-driven-the-directory-becomes-runtime"
+      ],
+      "evidence": [
+        {
+          "path": ".workflow/proofs/claim-2026-09-27-218-test.sh",
+          "sha256": "62dad7091af0f468669fbf83d13ec3e013818dd6eb112819d832f1f17c69ddcf"
+        },
+        {
+          "path": ".workflow/proofs/claim-2026-09-27-218-test.log",
+          "sha256": "73794a4d6f783fffe5373656f134d6d7b3df7b615e4666e7499ad9dc058d02c6"
+        }
+      ],
+      "retired_source_paths": [],
+      "replacement": null,
+      "replacement_note": "No substitute for this specific historical assertion is claimed."
+    },
+    {
+      "claim_id": "claim-2026-09-27-219",
+      "claim_path": ".workflow/proofs/claim-2026-09-27-219.yml",
+      "claim_sha256": "71355646373eee26b9b6ce7c3b16361aff5c4000e6191ede6a29b2b3e4e5a1da",
+      "original_git_sha": "8a14c5db4a611dd8242eb3da29bb6c4293fa5e10",
+      "original_spec_ref": "specs/security/ci-dependency-audit.md",
+      "original_scope": "Tester (T4): independently re-verified the coder's revert of cycle 15's two erroneous 'stratum'->'runtime' fixture edits in tests/dependency-report.test.mjs; file is byte-identical to commit 8a14c5d and node --test reports 9/9 passing.",
+      "disposition": "superseded_attempt",
+      "disposition_date": "2026-10-03",
+      "historical_execution_validity": "not reassessed; original recorded result and caveats preserved",
+      "reason": "PB-105 explicitly retires this runtime-move attempt record as current delivery evidence. Independent historical preconditions, tests and observations are not declared false; this action does not reassess their execution.",
+      "authority": [
+        ".workflow/state/polish-backlog.md#PB-105",
+        "specs/ops/one-platform-naming.md#req-5-event-driven-the-directory-becomes-runtime"
+      ],
+      "evidence": [
+        {
+          "path": ".workflow/proofs/claim-2026-09-27-219-test.sh",
+          "sha256": "b44a82ba2e1f531cb5c7a5af8ad9dbf1ece5f1a0a939dd3428c372d5d9c512d8"
+        },
+        {
+          "path": ".workflow/proofs/claim-2026-09-27-219-test.log",
+          "sha256": "325c2b0211ece43fb4e9b38f6f199bf16e83738e0b76c9efeba13647eacf103e"
+        }
+      ],
+      "retired_source_paths": [],
+      "replacement": null,
+      "replacement_note": "No substitute for this specific historical assertion is claimed."
+    },
+    {
+      "claim_id": "claim-2026-09-27-220",
+      "claim_path": ".workflow/proofs/claim-2026-09-27-220.yml",
+      "claim_sha256": "ee176b1ea1bb61e57dff2094fcb51113bab0f1d640fd57700da035407641861b",
+      "original_git_sha": "10855fc73ebeec906dd9ec1ce26e005034ce7b02",
+      "original_spec_ref": "specs/ops/one-platform-naming.md#AC-5",
+      "original_scope": "Tester (T3-01), independent re-verification of the coder's report: post-T1b staged index and worktree both satisfy AC-5 -- stratum absent (not even a dangling symlink), git ls-files stratum/ empty, runtime/package.json and package-lock.json (root name and packages[\"\"].name) all @miltonadina/devops-runtime.",
+      "disposition": "superseded_attempt",
+      "disposition_date": "2026-10-03",
+      "historical_execution_validity": "not reassessed; original recorded result and caveats preserved",
+      "reason": "PB-105 explicitly retires this runtime-move attempt record as current delivery evidence. Independent historical preconditions, tests and observations are not declared false; this action does not reassess their execution.",
+      "authority": [
+        ".workflow/state/polish-backlog.md#PB-105",
+        "specs/ops/one-platform-naming.md#req-5-event-driven-the-directory-becomes-runtime"
+      ],
+      "evidence": [
+        {
+          "path": ".workflow/proofs/claim-2026-09-27-220-test.sh",
+          "sha256": "2384da4df8ff76716f1545330a96efff2ed7072e291c80ed02761e9e214c4824"
+        },
+        {
+          "path": ".workflow/proofs/claim-2026-09-27-220-test.log",
+          "sha256": "68d42b9f7e916b788e3ead6ad6bbbc6cb8822e2e7a92a2822cab604fe48af5b5"
+        }
+      ],
+      "retired_source_paths": [],
+      "replacement": {
+        "claim_id": "claim-2026-09-27-226",
+        "claim_path": ".workflow/proofs/claim-2026-09-27-226.yml",
+        "claim_sha256": "3bc32a749424d0d5ed762514c25ef4df7e48dd1f837f2390211a3d0bc36b6618",
+        "git_sha": "bd0be83da7b331e93b3a74ec9f4ddd1b73d2c089",
+        "covers": "The merged stratum-to-runtime directory/package move only; not the attempt-specific staged-tree, test, scan or review assertions."
+      },
+      "replacement_note": "Partial replacement scope only; original historical evidence remains preserved."
+    },
+    {
+      "claim_id": "claim-2026-09-27-221",
+      "claim_path": ".workflow/proofs/claim-2026-09-27-221.yml",
+      "claim_sha256": "bb1c5b30c0e487fdc4e2b9966f94f1cdf59693e35e8b4666e282cf9bb32db81e",
+      "original_git_sha": "10855fc73ebeec906dd9ec1ce26e005034ce7b02",
+      "original_spec_ref": "specs/ops/one-platform-naming.md#AC-5",
+      "original_scope": "Tester (T3-03), independent re-verification: in runtime/, npm run typecheck and npx vitest run both exit 0 (1278 passed, 3 skipped, 5 todo of 1286); check-test-floor.mjs confirms this clears the runtime floor of 1276.",
+      "disposition": "superseded_attempt",
+      "disposition_date": "2026-10-03",
+      "historical_execution_validity": "not reassessed; original recorded result and caveats preserved",
+      "reason": "PB-105 explicitly retires this runtime-move attempt record as current delivery evidence. Independent historical preconditions, tests and observations are not declared false; this action does not reassess their execution.",
+      "authority": [
+        ".workflow/state/polish-backlog.md#PB-105",
+        "specs/ops/one-platform-naming.md#req-5-event-driven-the-directory-becomes-runtime"
+      ],
+      "evidence": [
+        {
+          "path": ".workflow/proofs/claim-2026-09-27-221-test.sh",
+          "sha256": "5a7f487745df32f8eec1a6f88ea55cdb86c64b977ac44a0dcbc4075dcbed3311"
+        },
+        {
+          "path": ".workflow/proofs/claim-2026-09-27-221-test.log",
+          "sha256": "772b25639e2070e637def51517fa03d02d174708b9cf25381ebcac966a3a783c"
+        }
+      ],
+      "retired_source_paths": [],
+      "replacement": null,
+      "replacement_note": "No substitute for this specific historical assertion is claimed."
+    },
+    {
+      "claim_id": "claim-2026-09-27-222",
+      "claim_path": ".workflow/proofs/claim-2026-09-27-222.yml",
+      "claim_sha256": "82125551255a23023dc051eda91a93388f1c2155a4da0b26350d52684fcc9bb5",
+      "original_git_sha": "10855fc73ebeec906dd9ec1ce26e005034ce7b02",
+      "original_spec_ref": "specs/graph/R-resilience.md#AC-R1.1",
+      "original_scope": "Tester (T3-05), independent re-verification: bash scripts/graph-preflight.sh --check-only reports deps.runtime pass, the patch's renamed dependency check; a planted non-executable entry still makes it fail in check-only mode, and the hermetic suite passes.",
+      "disposition": "superseded_attempt",
+      "disposition_date": "2026-10-03",
+      "historical_execution_validity": "not reassessed; original recorded result and caveats preserved",
+      "reason": "PB-105 explicitly retires this runtime-move attempt record as current delivery evidence. Independent historical preconditions, tests and observations are not declared false; this action does not reassess their execution.",
+      "authority": [
+        ".workflow/state/polish-backlog.md#PB-105",
+        "specs/ops/one-platform-naming.md#req-5-event-driven-the-directory-becomes-runtime"
+      ],
+      "evidence": [
+        {
+          "path": ".workflow/proofs/claim-2026-09-27-222-test.sh",
+          "sha256": "01c7f997c9e819c509771bd37b78de60b72f8d0ccf63a26ef3167dd85034174f"
+        },
+        {
+          "path": ".workflow/proofs/claim-2026-09-27-222-test.log",
+          "sha256": "0c34dd4be2a20700f841897cdb963f36b90e1c31794622b0830cf760eff0a220"
+        }
+      ],
+      "retired_source_paths": [],
+      "replacement": null,
+      "replacement_note": "No substitute for this specific historical assertion is claimed."
+    },
+    {
+      "claim_id": "claim-2026-09-27-223",
+      "claim_path": ".workflow/proofs/claim-2026-09-27-223.yml",
+      "claim_sha256": "b5b5286008bddf176621affbb8075df67c424c81adf9f31a948a942496976f1e",
+      "original_git_sha": "10855fc73ebeec906dd9ec1ce26e005034ce7b02",
+      "original_spec_ref": "specs/security/history-secret-scan-baseline.md#AC-HSB-3.1",
+      "original_scope": "Tester (T3-11), independent re-verification: pinned gitleaks --staged --redact scan exits 0 on the staged T1b diff (85335 bytes, no leaks); a planted secret trips it, an empty scan is refused, and package-lock.json's blind spot is reproduced but not exploited.",
+      "disposition": "superseded_attempt",
+      "disposition_date": "2026-10-03",
+      "historical_execution_validity": "not reassessed; original recorded result and caveats preserved",
+      "reason": "PB-105 explicitly retires this runtime-move attempt record as current delivery evidence. Independent historical preconditions, tests and observations are not declared false; this action does not reassess their execution.",
+      "authority": [
+        ".workflow/state/polish-backlog.md#PB-105",
+        "specs/ops/one-platform-naming.md#req-5-event-driven-the-directory-becomes-runtime"
+      ],
+      "evidence": [
+        {
+          "path": ".workflow/proofs/claim-2026-09-27-223-test.sh",
+          "sha256": "aafcd4f7010afd12f6861d991998d68e262d4e2bc88eb6d792c9d5903613195f"
+        },
+        {
+          "path": ".workflow/proofs/claim-2026-09-27-223-test.log",
+          "sha256": "a340b6b76b67eb47378c789bc1245f8803f69ac88a7fc0b638d96bd7363ede01"
+        }
+      ],
+      "retired_source_paths": [],
+      "replacement": null,
+      "replacement_note": "No substitute for this specific historical assertion is claimed."
+    },
+    {
+      "claim_id": "claim-2026-09-27-224",
+      "claim_path": ".workflow/proofs/claim-2026-09-27-224.yml",
+      "claim_sha256": "14594c55d87436b5799d5151ce9312d70d66cae8e6a359d895aaf5864e1aade4",
+      "original_git_sha": "10855fc73ebeec906dd9ec1ce26e005034ce7b02",
+      "original_spec_ref": "specs/ops/one-platform-naming.md#req-5-event-driven-the-directory-becomes-runtime",
+      "original_scope": "Tester (T3-12), independent re-verification: all 7 .github/workflows/*.yml files parse as valid YAML from the git index, and all 39 job-step-level run: blocks parse cleanly under bash -n. See caveats for a self-caught bug in this claim's own supplementary cross-check.",
+      "disposition": "superseded_attempt",
+      "disposition_date": "2026-10-03",
+      "historical_execution_validity": "not reassessed; original recorded result and caveats preserved",
+      "reason": "PB-105 explicitly retires this runtime-move attempt record as current delivery evidence. Independent historical preconditions, tests and observations are not declared false; this action does not reassess their execution.",
+      "authority": [
+        ".workflow/state/polish-backlog.md#PB-105",
+        "specs/ops/one-platform-naming.md#req-5-event-driven-the-directory-becomes-runtime"
+      ],
+      "evidence": [
+        {
+          "path": ".workflow/proofs/claim-2026-09-27-224-test.sh",
+          "sha256": "8fb38f5bed4e24683010d0ee6c387127c896c619b91d911a9f9662b22bff5ca7"
+        },
+        {
+          "path": ".workflow/proofs/claim-2026-09-27-224-verify.py",
+          "sha256": "8c389ed7eba53687e443502927ee634113517361c1116ca1f0bbff8f9b64f492"
+        },
+        {
+          "path": ".workflow/proofs/claim-2026-09-27-224-test.log",
+          "sha256": "205f22c341d701405b724cf109b1ebc9b52722eb25858824477d5e8e5be8c66f"
+        }
+      ],
+      "retired_source_paths": [],
+      "replacement": null,
+      "replacement_note": "No substitute for this specific historical assertion is claimed."
+    },
+    {
+      "claim_id": "claim-2026-09-27-225",
+      "claim_path": ".workflow/proofs/claim-2026-09-27-225.yml",
+      "claim_sha256": "9797435e15910c3ebdcd90b0950e300cf543201ad8cfcf2f2c904bce7e82c78e",
+      "original_git_sha": "10855fc73ebeec906dd9ec1ce26e005034ce7b02",
+      "original_spec_ref": "specs/ops/one-platform-naming.md#AC-5",
+      "original_scope": "Tester (T4-review), independent re-verification: the reviewer's PASS verdict on the staged T1b diff holds against all four blocking criteria (a-d); all 35 tests across the 3 touched files pass, the 9 AC-5 rename tests are present and CLI-confirmed non-vacuous, and gitleaks/semgrep/npm-audit/check-ignore re-run clean.",
+      "disposition": "superseded_attempt",
+      "disposition_date": "2026-10-03",
+      "historical_execution_validity": "not reassessed; original recorded result and caveats preserved",
+      "reason": "PB-105 explicitly retires this runtime-move attempt record as current delivery evidence. Independent historical preconditions, tests and observations are not declared false; this action does not reassess their execution.",
+      "authority": [
+        ".workflow/state/polish-backlog.md#PB-105",
+        "specs/ops/one-platform-naming.md#req-5-event-driven-the-directory-becomes-runtime"
+      ],
+      "evidence": [
+        {
+          "path": ".workflow/proofs/claim-2026-09-27-225-test.sh",
+          "sha256": "0b2b779fd8099c40d9ece76e2506fff98fafef9e7b09a123435dbb9a0aa32764"
+        },
+        {
+          "path": ".workflow/state/archives/runtime-move-codemod-2026-09-27.py",
+          "sha256": "6a668b5bc23a4d5edf42a69b98c5bd8cfaabf3f4893293466c500c4603ea93a1"
+        },
+        {
+          "path": ".workflow/proofs/claim-2026-09-27-225-test.log",
+          "sha256": "067d56c495231c9d0d2bd3b494326198b9f828bf80a25b08ce19d371bff1720b"
+        }
+      ],
+      "retired_source_paths": [],
+      "replacement": {
+        "claim_id": "claim-2026-09-27-226",
+        "claim_path": ".workflow/proofs/claim-2026-09-27-226.yml",
+        "claim_sha256": "3bc32a749424d0d5ed762514c25ef4df7e48dd1f837f2390211a3d0bc36b6618",
+        "git_sha": "bd0be83da7b331e93b3a74ec9f4ddd1b73d2c089",
+        "covers": "The merged stratum-to-runtime directory/package move only; not the attempt-specific staged-tree, test, scan or review assertions."
+      },
+      "replacement_note": "Partial replacement scope only; original historical evidence remains preserved."
+    },
+    {
+      "claim_id": "claim-2026-09-24-140",
+      "claim_path": ".workflow/proofs/claim-2026-09-24-140.yml",
+      "claim_sha256": "0815346ea179956d1eb6541f0092f5b4de492dbd2fb8870f8db1316c930dea1a",
+      "original_git_sha": "d36b8d1d1bbb0b33b1bc869bd537e07fb86c3881",
+      "original_spec_ref": "specs/billing/stripe-pending-item-pagination.md#req-1",
+      "original_scope": "Stripe invoice retry scans pending pages and refuses incomplete scans or a mismatched pending charge.",
+      "disposition": "obsolete_behavior",
+      "disposition_date": "2026-10-03",
+      "historical_execution_validity": "not reassessed; original recorded result and caveats preserved",
+      "reason": "Approved payment-removal REQ7 removes this product path; C3 explicitly supersedes its billing spec. For invoice authority, C4-A/M2 drops the tables/RPCs. Historical offline/provider limitations remain as originally stated.",
+      "authority": [
+        "specs/ops/payment-removal.md#req-7--the-payment-modules-are-deleted-c3",
+        "specs/ops/payment-removal.md#req-8--session-erasure-works-without-a-financial-ledger-c4-migration-m2",
+        "runtime/docs/decisions/0025-open-source-local-first-no-payment.md"
+      ],
+      "evidence": [
+        {
+          "path": ".workflow/proofs/claim-2026-09-24-140-test.log",
+          "sha256": "9f4a3484029e1420cce56d94b6703c10257961cf75de17c53468d1ec137f5747"
+        }
+      ],
+      "retired_source_paths": [
+        {
+          "original_path": "stratum/src/billing/stripe.ts",
+          "post_rename_path": "runtime/src/billing/stripe.ts",
+          "removed_in_commit": "28ea1aac8117722613e8a483894421fc4c5e481e"
+        },
+        {
+          "original_path": "stratum/test/billing/stripe.test.ts",
+          "post_rename_path": "runtime/test/billing/stripe.test.ts",
+          "removed_in_commit": "28ea1aac8117722613e8a483894421fc4c5e481e"
+        }
+      ],
+      "replacement": null,
+      "replacement_note": "The payment behavior was removed, not replaced. Merged C3 and C4-A are removal evidence, not revalidation of the old assertions."
+    },
+    {
+      "claim_id": "claim-2026-09-24-141",
+      "claim_path": ".workflow/proofs/claim-2026-09-24-141.yml",
+      "claim_sha256": "88544ffdf07b36a97a000bc8cd41999dc3196dc5c738ddc9fddfc6dc1c9b8f97",
+      "original_git_sha": "d33e125762dc4dcad0a9284169ae8f495a4b66f7",
+      "original_spec_ref": "specs/billing/stripe-invoice-amount-gate.md#req-1",
+      "original_scope": "Stripe draft creation includes pending items and verifies returned USD amounts before and after finalization.",
+      "disposition": "obsolete_behavior",
+      "disposition_date": "2026-10-03",
+      "historical_execution_validity": "not reassessed; original recorded result and caveats preserved",
+      "reason": "Approved payment-removal REQ7 removes this product path; C3 explicitly supersedes its billing spec. For invoice authority, C4-A/M2 drops the tables/RPCs. Historical offline/provider limitations remain as originally stated.",
+      "authority": [
+        "specs/ops/payment-removal.md#req-7--the-payment-modules-are-deleted-c3",
+        "specs/ops/payment-removal.md#req-8--session-erasure-works-without-a-financial-ledger-c4-migration-m2",
+        "runtime/docs/decisions/0025-open-source-local-first-no-payment.md"
+      ],
+      "evidence": [
+        {
+          "path": ".workflow/proofs/claim-2026-09-24-141-test.log",
+          "sha256": "f4633ceaae772fb12c8a2fe5d3afd5a1d81df75eaf9b275075f679702b83669e"
+        }
+      ],
+      "retired_source_paths": [
+        {
+          "original_path": "stratum/src/billing/stripe.ts",
+          "post_rename_path": "runtime/src/billing/stripe.ts",
+          "removed_in_commit": "28ea1aac8117722613e8a483894421fc4c5e481e"
+        },
+        {
+          "original_path": "stratum/scripts/verify-stripe.ts",
+          "post_rename_path": "runtime/scripts/verify-stripe.ts",
+          "removed_in_commit": "28ea1aac8117722613e8a483894421fc4c5e481e"
+        },
+        {
+          "original_path": "stratum/test/billing/stripe.test.ts",
+          "post_rename_path": "runtime/test/billing/stripe.test.ts",
+          "removed_in_commit": "28ea1aac8117722613e8a483894421fc4c5e481e"
+        }
+      ],
+      "replacement": null,
+      "replacement_note": "The payment behavior was removed, not replaced. Merged C3 and C4-A are removal evidence, not revalidation of the old assertions."
+    },
+    {
+      "claim_id": "claim-2026-09-24-142",
+      "claim_path": ".workflow/proofs/claim-2026-09-24-142.yml",
+      "claim_sha256": "7eb5acfeb9c68116758006649c0d764a272a28191c52c174fec5155bb1b55cb6",
+      "original_git_sha": "a989dc96fabea62e5a39a66b7e6548e4b08aea6d",
+      "original_spec_ref": "specs/billing/stripe-invoice-retry-lookup.md#req-1",
+      "original_scope": "Stripe invoice retries scan customer invoices and reuse a verified period invoice before new item creation.",
+      "disposition": "obsolete_behavior",
+      "disposition_date": "2026-10-03",
+      "historical_execution_validity": "not reassessed; original recorded result and caveats preserved",
+      "reason": "Approved payment-removal REQ7 removes this product path; C3 explicitly supersedes its billing spec. For invoice authority, C4-A/M2 drops the tables/RPCs. Historical offline/provider limitations remain as originally stated.",
+      "authority": [
+        "specs/ops/payment-removal.md#req-7--the-payment-modules-are-deleted-c3",
+        "specs/ops/payment-removal.md#req-8--session-erasure-works-without-a-financial-ledger-c4-migration-m2",
+        "runtime/docs/decisions/0025-open-source-local-first-no-payment.md"
+      ],
+      "evidence": [
+        {
+          "path": ".workflow/proofs/claim-2026-09-24-142-test.log",
+          "sha256": "46aba6497d6bab3d6fd0ad097299ba0f9af4f06a9c240d356bc8eae71ca31f53"
+        }
+      ],
+      "retired_source_paths": [
+        {
+          "original_path": "stratum/src/billing/stripe.ts",
+          "post_rename_path": "runtime/src/billing/stripe.ts",
+          "removed_in_commit": "28ea1aac8117722613e8a483894421fc4c5e481e"
+        },
+        {
+          "original_path": "stratum/test/billing/stripe.test.ts",
+          "post_rename_path": "runtime/test/billing/stripe.test.ts",
+          "removed_in_commit": "28ea1aac8117722613e8a483894421fc4c5e481e"
+        }
+      ],
+      "replacement": null,
+      "replacement_note": "The payment behavior was removed, not replaced. Merged C3 and C4-A are removal evidence, not revalidation of the old assertions."
+    },
+    {
+      "claim_id": "claim-2026-09-24-143",
+      "claim_path": ".workflow/proofs/claim-2026-09-24-143.yml",
+      "claim_sha256": "08ad3eef7e8a9d5fd363135a937f536353d9994b980f38ca3ea97b9d0171de38",
+      "original_git_sha": "deb57cf0c43957d9377683a21001cf2f2a12674c",
+      "original_spec_ref": "specs/billing/invoice-send-claim.md#req-2",
+      "original_scope": "A durable organization-period claim is inserted before Stripe finalization and ambiguous failures remain blocked.",
+      "disposition": "obsolete_behavior",
+      "disposition_date": "2026-10-03",
+      "historical_execution_validity": "not reassessed; original recorded result and caveats preserved",
+      "reason": "Approved payment-removal REQ7 removes this product path; C3 explicitly supersedes its billing spec. For invoice authority, C4-A/M2 drops the tables/RPCs. Historical offline/provider limitations remain as originally stated.",
+      "authority": [
+        "specs/ops/payment-removal.md#req-7--the-payment-modules-are-deleted-c3",
+        "specs/ops/payment-removal.md#req-8--session-erasure-works-without-a-financial-ledger-c4-migration-m2",
+        "runtime/docs/decisions/0025-open-source-local-first-no-payment.md"
+      ],
+      "evidence": [
+        {
+          "path": ".workflow/proofs/claim-2026-09-24-143-test.log",
+          "sha256": "acb46a0cb136b0b37a258853ab6fa7174a608ecdd25ca76155a6abc1ee83ac97"
+        }
+      ],
+      "retired_source_paths": [
+        {
+          "original_path": "stratum/scripts/invoice.ts",
+          "post_rename_path": "runtime/scripts/invoice.ts",
+          "removed_in_commit": "28ea1aac8117722613e8a483894421fc4c5e481e"
+        },
+        {
+          "original_path": "stratum/src/billing/invoice-ledger.ts",
+          "post_rename_path": "runtime/src/billing/invoice-ledger.ts",
+          "removed_in_commit": "28ea1aac8117722613e8a483894421fc4c5e481e"
+        },
+        {
+          "original_path": "stratum/test/billing/invoice-ledger.test.ts",
+          "post_rename_path": "runtime/test/billing/invoice-ledger.test.ts",
+          "removed_in_commit": "28ea1aac8117722613e8a483894421fc4c5e481e"
+        },
+        {
+          "original_path": "stratum/test/billing/invoice-script.test.ts",
+          "post_rename_path": "runtime/test/billing/invoice-script.test.ts",
+          "removed_in_commit": "28ea1aac8117722613e8a483894421fc4c5e481e"
+        }
+      ],
+      "replacement": null,
+      "replacement_note": "The payment behavior was removed, not replaced. Merged C3 and C4-A are removal evidence, not revalidation of the old assertions."
+    },
+    {
+      "claim_id": "claim-2026-09-24-144",
+      "claim_path": ".workflow/proofs/claim-2026-09-24-144.yml",
+      "claim_sha256": "317e8593562e087e8e1b35f180f41d189c83d986166115258a08919d85719f7a",
+      "original_git_sha": "8f706500f6c1cf4c2111f3acf8713d48fa5db408",
+      "original_spec_ref": "specs/billing/invoice-claim-reconciliation.md#req-1",
+      "original_scope": "Claimed Stripe invoices can be verified by read-only retrieval and reconciled atomically into the local ledger without a resend.",
+      "disposition": "obsolete_behavior",
+      "disposition_date": "2026-10-03",
+      "historical_execution_validity": "not reassessed; original recorded result and caveats preserved",
+      "reason": "Approved payment-removal REQ7 removes this product path; C3 explicitly supersedes its billing spec. For invoice authority, C4-A/M2 drops the tables/RPCs. Historical offline/provider limitations remain as originally stated.",
+      "authority": [
+        "specs/ops/payment-removal.md#req-7--the-payment-modules-are-deleted-c3",
+        "specs/ops/payment-removal.md#req-8--session-erasure-works-without-a-financial-ledger-c4-migration-m2",
+        "runtime/docs/decisions/0025-open-source-local-first-no-payment.md"
+      ],
+      "evidence": [
+        {
+          "path": ".workflow/proofs/claim-2026-09-24-144-test.log",
+          "sha256": "67143c5133a7798995d45a51cfb3381d0f0218d8ce6588087660398ef5866547"
+        }
+      ],
+      "retired_source_paths": [
+        {
+          "original_path": "stratum/scripts/invoice.ts",
+          "post_rename_path": "runtime/scripts/invoice.ts",
+          "removed_in_commit": "28ea1aac8117722613e8a483894421fc4c5e481e"
+        },
+        {
+          "original_path": "stratum/src/billing/invoice-ledger.ts",
+          "post_rename_path": "runtime/src/billing/invoice-ledger.ts",
+          "removed_in_commit": "28ea1aac8117722613e8a483894421fc4c5e481e"
+        },
+        {
+          "original_path": "stratum/src/billing/stripe.ts",
+          "post_rename_path": "runtime/src/billing/stripe.ts",
+          "removed_in_commit": "28ea1aac8117722613e8a483894421fc4c5e481e"
+        },
+        {
+          "original_path": "stratum/src/billing/stripe-sink.ts",
+          "post_rename_path": "runtime/src/billing/stripe-sink.ts",
+          "removed_in_commit": "28ea1aac8117722613e8a483894421fc4c5e481e"
+        },
+        {
+          "original_path": "stratum/test/billing/invoice-script.test.ts",
+          "post_rename_path": "runtime/test/billing/invoice-script.test.ts",
+          "removed_in_commit": "28ea1aac8117722613e8a483894421fc4c5e481e"
+        },
+        {
+          "original_path": "stratum/test/billing/invoice-ledger.test.ts",
+          "post_rename_path": "runtime/test/billing/invoice-ledger.test.ts",
+          "removed_in_commit": "28ea1aac8117722613e8a483894421fc4c5e481e"
+        },
+        {
+          "original_path": "stratum/test/billing/stripe.test.ts",
+          "post_rename_path": "runtime/test/billing/stripe.test.ts",
+          "removed_in_commit": "28ea1aac8117722613e8a483894421fc4c5e481e"
+        }
+      ],
+      "replacement": null,
+      "replacement_note": "The payment behavior was removed, not replaced. Merged C3 and C4-A are removal evidence, not revalidation of the old assertions."
+    },
+    {
+      "claim_id": "claim-2026-09-24-148",
+      "claim_path": ".workflow/proofs/claim-2026-09-24-148.yml",
+      "claim_sha256": "0260685f3d58b6e28592c17ef49076fe3d1a12437efc2f6b348c215af958b213",
+      "original_git_sha": "f44a24623ee2c4fd1292b0c456ca0f6b35074b28",
+      "original_spec_ref": "specs/billing/invoice-claim-inspection.md#acceptance-criteria",
+      "original_scope": "Held invoice claims can be inspected through read-only paginated Stripe lookups without clearing the claim or retrying a send.",
+      "disposition": "obsolete_behavior",
+      "disposition_date": "2026-10-03",
+      "historical_execution_validity": "not reassessed; original recorded result and caveats preserved",
+      "reason": "Approved payment-removal REQ7 removes this product path; C3 explicitly supersedes its billing spec. For invoice authority, C4-A/M2 drops the tables/RPCs. Historical offline/provider limitations remain as originally stated.",
+      "authority": [
+        "specs/ops/payment-removal.md#req-7--the-payment-modules-are-deleted-c3",
+        "specs/ops/payment-removal.md#req-8--session-erasure-works-without-a-financial-ledger-c4-migration-m2",
+        "runtime/docs/decisions/0025-open-source-local-first-no-payment.md"
+      ],
+      "evidence": [
+        {
+          "path": ".workflow/proofs/claim-2026-09-24-148-test.log",
+          "sha256": "2779afc74e258c238008a9fb0023bcb55b0f06b0b787b1359af3061901b12d8e"
+        }
+      ],
+      "retired_source_paths": [
+        {
+          "original_path": "stratum/scripts/invoice.ts",
+          "post_rename_path": "runtime/scripts/invoice.ts",
+          "removed_in_commit": "28ea1aac8117722613e8a483894421fc4c5e481e"
+        },
+        {
+          "original_path": "stratum/src/billing/invoice-ledger.ts",
+          "post_rename_path": "runtime/src/billing/invoice-ledger.ts",
+          "removed_in_commit": "28ea1aac8117722613e8a483894421fc4c5e481e"
+        },
+        {
+          "original_path": "stratum/src/billing/stripe.ts",
+          "post_rename_path": "runtime/src/billing/stripe.ts",
+          "removed_in_commit": "28ea1aac8117722613e8a483894421fc4c5e481e"
+        },
+        {
+          "original_path": "stratum/test/billing/invoice-ledger.test.ts",
+          "post_rename_path": "runtime/test/billing/invoice-ledger.test.ts",
+          "removed_in_commit": "28ea1aac8117722613e8a483894421fc4c5e481e"
+        },
+        {
+          "original_path": "stratum/test/billing/invoice-script.test.ts",
+          "post_rename_path": "runtime/test/billing/invoice-script.test.ts",
+          "removed_in_commit": "28ea1aac8117722613e8a483894421fc4c5e481e"
+        },
+        {
+          "original_path": "stratum/test/billing/stripe.test.ts",
+          "post_rename_path": "runtime/test/billing/stripe.test.ts",
+          "removed_in_commit": "28ea1aac8117722613e8a483894421fc4c5e481e"
+        }
+      ],
+      "replacement": null,
+      "replacement_note": "The payment behavior was removed, not replaced. Merged C3 and C4-A are removal evidence, not revalidation of the old assertions."
+    }
+  ],
+  "reviewed_not_retired": [
+    {
+      "claim_id": "claim-2026-09-23-064",
+      "claim_path": ".workflow/proofs/claim-2026-09-23-064.yml",
+      "claim_sha256": "1fdfa820b8c0e2d2a45a76d91b3c47f2a44c29de14091806a2a5660683dc57b9",
+      "original_git_sha": "6952a4bba793d0f57fa875cdf1374f9de4acaba1",
+      "outcome": "deferred",
+      "scope": "Signed append-only ledger and verification CLI",
+      "reason": "C2/M1 deliberately reverses mutation refusal and drops fee/signature columns; C3 removes verifier.",
+      "surviving_obligations": [
+        "exact generated token/USD values",
+        "session FK",
+        "RLS/event identity"
+      ]
+    },
+    {
+      "claim_id": "claim-2026-09-23-065",
+      "claim_path": ".workflow/proofs/claim-2026-09-23-065.yml",
+      "claim_sha256": "97c0552ac84718bde37b64cbf641aa1692cc101f6ab3f8804ed6ec046374dd7a",
+      "original_git_sha": "3e36852e650c5ff9755e9606930a932e28b12f33",
+      "outcome": "deferred",
+      "scope": "Invoice and developer-summary complete reads",
+      "reason": "Invoice CLI is removed but complete usage-summary pagination remains required.",
+      "surviving_obligations": [
+        "usage pagination; missing/changing counts and stalled-page refusal",
+        "developer-summary exact totals"
+      ]
+    },
+    {
+      "claim_id": "claim-2026-09-24-068",
+      "claim_path": ".workflow/proofs/claim-2026-09-24-068.yml",
+      "claim_sha256": "1093bb6daae500ea8a9ea2aef51f85aac6009f88a0e26f6d2758fca309abb103",
+      "original_git_sha": "4cab6103e568c47619535d74e561e1d7598b7009",
+      "outcome": "deferred",
+      "scope": "Old erasure design and financial blockers",
+      "reason": "C4-A moves the spec/supersedes financial premise; C4-B implements one limited class. This design-at-time record must not become a current endpoint absence claim.",
+      "surviving_obligations": [
+        "complete inventory",
+        "truthful wider coverage/performance limits"
+      ]
+    },
+    {
+      "claim_id": "claim-2026-09-24-092",
+      "claim_path": ".workflow/proofs/claim-2026-09-24-092.yml",
+      "claim_sha256": "abdcfb1e394a0c707449837f2ebf2f2cb6029bdbe867dd3c6533f98e13bbb956",
+      "original_git_sha": "c9d63cffea2f11c1d4160f16e37cfa2a73e293b8",
+      "outcome": "deferred",
+      "scope": "Organization-level billing reads/project-key refusal",
+      "reason": "Old route covered payment and retained usage surfaces.",
+      "surviving_obligations": [
+        "project-bound403 before org usage reads",
+        "unbound organization usage access"
+      ]
+    },
+    {
+      "claim_id": "claim-2026-09-24-095",
+      "claim_path": ".workflow/proofs/claim-2026-09-24-095.yml",
+      "claim_sha256": "02c538e8ddc6e2efb0444bc78c9ffa01f60454cef617e1a485b4243273056ed0",
+      "original_git_sha": "3e0cbd3a8dce08de1ddd63de551848cca45d45e2",
+      "outcome": "deferred",
+      "scope": "Signed append-only replay identity",
+      "reason": "Signature/immutability retire; authenticated replay identity and mismatch refusal survive.",
+      "surviving_obligations": [
+        "server UUID",
+        "original UTC bucket",
+        "duplicate-event payload identity",
+        "pinned arithmetic"
+      ]
+    },
+    {
+      "claim_id": "claim-2026-09-24-096",
+      "claim_path": ".workflow/proofs/claim-2026-09-24-096.yml",
+      "claim_sha256": "3f68c99a5b9bd69229b3ab594bcbbe5f528a76c9da9e8caf65ae64f4b9b491e4",
+      "original_git_sha": "0d75f22d305dbf680037e8ba97ad86580c9feea5",
+      "outcome": "deferred",
+      "scope": "Durable outbox plus signed event",
+      "reason": "Only signed persistence is superseded; durable journal/drain/replay are retained.",
+      "surviving_obligations": [
+        "private fsynced outbox before successful completion",
+        "stable event identity",
+        "original day",
+        "pinned price",
+        "bounded replay"
+      ]
+    },
+    {
+      "claim_id": "claim-2026-09-24-097",
+      "claim_path": ".workflow/proofs/claim-2026-09-24-097.yml",
+      "claim_sha256": "368c1f638a2100d7be808e726e875fd139e726d2a7e626556ebf02b486e7f49e",
+      "original_git_sha": "4fc4f7f145920f708b5d7ca8343ca98213054229",
+      "outcome": "deferred",
+      "scope": "Commercial startup/billing settings",
+      "reason": "Signing-secret startup obligation retires; database credentials/token measurement/journal remain fail closed.",
+      "surviving_obligations": [
+        "required database credentials",
+        "measurable usage",
+        "explicit billing_unavailable error",
+        "journal failure refusal"
+      ]
+    },
+    {
+      "claim_id": "claim-2026-09-25-208",
+      "claim_path": ".workflow/proofs/claim-2026-09-25-208.yml",
+      "claim_sha256": "eb7bde917b2c677894ec23cd6df4cea44e697ffc19d8888f1d3ecc0ac52b790c",
+      "original_git_sha": "59791ec25c50d124501a22e0eda695e8fd765558",
+      "outcome": "deferred",
+      "scope": "Backup recovery with invoice claims and inactive keys",
+      "reason": "Invoice export/reinsert retires; legacy rows are validated/skipped and every other recovery duty remains. Script is commit-isolated but links current stratum/node_modules and invokes mutable DB state.",
+      "surviving_obligations": [
+        "inactive restored API keys",
+        "graph/source IDs",
+        "legacy skip/report",
+        "application recovery"
+      ]
+    },
+    {
+      "claim_id": "claim-2026-09-24-069",
+      "claim_path": ".workflow/proofs/claim-2026-09-24-069.yml",
+      "claim_sha256": "e7950ab1d25713859abd09e590d9707c600c755b41d22c5d34b964fec17af267",
+      "original_git_sha": "4bef8c571ba20b8ebece74178e3a171295407841",
+      "outcome": "retained",
+      "scope": "scoped erasure inventory and service-only classification",
+      "reason": "Payment/naming terms or a relocated path do not retire the main nonpayment obligation. The old exact wire/fixture may need a historical execution adapter; not a reason to claim the surviving behavior was removed.",
+      "surviving_obligations": [
+        "scoped erasure inventory and service-only classification"
+      ]
+    },
+    {
+      "claim_id": "claim-2026-09-24-070",
+      "claim_path": ".workflow/proofs/claim-2026-09-24-070.yml",
+      "claim_sha256": "3adb8a5ef19182dd5c68bdf60a8f2fe9301a32dc1196a95ea0d13c2427a2ab90",
+      "original_git_sha": "6565ef7f92d9ab3e53686de89d8de6bf0afdfd31",
+      "outcome": "retained",
+      "scope": "graph provenance/shared links",
+      "reason": "Payment/naming terms or a relocated path do not retire the main nonpayment obligation. The old exact wire/fixture may need a historical execution adapter; not a reason to claim the surviving behavior was removed.",
+      "surviving_obligations": [
+        "graph provenance/shared links"
+      ]
+    },
+    {
+      "claim_id": "claim-2026-09-24-071",
+      "claim_path": ".workflow/proofs/claim-2026-09-24-071.yml",
+      "claim_sha256": "38bf1708ab8e94df795b6d24c0b5af967ba1c55671597eeabb1c8d7c4ac9d6fd",
+      "original_git_sha": "41b7d90c6e20e5f3f39960ca8058b56f8b7b78a9",
+      "outcome": "retained",
+      "scope": "source-link recovery fidelity",
+      "reason": "Payment/naming terms or a relocated path do not retire the main nonpayment obligation. The old exact wire/fixture may need a historical execution adapter; not a reason to claim the surviving behavior was removed.",
+      "surviving_obligations": [
+        "source-link recovery fidelity"
+      ]
+    },
+    {
+      "claim_id": "claim-2026-09-24-093",
+      "claim_path": ".workflow/proofs/claim-2026-09-24-093.yml",
+      "claim_sha256": "a1accb669686cd4a7573f41dceae1bb75c764e7ab1b0d23af645c1b752f3da63",
+      "original_git_sha": "9758b9c574e4d2bb9e160a6c0bd4b2546ac51b1f",
+      "outcome": "retained",
+      "scope": "authenticated project usage provenance",
+      "reason": "Payment/naming terms or a relocated path do not retire the main nonpayment obligation. The old exact wire/fixture may need a historical execution adapter; not a reason to claim the surviving behavior was removed.",
+      "surviving_obligations": [
+        "authenticated project usage provenance"
+      ]
+    },
+    {
+      "claim_id": "claim-2026-09-24-094",
+      "claim_path": ".workflow/proofs/claim-2026-09-24-094.yml",
+      "claim_sha256": "39de840708db76146cafbed3a66a4ce124f9f8701a78af8be27428ef30220cfb",
+      "original_git_sha": "ac297f20b2fed83a047bbaeb946e8a59d6b4e26e",
+      "outcome": "retained",
+      "scope": "usage write tracking/drain",
+      "reason": "Payment/naming terms or a relocated path do not retire the main nonpayment obligation. The old exact wire/fixture may need a historical execution adapter; not a reason to claim the surviving behavior was removed.",
+      "surviving_obligations": [
+        "usage write tracking/drain"
+      ]
+    },
+    {
+      "claim_id": "claim-2026-09-24-098",
+      "claim_path": ".workflow/proofs/claim-2026-09-24-098.yml",
+      "claim_sha256": "27ba9646b55531645f9ea024058e3d9e2682e5a51d689b25009f529d9b047f6c",
+      "original_git_sha": "223ddef10f7f0221155d8daaaebf30c86c3dbf7b",
+      "outcome": "retained",
+      "scope": "trusted conversation identity/shadow boundary",
+      "reason": "Payment/naming terms or a relocated path do not retire the main nonpayment obligation. The old exact wire/fixture may need a historical execution adapter; not a reason to claim the surviving behavior was removed.",
+      "surviving_obligations": [
+        "trusted conversation identity/shadow boundary"
+      ]
+    },
+    {
+      "claim_id": "claim-2026-09-24-106",
+      "claim_path": ".workflow/proofs/claim-2026-09-24-106.yml",
+      "claim_sha256": "9195846e830a57f99591f46f672f280ece01dcdcd99b4f03cb601436837c8389",
+      "original_git_sha": "edb58ce5ba4a68557564a29784ebc78d64b47755",
+      "outcome": "retained",
+      "scope": "read-only authenticated erasure preflight",
+      "reason": "Payment/naming terms or a relocated path do not retire the main nonpayment obligation. The old exact wire/fixture may need a historical execution adapter; not a reason to claim the surviving behavior was removed.",
+      "surviving_obligations": [
+        "read-only authenticated erasure preflight"
+      ]
+    },
+    {
+      "claim_id": "claim-2026-09-25-157",
+      "claim_path": ".workflow/proofs/claim-2026-09-25-157.yml",
+      "claim_sha256": "6c37fe05d2ecf2c08ea3be0813a97f399efbf33201b80c08616ff24b2fa42add",
+      "original_git_sha": "ba6f525bdc043b40f0a97880366707c20beca82e",
+      "outcome": "retained",
+      "scope": "historical integration fixes and source-bound test evidence",
+      "reason": "Payment/naming terms or a relocated path do not retire the main nonpayment obligation. The old exact wire/fixture may need a historical execution adapter; not a reason to claim the surviving behavior was removed.",
+      "surviving_obligations": [
+        "historical integration fixes and source-bound test evidence"
+      ]
+    },
+    {
+      "claim_id": "claim-2026-09-27-213",
+      "claim_path": ".workflow/proofs/claim-2026-09-27-213.yml",
+      "claim_sha256": "1a6209d047fc0197313df08063660395511be017ff8f9dc324abe6d8a9b01c1a",
+      "original_git_sha": "10855fc73ebeec906dd9ec1ce26e005034ce7b02",
+      "outcome": "retained",
+      "scope": "billing-gate retirement with deploy/halt preservation",
+      "reason": "Payment/naming terms or a relocated path do not retire the main nonpayment obligation. The old exact wire/fixture may need a historical execution adapter; not a reason to claim the surviving behavior was removed.",
+      "surviving_obligations": [
+        "billing-gate retirement with deploy/halt preservation"
+      ]
+    },
+    {
+      "claim_id": "claim-2026-09-27-226",
+      "claim_path": ".workflow/proofs/claim-2026-09-27-226.yml",
+      "claim_sha256": "3bc32a749424d0d5ed762514c25ef4df7e48dd1f837f2390211a3d0bc36b6618",
+      "original_git_sha": "bd0be83da7b331e93b3a74ec9f4ddd1b73d2c089",
+      "outcome": "retained",
+      "scope": "merged runtime directory move",
+      "reason": "Payment/naming terms or a relocated path do not retire the main nonpayment obligation. The old exact wire/fixture may need a historical execution adapter; not a reason to claim the surviving behavior was removed.",
+      "surviving_obligations": [
+        "merged runtime directory move"
+      ]
+    },
+    {
+      "claim_id": "claim-2026-09-14-011",
+      "claim_path": ".workflow/proofs/claim-2026-09-14-011.yml",
+      "claim_sha256": "949a84891b38efbad402f154ceeab35ed0f7e8539c34c2f22aaaab4fac5b49f6",
+      "original_git_sha": "408ee2facb461e76997510dcde7d3505edf75637",
+      "outcome": "deferred",
+      "scope": "Gitleaks treatment of synthetic Stripe test fixture",
+      "reason": "C3 removes verify-stripe fixture, but scanner exclusion precision and negative controls are security duties; original caveats also describe uncommitted binding.",
+      "surviving_obligations": [
+        "named-file secret detection",
+        "precise exclusions and negative controls",
+        "historical review evidence"
+      ]
+    },
+    {
+      "claim_id": "claim-2026-09-14-012",
+      "claim_path": ".workflow/proofs/claim-2026-09-14-012.yml",
+      "claim_sha256": "762e2643f935c6a2d267f692008a3a0a85b8cbaf4e9f4182d69f337f9fa08e4f",
+      "original_git_sha": "408ee2facb461e76997510dcde7d3505edf75637",
+      "outcome": "deferred",
+      "scope": "Gitleaks treatment of synthetic Stripe test fixture",
+      "reason": "C3 removes verify-stripe fixture, but scanner exclusion precision and negative controls are security duties; original caveats also describe uncommitted binding.",
+      "surviving_obligations": [
+        "named-file secret detection",
+        "precise exclusions and negative controls",
+        "historical review evidence"
+      ]
+    },
+    {
+      "claim_id": "claim-2026-09-14-013",
+      "claim_path": ".workflow/proofs/claim-2026-09-14-013.yml",
+      "claim_sha256": "c238ce3a6a44a19c3ef71d2d17bad1b55ddac11ba7b4e146885d17ce81e194cd",
+      "original_git_sha": "408ee2facb461e76997510dcde7d3505edf75637",
+      "outcome": "deferred",
+      "scope": "Gitleaks treatment of synthetic Stripe test fixture",
+      "reason": "C3 removes verify-stripe fixture, but scanner exclusion precision and negative controls are security duties; original caveats also describe uncommitted binding.",
+      "surviving_obligations": [
+        "named-file secret detection",
+        "precise exclusions and negative controls",
+        "historical review evidence"
+      ]
+    },
+    {
+      "claim_id": "claim-2026-09-14-014",
+      "claim_path": ".workflow/proofs/claim-2026-09-14-014.yml",
+      "claim_sha256": "1469282d4cd7cc73be57e0d210bf6abe72cf4560fd854bc7668ffe9614853b53",
+      "original_git_sha": "408ee2facb461e76997510dcde7d3505edf75637",
+      "outcome": "deferred",
+      "scope": "Gitleaks treatment of synthetic Stripe test fixture",
+      "reason": "C3 removes verify-stripe fixture, but scanner exclusion precision and negative controls are security duties; original caveats also describe uncommitted binding.",
+      "surviving_obligations": [
+        "named-file secret detection",
+        "precise exclusions and negative controls",
+        "historical review evidence"
+      ]
+    },
+    {
+      "claim_id": "claim-2026-09-29-242",
+      "claim_path": ".workflow/proofs/claim-2026-09-29-242.yml",
+      "claim_sha256": "0af932fc09e0cb09589c9abf0af7181cd9dcb9c030430076c0df8202a9044fc6",
+      "original_git_sha": "3ac20df17ebfc8e7f1614c23a1bbeecbaff7084e",
+      "outcome": "deferred",
+      "scope": "unfinished earlier C1 task proof",
+      "reason": "This pre-C1 checkpoint proof names an earlier base and tests a live/checkpoint candidate; merged C1 evidence exists. It is outside the explicit PB-105 twelve and must not be retired solely by analogy.",
+      "surviving_obligations": [
+        "payment removal acceptance",
+        "retained nonpayment usage/cap/project behavior"
+      ]
+    },
+    {
+      "claim_id": "claim-2026-09-29-243",
+      "claim_path": ".workflow/proofs/claim-2026-09-29-243.yml",
+      "claim_sha256": "0345dfa72e571cddcf9e95a22706e054b09bb844842e6ef685e255c2a572a6cd",
+      "original_git_sha": "3ac20df17ebfc8e7f1614c23a1bbeecbaff7084e",
+      "outcome": "deferred",
+      "scope": "unfinished earlier C1 task proof",
+      "reason": "This pre-C1 checkpoint proof names an earlier base and tests a live/checkpoint candidate; merged C1 evidence exists. It is outside the explicit PB-105 twelve and must not be retired solely by analogy.",
+      "surviving_obligations": [
+        "payment removal acceptance",
+        "retained nonpayment usage/cap/project behavior"
+      ]
+    },
+    {
+      "claim_id": "claim-2026-09-29-244",
+      "claim_path": ".workflow/proofs/claim-2026-09-29-244.yml",
+      "claim_sha256": "90ec1774df7987c3834c4eec4a106f2495d75005d839b3cc1e5388c0349b1340",
+      "original_git_sha": "bd0be83da7b331e93b3a74ec9f4ddd1b73d2c089",
+      "outcome": "deferred",
+      "scope": "unfinished earlier C1 task proof",
+      "reason": "This pre-C1 checkpoint proof names an earlier base and tests a live/checkpoint candidate; merged C1 evidence exists. It is outside the explicit PB-105 twelve and must not be retired solely by analogy.",
+      "surviving_obligations": [
+        "payment removal acceptance",
+        "retained nonpayment usage/cap/project behavior"
+      ]
+    },
+    {
+      "claim_id": "claim-2026-09-29-245",
+      "claim_path": ".workflow/proofs/claim-2026-09-29-245.yml",
+      "claim_sha256": "8075e6b275be1178941834bbaaaebc9ed5dba30620acbfadd710dd856187a07b",
+      "original_git_sha": "bd0be83da7b331e93b3a74ec9f4ddd1b73d2c089",
+      "outcome": "deferred",
+      "scope": "unfinished earlier C1 task proof",
+      "reason": "This pre-C1 checkpoint proof names an earlier base and tests a live/checkpoint candidate; merged C1 evidence exists. It is outside the explicit PB-105 twelve and must not be retired solely by analogy.",
+      "surviving_obligations": [
+        "payment removal acceptance",
+        "retained nonpayment usage/cap/project behavior"
+      ]
+    },
+    {
+      "claim_id": "claim-2026-09-29-246",
+      "claim_path": ".workflow/proofs/claim-2026-09-29-246.yml",
+      "claim_sha256": "360dab8aaaaf6b679b12173b4cd48afc948c9a90aace0d1824ba2c5f5e85e2d0",
+      "original_git_sha": "3ac20df17ebfc8e7f1614c23a1bbeecbaff7084e",
+      "outcome": "deferred",
+      "scope": "unfinished earlier C1 task proof",
+      "reason": "This pre-C1 checkpoint proof names an earlier base and tests a live/checkpoint candidate; merged C1 evidence exists. It is outside the explicit PB-105 twelve and must not be retired solely by analogy.",
+      "surviving_obligations": [
+        "payment removal acceptance",
+        "retained nonpayment usage/cap/project behavior"
+      ]
+    },
+    {
+      "claim_id": "claim-2026-09-30-247",
+      "claim_path": ".workflow/proofs/claim-2026-09-30-247.yml",
+      "claim_sha256": "f31619e8413fa4373293fda3a90f8dd4ef36d32d1ba333c8afc6cc1d247622ce",
+      "original_git_sha": "3ac20df17ebfc8e7f1614c23a1bbeecbaff7084e",
+      "outcome": "deferred",
+      "scope": "unfinished earlier C1 task proof",
+      "reason": "This pre-C1 checkpoint proof names an earlier base and tests a live/checkpoint candidate; merged C1 evidence exists. It is outside the explicit PB-105 twelve and must not be retired solely by analogy.",
+      "surviving_obligations": [
+        "payment removal acceptance",
+        "retained nonpayment usage/cap/project behavior"
+      ]
+    }
+  ]
+}
