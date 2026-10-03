@@ -20,6 +20,10 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as crypto from 'node:crypto';
 import { execSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import { parseDocument, isAlias, isCollection, isMap, isScalar } from 'yaml';
+import Ajv2020, { type AnySchema, type ValidateFunction } from 'ajv/dist/2020.js';
+import addFormats from 'ajv-formats';
 
 interface ClaimProof {
   git_sha: string;
@@ -57,134 +61,140 @@ interface ValidationResult {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────
 
-function parseYamlLite(text: string): ClaimDoc {
-  // Minimal YAML parser sufficient for our claim format.
-  // For production, swap to `yaml` package. We use a lite parser to avoid
-  // a dependency just for validation.
-  const lines = text.split('\n');
-  const obj: Record<string, unknown> = {};
-  const stack: Array<{ obj: Record<string, unknown>; indent: number }> = [
-    { obj, indent: -1 },
-  ];
+const INPUT_LIMIT = 262144;
+type InputRole = 'claim' | 'schema';
 
-  for (let i = 0; i < lines.length; i++) {
-    const raw = lines[i];
-    if (!raw.trim() || raw.trim().startsWith('#')) continue;
-
-    const indent = raw.length - raw.trimStart().length;
-    const line = raw.trim();
-
-    // Pop the stack until we find the right parent indent
-    while (stack.length > 1 && stack[stack.length - 1].indent >= indent) {
-      stack.pop();
-    }
-    const parent = stack[stack.length - 1].obj;
-
-    // List item
-    if (line.startsWith('- ')) {
-      // Find the most recent array context
-      const value = line.slice(2).trim();
-      const parentKeys = Object.keys(parent);
-      const lastKey = parentKeys[parentKeys.length - 1];
-      if (lastKey && Array.isArray(parent[lastKey])) {
-        (parent[lastKey] as unknown[]).push(stripQuotes(value));
-      }
-      continue;
-    }
-
-    // key: value
-    const colonIdx = line.indexOf(':');
-    if (colonIdx === -1) continue;
-    const key = line.slice(0, colonIdx).trim();
-    const rest = line.slice(colonIdx + 1).trim();
-
-    if (rest === '') {
-      // Nested object or list following
-      const next = lines.slice(i + 1).find(l => l.trim());
-      if (next && next.trim().startsWith('- ')) {
-        parent[key] = [];
-      } else {
-        const child: Record<string, unknown> = {};
-        parent[key] = child;
-        stack.push({ obj: child, indent });
-      }
-    } else if (rest.startsWith('|') || rest.startsWith('>')) {
-      // Block scalar (multi-line string)
-      const folded = rest.startsWith('>');
-      const indentNext = lines[i + 1] ? lines[i + 1].length - lines[i + 1].trimStart().length : 0;
-      const collected: string[] = [];
-      let j = i + 1;
-      while (j < lines.length) {
-        const l = lines[j];
-        if (!l.trim()) {
-          if (folded) collected.push('');
-          j++;
-          continue;
-        }
-        const li = l.length - l.trimStart().length;
-        if (li < indentNext) break;
-        collected.push(l.slice(indentNext));
-        j++;
-      }
-      parent[key] = collected.join(folded ? ' ' : '\n').trim();
-      i = j - 1;
-    } else {
-      parent[key] = parseScalar(rest);
-    }
-  }
-
-  return obj as unknown as ClaimDoc;
+class InputFailure extends Error {
+  constructor(role: InputRole, category: string) { super(`${role}: ${category}`); }
 }
 
-function parseScalar(s: string): string | number | boolean {
-  const t = s.trim();
-  if (t === 'true') return true;
-  if (t === 'false') return false;
-  if (/^-?\d+$/.test(t)) return parseInt(t, 10);
-  if (/^-?\d+\.\d+$/.test(t)) return parseFloat(t);
-  return stripQuotes(t);
+function readInput(filePath: string, root: string, role: InputRole): string {
+  let bytes: Buffer;
+  let fd: number | undefined;
+  try {
+    const file = path.resolve(root, filePath);
+    const relative = path.relative(root, file);
+    if (!relative || relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) throw new Error();
+    let cursor = root;
+    for (const part of relative.split(path.sep)) {
+      cursor = path.join(cursor, part);
+      const entry = fs.lstatSync(cursor);
+      if (entry.isSymbolicLink() || (cursor !== file && !entry.isDirectory())) throw new Error();
+    }
+    const before = fs.lstatSync(file, { bigint: true });
+    if (!before.isFile() || before.size > BigInt(INPUT_LIMIT)) throw new Error();
+    fd = fs.openSync(file, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK);
+    const opened = fs.fstatSync(fd, { bigint: true });
+    const same = (stat: fs.BigIntStats) => stat.isFile() &&
+      stat.dev === before.dev && stat.ino === before.ino && stat.size === before.size &&
+      stat.mtimeNs === before.mtimeNs && stat.ctimeNs === before.ctimeNs;
+    if (!same(opened)) throw new Error();
+    const buffer = Buffer.alloc(INPUT_LIMIT + 1);
+    let used = 0;
+    while (used < buffer.length) {
+      const count = fs.readSync(fd, buffer, used, buffer.length - used, used);
+      if (count === 0) break;
+      used += count;
+    }
+    if (used > INPUT_LIMIT || BigInt(used) !== opened.size || !same(fs.fstatSync(fd, { bigint: true })) ||
+        !same(fs.lstatSync(file, { bigint: true })) || fs.realpathSync(file) !== file) throw new Error();
+    bytes = buffer.subarray(0, used);
+  } catch {
+    throw new InputFailure(role, 'input unavailable or outside size/path policy');
+  } finally {
+    if (fd !== undefined) fs.closeSync(fd);
+  }
+  try { return new TextDecoder('utf-8', { fatal: true }).decode(bytes); }
+  catch { throw new InputFailure(role, 'invalid UTF-8'); }
 }
 
-function stripQuotes(s: string): string {
-  if ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'"))) {
-    return s.slice(1, -1);
+const CORE_TAGS = new Set(['str', 'null', 'bool', 'int', 'float', 'map', 'seq'].map(t => `tag:yaml.org,2002:${t}`));
+
+function inspectYaml(node: unknown, depth = 0): void {
+  if (node === null) return;
+  if (isAlias(node) || (!isScalar(node) && !isCollection(node))) throw new Error();
+  if (node.anchor || (node.tag && !CORE_TAGS.has(node.tag))) throw new Error();
+  if (isScalar(node)) {
+    const value = node.value;
+    if (value !== null && typeof value !== 'string' && typeof value !== 'boolean' &&
+        !(typeof value === 'number' && Number.isFinite(value))) throw new Error();
+    return;
   }
-  return s;
+  if (++depth > 64) throw new Error();
+  if (isMap(node)) {
+    for (const pair of node.items) {
+      if (!isScalar(pair.key) || typeof pair.key.value !== 'string') throw new Error();
+      inspectYaml(pair.key, depth);
+      inspectYaml(pair.value, depth);
+    }
+  } else {
+    for (const item of node.items) inspectYaml(item, depth);
+  }
+}
+
+function parseInput(text: string, role: InputRole): unknown {
+  try {
+    const doc = parseDocument(text, {
+      version: '1.2', schema: 'core', strict: true, uniqueKeys: true,
+      resolveKnownTags: false, merge: false, prettyErrors: false,
+      // 'silent' suppresses parseDocument's MULTIPLE_DOCS error in yaml2.
+      logLevel: 'error',
+    });
+    if (doc.errors.length || doc.warnings.length || doc.contents === null || doc.directives.yaml.version !== '1.2') throw new Error();
+    inspectYaml(doc.contents);
+    return doc.toJS({ maxAliasCount: 0, mapAsMap: false });
+  } catch { throw new InputFailure(role, 'invalid YAML or unsupported data shape'); }
+}
+
+// Only schema positions are traversed; annotation data may contain inert $ref keys.
+function inspectSchema(schema: unknown): void {
+  if (!schema || typeof schema !== 'object' || Array.isArray(schema)) return;
+  const s = schema as Record<string, unknown>;
+  if (s.$async === true) throw new Error();
+  for (const key of ['$ref', '$dynamicRef']) {
+    if (key in s && (typeof s[key] !== 'string' || !s[key].startsWith('#'))) throw new Error();
+  }
+  for (const key of ['$defs', 'definitions', 'properties', 'patternProperties', 'dependentSchemas', 'dependencies']) {
+    const map = s[key];
+    if (map && typeof map === 'object' && !Array.isArray(map)) Object.values(map).forEach(inspectSchema);
+  }
+  for (const key of ['allOf', 'anyOf', 'oneOf', 'prefixItems']) {
+    if (Array.isArray(s[key])) s[key].forEach(inspectSchema);
+  }
+  for (const key of ['items', 'contains', 'not', 'if', 'then', 'else', 'additionalProperties',
+    'unevaluatedProperties', 'propertyNames', 'unevaluatedItems', 'contentSchema']) {
+    inspectSchema(s[key]);
+  }
+}
+
+function loadSchema(): ValidateFunction<ClaimDoc> {
+  let schema: unknown;
+  try {
+    const directory = path.dirname(fileURLToPath(import.meta.url));
+    const packageRoot = fs.realpathSync(path.resolve(directory, '..'));
+    schema = parseInput(readInput(path.join(directory, 'claim-schema.yml'), packageRoot, 'schema'), 'schema');
+  } catch (error) {
+    throw error instanceof InputFailure ? error : new InputFailure('schema', 'input unavailable');
+  }
+  try {
+    inspectSchema(schema);
+    const ajv = new Ajv2020({
+      strict: true, allErrors: true, validateSchema: true, validateFormats: true,
+      coerceTypes: false, useDefaults: false, removeAdditional: false,
+      verbose: false, messages: false, logger: false, ownProperties: true,
+    });
+    addFormats(ajv, { formats: ['date-time'], mode: 'full', keywords: false });
+    const validate = ajv.compile<ClaimDoc>(schema as AnySchema);
+    if (validate.$async) throw new Error();
+    return validate as ValidateFunction<ClaimDoc>;
+  } catch { throw new InputFailure('schema', 'compilation or reference policy failed'); }
+}
+
+function failedInput(message: string): ValidationResult {
+  return { claim_id: '[invalid claim]', ok: false, failures: [message] };
 }
 
 // ─── Validators ──────────────────────────────────────────────────────────
-
-function validateSchema(doc: ClaimDoc): string[] {
-  const failures: string[] = [];
-  const c = doc?.claim;
-  if (!c) return ['Missing top-level `claim` key'];
-
-  if (!c.id || !/^claim-\d{4}-\d{2}-\d{2}-\d{3}$/.test(c.id))
-    failures.push(`Invalid id: ${c.id}`);
-  if (!c.type) failures.push('Missing type');
-  if (!c.spec_ref || !c.spec_ref.startsWith('specs/'))
-    failures.push(`Invalid spec_ref: ${c.spec_ref}`);
-  if (!c.description || c.description.length < 10)
-    failures.push('Description too short');
-  if (!c.proof) failures.push('Missing proof');
-  else {
-    if (!c.proof.git_sha || !/^[0-9a-f]{7,40}$/.test(c.proof.git_sha))
-      failures.push(`Invalid git_sha: ${c.proof.git_sha}`);
-    if (!c.proof.files_changed || !Array.isArray(c.proof.files_changed) || c.proof.files_changed.length === 0)
-      failures.push('Missing or empty files_changed');
-    if (!c.proof.test_command) failures.push('Missing test_command');
-    if (typeof c.proof.test_exit_code !== 'number')
-      failures.push('Missing test_exit_code');
-    if (!c.proof.test_output_path?.startsWith('.workflow/proofs/'))
-      failures.push(`Invalid test_output_path: ${c.proof.test_output_path}`);
-  }
-  if (!['high', 'medium', 'low'].includes(c.confidence))
-    failures.push(`Invalid confidence: ${c.confidence}`);
-  if (!c.reproducibility_hash?.startsWith('sha256:'))
-    failures.push(`Invalid reproducibility_hash: ${c.reproducibility_hash}`);
-
-  return failures;
-}
 
 function validateGitSha(sha: string): string[] {
   try {
@@ -242,15 +252,21 @@ function recomputeReproducibilityHash(claim: Claim): string {
 
 // ─── Main ────────────────────────────────────────────────────────────────
 
-function validateClaim(filePath: string, options: { rerun: boolean }): ValidationResult {
-  const text = fs.readFileSync(filePath, 'utf-8');
-  const doc = parseYamlLite(text);
-  const claim = doc?.claim;
-  const id = claim?.id ?? path.basename(filePath);
+function validateClaim(filePath: string, options: { rerun: boolean }, validate: ValidateFunction<ClaimDoc>): ValidationResult {
+  let doc: unknown;
+  try {
+    const root = fs.realpathSync(process.cwd());
+    doc = parseInput(readInput(filePath, root, 'claim'), 'claim');
+    if (validate(doc) !== true) {
+      return { claim_id: '[invalid claim]', ok: false, failures: (validate.errors ?? []).map(error =>
+        `claim schema ${JSON.stringify(error.keyword)} at ${JSON.stringify(error.schemaPath)}`) };
+    }
+  } catch (error) {
+    return failedInput(error instanceof InputFailure ? error.message : 'claim: validation failed');
+  }
+  const claim = (doc as ClaimDoc).claim;
+  const id = claim.id;
   const failures: string[] = [];
-
-  failures.push(...validateSchema(doc));
-  if (failures.length > 0) return { claim_id: id, ok: false, failures };
 
   failures.push(...validateGitSha(claim.proof.git_sha));
   failures.push(...validateFilesInCommit(claim.proof.git_sha, claim.proof.files_changed));
@@ -291,7 +307,11 @@ function main() {
     process.exit(0);
   }
 
-  const results = files.map(f => validateClaim(f, { rerun }));
+  let validate: ValidateFunction<ClaimDoc> | undefined;
+  let schemaError = 'schema: compilation failed';
+  try { validate = loadSchema(); }
+  catch (error) { if (error instanceof InputFailure) schemaError = error.message; }
+  const results = files.map(f => validate ? validateClaim(f, { rerun }, validate) : failedInput(schemaError));
   let anyFailed = false;
   for (const r of results) {
     if (r.ok) {

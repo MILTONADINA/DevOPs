@@ -105,6 +105,40 @@ reconciliation. Current Workflow schemas and `/sprint` integration are unchanged
 legacy inputs without the required nested declarations are refused. M2 reruns,
 scan measurement and M6 status/history derivation remain unfinished work.
 
+### Claim schema loading (MR10-A)
+
+The [validator](../verification/claim-validator.ts) loads its packaged sibling
+[schema](../verification/claim-schema.yml), under the
+[schema-loading spec](../specs/verification/claim-schema-loading.md).
+For policy substitution and cross-project disclosure, a caller's claim cannot
+select the schema: schema reads stay within the module's package root, while
+claim reads stay within the canonical calling project. Regular-file checks
+reject symlink components, and descriptor checks reject observed replacement
+or growth. These are finite local checks, not an atomic filesystem sandbox.
+
+For resource exhaustion and ambiguous input, each file is limited to256 KiB
+with a bounded read and strict UTF-8 decoding. YAML1.2 core parsing rejects
+duplicate keys, anchors/aliases, nonstandard tags, non-JSON values and nesting
+above64 collections. Offline draft2020-12 compilation refuses external
+references and asynchronous validation; validation does not insert defaults,
+coerce types or remove properties. Only the declared `date-time` format is
+registered. The fixed packaged schema is policy code, not an authenticated
+authority or a sandbox for arbitrary schema extensions.
+
+For diagnostic disclosure and log tampering, new input/parser/compiler
+failures use fixed role/category messages and a placeholder ID. Schema failures
+print only JSON-escaped schema paths and keywords, without source excerpts,
+input property names, command text or environment values. The existing later
+Git/hash/replay diagnostics retain their older behavior.
+
+Explicit `--no-rerun` acceptance does not execute a claim's command or write a
+`.rerun` file. Default replay still executes raw claim-controlled shell text
+with inherited privileges; this slice does not harden or authorize it.
+Existing Git routing, commit reachability, changed-file semantics, empty-set
+success and uncommitted proof selection also remain unchanged. Schema-valid
+declarations and a recomputed string hash do not independently prove GREEN,
+RED, scan results or cycle readiness. The rest of MR10 remains open.
+
 ### Tier-3 LLM-orchestrated pentest
 
 Beyond the static tier-3 scanners, DevOPs ships configurations for four
