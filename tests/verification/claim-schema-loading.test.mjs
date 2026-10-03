@@ -48,6 +48,10 @@ function fixture() {
   mkdirSync(launcherTemp);
   writeFileSync(path.join(bin, 'package.json'), '{"type":"commonjs"}\n');
   copyFileSync(SOURCE, validator); copyFileSync(SCHEMA, schema);
+  for (const name of ['claim-input.ts', 'committed-claims.ts', 'committed-git.ts']) {
+    const companion = path.join(ROOT, 'verification', name);
+    if (existsSync(companion)) copyFileSync(companion, path.join(pkg, 'verification', name));
+  }
   writeFileSync(path.join(pkg, 'package.json'), '{"type":"module"}\n');
   // The owned copy resolves only the checkout's locked modules, before and after installation.
   symlinkSync(path.join(ROOT, 'node_modules'), path.join(pkg, 'node_modules'), 'dir');
@@ -154,7 +158,7 @@ test('claim commands stay inert and diagnostic failures cannot expose unvalidate
 for (const present of [false, true]) test(`empty discovery remains compatible, proof directory present=${present}`, () => withFixture((f) => {
   rmSync(f.claim); rmSync(f.schema);
   if (!present) rmSync(path.dirname(f.claim), { recursive: true });
-  const result = f.invoke(['--all', '--no-rerun']);
+  const result = f.invoke(['--no-rerun']);
   assert.equal(result.status, 0, result.output); assert.match(result.stdout, /No claim files to validate\./); assert.deepEqual(result.calls, []);
 }));
 
