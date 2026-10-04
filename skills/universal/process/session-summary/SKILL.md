@@ -105,7 +105,9 @@ The next agent should read it first.
 
 Before marking the session "complete":
 
-1. Run `claim-validator` on all proofs. Confirm 100% pass.
+1. Run `claim-validator` with `--no-rerun` for each explicitly selected claim
+   from this session. Confirm every metadata check passes and retain separately
+   observed command/exit evidence; do not discover or replay historical claims.
 2. Check blockers file. If any are unresolved AND the session changed code that
    touches them, flag it.
 3. Recompute the cost from `.workflow/state/budget-ledger.jsonl` if it exists;

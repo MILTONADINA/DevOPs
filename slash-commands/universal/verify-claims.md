@@ -35,5 +35,6 @@ Report accepted **metadata**, not independently observed GREEN, RED, log
 contents or command execution. Committed validation binds HEAD bytes/hashes,
 main ancestry, changed regular blobs and target-spec anchors under the finite
 supported Git layout. It does not prove declared commands used the artifacts.
-The committed checker never fetches or repairs history. Legacy local replay
-without `--no-rerun` remains unsafe and is outside this command.
+The committed checker never fetches or repairs history. Legacy local mode
+also requires `--no-rerun`; omission refuses before discovery or metadata checks.
+The validator offers no command replay.

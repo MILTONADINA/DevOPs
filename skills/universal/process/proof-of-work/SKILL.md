@@ -10,7 +10,7 @@ description: Produce structured proof artifacts for every completed claim. Use t
 
 **Tradeoff:** Per-task output is ~200-500 tokens larger. Worth it: hallucination
 on verifiable categories (tests, diffs, scans) drops to near-zero, and the
-`claim-validator` can independently confirm every assertion.
+`claim-validator` checks declared metadata; command execution needs separate evidence.
 
 ---
 
@@ -135,19 +135,23 @@ claim:
 After emitting the claim, run:
 
 ```bash
-npm run validate:claims -- .workflow/proofs/claim-2026-05-22-018.yml
+npm run validate:claims -- .workflow/proofs/claim-2026-05-22-018.yml --no-rerun
 ```
 
 That npm script exists in the DevOPs repository itself. In a project where
 DevOPs is installed, run the same validator as
-`tsx "$DEVOPS_ROOT/verification/claim-validator.ts" <claim-file>`.
+`tsx "$DEVOPS_ROOT/verification/claim-validator.ts" <claim-file> --no-rerun`.
 
-The validator re-runs `test_command` and confirms:
+The validator requires `--no-rerun` and checks metadata without executing
+`test_command`:
 
-1. Exit code matches
+1. The claim conforms to the packaged schema
 2. The `git_sha` exists in the repo
-3. The `files_changed` are present in that commit
+3. The `files_changed` names appear in that commit's changed-file list
 4. The `reproducibility_hash` recomputes to the same value
+
+Retain the separately observed command, exit code and output. Metadata acceptance
+does not establish that the declared command ran or that its result is true.
 
 If any check fails, the claim is rejected and the session cannot proceed
 to completion until it's fixed or withdrawn.
