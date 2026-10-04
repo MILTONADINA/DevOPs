@@ -84,8 +84,11 @@ Shown, full-width and impossible to miss, whenever
 file's contents are never interpreted, only displayed verbatim.
 
 ### Pipeline graph
-One card per currently **active** run (a run with at least one node whose
-latest event is `started` with no later `result`/`failed`), read from this
+One card per currently **active** run: its selected record is not
+`superseded`, and at least one node remains running after the existing stale
+check. A superseded association excludes the run even with fresh or missing
+agent timing; its node and terminal evidence stays unchanged. This does not
+establish process termination or successful proof. Runs are read from this
 project's own journals under `GRAPH_DASHBOARD_JOURNAL_ROOT`. Each card
 shows:
 - A title (the run's scraped backlog item, falling back to its workflow
