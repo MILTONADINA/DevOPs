@@ -337,3 +337,9 @@ group('changed partial moved duplicated or generic historical regions cannot wai
   if (fault === 'generic') text = currentTable() + '\n## History\n' + HEADER + '\n' + DELIMITER + '\n' + versionRow('SHIPPED') + '\n';
   f.file(LAUNCH, text); f.commitDocs(); refused(f.invoke(), 'structure');
 });
+
+// REQ-3 selects whole code spans; adjacent spans cannot donate delimiters.
+test('ordinary words between separate noncanonical code spans are not declarations', () => withFixture(f => {
+  f.file(SHIP, '`foo`verified`bar`\n`left`implemented`right`\n');
+  f.commitDocs(); passed(f.invoke());
+}));
