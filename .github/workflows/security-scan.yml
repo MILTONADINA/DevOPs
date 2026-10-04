@@ -174,7 +174,7 @@ jobs:
         run: |
           set -euo pipefail
           if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
-            CHANGED="$(git diff --name-only "${BASE_SHA}" HEAD || echo '')"
+            CHANGED="$(git diff --name-only "${BASE_SHA}" HEAD)"
             AGENT_PATTERN='^(skills/|hooks/|subagents/|constitution/|mcp-configs/|analyzer/|governance/owasp-asi-2026/)'
             if echo "$CHANGED" | grep -qE "$AGENT_PATTERN"; then
               echo "should_run=true" >> "$GITHUB_OUTPUT"

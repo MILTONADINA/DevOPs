@@ -49,6 +49,16 @@ Run this repository tooling with the root development dependencies installed.
 Finding a call does not prove it executes, comes from an assertion library,
 asserts something useful, or makes the test pass.
 
+## DeepTeam scheduling fixtures
+
+The [DeepTeam discovery contract](../specs/ops/ci-deepteam-discovery.md) requires
+successful PR path discovery before the filter publishes a run/skip decision.
+Its tests execute only the actual extracted Bash step with owned local Git,
+including failed empty and partial output plus successful path controls.
+They do not execute DeepTeam, install its packages or call a model. Successful
+scheduling and visible unfunded skips are not passing security-review evidence;
+Decision 9 and the six required checks remain unchanged.
+
 ## Test floors
 
 `governance/test-floors.json` sets the minimum number of passing tests for
