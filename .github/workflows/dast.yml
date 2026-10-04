@@ -1,0 +1,40 @@
+name: Local DAST
+
+on:
+  schedule:
+    - cron: '17 4 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  dast:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      DAST_TARGET: http://127.0.0.1:18080/docs
+    steps:
+      - name: Checkout
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+        with:
+          persist-credentials: false
+      - name: Node
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version: '24.21.0'
+      - name: Prepare fixed DAST assets
+        run: node scripts/prepare-dast.mjs
+      - name: Scan the isolated application
+        run: node scripts/run-dast.mjs
+      - name: Recover only this run's owned resources
+        if: always()
+        run: node --input-type=module -e "import { cleanupCurrentRun } from './scripts/run-dast.mjs'; import { cleanupPreparing } from './scripts/prepare-dast.mjs'; const preparation = await cleanupPreparing(); const run = await cleanupCurrentRun(); process.stdout.write(JSON.stringify({preparation,run}) + '\n'); if (!preparation.complete || !run.complete) process.exitCode = 1;"
+      - name: Upload synthetic DAST evidence
+        if: always()
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
+        with:
+          name: local-dast-evidence
+          path: .workflow/proofs/dast/
+          include-hidden-files: true
+          if-no-files-found: error
