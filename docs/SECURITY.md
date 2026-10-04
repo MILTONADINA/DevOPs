@@ -313,6 +313,35 @@ The reproducibility hash excludes state; committed member digests bind its
 bytes without authenticating its truth. No historical states are invented or
 upgraded. Legacy raw shell replay and the remaining MR10/MR12 work are unchanged.
 
+### Readiness-declaration reference boundary (MR12-B)
+
+The [readiness lint](../specs/verification/readiness-claims.md) treats document
+text and claim states as untrusted declarations. To prevent authority
+substitution, it uses two fixed captured-HEAD document blobs and one fully
+validated nonempty committed publication. The new immutable projection copies
+only each validated claim ID and its own optional state; there is no inherited
+default, working-claim reread, alternative proof store or caller-provided
+acceptance list. Existing bounded Git/schema/member checks remain the trust
+boundary; local main is not authenticated as a remote assertion.
+
+For disclosure and resource exhaustion, selected blobs are strict UTF8 with
+256KiB file and 32KiB physical-line limits. Fixed diagnostic categories reveal
+no document excerpts, claim IDs, proof commands/environments or parser errors.
+Exact physical declaration/citation boundaries prevent comment removal or
+cross-cell borrowing from manufacturing support. Unknown current Status forms
+refuse. The historical-table exception binds its exact notice, location and
+raw bytes; the reserved notice prefix is checked before fence/comment
+exclusions. No generic historical heading suppresses current assertions.
+
+Exact state equality can still associate false or unrelated declarations.
+The lint does not run commands, read journals or deployment observations,
+contact a service, rank completion states or establish semantic evidence. The
+existing reproducibility hash excludes state; member hashes bind bytes only.
+Zero declarations report none selected, never ready. Trusted source/dependency
+changes can change the checker itself; this is no authenticity or hostile
+filesystem sandbox. M10 semantic gates, whole MR12/MR10 and legacy replay
+safety remain separate work.
+
 ### Closure-reference boundary (MR18-A)
 
 The [closure lint](../specs/graph/closure-references.md) checks explicit CLOSED
