@@ -192,7 +192,7 @@ THE SYSTEM SHALL add `state: enum [implemented, verified, code_converged, releas
 "Masterpiece" without a qualifier SHALL mean `production_complete`. The sweep counter proves only `code_converged`. `scripts/lint-readiness-claims.mjs` SHALL fail when any of the literal state tokens, or the status column of the version tables in `docs/LAUNCH_READINESS.md` or `SHIP_BLOCKERS.md`, lacks a cited claim id whose state supports it. It deliberately does not match free prose such as "live dashboard".
 **Enforced by:** UNENFORCED
 **Enforcement note (pre-MR17 annotation):** schema, validator and CI lint.
-**Enforcement note:** The optional state vocabulary is implemented; semantic evidence gates and readiness-document lint remain open.
+**Enforcement note:** The optional state vocabulary is implemented. The dedicated MR12-B contract in `specs/verification/readiness-claims.md` narrowly clarifies this requirement's document-lint phrase: explicit machine declarations, four reserved bare underscore tokens and closed current Version-table Status cells require exact cited declared-state equality. Ordinary implemented/verified prose is not selected; the existing historical table is exempt only through its exact bound bytes/location. This checks metadata association, not convergence, release-graph or deployment evidence. Zero selection is not readiness; semantic evidence gates and whole MR12/MR10 remain open, so the whole requirement stays UNENFORCED.
 **Falsified by:** a claim with `state: production_complete` and no deploy proof passing; or `LAUNCH_READINESS.md:241` still asserting production-complete with no claim id.
 
 ### REQ-M11 (Ubiquitous): Frozen convergence is a zero anchor plus exactly two fresh-process zero repeats
@@ -442,6 +442,8 @@ THE SYSTEM SHALL correct, at the latest in the cycle that implements the matchin
 
 ### AC-M10.1 (REQ-M10)
 **Given** a claim `state: production_complete` without a deploy proof **Then** the validator rejects it. **Given** `state: code_converged` while `graph-converge.mjs status` exits non-zero **Then** it is rejected. **Given** the current `docs/LAUNCH_READINESS.md:241` **When** `lint-readiness-claims.mjs` runs **Then** it fails until the text is corrected or cites a supporting claim. **Given** the phrase "live dashboard" **Then** the lint does not fail.
+
+**MR12-B address clarification (2026-10-04):** The line241 reference above is a historical source address, not a present regression assertion. The dedicated `specs/verification/readiness-claims.md` contract uses owned nonempty declaration fixtures and the actual candidate's captured current documents instead. The original semantic evidence refusals remain unchanged and pending.
 
 ### AC-M11.1 (REQ-M11)
 **Given** a frozen anchor **When** `record` is called with two distinct zero-finding run ids on unchanged HEAD and inputs **Then** `status` exits 0 and a third `record` is refused. **Given** any of these instead:

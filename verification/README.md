@@ -101,6 +101,55 @@ The reproducibility hash excludes state, while committed member hashes bind
 its declared bytes. Existing claims need no state backfill or evidence upgrade.
 Whole MR12 and MR10 remain open; legacy raw replay remains unsafe.
 
+## Readiness declaration references (MR12-B)
+
+```bash
+npx --no-install tsx scripts/lint-readiness-claims.mjs
+```
+
+This no-argument lint derives its root from the script and requires captured
+HEAD versions of `docs/LAUNCH_READINESS.md` and `SHIP_BLOCKERS.md`. It validates
+the entire nonempty committed proof publication before reporting any result,
+including zero declarations. Document blobs and the immutable `{id, state?}`
+projection share one captured HEAD/main context. Working document edits,
+alternate paths and historical local claims are not selected.
+
+The [finite contract](../specs/verification/readiness-claims.md) selects current
+Version-table Status cells, anchored `State:` or `**State:**` lines, canonical
+state names in single-backtick spans and the four bare underscore tokens
+`code_converged`, `release_ready`, `fixed_not_live`, `production_complete`.
+Ordinary bare implemented/verified verbs and “live dashboard” are not selected.
+A declaration is exactly `STATE; claim:claim-YYYY-MM-DD-NNN`, with a real full
+published ID substituted for the format placeholder. STATE is one of the six
+canonical values, plain or in one single-backtick pair. A citation must be
+immediately adjacent and end at its physical line or table-cell boundary;
+it cannot be borrowed from a different item. Its published state must match
+exactly, with no default or rank, including for `fixed_not_live`.
+
+The launch-readiness document requires its named current seven-column version
+table. SHIP_BLOCKERS may have none; each selected Version table uses the same
+closed grammar. IN PROGRESS, NOT STARTED, DROPPED and EVIDENCE PENDING are
+process labels, not canonical states; their admitted notes remain subject to
+declaration checks. Unknown positive Status values such as SHIPPED refuse.
+Proper closed fences and standalone comments are excluded. The one existing
+historical table is exempt only at its fixed adjacent location with exact
+notice/table bytes; its reserved notice prefix cannot be hidden in a fence or
+comment. Generic History headings grant no exemption.
+
+Each document is bounded to 256KiB of strict UTF8 and each physical line to
+32KiB, inclusively. Success reports `documents=2`, declaration/process-row
+counts and zero or one historical table. With no declarations the prefix is
+`readiness: none selected`; otherwise it is `readiness: references valid`.
+Refusal exits1 with a fixed usage/input/structure/publication/reference category
+and no source text or IDs. Required CI runs this lint separately from the
+committed metadata gate; its output records the actual candidate's counts.
+
+A matching declaration is metadata association, not convergence, release-graph
+or deployment evidence. Zero selection is not readiness. EVIDENCE PENDING
+preserves recorded release events without inventing claim states or
+revalidating history. M10 remains UNENFORCED and whole MR12/MR10 stay open;
+legacy raw command replay remains unsafe.
+
 ## Committed metadata validation (MR10-B)
 
 `--all --no-rerun` selects exactly
