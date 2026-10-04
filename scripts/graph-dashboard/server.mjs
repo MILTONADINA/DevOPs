@@ -415,9 +415,8 @@ function buildNodes(labelStates, expectedLabels) {
 }
 
 function labelStatesToObject(labelStates) {
-  const obj = {};
-  for (const [label, state] of labelStates) obj[label] = state;
-  return obj;
+  // Define own data properties even for inherited names such as __proto__.
+  return Object.fromEntries(labelStates);
 }
 
 // A running node whose agent files have not changed for this long, in a run whose
