@@ -14,7 +14,55 @@ enforced until it moves left.
 |------|------|------------|------------|--------------------|
 | 1 | every file write | nothing automatic: `hooks/universal/post-tool/gitleaks-scan.sh` exists but is not wired in `.claude/settings.json` | none | wire the post-tool hook (masterpiece roadmap MR-19 adds a staged-diff pre-commit gitleaks) |
 | 2 | every PR | gitleaks (diff) and Semgrep (`p/owasp-top-ten`, `p/r2c-security-audit`, `p/secrets`) in `security-scan.yml` | both are required status checks on `main` and fail on any finding (Semgrep since #178) | npm/pip/cargo audit, axe-core |
-| 3 | daily and pre-release | gitleaks full-history scan (scheduled, `.gitleaksignore` baseline); DeepTeam red-team, which skips when no provider key is set | the history scan fails its run on a leak; DeepTeam gates nothing while it skips | Trivy, Nuclei, ZAP (roadmap MR-21) |
+| 3 | daily and pre-release | gitleaks full-history scan (scheduled, `.gitleaksignore` baseline); DeepTeam red-team, which skips when no provider key is set | the history scan fails its run on a leak; DeepTeam gates nothing while it skips | Trivy |
+
+### Local DAST boundary (MR21 / M27)
+
+The [local DAST contract](../specs/security/local-dast.md) now has delivery
+source and focused checks for a weekly/manual [workflow](../.github/workflows/dast.yml),
+pinned nuclei templates and ZAP baseline. Actual application run
+`mr21-dast-f8dcfd8e9fc87025952479cd19cdb429` passed on Linux/arm64: the retained
+`.workflow/proofs/mr21-dast-2026-10-03/product-application.json` records exit0,
+and its run summary retains zero nuclei findings, two medium and one low ZAP
+findings, and successful owned cleanup. Required PR checks and merge remain
+separate gates; the accepted Linux/amd64 default-branch dispatch is still pending.
+DAST is not a required PR check, and this ARM64 result does not complete MR21.
+
+For information disclosure and unauthorized targeting, the runner accepts only
+`http://127.0.0.1:18080/docs`. A fresh Docker network namespace has no external
+network attachment; the proxy, synthetic local provider and scanners share
+loopback. Exact interface, route, socket, capability, user and mount observations
+are checked. No operator files, provider/database credentials or Docker socket
+enter those workloads. Coverage is the unauthenticated personal-mode surface
+actually reached; commercial APIs, persistence, erasure, streaming and unreached
+operations remain outside it. The detector control is separate from application
+evidence and can never receive an application PASS.
+
+For supply-chain tampering and privilege escalation, preparation binds exact
+platform image, binary, template, dependency and source bytes. The two upstream
+templates, pinned ignore file, complete MIT license and provenance are retained.
+Locked dependency installation disables install scripts. The host Docker daemon
+and pinned toolchain remain trusted: the bounded HTTP downloader does not mediate
+Docker image pulls or npm traffic, and the project host allowlist is not a
+workload firewall. ZAP uses a bound one-literal loopback launch derivative and
+fixed OAST/HUD disable settings; passive rules and native reports are preserved.
+
+For stale evidence, log injection and incomplete scans, the read-only report
+gate bounds files and paths, rejects redirects and malformed inputs, binds
+artifacts to the run, and requires native completion, queue witnesses before
+report collection and at shutdown, plus actual health checks around both scans.
+HIGH/CRITICAL findings fail; lower findings remain visible. Hashes, timestamps
+and process identities establish consistency of retained observations, not
+remote attestation or an absence of vulnerabilities. Existing Semgrep scope
+excludes `vendor/`; its green result does not cover the vendored template bytes.
+
+For resource exhaustion and residual processes, preparation and execution use
+bounded deadlines and record owned resources. The finally path exports evidence,
+drains the proxy and removes only those resources; cleanup failure remains
+visible. Artifact upload runs independently after cleanup. Full acceptance requires
+real detector positives and unchanged-application scans, followed by the still
+pending successful default-branch dispatch with uploaded reports. Existing pentest-MCP scope
+limitations below are unchanged.
 
 ### Semgrep report and execution boundary (MR-7 Semgrep slice)
 

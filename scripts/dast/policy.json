@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "origin": "http://127.0.0.1:18080",
+  "seed": "http://127.0.0.1:18080/docs",
+  "platforms": {
+    "linux/amd64": {
+      "node": {
+        "ref": "node@sha256:5a750d3be5e5c80275f8c9a5367c3aed99c2875656590c8d0701c7ee687f5f0a",
+        "config_sha256": "b795e77f6c253b171f482eff27b9b882dc4cdcb42d773372e298481c7318fbc2"
+      },
+      "zap": {
+        "ref": "ghcr.io/zaproxy/zaproxy@sha256:71db37cd5b75663b35758d10aaec05bf6fbac23f5020e3046c70e628a5f84efa",
+        "config_sha256": "6175579a46d477338e4b641dd9c3428936f30c3719809e2f4d36f58e60c4ddb7"
+      },
+      "nuclei_archive_sha256": "ea63d4ae232808cd7c6bc00d0142428e231fab59dae01042246097d195835ab6"
+    },
+    "linux/arm64": {
+      "node": {
+        "ref": "node@sha256:91882e0e5959240d4413fc42c180022bbdd09c5491e00e75faa6c100d8d7751b",
+        "config_sha256": "7e6ba96b9576ae44872bdb57bc0665a70fd87bbc7c8a019ab849429c6c69ef44"
+      },
+      "zap": {
+        "ref": "ghcr.io/zaproxy/zaproxy@sha256:05cbf4cab5d2fdaef55b0cd0b586f22d0ce4f75e0995f3cea2db23afbbdfd2f8",
+        "config_sha256": "231957771c358eea88903a40b62d15ebd9304a180909d48d4ac5a924e24b11b0"
+      },
+      "nuclei_archive_sha256": "8044e3d9768ba0a744b2872c1a87e813006f013da97ca9f50f7661a4203bec07"
+    }
+  },
+  "nuclei_version": "3.11.1",
+  "templates": {
+    "commit": "893122ffce8ebf8e264f15d2cd3960cb1dd36d6c",
+    "laravel_env_sha256": "37566f5fb1764be65072836390d4ff3f40af4917ecf00bdb08dbfcf862bb09c7",
+    "git_config_sha256": "bd8bdfa0b5ed5bf4d3712edb793adfd0987d9282e51c6f7d673bf14b9e4dd524",
+    "ignore_sha256": "699053f709b11e80d853b63ebdcfe7ea0b15464f7d9709379c71bb12a41c627b"
+  },
+  "zap": {
+    "version": "2.17.0",
+    "common_original_sha256": "a1f65469bdee238424d2c32bbe15345ba3fb7089baf9800fbe72f20fa88c72c0",
+    "common_sha256": "fe62f7abb3a9ef75bbf0f5edc49fa9d276607262fc8436fa87050745ec9cd361"
+  }
+}
