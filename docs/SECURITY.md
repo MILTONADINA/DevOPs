@@ -139,6 +139,22 @@ success and uncommitted proof selection also remain unchanged. Schema-valid
 declarations and a recomputed string hash do not independently prove GREEN,
 RED, scan results or cycle readiness. The rest of MR10 remains open.
 
+### RED declaration boundary (MR10-C1)
+
+[The conditional schema policy](../specs/verification/red-declarations.md)
+requires RED fields for implementation/test and validates any supplied RED
+object for other types. It accepts only a 40-character lowercase hexadecimal
+SHA and a nonzero integer exit, without fetching, looking up or executing
+anything identified by RED. Existing schema diagnostics remain the boundary
+for malformed-field disclosure; RED values are not printed.
+
+A well-formed declaration can still be false. Schema acceptance establishes
+neither commit existence/ancestry nor an observed assertion failure. The
+unchanged reproducibility hash excludes RED fields; publication hashes bind
+bytes without authenticating their asserted history. No historical evidence
+is manufactured or retargeted. Safe execution, durable RED retention and
+provenance remain open; legacy raw shell replay is not hardened by this change.
+
 ### Tier-3 LLM-orchestrated pentest
 
 Beyond the static tier-3 scanners, DevOPs ships configurations for four

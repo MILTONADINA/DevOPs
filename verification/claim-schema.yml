@@ -13,6 +13,17 @@ properties:
   claim:
     type: object
     required: [id, type, spec_ref, description, proof, confidence, reproducibility_hash]
+    if:
+      properties:
+        type: { enum: [implementation, test] }
+      required: [type]
+    then:
+      properties:
+        proof:
+          type: object
+          properties:
+            red: {}
+          required: [red]
     properties:
       id:
         type: string
@@ -74,6 +85,20 @@ properties:
             type: string
             pattern: "^\\.workflow/proofs/.+\\.log$"
             description: Full path to captured stdout+stderr.
+
+          red:
+            type: object
+            required: [sha, exit_code]
+            properties:
+              sha:
+                type: string
+                minLength: 40
+                maxLength: 40
+                pattern: "^[0-9a-f]{40}$"
+              exit_code:
+                type: integer
+                not: { const: 0 }
+            description: Declared earlier failure; shape validation does not observe execution.
 
           duration_ms:
             type: integer
