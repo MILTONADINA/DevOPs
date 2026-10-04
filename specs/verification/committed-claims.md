@@ -275,6 +275,26 @@ remove the separate legacy stale-detector step, because the selected-set
 ancestry gate now validates the exact same set more strongly. Other jobs,
 required context names and scanner/model-review policy SHALL remain unchanged.
 
+WHEN the pinned CI checkout leaves inactive `.git/config.worktree` residue,
+the validate job SHALL prepare its disposable checkout before the strict
+metadata gate. Preparation SHALL remove only the exact 83-byte LF/tab file
+containing `[core]` with `sparseCheckout = false` and
+`sparseCheckoutCone = false`, followed by `[index]` with `sparse = false`,
+in that order. An absent file SHALL succeed without mutation. A present
+file SHALL be regular, nonsymlink and single-link under the canonical root's
+direct nonsymlink `.git` directory; other content or shape SHALL fail unchanged.
+
+Before removal, preparation SHALL read the direct regular nonsymlink
+single-link local config within 65536 bytes, require strict UTF-8, and refuse
+NUL, continuations, unsupported section headers and include/includeIf/extensions
+sections. It SHALL use bounded descriptor reads and recheck both inputs and
+the directory identity before unlinking only the known residue. Diagnostics
+SHALL disclose no raw config or errors. No subprocess, network, recursive
+cleanup or config rewriting is part of preparation. The existing validator
+SHALL retain its full Git admission policy, including refusal of any remaining
+config.worktree. This trusted CI preparation is not a general repair command
+or an atomic defense against same-user changes during the final unlink.
+
 MR10-A's two empty-selection controls SHALL be amended explicitly under this
 new contract; their old --all success SHALL NOT be silently retained. Legacy
 implicit empty discovery may retain its own positive controls. All other
@@ -325,6 +345,14 @@ ignore checks SHALL distinguish intended tracked members from logs/local
 state. Required CI SHALL validate that nonempty set with full ancestry and
 the preserved context names. No model skip SHALL be reported as a performed
 review, and no metadata result as observed RED/GREEN execution.
+
+Owned fixtures SHALL run the exact preparation step extracted from CI YAML.
+They SHALL accept absence without mutation and remove only the known inactive
+residue, while rejecting changed/nonfalse/oversized/nonregular/redirected/shared
+files and unsafe config prerequisites without changing fixture inputs. The
+checkout failure reproduced with the actual candidate SHALL be retained;
+preparation plus that candidate's metadata gate SHALL then pass before a
+new CI attempt. The strict Git reader SHALL remain unchanged by this recovery.
 
 Focused tests SHALL use existing .test.mjs discovery, locked local tools and
 fresh owned fixtures. Parent execution remains serialized: source/prerequisites
