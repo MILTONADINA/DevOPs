@@ -46,6 +46,17 @@ properties:
           - threat-model
         description: Category of work being claimed.
 
+      state:
+        type: string
+        enum:
+          - implemented
+          - verified
+          - code_converged
+          - release_ready
+          - fixed_not_live
+          - production_complete
+        description: Optional declared completion state; vocabulary acceptance does not verify evidence.
+
       spec_ref:
         type: string
         description: "Path + anchor pointing into /specs/, e.g. specs/auth/tokens.md#ac-3"

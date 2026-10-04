@@ -85,6 +85,22 @@ excludes `red.sha` and `red.exit_code`. A committed member digest binds these
 bytes as declarations, not evidence that an execution happened. Safe replay
 and durable RED retention need separate work.
 
+## Optional completion-state declarations (MR12-A)
+
+A supplied `claim.state` must be one of `implemented`, `verified`,
+`code_converged`, `release_ready`, `fixed_not_live` or `production_complete`.
+The field is optional for all claim types; absence supplies no default state.
+Matching is exact, with no case conversion or whitespace trimming. See the
+[state declaration contract](../specs/verification/completion-state-declarations.md).
+
+This validates vocabulary only. Convergence, graph-disposition and deployment
+checks are not implemented, and acceptance of `production_complete` without
+those checks does not satisfy AC-M10.1. `fixed_not_live` is not called deployed.
+Authors need evidence for a declared state; schema acceptance supplies none.
+The reproducibility hash excludes state, while committed member hashes bind
+its declared bytes. Existing claims need no state backfill or evidence upgrade.
+Whole MR12 and MR10 remain open; legacy raw replay remains unsafe.
+
 ## Committed metadata validation (MR10-B)
 
 `--all --no-rerun` selects exactly
