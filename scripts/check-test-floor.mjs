@@ -43,7 +43,12 @@ export function parseCounts(suite, text) {
 export function checkFloor(suite, counts, floors) {
   const floor = floors[suite];
   if (typeof floor !== 'number') return `no floor for suite "${suite}" in governance/test-floors.json`;
-  if (counts.passed === null || counts.total === null) return `${suite}: no test count found in the output (refusing to report a pass)`;
+  if (counts.passed === null || counts.failed === null || counts.total === null) return `${suite}: no test count found in the output (refusing to report a pass)`;
+  // specs/ops/test-count-admission.md: validate parsed values before accepting a floor.
+  if ([counts.passed, counts.failed, counts.total].some(n => !Number.isSafeInteger(n) || n < 0)
+      || counts.passed + counts.failed > counts.total) {
+    return `${suite}: invalid or inconsistent test counts in the output (refusing to report a pass)`;
+  }
   if (counts.failed) return `${suite}: ${counts.failed} test(s) failed`;
   if (counts.passed < floor) return `${suite}: ${counts.passed} passed, below the floor of ${floor}`;
   return null;
