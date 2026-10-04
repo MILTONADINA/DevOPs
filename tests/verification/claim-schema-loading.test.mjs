@@ -318,3 +318,43 @@ test('C1 nonempty implicit discovery applies the same RED schema', () => withFix
   delete f.data.claim.proof.red; f.save(); refused(f.invoke(['--no-rerun']), 'required');
   f.data.claim.proof.red = { sha: 'b'.repeat(40), exit_code: 1 }; f.save(); accepted(f.invoke(['--no-rerun']));
 }));
+
+// specs/verification/completion-state-declarations.md REQ-1..3 / AC-1..4.
+// These are optional vocabulary declarations, not evidence of the named states.
+for (const state of ['implemented', 'verified', 'code_converged', 'release_ready', 'fixed_not_live', 'production_complete']) test(`MR12-A exact state ${state} remains inert metadata with an unchanged hash`, () => withFixture(f => {
+  assert.equal(Object.hasOwn(f.data.claim, 'state'), false);
+  f.data.claim.proof.test_command = 'echo harmless > command-executed'; f.save();
+  const before = f.data.claim.reproducibility_hash; accepted(f.invoke());
+  f.data.claim.state = state; f.save();
+  assert.equal(f.data.claim.reproducibility_hash, before);
+  assert.equal(Object.hasOwn(f.data.claim.proof, 'deploy'), false, 'no completion evidence is manufactured');
+  accepted(f.invoke());
+}));
+
+for (const [name, value, keyword] of [
+  ['unknown string', SENTINEL, 'enum'], ['empty string', '', 'enum'],
+  ['wrong case', 'Verified', 'enum'], ['hyphenated spelling', 'code-converged', 'enum'],
+  ['surrounding whitespace', ' verified ', 'enum'], ['trailing newline', 'verified\n', 'enum'],
+  ['null', null, 'type'], ['boolean', true, 'type'], ['number', 1, 'type'],
+  ['array', [], 'type'], ['object', {}, 'type'],
+]) test(`MR12-A supplied state rejects ${name} without normalization or disclosure`, () => withFixture(f => {
+  f.data.claim.state = value; f.save();
+  // Preserve actual empty array/object shapes instead of the fixture YAML writer's empty block.
+  writeFileSync(f.claim, JSON.stringify(f.data)); refused(f.invoke(), keyword);
+}));
+
+for (const kind of ['implementation', 'test', 'scan', 'deploy', 'migration', 'refactor', 'perf', 'doc', 'security-review', 'threat-model']) test(`MR12-A ${kind} permits absent state and refuses malformed supplied state`, () => withFixture(f => {
+  f.data.claim.type = kind; f.save();
+  assert.equal(Object.hasOwn(f.data.claim, 'state'), false); accepted(f.invoke());
+  f.data.claim.state = SENTINEL; f.save(); refused(f.invoke(), 'enum');
+}));
+
+test('MR12-A nonempty implicit discovery applies optional state vocabulary', () => withFixture(f => {
+  f.data.claim.state = SENTINEL; f.save(); refused(f.invoke(['--no-rerun']), 'enum');
+  f.data.claim.state = 'fixed_not_live'; f.save(); accepted(f.invoke(['--no-rerun']));
+}));
+test('MR12-A valid state cannot replace required fields or C1 RED', () => {
+  for (const remove of [claim => { delete claim.description; }, claim => { delete claim.proof.red; }]) withFixture(f => {
+    f.data.claim.state = 'production_complete'; remove(f.data.claim); f.save(); refused(f.invoke(), 'required');
+  });
+});

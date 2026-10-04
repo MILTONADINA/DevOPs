@@ -34,6 +34,18 @@ hashes bind declared bytes without authenticating execution. Negative and
 above-255 nonzero RED exits remain shape-valid; extra properties and the
 existing declared GREEN exit policy are unchanged.
 
+## Optional completion state
+
+`claim.state`, when supplied, is exactly one of `implemented`, `verified`,
+`code_converged`, `release_ready`, `fixed_not_live` or `production_complete`.
+It is optional for every claim type and never defaulted. This is vocabulary
+validation, not evidence that the stated completion level was reached. The
+validator does not yet enforce convergence, release graph or deployment
+requirements; AC-M10.1 remains open. The unchanged reproducibility hash excludes
+state; committed member hashes bind declarations without proving them. Keep
+historical claims unchanged rather than backfilling or upgrading their states.
+See [the bounded contract](../specs/verification/completion-state-declarations.md).
+
 ## Confidence
 
 - `high` — deterministic
