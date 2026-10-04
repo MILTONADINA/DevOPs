@@ -289,12 +289,15 @@ The validator boundary is separate from the later [triage refusal contract](../s
 Git, log/claim reads, model evaluation or output writes when its preserved
 literal direct-entry guard matches. Imported helpers remain available; an
 explicit `triageOne` call can still evaluate Jev. This adds no safe executor
-or model-review evidence. The
-historical `scripts/recover-claim-provenance.sh` still omits the required flag
-and swallows validator failure, so its old workflow is incompatible with the
-new admission rule. That recovery script is not used as acceptance or repaired
-by either refusal.
-The rest of MR10 remains open.
+or model-review evidence.
+
+Under the later [recovery-refusal contract](../specs/verification/recovery-cli-refusal.md),
+`scripts/recover-claim-provenance.sh` exits1 privately before its old Git/npm,
+selection, fetch, ref-update or push workflow. Explicit Bash and the existing
+executable entry are supported once the script body starts; this does not
+isolate hostile interpreter resolution or shell startup. Historical evidence
+is preserved; refusal does not invalidate it or supply provenance recovery or
+safe execution. M2/M9 and the rest of MR10 remain open.
 
 ### RED declaration boundary (MR10-C1)
 
