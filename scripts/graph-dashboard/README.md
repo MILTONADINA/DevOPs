@@ -178,8 +178,12 @@ permanent design constraint, not a gap slated to be filled in later.
     end-to-end, only what the validator node itself reported.
   - **Per-node state** (queued / running / done / errored / stale) — derived
     from `journal.jsonl`'s `started` / `result` / `failed` events, joined back
-    to a label via each event's own `key`. A node the journal still calls
-    running is shown **stale** when its agent files have been silent for 18
+    to a label via each event's own `key`. A result or failure applies only
+    when its key and agent ID match that label's current start; late terminals
+    from superseded or mismatched attempts are ignored. This is identity
+    consistency, not proof success or validated native chronology. A node the
+    journal still calls running is shown **stale** when its agent files have
+    been silent for 18
     minutes and its run's record (below) does not say `running`, or for 3
     hours when the record does. Live agents have gone quiet for up to 74
     minutes, but an orchestrator that dies leaves its record at `running`. A

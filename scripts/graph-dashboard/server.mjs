@@ -226,12 +226,14 @@ function buildLabelStates(events) {
     } else if (type === 'result') {
       const label = keyToLabel.get(key);
       if (!label) continue; // result for a key whose started event we never saw -- nothing to attach to
-      const prev = labels.get(label) || { label, phase: null };
+      const prev = labels.get(label);
+      if (!prev || prev.key !== key || prev.agentId !== agentId) continue;
       labels.set(label, { ...prev, status: 'done', key, agentId, result: ev.result ?? null });
     } else if (type === 'failed') {
       const label = keyToLabel.get(key);
       if (!label) continue;
-      const prev = labels.get(label) || { label, phase: null };
+      const prev = labels.get(label);
+      if (!prev || prev.key !== key || prev.agentId !== agentId) continue;
       labels.set(label, { ...prev, status: 'errored', key, agentId, result: null });
     }
     // 'launched' carries no key/label -- nothing to attach per-agent state to.
