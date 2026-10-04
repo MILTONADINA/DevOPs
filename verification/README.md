@@ -59,10 +59,31 @@ This is the schema-loading slice of
 establish commit-object existence and whether each claimed filename appears in
 the commit's changed-file list; they do not prove reachability or regular-file
 existence at that commit. The hash is recomputed from declared command,
-environment and SHA strings. The current schema permits additional properties,
-nonzero integer exits and implementation claims without `proof.red`.
-Safe implementation/test RED replay and `/sprint` integration remain pending.
-The committed metadata checks below do not complete all of MR10.
+environment and SHA strings. The schema permits additional properties and
+nonzero integer declared GREEN exits. The conditional RED rule below adds
+shape validation without changing that hash or the older Git checks.
+Safe RED execution, RED provenance and `/sprint` integration remain pending.
+The metadata checks here do not complete all of MR10.
+
+## RED declarations (MR10-C1)
+
+The shared schema requires `proof.red` for `implementation` and `test` claims.
+For the other eight claim types it is optional; any supplied RED object must
+still be valid. It contains `sha`, exactly 40 lowercase hexadecimal characters,
+and `exit_code`, a nonzero integer. Negative integers and integers above 255
+are accepted declarations; no shell exit-code range is inferred. Extra
+properties remain permitted. See [the declaration contract](../specs/verification/red-declarations.md).
+
+This policy applies to selected local and committed documents, including
+explicit files passed by generated project hooks. Authors must record an
+actually observed earlier failure; missing evidence must not be invented or
+an implementation relabeled as documentation to pass validation.
+
+The validator does not look up the RED SHA, establish its existence or
+ancestry, or observe a failed command. The unchanged reproducibility hash
+excludes `red.sha` and `red.exit_code`. A committed member digest binds these
+bytes as declarations, not evidence that an execution happened. Safe replay
+and durable RED retention need separate work.
 
 ## Committed metadata validation (MR10-B)
 

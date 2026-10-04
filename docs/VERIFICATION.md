@@ -16,11 +16,23 @@ Every claim of completed work ships with a proof artifact in
 ## Required fields
 
 - `id` — claim-YYYY-MM-DD-NNN
-- `type` — implementation, test, scan, deploy, migration, refactor, perf
+- `type` — implementation, test, scan, deploy, migration, refactor, perf, doc,
+  security-review, threat-model
 - `spec_ref` — points into /specs/
 - `proof.git_sha`, `files_changed`, `test_command`, `test_exit_code`, `test_output_path`
+- `proof.red` for `implementation` and `test`: `sha` is exactly 40 lowercase
+  hexadecimal characters; `exit_code` is a nonzero integer. It is optional
+  for the other claim types, but any supplied RED object must satisfy the same shape.
 - `confidence` — high, medium, low
 - `reproducibility_hash` — sha256(command + env + sha)
+
+The RED rule applies through the shared schema to every selected document.
+It does not check whether the RED commit exists or whether a command failed.
+Authors retain the actual observation; schema acceptance cannot supply one.
+The existing reproducibility hash excludes RED fields. Committed member
+hashes bind declared bytes without authenticating execution. Negative and
+above-255 nonzero RED exits remain shape-valid; extra properties and the
+existing declared GREEN exit policy are unchanged.
 
 ## Confidence
 

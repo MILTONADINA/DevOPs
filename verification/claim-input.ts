@@ -12,6 +12,7 @@ export interface ClaimProof {
   test_command: string;
   test_exit_code: number;
   test_output_path: string;
+  red?: { sha: string; exit_code: number };
   duration_ms?: number;
   environment?: Record<string, string>;
 }
