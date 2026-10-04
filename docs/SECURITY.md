@@ -18,15 +18,24 @@ enforced until it moves left.
 
 ### Local DAST boundary (MR21 / M27)
 
-The [local DAST contract](../specs/security/local-dast.md) now has delivery
-source and focused checks for a weekly/manual [workflow](../.github/workflows/dast.yml),
-pinned nuclei templates and ZAP baseline. Actual application run
-`mr21-dast-f8dcfd8e9fc87025952479cd19cdb429` passed on Linux/arm64: the retained
-`.workflow/proofs/mr21-dast-2026-10-03/product-application.json` records exit0,
-and its run summary retains zero nuclei findings, two medium and one low ZAP
-findings, and successful owned cleanup. Required PR checks and merge remain
-separate gates; the accepted Linux/amd64 default-branch dispatch is still pending.
-DAST is not a required PR check, and this ARM64 result does not complete MR21.
+The [local DAST contract](../specs/security/local-dast.md) is implemented and
+verified within its stated scope. Its weekly/manual
+[workflow](../.github/workflows/dast.yml) uses pinned nuclei templates and ZAP
+baseline. [PR #239](https://github.com/MILTONADINA/DevOPs/pull/239) passed all six
+required checks and merged the tested tree. The subsequent default-branch
+[Linux/amd64 dispatch](https://github.com/MILTONADINA/DevOPs/actions/runs/37193372293)
+passed preparation, application scans, cleanup and evidence upload on
+`cf7658df7a95c08746003dd7d1d072cf1f370226`.
+
+The downloaded artifact matched GitHub's published SHA-256 digest. Verification
+with the checker from that exact commit accepted the native reports, pinned
+identities, isolation and five live health/provider/capture rounds. Preparation
+and scanning each removed both owned containers. Nuclei reported no findings;
+ZAP reported zero high, two medium and one low findings. The earlier ARM64
+application run and real detector controls remain separate evidence. Local
+receipts, including `amd64-acceptance.json`, are retained under
+`.workflow/proofs/mr21-dast-2026-10-03/`. This completes MR21's local contract;
+DAST remains separate from the required PR checks.
 
 For information disclosure and unauthorized targeting, the runner accepts only
 `http://127.0.0.1:18080/docs`. A fresh Docker network namespace has no external
@@ -59,10 +68,10 @@ excludes `vendor/`; its green result does not cover the vendored template bytes.
 For resource exhaustion and residual processes, preparation and execution use
 bounded deadlines and record owned resources. The finally path exports evidence,
 drains the proxy and removes only those resources; cleanup failure remains
-visible. Artifact upload runs independently after cleanup. Full acceptance requires
-real detector positives and unchanged-application scans, followed by the still
-pending successful default-branch dispatch with uploaded reports. Existing pentest-MCP scope
-limitations below are unchanged.
+visible. Artifact upload runs independently after cleanup. The accepted real
+detector controls, unchanged-application scans and successful default-branch
+dispatch satisfy this contract's live acceptance gates. Existing pentest-MCP
+scope limitations below are unchanged.
 
 ### Semgrep report and execution boundary (MR-7 Semgrep slice)
 
