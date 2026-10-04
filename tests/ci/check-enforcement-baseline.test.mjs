@@ -65,7 +65,7 @@ function withFixture(run, { freshParents = false } = {}) {
       GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '/dev/null', GIT_TERMINAL_PROMPT: '0',
       GIT_ALLOW_PROTOCOL: '', GIT_NO_REPLACE_OBJECTS: '1', GIT_OPTIONAL_LOCKS: '0' };
     function git(args, input) {
-      const result = spawnSync('/usr/bin/git', args, { cwd, env, input, encoding: 'buffer', timeout: 5000, maxBuffer: 2 * 1024 * 1024 });
+      const result = spawnSync('/usr/bin/git', args, { cwd, env, input: typeof input === 'string' ? Buffer.from(input) : input, encoding: 'buffer', timeout: 5000, maxBuffer: 2 * 1024 * 1024 });
       assert.equal(result.error, undefined, 'owned Git fixture prerequisite');
       assert.equal(result.signal, null); assert.equal(result.status, 0, 'owned Git setup failed');
       return result.stdout.toString('utf8').trim();

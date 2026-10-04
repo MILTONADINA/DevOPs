@@ -25,6 +25,7 @@ role gate is claimed.
 
 ## REQ-1 (Ubiquitous): scheduled delivery and pinned preparation
 
+**Enforced by:** test:tests/ci/dast-source-identity.test.mjs; test:tests/ci/dast-workflow.test.mjs; job:.github/workflows/dast.yml#dast
 THE SYSTEM SHALL provide `.github/workflows/dast.yml` with a weekly schedule,
 `workflow_dispatch`, read-only repository permissions and a 20-minute job timeout.
 It SHALL have no PR trigger and SHALL NOT become a required PR context.
@@ -76,6 +77,7 @@ allowlist is not the workload's network firewall.
 
 ## REQ-2 (Unwanted behavior): reject an unowned target before launch
 
+**Enforced by:** test:tests/ci/dast-target.test.mjs
 WHEN `scripts/validate-dast-target.mjs` runs, THE SYSTEM SHALL accept no arguments
 and return 0 only when `DAST_TARGET` is exactly
 `http://127.0.0.1:18080/docs`. All other values, including absent/empty, external,
@@ -96,6 +98,7 @@ owned namespace; its evidence SHALL remain distinct from the application run.
 
 ## REQ-3 (State-driven): enforce isolated loopback execution
 
+**Enforced by:** test:tests/ci/dast-reports.test.mjs; test:tests/ci/dast-owned-run.test.mjs
 WHILE a target or scanner runs, THE SYSTEM SHALL use a fresh Docker namespace
 created by an owned `--network none` anchor. Other scanner containers SHALL join
 only `--network container:<recorded-anchor-id>`. The proxy/provider/ZAP listeners
@@ -153,6 +156,7 @@ source/artifact identities rather than inode equality alone.
 
 ## REQ-4 (Event-driven): measure the unchanged real application
 
+**Enforced by:** test:tests/ci/dast-supervisor.test.mjs; test:tests/ci/dast-reports.test.mjs
 WHEN the run starts, THE SYSTEM SHALL launch `runtime/src/proxy/index.ts` through
 locked tsx with named, read-only runtime source/dependencies/package/tsconfig
 inputs and the required root `observability/pii-redaction.ts` import. It SHALL
@@ -173,6 +177,7 @@ Keep Host/CORS/rate-limit guards. Readiness requests are not scanner coverage.
 
 ## REQ-5 (Ubiquitous): complete the actual nuclei scan
 
+**Enforced by:** test:tests/ci/dast-reports.test.mjs; job:.github/workflows/dast.yml#dast
 THE SYSTEM SHALL run the verified nuclei binary with only the two pinned HTTP
 templates, fresh config/home, updates/OAST/redirects/cloud upload disabled and
 finite concurrency, request rate, timeout/retries and outer deadline. No code,
@@ -214,6 +219,7 @@ metadata. This is a finite configuration-exposure scan, not all nuclei templates
 
 ## REQ-6 (Ubiquitous): complete the actual ZAP baseline before reporting
 
+**Enforced by:** test:tests/ci/dast-hook.test.mjs; test:tests/ci/dast-reports.test.mjs; job:.github/workflows/dast.yml#dast
 THE SYSTEM SHALL run the official pinned image's traditional baseline using
 `--autooff`, target `http://127.0.0.1:18080/docs`, `-P 18090`, `-m 1`, `-T 3`,
 `-J zap.json`, and source-fixed `-z` options containing `-silent -Xmx512m` plus
@@ -268,6 +274,7 @@ an earlier report: upstream passive timeout can return without failing.
 
 ## REQ-7 (Unwanted behavior): fail closed on findings or incomplete evidence
 
+**Enforced by:** test:tests/ci/dast-reports.test.mjs
 WHEN judging a run, THE SYSTEM SHALL read only its fresh owned regular report
 files, reject symlink/path redirection, and enforce strict UTF-8/JSON and bounded
 input: 10 MiB per scanner report, 2 MiB per diagnostic stream, 256 KiB per
@@ -296,6 +303,8 @@ JSON-escaped, without raw report/input bodies or terminal-control injection.
 
 ## REQ-8 (Event-driven): prove detection and refusal
 
+**Enforced by:** PROCESS
+**Enforcement note:** Actual pinned detector-positive runs are acceptance observations; synthetic report tests alone do not establish detection.
 WHEN accepting this implementation, THE SYSTEM SHALL run both actual pinned
 scanners against a separately isolated synthetic detector fixture and observe
 their expected high findings and the real gate's nonzero verdict. The nuclei
@@ -317,6 +326,7 @@ tool error/signal/deadline and failed post-health.
 
 ## REQ-9 (Event-driven): preserve evidence and clean owned resources
 
+**Enforced by:** test:tests/ci/dast-owned-run.test.mjs; test:tests/ci/dast-workflow.test.mjs; job:.github/workflows/dast.yml#dast
 WHEN any run terminates, THE SYSTEM SHALL export bounded synthetic reports,
 logs, bindings, statuses, health/completion evidence and summary to owned host
 paths before resource removal. A finally path independent of upload success

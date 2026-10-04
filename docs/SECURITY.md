@@ -10,11 +10,17 @@ project's threat model uses `templates/threat-model/STRIDE_ASI_TEMPLATE.md`.
 This is what runs today (2026-09-25). The design goal is in the "Planned" column; it is not
 enforced until it moves left.
 
-| Tier | When | Runs today | Gate today | Planned, not wired |
-|------|------|------------|------------|--------------------|
-| 1 | every file write | nothing automatic: `hooks/universal/post-tool/gitleaks-scan.sh` exists but is not wired in `.claude/settings.json` | none | wire the post-tool hook (masterpiece roadmap MR-19 adds a staged-diff pre-commit gitleaks) |
-| 2 | every PR | gitleaks (diff) and Semgrep (`p/owasp-top-ten`, `p/r2c-security-audit`, `p/secrets`) in `security-scan.yml` | both are required status checks on `main` and fail on any finding (Semgrep since #178) | npm/pip/cargo audit, axe-core |
-| 3 | daily and pre-release | gitleaks full-history scan (scheduled, `.gitleaksignore` baseline); DeepTeam red-team, which skips when no provider key is set | the history scan fails its run on a leak; DeepTeam gates nothing while it skips | Trivy |
+| Tier | When | Runs today | Gate today | Planned, not wired | Enforced by: |
+|------|------|------------|------------|--------------------|--------------|
+| 1 | every file write | nothing automatic: `hooks/universal/post-tool/gitleaks-scan.sh` exists but is not wired in `.claude/settings.json` | none | wire the post-tool hook (masterpiece roadmap MR-19 adds a staged-diff pre-commit gitleaks) | Enforced by: UNENFORCED |
+| 2 | every PR | gitleaks (diff) and Semgrep (`p/owasp-top-ten`, `p/r2c-security-audit`, `p/secrets`) in `security-scan.yml` | both are required status checks on `main` and fail on any finding (Semgrep since #178) | npm/pip/cargo audit, axe-core | Enforced by: job:.github/workflows/security-scan.yml#gitleaks; job:.github/workflows/security-scan.yml#semgrep |
+| 3 | daily and pre-release | gitleaks full-history scan (scheduled, `.gitleaksignore` baseline); DeepTeam red-team, which skips when no provider key is set | the history scan fails its run on a leak; DeepTeam gates nothing while it skips | Trivy | Enforced by: UNENFORCED |
+
+The Enforced by column describes current reference integrity, not new scan evidence.
+Tier2 names only the gitleaks and Semgrep jobs; it excludes the Planned column.
+The dated snapshot above is preserved. Tier1 and the whole mixed tier3 row remain
+UNENFORCED: the existing history-scan job does not establish the row's broader
+pre-release or unfunded DeepTeam claims, and no planned scanner is implied to run.
 
 ### Local DAST boundary (MR21 / M27)
 
