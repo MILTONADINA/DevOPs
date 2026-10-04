@@ -10,12 +10,14 @@ green without a scan.
 
 ## REQ-1 — A pinned, current scanner
 
+**Enforced by:** job:.github/workflows/security-scan.yml#semgrep; test:tests/ci/assert-scan.test.mjs
 THE PIPELINE SHALL run Semgrep from the official `semgrep/semgrep` container
 image pinned by digest, with the `p/owasp-top-ten`, `p/r2c-security-audit` and
 `p/secrets` registry packs, metrics off.
 
 ## REQ-2 — Fail on findings and on errors
 
+**Enforced by:** job:.github/workflows/security-scan.yml#semgrep; test:tests/ci/assert-scan.test.mjs
 WHEN Semgrep reports any finding or any nonempty `errors[]`, including warning
 and information levels, THE JOB SHALL fail. It SHALL print each finding's
 severity, rule, path and line and each complete error object as JSON-escaped
@@ -32,11 +34,13 @@ and zero errors. DeepTeam/Claude's unfunded-skip owner decision is separate.
 
 ## REQ-3 — Never pass an empty scan
 
+**Enforced by:** job:.github/workflows/security-scan.yml#semgrep; test:tests/ci/assert-scan.test.mjs
 IF Semgrep scanned no files, THEN THE JOB SHALL fail with a message that it
 refuses to report a pass.
 
 ## REQ-4 — Test code is in scope
 
+**Enforced by:** job:.github/workflows/security-scan.yml#semgrep; test:tests/ci/assert-scan.test.mjs
 THE REPOSITORY SHALL carry a root `.semgrepignore` whose only exclusions are:
 - the entries of Semgrep's built-in default list other than its "Common test paths" block: version-control folders and large or generated paths;
 - files named individually, each with a comment giving the reason.
@@ -52,6 +56,7 @@ on the line above it, never by excluding a directory.
 
 ## REQ-5 — Validate the report and enforce its measured minimum
 
+**Enforced by:** job:.github/workflows/security-scan.yml#semgrep; test:tests/ci/assert-scan.test.mjs
 THE PIPELINE SHALL invoke `node scripts/assert-scan.mjs REPORT FLOOR STATUS`
 with exactly those three arguments. STATUS SHALL be a decimal integer from
 0 through 255. Missing or malformed arguments, inputs or configuration SHALL

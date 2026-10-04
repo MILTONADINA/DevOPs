@@ -24,30 +24,40 @@ TypeSafe's Jev is a System One model: given a `state` and typed questions (Choic
 ## Functional requirements (EARS)
 
 ### REQ-J1 (Ubiquitous) — One zero-dependency client
+**Enforced by:** test:tests/jev/jev-client.test.mjs
 THE SYSTEM SHALL provide `scripts/jev.mjs`, which uses only Node built-ins. It SHALL call `POST https://api.typesafe.ai/v1/systemone` with a bearer token resolved from `TYPESAFE_API_KEY`, or else from the file named by `TYPESAFE_API_KEY_FILE`, and return the response's `model`, `answers` and `usage` unchanged.
 
 ### REQ-J2 (Unwanted behaviour) — Fail closed without a key
+**Enforced by:** test:tests/jev/jev-client.test.mjs
 IF neither `TYPESAFE_API_KEY` nor a readable `TYPESAFE_API_KEY_FILE` yields a key, THEN THE SYSTEM SHALL throw a `JevUnavailableError` before any network call, so every caller keeps its non-Jev path.
 
 ### REQ-J3 (Unwanted behaviour) — Never send secret-shaped content
+**Enforced by:** test:tests/jev/jev-client.test.mjs
 IF the serialized `state` or `questions` contain a secret-shaped string (private-key header, AWS access key, GitHub token, Slack token, Stripe live or restricted key, Anthropic, OpenAI or TypeSafe API key, or a connection URI carrying a password), THEN THE SYSTEM SHALL throw a `JevSecretInStateError` naming the rule, before any network call.
 
 ### REQ-J4 (Event-driven) — Bounded retries on 429 and 529
+**Enforced by:** test:tests/jev/jev-client.test.mjs
 WHEN the API answers 429 or 529, THE SYSTEM SHALL retry with jittered exponential backoff, honoring `retry-after` when present, for at most 4 attempts in total. It SHALL NOT retry 401 or 422, and SHALL throw a `JevHttpError` carrying the status and body.
 
 ### REQ-J5 (Ubiquitous) — Timeouts
+**Enforced by:** test:tests/jev/jev-client.test.mjs
 THE SYSTEM SHALL abort a request that takes longer than its timeout (default 30 seconds) and count the abort as a retryable failure.
 
 ### REQ-J6 (Ubiquitous) — Confidence gating helpers
+**Enforced by:** test:tests/jev/jev-client.test.mjs
 THE SYSTEM SHALL provide `decide(answer, {minConfidence, minNoul})`, which returns the answer's value only when its confidence, or for a Noul its distance from 0.5, clears the threshold, and otherwise returns `{uncertain: true}` so the caller escalates.
 
 ### REQ-J7 (Ubiquitous) — Allowlisted host
+**Enforced by:** PROCESS
 THE SYSTEM SHALL list `api.typesafe.ai` and `docs.typesafe.ai` in `.workflow/network-allowlist.txt`.
 
 ### REQ-J8 (Event-driven) — Proof-failure triage
+**Enforced by:** UNENFORCED
+**Enforcement note:** Helper fixtures exist; the complete re-execution and real-key acceptance are not established by those references.
 WHEN `scripts/triage-claims.mjs` runs, THE SYSTEM SHALL re-run each failing claim's `test_command` with a timeout. It SHALL send Jev the claim's description, command, exit code and the last 60 lines of output with secret redaction, ask one Choice for the failure's cause, and write a table of claim, cause, probability, confidence and whether the case needs escalation to `.workflow/state/claim-triage-<date>.md`.
 
 ### REQ-J9 (Event-driven) — Residual fault classification
+**Enforced by:** test:tests/graph-resilience/classify-jev.test.mjs
 WHEN `scripts/graph-classify-fault.mjs` receives a failure that no deterministic signature matches and no `--agent-class` is given, THE SYSTEM SHALL ask Jev one Choice over the four REQ-R6 classes (`environment`, `api`, `transient`, `code`), sending only the first 20 error lines and the exit code. It SHALL return `classified_by: jev` with the confidence and probabilities only when `decide()` clears a 0.8 confidence threshold. IF Jev is unavailable, refuses the state as secret-shaped, or is below the threshold, THEN THE SYSTEM SHALL exit 2 and require an explicit agent verdict, as REQ-R6 did before this tier. Signatures and an explicit `--agent-class` SHALL take precedence, and Jev SHALL NOT be called for them. This amends REQ-R6 (specs/graph/R-resilience.md), which names the tier.
 
 ## Acceptance criteria

@@ -74,6 +74,113 @@ jobs:
       # tsx comes from the root lockfile, never from an unpinned global install. The
       # reproducibility-check tests and the claim steps below run it.
       - run: npm ci
+      - name: Enforcement references resolve (masterpiece REQ-M20)
+        run: node scripts/check-enforcement.mjs
+      - name: Prepare enforcement baseline
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import path from 'node:path';
+          import crypto from 'node:crypto';
+          import { spawnSync } from 'node:child_process';
+
+          const INTRODUCTION_BASE_SHA = '98648cfc6710a80444943165ab7dcd2c80f86210';
+          const base = process.env.BASE_SHA; // Capture once; never resolve a mutable ref.
+          const baseline = 'governance/enforcement-baseline.json';
+          const cap = 1024 * 1024;
+          function requireValue(ok) { if (!ok) throw new Error('unavailable'); }
+
+          try {
+            requireValue(typeof base === 'string' && base.length === 40 && /^[0-9a-f]{40}$/.test(base));
+            const root = process.cwd();
+            requireValue(fs.realpathSync(root) === root);
+            const gitDir = path.join(root, '.git');
+            requireValue(fs.lstatSync(gitDir).isDirectory());
+            // Actions owns this ordinary checkout's Git metadata. This is not a general
+            // hostile-repository reader; no caller command, config path or ref is accepted.
+            const env = {
+              PATH: '/usr/bin:/bin', HOME: root, XDG_CONFIG_HOME: root, LANG: 'C', LC_ALL: 'C',
+              GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '/dev/null',
+              GIT_NO_REPLACE_OBJECTS: '1', GIT_NO_LAZY_FETCH: '1',
+              GIT_TERMINAL_PROMPT: '0', GIT_OPTIONAL_LOCKS: '0',
+              GIT_ATTR_NOSYSTEM: '1', GIT_ALLOW_PROTOCOL: '',
+            };
+            const prefix = ['--no-pager', '--no-replace-objects', '--literal-pathspecs',
+              `--git-dir=${gitDir}`, `--work-tree=${root}`, '-c', 'protocol.allow=never',
+              '-c', 'core.fsmonitor=false', '-c', 'core.attributesFile=/dev/null'];
+            function git(args, maximum) {
+              const result = spawnSync('/usr/bin/git', [...prefix, ...args], {
+                cwd: root, env, input: Buffer.alloc(0), encoding: 'buffer',
+                timeout: 5000, killSignal: 'SIGKILL', maxBuffer: maximum,
+              });
+              requireValue(!result.error && result.status === 0 && result.signal === null &&
+                Buffer.isBuffer(result.stdout) && result.stdout.length <= maximum &&
+                Buffer.isBuffer(result.stderr) && result.stderr.length <= maximum);
+              return result.stdout;
+            }
+
+            // Every in-root output parent must be an ordinary directory. Never use a
+            // recursive mkdir that could silently traverse an existing symbolic link.
+            let parent = root;
+            for (const component of ['.workflow', 'state']) {
+              parent = path.join(parent, component);
+              try { fs.mkdirSync(parent, { mode: 0o700 }); }
+              catch (error) { if (error.code !== 'EEXIST') throw error; }
+              requireValue(fs.lstatSync(parent).isDirectory());
+            }
+            const target = path.join(parent, 'enforcement-base.json');
+            let exists = false;
+            try { fs.lstatSync(target); exists = true; }
+            catch (error) { if (error.code !== 'ENOENT') throw error; }
+            requireValue(!exists);
+
+            requireValue(git(['cat-file', '-t', base], 64).equals(Buffer.from('commit\n')));
+            const tree = git(['ls-tree', '-z', base, '--', baseline], 4096);
+            let bytes;
+            if (tree.length === 0) {
+              requireValue(base === INTRODUCTION_BASE_SHA);
+              bytes = Buffer.from('{"schema_version":1,"enforced":[]}\n');
+            } else {
+              // Buffer round-trip prevents lossy decoding from admitting malformed bytes.
+              const text = tree.toString('utf8');
+              requireValue(Buffer.from(text).equals(tree));
+              const entry = /^100644 blob ([0-9a-f]{40})\tgovernance\/enforcement-baseline\.json\0$/.exec(text);
+              requireValue(entry !== null && entry[0].length === text.length);
+              const oid = entry[1];
+              const sizeBytes = git(['cat-file', '-s', oid], 64);
+              const sizeText = sizeBytes.toString('ascii');
+              const sizeMatch = /^(0|[1-9][0-9]*)\n$/.exec(sizeText);
+              requireValue(Buffer.from(sizeText, 'ascii').equals(sizeBytes) &&
+                sizeMatch !== null && sizeMatch[0].length === sizeText.length);
+              const size = Number(sizeText.trim());
+              requireValue(Number.isSafeInteger(size) && size >= 0 && size <= cap);
+              bytes = git(['cat-file', 'blob', oid], cap + 1);
+              requireValue(bytes.length === size && bytes.length <= cap);
+              const actual = crypto.createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex');
+              requireValue(actual === oid);
+            }
+
+            let fd;
+            try {
+              fd = fs.openSync(target, fs.constants.O_WRONLY | fs.constants.O_CREAT |
+                fs.constants.O_EXCL | fs.constants.O_NOFOLLOW, 0o600);
+              const state = fs.fstatSync(fd);
+              requireValue(state.isFile() && state.nlink === 1);
+              fs.writeFileSync(fd, bytes);
+              fs.fsyncSync(fd);
+            } finally { if (fd !== undefined) fs.closeSync(fd); }
+            process.stdout.write('enforcement baseline: prepared\n');
+          } catch {
+            process.stderr.write('enforcement baseline: unavailable\n');
+            process.exitCode = 1;
+          }
+          NODE
+      - name: Mechanical enforcement references cannot regress (masterpiece REQ-M20)
+        if: github.event_name == 'pull_request'
+        run: node scripts/check-enforcement.mjs --ratchet .workflow/state/enforcement-base.json
       - name: Detector prompt and fingerprint lint (masterpiece REQ-M25)
         run: node scripts/lint-detector-prompts.mjs
       - name: Test dashboard and test hermeticity (REQ-R12..R13), held to its floor (REQ-M23)

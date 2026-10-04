@@ -84,55 +84,75 @@ OWASP Agentic Top 10 2026 on kill switches.
 ## Functional requirements (EARS)
 
 ### REQ-R1 (Ubiquitous) — A deterministic preflight exists and is the single source of "ready"
+**Enforced by:** test:tests/graph-resilience/preflight.test.mjs
 THE SYSTEM SHALL provide `scripts/graph-preflight.sh` that, with no arguments, verifies at minimum: (i) `git rev-parse --show-toplevel` succeeds and `git ls-remote --exit-code origin HEAD` succeeds within 20 s; (ii) `node --version` satisfies `package.json` `engines.node`; (iii) `npm --version` runs; (iv) `node_modules` exists at the DevOps root and under `stratum/`, and every file in each `node_modules/.bin/` is executable; (v) `gitleaks`, `semgrep` and `cosign` resolve on PATH or `~/bin` and report a version; (vi) `.workflow/state/` and `.workflow/proofs/` are writable; (vii) `.workflow/state/graph-halt` is absent; (viii) `.workflow/state/blocked.md` is absent or its `class` is not `needs_human`. Each check SHALL be a named function with a stable id (`git.runs`, `git.remote`, `node.version`, …).
 
 ### REQ-R2 (Ubiquitous) — Dual-mode report at a fixed path
+**Enforced by:** test:tests/graph-resilience/preflight.test.mjs
 THE SYSTEM SHALL make the preflight write `.workflow/state/preflight.json` (`{schema_version, ran_at, git_sha, status: ready|remediated|needs_human|error, checks: [{id, status: pass|fail|fixed|skipped, evidence, remedy?}]}`) AND print a one-line-per-check human table with ✓/✗/! markers, and SHALL exit 0 for `ready`, 10 for `remediated` (a fix was applied and the re-check passed), 20 for `needs_human`, 2 for internal error. It SHALL never print a secret value.
 
 ### REQ-R3 (Event-driven) — Known safe remediations are applied automatically; nothing else is
+**Enforced by:** test:tests/graph-resilience/preflight.test.mjs
 WHEN a check fails and `governance/graph/preflight-remediations.yml` lists a remediation for that check id, THE SYSTEM SHALL apply it, re-run the check, and record `fixed` with the command used. The remediation registry SHALL contain, for each entry, `check_id`, `detect` (the exact evidence string or predicate), `apply`, `revert`, `reversible: true`, `needs_sudo: false`, and a `why` line. The initial registry SHALL cover: the xcrun-license git block (route `git` to `/Library/Developer/CommandLineTools/usr/bin/git` via a shim in the first PATH directory the user owns, exactly the PB-55 workaround), missing exec bits on `node_modules/.bin/*` (`chmod +x`), and a missing `cosign` (install the version pinned in `.github/workflows/release-sign.yml` into `~/bin` with its published sha256 verified). Any check whose remedy needs `sudo`, a license acceptance, a credential, or a purchase SHALL be reported as `needs_human` with the exact command, never executed.
 
 ### REQ-R4 (Event-driven) — Preflight runs before any cycle starts
+**Enforced by:** UNENFORCED
+**Enforcement note:** The Workflow preflight stop has fixtures; the separate /sprint launch instruction remains procedural.
 WHEN `/sprint` is invoked, THE SYSTEM SHALL run the preflight first and SHALL refuse to launch the Workflow on exit 20 or 2, printing the blocked record path. WHEN `sprint-cycle.js` starts, its first `agent()` call SHALL be a `preflight` role (`effort: 'low'`) that runs `scripts/graph-preflight.sh --json` and returns the parsed `status` and failing check ids; IF the status is `needs_human` or `error`, THEN the script SHALL throw an error whose message begins `BLOCKED_BY_ENVIRONMENT:` and names the checks, before the planner runs.
 
 ### REQ-R5 (Event-driven) — Session start warns, never fixes
+**Enforced by:** test:tests/graph-resilience/session-hook.test.mjs; hook:SessionStart:-:hooks/universal/session-start/graph-preflight.sh
 WHEN a Claude Code session starts in this repository, THE SYSTEM SHALL run the preflight in `--check-only` mode through a `SessionStart` hook in `.claude/settings.json` and print its human table; the hook SHALL NOT apply remediations and SHALL NOT block the session (exit 0 always, with the status in its output).
 
 ### REQ-R6 (Ubiquitous) — Every fault is classified before any policy is applied
+**Enforced by:** test:tests/graph-resilience/classify.test.mjs; test:tests/graph-resilience/classify-jev.test.mjs
 THE SYSTEM SHALL classify every failure that stops a task into exactly one of: `environment` (toolchain/OS/filesystem: the preflight would fail), `api` (model API quota, session limit, outage: `agent()` returned `null` or a subagent reported `rate_limit_error`/`overloaded_error`/`authentication_error`), `transient` (a single network/registry blip that a bounded re-run clears), or `code` (a test, review or security finding about the change itself). Deterministic signatures SHALL classify first (exit codes, the strings `You have not agreed to the Xcode license agreements`, `ENOENT` on a toolchain binary, `EACCES` on `node_modules/.bin`, `ECONNREFUSED`/`ETIMEDOUT` to a registry or remote, the three API error names); agent judgment SHALL apply only to residual cases and SHALL be recorded as `classified_by: agent`. `code` failures SHALL flow through the normal reviewer/security/validator path and SHALL never be retried as if flaky.
 
 *2026-09-25 amendment (specs/graph/J-jev-judgments.md REQ-J9):* between the signatures and agent judgment, a residual case MAY be classified by a confidence-gated Jev judgment, recorded as `classified_by: jev` with its confidence. Signatures still classify first. When Jev is unavailable, is not asked, or is below the confidence threshold, agent judgment applies exactly as above.
 
 ### REQ-R7 (Event-driven) — Agents stop and report on environment faults instead of improvising
+**Enforced by:** UNENFORCED
+**Enforcement note:** Schema and prompt fixtures do not mechanically establish every real role action required here.
 WHEN a coder, tester, security or validator agent hits an `environment` or `api` signature, THE SYSTEM SHALL have that agent run `scripts/graph-preflight.sh` once; IF the status is not `ready`/`remediated`, THEN the agent SHALL write the blocked record (REQ-R9) via `scripts/graph-blocked.sh`, return `blocked_by_environment: {class, check_ids, evidence}` in its structured result with `passed: false` (tester) or the role's negative verdict, and stop. Every role schema in `sprint-cycle.js` SHALL carry the optional `blocked_by_environment` object; the role prompts SHALL state these rules under an `ENVIRONMENT RULES` heading placed before the existing `STALL RULES`. Additional evidence gathered by other means (for example a scratchpad harness when the suite cannot run) MAY be reported but SHALL NOT set `passed: true`.
 
 ### REQ-R8 (Event-driven) — The cycle halts cleanly on a fault and records it
+**Enforced by:** test:tests/graph-resilience/workflow-faults.test.mjs
 WHEN any `agent()` in `sprint-cycle.js` returns `null`, OR returns a non-null result whose `blocked_by_environment` object carries a non-empty `check_ids` array or a non-empty `evidence` string, THE SYSTEM SHALL stop the cycle at that stage (no later stage runs on a null or blocked input), `log()` the class and stage, and throw an error whose message begins `BLOCKED_BY_ENVIRONMENT:` followed by a JSON object `{cycleId, stage, taskId?, class, check_ids?, evidence}`. This is judged on emptiness of `check_ids`/`evidence` alone, never on the meaning of any text present, so a non-empty placeholder string such as `"not applicable"` still halts. A `null` verdict from reviewer, security or validator SHALL be treated as this fault, never as "not approved". A `class` value SHALL be passed through only when it is one of `FAULT_CLASSES`; a `null` agent result, an absent `class`, or any other value SHALL default to `needs_human`, never `api` (`specs/graph/M-masterpiece-standard.md#REQ-M4`). An omitted or `null` `blocked_by_environment` on a non-null result is not a fault. WHEN instead a non-null result carries a `blocked_by_environment` object whose `check_ids` and `evidence` are BOTH empty or absent (no actual fault evidence, regardless of `class` or `classified_by`), THE SYSTEM SHALL NOT halt: it SHALL `log()` the result as a swallowed/spurious block naming the stage (and the task id, for per-task stages), and let the cycle continue as if `blocked_by_environment` were absent.
 
 *2026-09-26 amendment (D2, PB-84; `specs/graph/M-masterpiece-standard.md#REQ-M4`):* this corrects the requirement's own text above, which used to read that ANY non-null result carrying `blocked_by_environment` halts the cycle unconditionally. The shipped `stopIfBlocked` (`sprint-cycle.js`) narrowed that after an evidence-free block twice stopped an otherwise-clean cycle (`.workflow/state/polish-backlog.md` PB-84); this REQ's text now matches the shipped rule.
 
 ### REQ-R9 (Ubiquitous) — The blocked record is human-actionable in under a minute
+**Enforced by:** UNENFORCED
+**Enforcement note:** The blocked-record writer has fixtures; actual role/orchestrator invocation timing remains procedural.
 THE SYSTEM SHALL provide `scripts/graph-blocked.sh` that writes `.workflow/state/blocked.md` (and appends an `event: graph.blocked` line to `.workflow/state/events.jsonl`) containing, in this order: **What happened** (one line), **Class** (`environment|api|transient|needs_human`), **Impact** (cycle id, stage, task id, tasks completed / remaining), **Fix** (the exact command a human runs, or "none needed — resumes when the API is back"), **Resume** (the exact `/sprint --resume <cycleId>` invocation), **Evidence** (the failing check ids and the first 20 lines of the error), **Run record** (path to `run.json` and the Workflow journal). An agent returning `blocked_by_environment` SHALL write the record before returning. If `agent()` returns `null` or Workflow throws before a subagent can write it, `/sprint` SHALL write the record after catching `BLOCKED_BY_ENVIRONMENT:` and before reporting the fault to the human. The file SHALL be gitignored and SHALL be removed only by `/sprint --resume` after a passing preflight or by a human.
 
 ### REQ-R10 (Ubiquitous) — A durable run record makes resume mechanical
+**Enforced by:** UNENFORCED
+**Enforcement note:** Run-record and resume helpers have fixtures; every orchestrator invocation is not mechanically enforced.
 THE SYSTEM SHALL have `/sprint` write `.workflow/state/graph-cycles/<cycleId>/run.json` at launch (`{schema_version, cycleId, backlogItem, scriptPath, args, runId, journalPath, startedAt, status: running|blocked|completed|failed, resumedFrom?, priorRunIds?}`) and update `status`, `runId`, the complete args actually sent, and the new journal path on every resume or completion. `priorRunIds`, when present, SHALL accumulate every earlier runId a resume has superseded, oldest first, distinct from `resumedFrom`, which SHALL continue to name only the single most recent one. A run-record update that changes a non-null `runId` SHALL reject missing `resumedFrom`, args, or new journal path. THE SYSTEM SHALL provide `scripts/graph-resume-args.mjs <cycleId>` that reads `run.json` and the run's `journal.jsonl` and prints the complete `args` object for a continuation — `backlogItem`, `cycleId`, `plan`, `priorBuildResults` (tasks whose tester result is journaled), `priorCoderResults` (tasks whose coder result is journaled but whose tester is not), `resumedFrom` — so that no field of a resume is ever typed by a human.
 
 ### REQ-R11 (Event-driven) — Resume is one command, gated on the same preflight
+**Enforced by:** PROCESS
 WHEN `/sprint --resume <cycleId>` is invoked, THE SYSTEM SHALL run the preflight; IF `ready`/`remediated`, THEN it SHALL derive the args with `scripts/graph-resume-args.mjs`, relaunch `sprint-cycle.js` with them (using the Workflow tool's `resumeFromRunId` when the script and prompts are unchanged, the derived args otherwise), remove any remaining non-`needs_human` blocked record, and update `run.json`; IF `needs_human`, THEN it SHALL refuse and print the blocked record. For a `needs_human` blocked record, the human SHALL perform the listed fix and remove `blocked.md` before invoking `/sprint --resume`; the full preflight SHALL then verify that the underlying fault is gone. The orchestrator session's autonomous loop MAY call `/sprint --resume` unattended for class `api` and `transient` only; class `needs_human` and `environment` faults whose remediation is not in the registry SHALL wait for the human's fix to be verified by preflight.
 
 ### REQ-R12 (Ubiquitous) — Tests are hermetic with respect to the toolchain
+**Enforced by:** test:tests/hermeticity.test.mjs
 THE SYSTEM SHALL ensure no file under `tests/` or matching `*.test.*` spawns `git`, `brew`, `xcodebuild`, `xcrun`, `npm` or `npx` to obtain information derivable in-process; the repo root SHALL be derived from `import.meta.dirname` (Node ≥ 20.11; this checkout runs Node 26) or a `package.json` walk-up. The six `tests/graph-dashboard/*.test.mjs` files that call `execFileSync('git', ['rev-parse', '--show-toplevel'])` SHALL be converted, and a `try/catch` fallback to `process.cwd()` SHALL NOT be used as the fix.
 
 ### REQ-R13 (Unwanted behaviour) — Non-hermetic tests cannot land
+**Enforced by:** test:tests/hermeticity.test.mjs; job:.github/workflows/ci.yml#validate
 IF a test file spawns one of the toolchain binaries in REQ-R12, THEN THE SYSTEM SHALL fail `npm test` at the DevOps root through a hermeticity check (`tests/hermeticity.test.mjs` or `scripts/check-test-hermeticity.sh` wired into the `test` script and CI) that names the file and line.
 
 ### REQ-R14 (Ubiquitous) — Environment faults are measured separately from change failures
+**Enforced by:** PROCESS
 THE SYSTEM SHALL add to `governance/graph/stability-dashboard.md` an "Environment faults" column (count, classes, time-to-resume) distinct from the change-failure columns, and `/sprint` SHALL append an `event: graph.environment_fault` line to `.workflow/state/events.jsonl` for every blocked record, so that DORA-style stability metrics are not moved by infrastructure outages.
 
 ### REQ-R15 (Unwanted behaviour) — The kill switch cannot be lifted by an agent
+**Enforced by:** test:tests/graph-resilience/preflight.test.mjs
 IF `.workflow/state/graph-halt` exists, THEN the preflight SHALL report `needs_human` for check `halt.absent` regardless of any other result, and no script, hook or subagent introduced by this spec SHALL remove that file; only the documented `/graph-resume` human action does.
 
 ### REQ-R16 (Ubiquitous) — Documentation matches the mechanism
+**Enforced by:** PROCESS
 THE SYSTEM SHALL update `slash-commands/universal/sprint.md` (preflight step, `--resume`), `governance/graph/role-mapping.md` (the `preflight` step and the blocked/resume lifecycle), `governance/graph/autonomy-config.yml` (a `resilience:` block naming the preflight, registry, blocked-record and run-record paths and the unattended-resume classes), and `CLAUDE.md`'s Hooks section (the `SessionStart` hook).
 
 ---

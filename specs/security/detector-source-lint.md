@@ -54,6 +54,7 @@ finite check. State that limit in product documentation and review.
 
 ### REQ-1 — Fixed read-only entry
 
+**Enforced by:** test:tests/ci/lint-detector-prompts.test.mjs; job:.github/workflows/ci.yml#validate
 WHEN invoked as `node scripts/lint-detector-prompts.mjs` with no arguments,
 THE SYSTEM SHALL lint the fixed workflow source and root `.gitleaksignore`
 relative to the script's project root, independently of the caller's CWD.
@@ -63,6 +64,7 @@ subprocess execution, network requests, file writes or Git/history lookups.
 
 ### REQ-2 — Bounded inputs
 
+**Enforced by:** test:tests/ci/lint-detector-prompts.test.mjs; job:.github/workflows/ci.yml#validate
 THE SYSTEM SHALL admit only regular, non-symlink files reached through
 non-symlink project-contained components, with an inclusive 262144-byte
 workflow cap and 65536-byte ignore cap, decoded as strict UTF-8.
@@ -82,6 +84,7 @@ the two-file rule describes lint inputs, not all loader filesystem activity.
 
 ### REQ-3 — Nonvacuous detector selection
 
+**Enforced by:** test:tests/ci/lint-detector-prompts.test.mjs; job:.github/workflows/ci.yml#validate
 THE SYSTEM SHALL select exactly one direct `workflowAgent` call for each of
 the three literal role labels, whose first argument is an untagged template
 literal and whose second argument is an object with one ordinary literal
@@ -107,6 +110,7 @@ shape must fail before reporting any successful template count.
 
 ### REQ-4 — Exact finite phrase policy
 
+**Enforced by:** test:tests/ci/lint-detector-prompts.test.mjs; job:.github/workflows/ci.yml#validate
 IF any inspected literal contains one of the three prohibited phrases after
 ASCII case folding and collapsing `[ \t\r\n\f\v]+` to one space, THEN THE
 SYSTEM SHALL fail with the role/shared-source category and phrase identifier.
@@ -120,6 +124,7 @@ inside an inspected literal is introduced.
 
 ### REQ-5 — Fingerprint grammar
 
+**Enforced by:** test:tests/ci/lint-detector-prompts.test.mjs; job:.github/workflows/ci.yml#validate
 THE SYSTEM SHALL ignore empty physical lines and lines whose first
 non-whitespace character is `#` when classifying `.gitleaksignore` entries.
 
@@ -137,6 +142,7 @@ complete parser for every possible Git filename or Gitleaks version.
 
 ### REQ-6 — Privacy and exit contract
 
+**Enforced by:** test:tests/ci/lint-detector-prompts.test.mjs; job:.github/workflows/ci.yml#validate
 WHEN both inputs pass, THE SYSTEM SHALL exit0 with a fixed-prefix summary
 on stdout containing three selected templates and the observed fingerprint
 count, with stderr empty.
@@ -154,6 +160,7 @@ review verdict.
 
 ### REQ-7 — CI and preservation
 
+**Enforced by:** test:tests/ci/lint-detector-prompts.test.mjs; job:.github/workflows/ci.yml#validate
 WHEN the existing `validate` CI job has completed its locked root dependency
 install, THE SYSTEM SHALL run this exact local lint as a required failing step.
 

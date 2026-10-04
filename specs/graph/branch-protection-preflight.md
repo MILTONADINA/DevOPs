@@ -14,6 +14,7 @@ with strict status checks, administrator enforcement and zero approving reviews.
 
 ## REQ-1 — Commit the required contexts
 
+**Enforced by:** test:tests/graph-resilience/branch-protection.test.mjs
 THE REPOSITORY SHALL keep `governance/required-checks.yml` as a JSON-compatible
 YAML object with exactly one `contexts` field containing a nonempty array of
 unique, nonempty, trimmed context names. Its initial names SHALL be the six
@@ -27,6 +28,7 @@ reading that target.
 
 ## REQ-2 — Read only the current GitHub origin's main protection
 
+**Enforced by:** test:tests/graph-resilience/branch-protection.test.mjs
 WHEN Git resolves the current project root, THE PREFLIGHT SHALL add
 `branch.protection`. The protection check SHALL independently bind its Git
 root and origin lookup to this project with inherited `GIT_*` routing/config
@@ -56,6 +58,7 @@ with `needs_human`, without calling `gh`.
 
 ## REQ-3 — Fail closed on missing protections or unreadable responses
 
+**Enforced by:** test:tests/graph-resilience/branch-protection.test.mjs
 WHEN the response is a valid JSON object, THE CHECK SHALL pass only if:
 
 - `required_status_checks.contexts` is an array of nonempty strings containing
@@ -115,7 +118,7 @@ the read-only main protection endpoint is queried **Then** it returns the
 configured contexts and owner-required settings. Preserve the response as
 bounded evidence; do not mutate settings or repeat an unchanged successful GET.
 
-**Enforced by:** `scripts/graph-preflight.mjs`, the committed context policy
+**Enforcement note (pre-MR17 global annotation):** `scripts/graph-preflight.mjs`, the committed context policy
 and the existing preflight status gate before a sprint launch.
 
 **Falsified by:** a healthy preflight reporting ready with a missing required

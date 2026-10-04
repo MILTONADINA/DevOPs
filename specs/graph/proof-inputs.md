@@ -43,7 +43,8 @@ read a path named inside either input, or create/modify/delete files. It
 SHALL NOT modify Workflow schemas/prompts, run records, dashboard readers,
 hooks or `/sprint` behavior. A successful parse is not a verification result.
 
-**Enforced by:** the standalone CLI and its focused CLI tests.
+**Enforced by:** test:tests/graph-resilience/proof-inputs.test.mjs
+**Enforcement note (pre-MR17 annotation):** the standalone CLI and its focused CLI tests.
 **Falsified by:** a command string creates a fixture sentinel, an input
 redirects the reader to a third file, or invocation changes run/history state.
 
@@ -85,7 +86,8 @@ semantics: duplicate object-member names use the last value. This slice does
 not add a custom JSON parser or claim duplicate-member detection; duplicate
 events and identity mappings are governed separately below.
 
-**Enforced by:** contained file reads, byte/line/encoding checks and CLI tests.
+**Enforced by:** test:tests/graph-resilience/proof-inputs.test.mjs
+**Enforcement note (pre-MR17 annotation):** contained file reads, byte/line/encoding checks and CLI tests.
 **Falsified by:** an out-of-root symlink, nonregular input, excessive input,
 invalid UTF-8 or malformed journal line yields a successful output.
 
@@ -111,7 +113,8 @@ original external journal automatically. `status`, `readyForPR`, verdicts,
 acknowledgements and filenames alone SHALL NOT establish verification or
 readiness.
 
-**Enforced by:** run-input validation before event extraction.
+**Enforced by:** test:tests/graph-resilience/proof-inputs.test.mjs
+**Enforcement note (pre-MR17 annotation):** run-input validation before event extraction.
 **Falsified by:** a mismatched cycle/path/run directory or carried result
 supplies an accepted proof declaration.
 
@@ -156,7 +159,8 @@ per label: a later planner/coder restart does not establish that an earlier
 tester result is causally fresh. Cross-role causal binding belongs to a
 future replay/status layer; it is not inferred by this extractor.
 
-**Enforced by:** a strict event-state reader and retry/ambiguity fixtures.
+**Enforced by:** test:tests/graph-resilience/proof-inputs.test.mjs
+**Enforcement note (pre-MR17 annotation):** a strict event-state reader and retry/ambiguity fixtures.
 **Falsified by:** an old successful result survives a newer failed/in-flight
 attempt, or a stale agent's terminal event supplies the selected result.
 
@@ -181,7 +185,8 @@ findings and free text SHALL NOT establish success or enter the output.
 Negative verdicts in otherwise valid result objects do not make this reader
 a test runner or readiness calculator.
 
-**Enforced by:** complete-role/task validation against the final planner set.
+**Enforced by:** test:tests/graph-resilience/proof-inputs.test.mjs
+**Enforcement note (pre-MR17 annotation):** complete-role/task validation against the final planner set.
 **Falsified by:** a missing preflight/tester, unplanned task or mismatched
 task_id yields successful extraction, or a verdict changes verification.
 
@@ -210,7 +215,8 @@ or any files were measured. Tool names need not have an installed executable
 or floor; this reader neither selects a scanner adapter nor claims one exists.
 No command declaration constitutes argv or execution authorization.
 
-**Enforced by:** declaration validation and whitelist projection.
+**Enforced by:** test:tests/graph-resilience/proof-inputs.test.mjs
+**Enforcement note (pre-MR17 annotation):** declaration validation and whitelist projection.
 **Falsified by:** a shell metacharacter executes, a reported number is called
 measured, or legacy optional fields silently become verified proof.
 
@@ -270,7 +276,8 @@ result bodies, environment values or user-provided strings. No failure SHALL
 be converted into an empty success. Exit 0 means only that extraction met
 this schema; neither exit value changes a run record or attests a test result.
 
-**Enforced by:** CLI output projection and success/refusal tests.
+**Enforced by:** test:tests/graph-resilience/proof-inputs.test.mjs
+**Enforcement note (pre-MR17 annotation):** CLI output projection and success/refusal tests.
 **Falsified by:** valid declarations emit verification:passed, a failure dumps
 the sentinel input text, or any failure produces a partial success object.
 

@@ -96,7 +96,8 @@ THE SYSTEM SHALL compute `readyForPR` in `sprint-cycle.js` as the conjunction of
 - no stage INDETERMINATE (REQ-M3)
 
 No verdict may count only because a prompt tells another agent to weigh it.
-**Enforced by:** code in `sprint-cycle.js` (replacing `:317`); tests in `tests/graph-resilience/workflow-faults.test.mjs`.
+**Enforced by:** test:tests/graph-resilience/workflow-faults.test.mjs
+**Enforcement note (pre-MR17 annotation):** code in `sprint-cycle.js` (replacing `:317`); tests in `tests/graph-resilience/workflow-faults.test.mjs`.
 **Falsified by:** a fake-agent run with the reviewer returning `approved:false` (or security `FAIL`) and the validator `PASS` that yields `readyForPR: true`.
 
 ### REQ-M2 (Event-driven): The orchestrator re-executes proofs and scanner runs; agents do not self-report them
@@ -106,17 +107,20 @@ WHEN a Workflow cycle returns, `/sprint` SHALL run `scripts/graph-rerun-proofs.m
 - exit non-zero if any exit code differs, or if any scanner reports `scanned_files` below the floor in `governance/scan-floors.yml`.
 
 A non-zero exit SHALL set `run.json` status to `failed` (REQ-M6).
-**Enforced by:** the orchestrator script plus a `/sprint` runbook step. The script's own tests are in `tests/graph-resilience/rerun-proofs.test.mjs`.
+**Enforced by:** UNENFORCED
+**Enforcement note (pre-MR17 annotation):** the orchestrator script plus a `/sprint` runbook step. The script's own tests are in `tests/graph-resilience/rerun-proofs.test.mjs`.
 **Falsified by:** a journal fixture whose tester claims `exit_code: 0` for a command that exits 1, or whose security scan reports 0 files, and the script exits 0.
 
 ### REQ-M3 (Ubiquitous): INDETERMINATE is a first-class outcome and never counts as clean
 THE SYSTEM SHALL add a required field `outcome: enum [PASS, FAIL, INDETERMINATE]` to the tester, security and validator schemas. The existing booleans are kept for resume compatibility (`tests/graph-resilience/resume-args.test.mjs`). A disagreement between a boolean and its `outcome` SHALL be treated as INDETERMINATE. THE SYSTEM SHALL add `indeterminate` to the run-record status list (`scripts/graph-run-record.mjs:30`). IF any stage is INDETERMINATE, THEN `readyForPR` SHALL be false and the cycle outcome SHALL say INDETERMINATE, never "not approved".
-**Enforced by:** code and schema in `sprint-cycle.js` and `graph-run-record.mjs`; tests.
+**Enforced by:** test:tests/graph-resilience/workflow-faults.test.mjs; test:tests/graph-resilience/run-record.test.mjs
+**Enforcement note (pre-MR17 annotation):** code and schema in `sprint-cycle.js` and `graph-run-record.mjs`; tests.
 **Falsified by:** a fixture with a tester result `{passed: true, outcome: 'INDETERMINATE'}` that yields `readyForPR: true`.
 
 ### REQ-M4 (Unwanted behaviour): An unknown fault is never reclassified as resumable
 IF `agent()` returns `null` or a `blocked_by_environment` object without a class, THEN `stopIfBlocked` SHALL assign class `needs_human`, not `api` (`sprint-cycle.js:47`). `BLOCKED_SCHEMA.class` (`:26`) SHALL be `enum [environment, api, transient, needs_human]`. A result carrying any other class SHALL be treated as `needs_human`.
-**Enforced by:** code in `sprint-cycle.js`; tests.
+**Enforced by:** test:tests/graph-resilience/workflow-faults.test.mjs
+**Enforcement note (pre-MR17 annotation):** code in `sprint-cycle.js`; tests.
 **Falsified by:** a fake run where the reviewer returns `null` and the thrown `BLOCKED_BY_ENVIRONMENT` JSON contains `"class":"api"`.
 
 ### REQ-M5 (Event-driven): Launch and unblock are bound to a fresh preflight
@@ -127,7 +131,8 @@ WHEN `graph-run-record.mjs launch` or `update --clearBlocked true` runs, THE SYS
 - for `clearBlocked`, its `ran_at` is newer than `blocked.md`'s mtime.
 
 Today `clearBlocked` checks only `status` (`scripts/graph-run-record.mjs:51-54`), and `launch` does not read the preflight at all.
-**Enforced by:** code in `graph-run-record.mjs`; tests in `tests/graph-resilience/run-record.test.mjs`.
+**Enforced by:** test:tests/graph-resilience/run-record.test.mjs
+**Enforcement note (pre-MR17 annotation):** code in `graph-run-record.mjs`; tests in `tests/graph-resilience/run-record.test.mjs`.
 **Falsified by:** a launch that succeeds with a passing `preflight.json` whose `git_sha` is a different commit.
 
 ### REQ-M6 (Event-driven): Cycle status and history are derived from the journal, not asserted by the caller
@@ -137,7 +142,8 @@ WHEN `graph-run-record.mjs update --status completed|failed|indeterminate` runs,
 - `failed` otherwise.
 
 It SHALL refuse a caller-supplied status that disagrees with the derived one. It SHALL append the cycle's row to `governance/graph/stability-dashboard.md` from `run.json` plus the journal outcome, and refuse a duplicate `cycleId`. Today the row is written by hand (`slash-commands/universal/sprint.md:87-88`).
-**Enforced by:** code in `graph-run-record.mjs`; tests.
+**Enforced by:** UNENFORCED
+**Enforcement note (pre-MR17 annotation):** code in `graph-run-record.mjs`; tests.
 **Falsified by:** `update --status completed` accepted for a run whose journal result has `readyForPR: false`, or a second row for the same `cycleId`.
 
 ### REQ-M7 (Unwanted behaviour): Material ambiguity and source conflicts stop the cycle
@@ -146,7 +152,9 @@ IF the planner returns a non-empty `ambiguities[]` or `conflicts[]`, THEN `sprin
 - The planner schema SHALL add `conflicts: [{higher, lower, clause}]`.
 - `AGENTS.md` SHALL carry one precedence line: owner decision > law/safety > approved spec > ADR/AC > plan > code.
 
-**Enforced by:** code in `sprint-cycle.js` (replacing the log-only `:139`); the `graph-run-record.mjs` acknowledgement field; tests.
+**Enforced by:** UNENFORCED
+**Enforcement note (pre-MR17 annotation):** code in `sprint-cycle.js` (replacing the log-only `:139`); the `graph-run-record.mjs` acknowledgement field; tests.
+**Enforcement note:** Code gates and acknowledgement fixtures exist; authentic owner-answer provenance and required orchestrator writes remain outside those fixtures.
 **Falsified by:** a fake planner returning one ambiguity and the coder stage running without a matching acknowledgement.
 
 ### REQ-M8 (Event-driven): Every cycle is bound to an approved, falsifiable spec (all 8 chain links, link 1 included)
@@ -156,7 +164,9 @@ WHEN `graph-run-record.mjs launch` runs, THE SYSTEM SHALL require `--spec-ref sp
 - every `REQ-` heading in that spec has at least one `AC-` that references it, and a `Falsified by:` line.
 
 `sprint-cycle.js` SHALL take `args.specRef`. The planner schema SHALL require `tasks[].ac_ids` (non-empty, each present in the spec). The claim schema SHALL require `outcome_ref` (the approved spec anchor) and `decision_ref` (an ADR path or `{na_reason, approver}`) for type `implementation`. It SHALL require `signal {metric, threshold}` and `recovery {mode, doc}` only for types `deploy` and `migration`. `scripts/lint-spec-status.mjs` in `ci.yml` SHALL fail on any spec whose Status is missing or outside `draft|approved|implemented|superseded` (owner decision O-3, 2026-09-26), except the specs listed in `governance/traceability-baseline.json`, a list that may only shrink. It SHALL accept both `**Status**:` and `**Status:**`, and an optional parenthetical note after the status word.
-**Enforced by:** code in `graph-run-record.mjs` and `sprint-cycle.js`; `claim-validator.ts`; the CI lint.
+**Enforced by:** UNENFORCED
+**Enforcement note (pre-MR17 annotation):** code in `graph-run-record.mjs` and `sprint-cycle.js`; `claim-validator.ts`; the CI lint.
+**Enforcement note:** The spec-status slice is implemented; the remaining launch, AC and claim-link obligations remain open.
 **Falsified by:** a launch that succeeds against a `draft` spec, or against an approved spec with a REQ that has no AC.
 
 ### REQ-M9 (Ubiquitous): Claims are schema-validated, committed, RED/GREEN, and never vacuous
@@ -168,7 +178,9 @@ THE SYSTEM SHALL meet each of the following:
 - Type `implementation` or `test` requires `proof.red: {sha, exit_code != 0}`. The validator re-runs the RED at that sha in a temporary worktree when not `--no-rerun` (locally only, not in CI).
 - The tester returns a `claim_id`, and `/sprint` runs `tsx verification/claim-validator.ts --claim <id>` after the cycle; a non-zero exit sets `run.json` to `failed`.
 
-**Enforced by:** `claim-validator.ts`; the `ci.yml` validate job; the `/sprint` post-cycle step.
+**Enforced by:** UNENFORCED
+**Enforcement note (pre-MR17 annotation):** `claim-validator.ts`; the `ci.yml` validate job; the `/sprint` post-cycle step.
+**Enforcement note:** Schema, committed metadata and RED declarations are implemented; safe replay, RED retention and sprint integration remain open.
 **Falsified by:** a claim with `description` longer than 280 characters, or `spec_ref` pointing at a missing file, passing; or CI's claim step printing "No claim files to validate." and exiting 0.
 
 ### REQ-M10 (Ubiquitous): Completion states are a closed vocabulary, never estimated upward
@@ -178,7 +190,9 @@ THE SYSTEM SHALL add `state: enum [implemented, verified, code_converged, releas
 - `release_ready` while any in-scope work-graph node is `CANDIDATE` or `CONFLICT` (REQ-M12).
 
 "Masterpiece" without a qualifier SHALL mean `production_complete`. The sweep counter proves only `code_converged`. `scripts/lint-readiness-claims.mjs` SHALL fail when any of the literal state tokens, or the status column of the version tables in `docs/LAUNCH_READINESS.md` or `SHIP_BLOCKERS.md`, lacks a cited claim id whose state supports it. It deliberately does not match free prose such as "live dashboard".
-**Enforced by:** schema, validator and CI lint.
+**Enforced by:** UNENFORCED
+**Enforcement note (pre-MR17 annotation):** schema, validator and CI lint.
+**Enforcement note:** The optional state vocabulary is implemented; semantic evidence gates and readiness-document lint remain open.
 **Falsified by:** a claim with `state: production_complete` and no deploy proof passing; or `LAUNCH_READINESS.md:241` still asserting production-complete with no claim id.
 
 ### REQ-M11 (Ubiquitous): Frozen convergence is a zero anchor plus exactly two fresh-process zero repeats
@@ -197,7 +211,8 @@ THE SYSTEM SHALL provide `scripts/graph-converge.mjs freeze|record|status --scop
 - **status** exits 0 only when `repeats == 2`.
 
 The claim is conformance to the frozen inputs only, not absence of defects.
-**Enforced by:** code in `graph-converge.mjs`; tests covering every reset branch.
+**Enforced by:** UNENFORCED
+**Enforcement note (pre-MR17 annotation):** code in `graph-converge.mjs`; tests covering every reset branch.
 **Falsified by:** `status` exiting 0 after a repeat recorded on a changed HEAD, after the same run id recorded twice, or after a journal with one finding.
 
 ### REQ-M12 (Ubiquitous): The dependency graph schedules work
@@ -212,12 +227,14 @@ THE SYSTEM SHALL provide `governance/graph/work-graph.json` and `scripts/graph-n
 - `graph-run-record.mjs launch` SHALL refuse a backlog item that is not on the frontier.
 - **Second slice**, after REQ-M9 commits claims: node state is derived only from claims validated at the node's current source fingerprint, so a spec change invalidates dependents.
 
-**Enforced by:** `graph-next.mjs` run in `ci.yml` validate and by `launch`; tests.
+**Enforced by:** UNENFORCED
+**Enforcement note (pre-MR17 annotation):** `graph-next.mjs` run in `ci.yml` validate and by `launch`; tests.
 **Falsified by:** a launch that succeeds for an item whose `requires` predecessor has no validated claim; or a graph containing `"done": true` that validates.
 
 ### REQ-M13 (Ubiquitous): CI results can block merges, and drift is detected
 THE SYSTEM SHALL keep `governance/required-checks.yml`, the list of the context names the owner requires on `main`. `scripts/graph-preflight.mjs` SHALL add check `branch.protection`, which uses the owner's local `gh` to read `branches/main/protection`. It fails with `needs_human` when any listed context is missing or `required_approving_review_count < 1`. Applying the ruleset is an owner action. DeepTeam and Claude Security Review SHALL never be listed as required contexts, because a skip would satisfy them.
-**Enforced by:** the preflight check (it blocks `/sprint` launch, REQ-M5) plus the owner's GitHub setting.
+**Enforced by:** test:tests/graph-resilience/branch-protection.test.mjs
+**Enforcement note (pre-MR17 annotation):** the preflight check (it blocks `/sprint` launch, REQ-M5) plus the owner's GitHub setting.
 **Falsified by:** preflight reporting `ready` while `gh api .../required_status_checks` returns 404.
 
 ### REQ-M14 (Unwanted behaviour): A scan that scanned nothing never passes
@@ -225,7 +242,9 @@ IF a security scan in CI exits abnormally, reports rule or parse errors, or scan
 - Semgrep SHALL run as a pinned `semgrep scan --json --error`, piped to `scripts/assert-scan.mjs`, which fails on a non-empty `errors[]` or on `paths.scanned` below the floor. This replaces `returntocorp/semgrep-action@713efdd` at `security-scan.yml:56-65`.
 - `scripts/run-redteam.sh` SHALL exit non-zero, not 0 with `SKIPPED.md` (`:51-67`), on push-to-main or schedule when it was meant to run and has no key or no target. Skips on PR path filters remain skips and are not required contexts.
 
-**Enforced by:** CI plus `assert-scan.mjs`; tests with a crashed-scan JSON fixture.
+**Enforced by:** UNENFORCED
+**Enforcement note (pre-MR17 annotation):** CI plus `assert-scan.mjs`; tests with a crashed-scan JSON fixture.
+**Enforcement note:** Strict Semgrep enforcement is implemented; Decision 9 retains visible unfunded DeepTeam/Claude skips, which are not passing evidence.
 **Falsified by:** a Security scan run on `main` that concludes success while its log contains `invalid rule severity value` or `RED-TEAM GATE SKIPPED`.
 
 ### REQ-M15 (Ubiquitous): Human-only approvals are signed out of band
@@ -234,7 +253,8 @@ THE SYSTEM SHALL accept a deploy, halt-lift, blocked-clear or ambiguity-acknowle
 - the signed payload is `{cycle, sha, action, approver, ts}` with `sha == HEAD` and `cycle` equal to the running cycle.
 
 The signing key SHALL be one an agent cannot use: a FIDO `sk-` key, or a passphrase key not loaded in `ssh-agent`. Free-text approver strings in marker files and `gh`-posted comments SHALL NOT count as approval.
-**Enforced by:** `deploy-gate.sh`, `graph-run-record.mjs` and `graph-preflight.mjs` (halt), each calling `ssh-keygen -Y verify`; tests with a throwaway test key.
+**Enforced by:** UNENFORCED
+**Enforcement note (pre-MR17 annotation):** `deploy-gate.sh`, `graph-run-record.mjs` and `graph-preflight.mjs` (halt), each calling `ssh-keygen -Y verify`; tests with a throwaway test key.
 **Falsified by:** a marker whose content is `{}`, or one with a valid signature over a different `sha`, admitting a deploy-shaped command.
 
 ### REQ-M16 (Ubiquitous): Gate hooks are hardened and regression-tested
@@ -259,7 +279,8 @@ THE SYSTEM SHALL run `tests/hooks/deploy-gate.test.mjs` and `tests/hooks/block-s
 
 The earlier requirement to diff a push with no upstream against `origin/main` served only the billing four-eyes check, and it was dropped when that gate was retired on 2026-09-26 (ADR-0025).
 
-**Enforced by:** `hooks/universal/pre-tool/deploy-gate.sh`, `hooks/universal/pre-tool/block-sealed-refs.sh`, their `graph-command-classifier.mjs` companion, and `tests/hooks/*` through root `npm test`; `analyzer/install.ts` and focused companion-installation fixtures; supported installed Bash-wrapper delivery has separate fixture evidence.
+**Enforced by:** test:tests/hooks/deploy-gate.test.mjs; test:tests/hooks/block-sealed-refs.test.mjs; test:tests/hooks/graph-classifier-response.test.mjs; test:tests/hooks/graph-classifier-review.test.mjs; test:tests/hooks/graph-ref-operands.test.mjs; test:tests/hooks/graph-hook-install.test.mjs; hook:PreToolUse:Bash:hooks/universal/pre-tool/deploy-gate.sh; hook:PreToolUse:Bash:hooks/universal/pre-tool/block-sealed-refs.sh
+**Enforcement note (pre-MR17 annotation):** `hooks/universal/pre-tool/deploy-gate.sh`, `hooks/universal/pre-tool/block-sealed-refs.sh`, their `graph-command-classifier.mjs` companion, and `tests/hooks/*` through root `npm test`; `analyzer/install.ts` and focused companion-installation fixtures; supported installed Bash-wrapper delivery has separate fixture evidence.
 
 **Falsified by:** any acceptance case below returning the wrong status, selecting an unrelated marker, mutating fixture authority files, evaluating supplied command text, or making a ref-classification lookup outside the project context or over the network.
 
@@ -269,27 +290,32 @@ IF any `.workflow/state/graph-cycles/*/run.json` has status `running`, THEN THE 
 - through a new PreToolUse matcher, the GitHub MCP write tools `push_files`, `create_or_update_file`, `delete_file`, `create_pull_request` and `merge_pull_request`.
 
 The orchestrator commits only after `update` has derived the status (REQ-M6). `graph-run-record.mjs launch` SHALL refuse while another record is `running`; this is the single-flight rule, because the tester prompt tolerates concurrent tree changes (`sprint-cycle.js:203`). A human clear path for a killed run left `running` SHALL be documented. Before this requirement is relied on, a one-time proof SHALL establish whether PreToolUse hooks fire inside Workflow subagents. If they do not, the coder and tester `agent()` calls SHALL pass `isolation: 'worktree'`.
-**Enforced by:** hook, matcher and `launch` code; `tests/hooks/cycle-commit-lock.test.mjs`; the recorded subagent-hook proof claim.
+**Enforced by:** UNENFORCED
+**Enforcement note (pre-MR17 annotation):** hook, matcher and `launch` code; `tests/hooks/cycle-commit-lock.test.mjs`; the recorded subagent-hook proof claim.
 **Falsified by:** a `git commit --allow-empty` issued by a Workflow subagent while a run is `running` succeeding.
 
 ### REQ-M18 (Unwanted behaviour): Gate configuration and gate state are not agent-writable
 IF a Write or Edit targets `hooks/`, `.claude/settings.json`, `.claude/workflows/`, `.workflow/state/graph-approvals/`, `.workflow/state/graph-halt`, `.workflow/state/blocked.md` or `governance/graph/allowed_signers`, THEN a PreToolUse `Write|Edit` hook SHALL deny it. `deploy-gate.sh` SHALL deny Bash `rm`, `mv`, `cp`, `tee` or redirections onto those paths. Owner edits go through a signed marker (REQ-M15) or are made outside the agent session. Hook edits take effect in the running session (CLAUDE.md), so this is what keeps an agent from disabling a gate mid-session.
-**Enforced by:** the new hook plus a `deploy-gate.sh` extension; `tests/hooks/protected-paths.test.mjs`.
+**Enforced by:** UNENFORCED
+**Enforcement note (pre-MR17 annotation):** the new hook plus a `deploy-gate.sh` extension; `tests/hooks/protected-paths.test.mjs`.
 **Falsified by:** an Edit to `hooks/universal/pre-tool/deploy-gate.sh` from an agent session succeeding.
 
 ### REQ-M19 (Ubiquitous): The gate audit trail is tamper-evident
 THE SYSTEM SHALL give each line appended to `.workflow/state/events.jsonl` a `prev_sha256` field chaining it to the previous line. The dashboard and preflight SHALL verify the chain, and a break SHALL show as `TAMPERED` in the dashboard and cause `needs_human` in preflight.
-**Enforced by:** the shared append helper used by the hooks and `graph-blocked.sh`; a preflight check; tests.
+**Enforced by:** UNENFORCED
+**Enforcement note (pre-MR17 annotation):** the shared append helper used by the hooks and `graph-blocked.sh`; a preflight check; tests.
 **Falsified by:** a truncated or edited middle line not detected.
 
 ### REQ-M20 (Ubiquitous): No gate without a clause, and no clause without real enforcement
 THE SYSTEM SHALL require every `REQ-` in `specs/graph/` and `specs/security/`, and every row of the tier table in `docs/SECURITY.md`, to carry `Enforced by:`. That line must resolve to an existing test file, a `ci.yml` job id, a hook actually wired in `.claude/settings.json`, `PROCESS`, or `UNENFORCED`. `scripts/check-enforcement.mjs` in `ci.yml` validate SHALL fail on an unresolvable reference. It SHALL also fail when a REQ recorded in `governance/enforcement-baseline.json` as enforced becomes `UNENFORCED`, since the baseline only ratchets. The reverse direction, that every hook and job is cited by a REQ, is deferred.
-**Enforced by:** CI checker plus committed baseline; tests.
+**Enforced by:** test:tests/ci/check-enforcement.test.mjs; job:.github/workflows/ci.yml#validate
+**Enforcement note (pre-MR17 annotation):** CI checker plus committed baseline; tests.
 **Falsified by:** `docs/SECURITY.md:12` claiming a gitleaks post-tool hard block while `gitleaks-scan.sh` is unwired, and the check passing.
 
 ### REQ-M21 (Ubiquitous): Closures and freshness markers cite evidence
 THE SYSTEM SHALL fail a CI lint (`scripts/lint-closures.mjs`) when a `.workflow/state/polish-backlog.md` or `SHIP_BLOCKERS.md` item marked `CLOSED` does not cite a commit or PR plus a claim id present in the committed proof set (REQ-M9). This applies only to committed copies; the polish backlog is checked locally when it is gitignored. `hooks/universal/post-tool/sync-lr-refined-date.sh` SHALL bump "Last refined" only when invoked by `/launch-readiness` after re-derivation, not on every `plan.md` edit.
-**Enforced by:** CI lint; the hook change; tests.
+**Enforced by:** UNENFORCED
+**Enforcement note (pre-MR17 annotation):** CI lint; the hook change; tests.
 **Falsified by:** a CLOSED row with no claim id passing, or a `plan.md` whitespace edit changing the Last refined date.
 
 ### REQ-M22 (Ubiquitous): Dependency and secret gates exist where the docs claim them
@@ -299,12 +325,15 @@ THE SYSTEM SHALL:
 - provide a committed pre-commit hook (`core.hooksPath=.githooks`, installed by `scripts/setup`) that runs `gitleaks protect --staged` and fails on findings.
 
 SBOM and provenance are deferred until a release artifact exists; `release-sign.yml` signs only `SKILL.md` files.
-**Enforced by:** CI job and git hook.
+**Enforced by:** UNENFORCED
+**Enforcement note (pre-MR17 annotation):** CI job and git hook.
+**Enforcement note:** The dedicated dependency-audit contract is implemented; local missing-scanner behavior remains the existing tested policy.
 **Falsified by:** a PR adding a dependency with a known critical advisory that passes, or a staged fake AWS key that commits.
 
 ### REQ-M23 (Unwanted behaviour): An emptied or assertion-free suite never reads as PASS
 IF `npm test` at the root, or in `stratum/`, runs fewer tests than the floor committed in `governance/test-floors.json`, THEN CI SHALL fail. Floors may only rise, except by a one-time `lowerings` entry (suite, from, to, reason, decision) that the ratchet checks and prints. `scripts/check-assertions.mjs` SHALL also fail on a new test file with zero `assert`/`expect` calls.
-**Enforced by:** CI floor check plus lint.
+**Enforced by:** test:tests/graph/test-floors.test.mjs; job:.github/workflows/ci.yml#validate; job:.github/workflows/ci.yml#runtime-test
+**Enforcement note (pre-MR17 annotation):** CI floor check plus lint.
 **Falsified by:** deleting a test file and CI staying green.
 
 ### REQ-M24 (Ubiquitous): The dashboard observes; it never presents stale or unobserved state as live
@@ -317,17 +346,20 @@ THE SYSTEM SHALL make `scripts/graph-dashboard/server.mjs`:
 - label non-sprint Workflow runs as such.
 
 It SHALL remain read-only and loopback-only.
-**Enforced by:** code plus `tests/graph-dashboard/state-readers.test.mjs` with a killed-run fixture.
+**Enforced by:** test:tests/graph-dashboard/reader.test.mjs; test:tests/graph-dashboard/state-readers.test.mjs; test:tests/graph-dashboard/sprint-doc.test.mjs
+**Enforcement note (pre-MR17 annotation):** code plus `tests/graph-dashboard/state-readers.test.mjs` with a killed-run fixture.
 **Falsified by:** the 2026-09-15 run `wf_d07743ef-c04` still shown `active: true`.
 
 ### REQ-M25 (Unwanted behaviour): History never becomes a detector skip list
 IF the reviewer, security or validator prompt templates in `sprint-cycle.js` contain `already fixed`, `do not re-report` or `known issue`, or any `.gitleaksignore` line is not a full `commit:file:rule:line` fingerprint, THEN `scripts/lint-detector-prompts.mjs` in `ci.yml` SHALL fail.
-**Enforced by:** CI lint.
+**Enforced by:** test:tests/ci/lint-detector-prompts.test.mjs; job:.github/workflows/ci.yml#validate
+**Enforcement note (pre-MR17 annotation):** CI lint.
 **Falsified by:** adding "known issue: X" to the security prompt and CI staying green.
 
 ### REQ-M26 (Ubiquitous): Cross-tool claims are backed by adapters
 THE SYSTEM SHALL either provide `.cursor/rules/devops.mdc` (`alwaysApply: true`, citing `AGENTS.md` and `constitution/PRINCIPLES.md`) plus `scripts/lint-adapters.mjs` in CI, or remove "Universal across Claude Code, Codex, Cursor, Antigravity, Kiro" from `.claude-plugin/plugin.json:5`. The owner decides which.
-**Enforced by:** CI lint, or removal of the claim.
+**Enforced by:** PROCESS
+**Enforcement note (pre-MR17 annotation):** CI lint, or removal of the claim.
 **Falsified by:** `plugin.json` claiming Cursor support while `.cursor/` does not exist.
 
 ### REQ-M27 (Ubiquitous): Pentest and DAST are executable, target-bound, and fail loudly
@@ -337,7 +369,8 @@ THE SYSTEM SHALL provide `.github/workflows/dast.yml` (weekly plus dispatch; nev
 - fails on a high or critical finding, on a missing report, or on an unhealthy target, reporting the run as INDETERMINATE (red).
 
 Until the pentest MCPs exist and are registered, the claims "denied at the hook layer" (`docs/SECURITY.md:33-35`) and "least-privilege gate" (`role-mapping.md:62`) SHALL be deleted, not implemented with an environment variable that nothing sets per role.
-**Enforced by:** CI workflow plus target validator; tests for the validator.
+**Enforced by:** job:.github/workflows/dast.yml#dast; test:tests/ci/dast-target.test.mjs; test:tests/ci/dast-reports.test.mjs; test:tests/ci/dast-hook.test.mjs; test:tests/ci/dast-supervisor.test.mjs; test:tests/ci/dast-owned-run.test.mjs; test:tests/ci/dast-source-identity.test.mjs; test:tests/ci/dast-workflow.test.mjs
+**Enforcement note (pre-MR17 annotation):** CI workflow plus target validator; tests for the validator.
 **Falsified by:** `dast.yml` concluding success with no nuclei report artifact.
 
 ### REQ-M28 (Event-driven): The graph installs into BrightPath only through BrightPath's own gates
@@ -348,7 +381,8 @@ WHEN the DevOPs graph is proposed for BrightPath, THE SYSTEM SHALL provide `scri
 - exits non-zero if either fails.
 
 Any bridge SHALL call BrightPath's `engineering_graph.py next|status --evidence-dir <retained dir>` in-tree. It SHALL never pass `--root` from DevOps, and SHALL never replace BrightPath's graph as its primary scheduler (BP `ENGINEERING_GRAPH.md:3-15`). The install SHALL NOT start until REQ-M1, M3, M4, M15, M16, M17 and M18 are `verified`, because installing earlier would ship a self-certifying pipeline.
-**Enforced by:** the dry-run script's exit code, which runs BrightPath's gate [41] checkers.
+**Enforced by:** UNENFORCED
+**Enforcement note (pre-MR17 annotation):** the dry-run script's exit code, which runs BrightPath's gate [41] checkers.
 **Falsified by:** a real BrightPath checkout modified by the script, or a dry-run reporting pass while BrightPath's checker exits non-zero.
 
 ### REQ-M29 (Ubiquitous): Documentation matches the mechanism
@@ -360,7 +394,9 @@ THE SYSTEM SHALL correct, at the latest in the cycle that implements the matchin
 - `governance/graph/graph-halt.md:9-11` (halt checked "before any other check");
 - `scripts/graph-dashboard/README.md:151-161` ("not recoverable").
 
-**Enforced by:** REQ-M20's checker for SECURITY.md; REQ-M10's lint for LAUNCH_READINESS; PROCESS for the rest.
+**Enforced by:** UNENFORCED
+**Enforcement note (pre-MR17 annotation):** REQ-M20's checker for SECURITY.md; REQ-M10's lint for LAUNCH_READINESS; PROCESS for the rest.
+**Enforcement note:** Forward SECURITY reference integrity is separate from semantic readiness lint and the remaining procedural corrections.
 **Falsified by:** any listed sentence still present once its REQ is verified.
 
 ---
