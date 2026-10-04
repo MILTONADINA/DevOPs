@@ -498,7 +498,7 @@ async function buildRunModel({ sessionId, workflowId, runDir, journalPath, recor
       node.status = 'stale';
     }
   }
-  const active = nodes.some((n) => n.status === 'running');
+  const active = record?.status !== 'superseded' && nodes.some((n) => n.status === 'running');
   const isSprint = Boolean(record) || labelStates.has('planner') || labelStates.has('preflight');
 
   const validatorState = labelStates.get('validator');
@@ -508,7 +508,7 @@ async function buildRunModel({ sessionId, workflowId, runDir, journalPath, recor
     sessionId,
     workflowId,
     runDir,
-    active, // true iff at least one node is 'running': started, no later result/failed, and not stale
+    active, // true iff not superseded and a node is running after the existing stale transformation
     firstActivityMs,
     lastActivityMs,
     backlogItem, // best-effort, non-fabricated -- null when not found
