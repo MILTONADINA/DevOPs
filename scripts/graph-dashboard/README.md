@@ -179,6 +179,11 @@ permanent design constraint, not a gap slated to be filled in later.
     `cycleOutcome`/`readyForPR` record above — this dashboard cannot see
     whether every gate a cycle depends on was actually satisfied
     end-to-end, only what the validator node itself reported.
+  - **Raw labels** — every admitted string, including `__proto__`, is an
+    own enumerable data property of the ordinary `labels` object. State
+    references and normal object/key ordering are preserved; JSON-serializable
+    model evidence retains those labels. This does not establish authenticity
+    or proof success.
   - **Per-node state** (queued / running / done / errored / stale) — derived
     from `journal.jsonl`'s `started` / `result` / `failed` events, joined back
     to a label via each event's own `key`. A result or failure applies only
