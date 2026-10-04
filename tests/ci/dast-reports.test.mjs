@@ -203,6 +203,19 @@ test('complete empty native report passes with real zero counts and safe >2^53 m
   assert.equal(r.value.nuclei.observed_http_requests, null); assert.equal(r.value.zap.url_count, 2);
 }));
 test('fixed ARM64 pins and relative run path are admitted without assuming imageID equals manifest', () => fixture(f => pass(invoke(f, [path.relative(f.project, f.dir)])), { platform: 'linux/arm64' }));
+test('native ZAP coverage may retain its observed bare origin alongside docs and slash', () => fixture(f => {
+  const r = invoke(f); pass(r); assert.equal(r.value.zap.url_count, 3);
+}, { mutate: b => { b.completion.urls.unshift(ORIGIN); } }));
+test('native established TCP tails admit ssthresh minus-one only in its documented field', () => {
+  for (const family of ['tcp', 'tcp6']) {
+    const address = family === 'tcp' ? '0100007F' : '0000000000000000FFFF00000100007F';
+    const row = `9: ${address}:C001 ${address}:46A0 01 00000000:00000000 01:00000019 00000000 1000 0 54165785 4 cd1e6040 25 4 27 3 -1\n`;
+    fixture(f => pass(invoke(f)), { mutate: b => { b.isolation.observations[0].socket_tables[family] += row; } });
+    fixture(f => refuse(invoke(f), 'isolation'), { mutate: b => {
+      b.isolation.observations[0].socket_tables[family] += row.replace(' 1000 0 ', ' -1 0 ').replace(' 3 -1\n', ' 3 1\n');
+    } });
+  }
+});
 test('engine completion is self-consistent, not hardcoded to the control fixture 23 units', () => fixture(f => {
   const r = invoke(f); pass(r); assert.equal(r.value.nuclei.engine_units, 24); assert.equal(r.value.nuclei.engine_total, 24);
 }, { mutate: b => b.stats.forEach(s => { s.requests = s.total = '24'; }) }));
