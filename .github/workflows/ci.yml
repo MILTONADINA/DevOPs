@@ -74,6 +74,8 @@ jobs:
       # tsx comes from the root lockfile, never from an unpinned global install. The
       # reproducibility-check tests and the claim steps below run it.
       - run: npm ci
+      - name: Detector prompt and fingerprint lint (masterpiece REQ-M25)
+        run: node scripts/lint-detector-prompts.mjs
       - name: Test dashboard and test hermeticity (REQ-R12..R13), held to its floor (REQ-M23)
         shell: bash
         # The suite brings its own fixtures; local ignored proofs are not a prerequisite.
