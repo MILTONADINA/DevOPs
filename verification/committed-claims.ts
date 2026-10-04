@@ -95,52 +95,81 @@ function anchorCount(markdown: string, fragment: string): number {
   return count;
 }
 
+// Both entry points share the same complete publication policy and real context.
+function openPublicationInputs(root: string) {
+  const manifestBytes = within('manifest', () => readInputBytes(MANIFEST, root, 'manifest', MANIFEST_CAP));
+  const manifest = manifestFrom(manifestBytes);
+  const git = within('git', () => createGitContext(root));
+  return { root, manifestBytes, manifest, git };
+}
+
+function validatePublication(
+  { root, manifestBytes, manifest, git }: ReturnType<typeof openPublicationInputs>,
+  selection: CommittedSelection,
+  recomputeHash: (claim: Claim) => string,
+): ValidationResult[] {
+  const entries = within('git', () => git.listPublication());
+  const expected = new Set([MANIFEST, ...manifest.claims.map(m => `${DIRECTORY}/${m.path}`), ...manifest.artifacts.map(m => `${DIRECTORY}/${m.path}`)]);
+  requireValue(entries.size === expected.size && [...entries.keys()].every(name => expected.has(name)), 'publication');
+  const committedManifest = within('git', () => git.readRegularBlob(git.head, MANIFEST, MANIFEST_CAP));
+  requireValue(manifestBytes.equals(committedManifest), 'publication');
+  const selected = 'all' in selection ? manifest.claims : manifest.claims.filter(member => member.id === selection.id);
+  requireValue(selected.length > 0, 'claim');
+  const texts = new Map<string, string>();
+  for (const member of [...manifest.claims, ...manifest.artifacts]) {
+    const file = `${DIRECTORY}/${member.path}`;
+    const working = within('member', () => readInputBytes(file, root, 'member', MEMBER_CAP));
+    const text = within('member', () => decodeInput(working, 'member'));
+    const committed = within('git', () => git.readRegularBlob(git.head, file, MEMBER_CAP));
+    requireValue(working.equals(committed) && createHash('sha256').update(working).digest('hex') === member.sha256, 'member');
+    if (selected.some(claim => claim.path === member.path)) texts.set(member.path, text);
+  }
+  const validate = within('claim', () => loadSchema());
+  return selected.map(member => {
+    try {
+      const doc = within('claim', () => parseInput(texts.get(member.path)!, 'claim'));
+      if (validate(doc) !== true) {
+        return { claim_id: member.id, ok: false, failures: (validate.errors ?? []).map(error =>
+          `committed: claim schema ${JSON.stringify(error.keyword)} at ${JSON.stringify(error.schemaPath)}`) };
+      }
+      const claim = (doc as ClaimDoc).claim;
+      requireValue(claim.id === member.id, 'claim');
+      requireValue(claim.proof.git_sha.length === 40 && /^[0-9a-f]{40}$/.test(claim.proof.git_sha) &&
+        claim.proof.files_changed.every(normalized), 'claim');
+      requireValue(within('claim', () => recomputeHash(claim)) === claim.reproducibility_hash, 'claim');
+      within('git', () => git.assertClaimTarget(claim.proof.git_sha, claim.proof.files_changed));
+      const parts = claim.spec_ref.split('#');
+      requireValue(parts.length === 2 && normalized(parts[0]) && /^specs\/.+\.md$/.test(parts[0]) && parts[1].length > 0, 'spec');
+      const spec = within('spec', () => decodeInput(git.readRegularBlob(claim.proof.git_sha, parts[0], MEMBER_CAP), 'spec'));
+      requireValue(anchorCount(spec, parts[1]) === 1, 'spec');
+      return { claim_id: member.id, ok: true, failures: [] };
+    } catch (error) {
+      return { claim_id: member.id, ok: false, failures: [error instanceof CommittedFailure ? error.message : 'committed: claim'] };
+    }
+  });
+}
+
 export function validateCommitted(selection: CommittedSelection, recomputeHash: (claim: Claim) => string): ValidationResult[] {
   try {
     const root = within('publication', () => fs.realpathSync(process.cwd()));
-    const manifestBytes = within('manifest', () => readInputBytes(MANIFEST, root, 'manifest', MANIFEST_CAP));
-    const manifest = manifestFrom(manifestBytes);
-    const git = within('git', () => createGitContext(root));
-    const entries = within('git', () => git.listPublication());
-    const expected = new Set([MANIFEST, ...manifest.claims.map(m => `${DIRECTORY}/${m.path}`), ...manifest.artifacts.map(m => `${DIRECTORY}/${m.path}`)]);
-    requireValue(entries.size === expected.size && [...entries.keys()].every(name => expected.has(name)), 'publication');
-    const committedManifest = within('git', () => git.readRegularBlob(git.head, MANIFEST, MANIFEST_CAP));
-    requireValue(manifestBytes.equals(committedManifest), 'publication');
-    const selected = 'all' in selection ? manifest.claims : manifest.claims.filter(member => member.id === selection.id);
-    requireValue(selected.length > 0, 'claim');
-    const texts = new Map<string, string>();
-    for (const member of [...manifest.claims, ...manifest.artifacts]) {
-      const file = `${DIRECTORY}/${member.path}`;
-      const working = within('member', () => readInputBytes(file, root, 'member', MEMBER_CAP));
-      const text = within('member', () => decodeInput(working, 'member'));
-      const committed = within('git', () => git.readRegularBlob(git.head, file, MEMBER_CAP));
-      requireValue(working.equals(committed) && createHash('sha256').update(working).digest('hex') === member.sha256, 'member');
-      if (selected.some(claim => claim.path === member.path)) texts.set(member.path, text);
-    }
-    const validate = within('claim', () => loadSchema());
-    return selected.map(member => {
-      try {
-        const doc = within('claim', () => parseInput(texts.get(member.path)!, 'claim'));
-        if (validate(doc) !== true) {
-          return { claim_id: member.id, ok: false, failures: (validate.errors ?? []).map(error =>
-            `committed: claim schema ${JSON.stringify(error.keyword)} at ${JSON.stringify(error.schemaPath)}`) };
-        }
-        const claim = (doc as ClaimDoc).claim;
-        requireValue(claim.id === member.id, 'claim');
-        requireValue(claim.proof.git_sha.length === 40 && /^[0-9a-f]{40}$/.test(claim.proof.git_sha) &&
-          claim.proof.files_changed.every(normalized), 'claim');
-        requireValue(within('claim', () => recomputeHash(claim)) === claim.reproducibility_hash, 'claim');
-        within('git', () => git.assertClaimTarget(claim.proof.git_sha, claim.proof.files_changed));
-        const parts = claim.spec_ref.split('#');
-        requireValue(parts.length === 2 && normalized(parts[0]) && /^specs\/.+\.md$/.test(parts[0]) && parts[1].length > 0, 'spec');
-        const spec = within('spec', () => decodeInput(git.readRegularBlob(claim.proof.git_sha, parts[0], MEMBER_CAP), 'spec'));
-        requireValue(anchorCount(spec, parts[1]) === 1, 'spec');
-        return { claim_id: member.id, ok: true, failures: [] };
-      } catch (error) {
-        return { claim_id: member.id, ok: false, failures: [error instanceof CommittedFailure ? error.message : 'committed: claim'] };
-      }
-    });
+    return validatePublication(openPublicationInputs(root), selection, recomputeHash);
   } catch (error) {
     return [{ claim_id: '[invalid claim]', ok: false, failures: [error instanceof CommittedFailure ? error.message : 'committed: publication'] }];
   }
+}
+
+// MR18-A: callers receive IDs only after all claims pass the existing policy.
+// The document reader closes over that one captured HEAD, never a fresh ref.
+export function openValidatedPublication(root: string, recomputeHash: (claim: Claim) => string) {
+  const inputs = openPublicationInputs(root);
+  const results = validatePublication(inputs, { all: true }, recomputeHash);
+  requireValue(results.length > 0 && results.every(result => result.ok), 'claim');
+  const { git } = inputs;
+  return Object.freeze({
+    head: git.head,
+    claimIds: Object.freeze(results.map(result => result.claim_id)),
+    readHeadBlob(file: string, cap: number, optional = false): Buffer | null {
+      return optional ? git.readOptionalRegularBlob(git.head, file, cap) : git.readRegularBlob(git.head, file, cap);
+    },
+  });
 }

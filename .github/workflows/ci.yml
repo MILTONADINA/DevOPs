@@ -287,6 +287,8 @@ jobs:
       - name: Validate committed claim metadata
         run: npx --no-install tsx verification/claim-validator.ts --all --no-rerun
         # Strict nonempty publication at HEAD; logs and command execution are not observed.
+      - name: Validate closure citations (specs/graph/closure-references.md REQ-6)
+        run: npx --no-install tsx scripts/lint-closures.mjs
       - name: Lint Renovate template (REQ-H1..H6)
         run: npm run lint:renovate
       - name: Lint stack-specific skills (REQ-D2..D7)
