@@ -53,6 +53,33 @@ it does not establish safety of arbitrary container code or every scan target.
 DeepTeam/Claude's visible unfunded skips and the rest of MR-7 remain separate
 under owner Decision 9. This Semgrep gate does not claim those reviews ran.
 
+### Detector source lint boundary (MR22 / M25)
+
+The [detector-source contract](../specs/security/detector-source-lint.md)
+requires the three fixed phrases `already fixed`, `do not re-report` and
+`known issue` to fail the CI lint when present in inspected detector literals.
+It covers the reviewer/security/validator templates and the two named shared
+initializers, using decoded text, ASCII case folding and whitespace collapse.
+For instruction injection and code execution, Workflow source is parsed as
+data by the pinned parser; it is never imported or executed. Dynamic owner,
+backlog and result values, arbitrary identifier definitions and phrases built
+across separate fragments are outside this finite static analysis. The lint
+neither measures detector quality nor prevents runtime prompt injection.
+
+For baseline broadening, each nonempty/non-comment `.gitleaksignore` entry must
+use the specified full `commit:file:rule:line` grammar. Existing historical fingerprints
+and scanner configuration are preserved. Grammar acceptance does not verify a
+finding, its historical approval or the scanner's coverage; the history and
+directory scans remain separate evidence. Lint counts are source metadata.
+
+For cross-project disclosure and resource exhaustion, the two fixed inputs
+have strict UTF-8 and byte limits with non-symlink regular-file/descriptor
+checks. These checks reject observed changes, not arbitrary concurrent tampering.
+The parser/Node dependency closure remains trusted. Diagnostics contain fixed
+categories and bounded identifiers, never raw prompt/ignore data or exception
+text. The lint writes nothing and invokes no subprocess, Git, network or model.
+It does not set graph readiness or waive Decision12's delivery/review gates.
+
 ### Branch protection drift check (MR-8)
 
 Before a sprint, `branch.protection` compares the current GitHub origin's
