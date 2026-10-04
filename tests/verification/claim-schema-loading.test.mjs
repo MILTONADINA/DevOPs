@@ -62,7 +62,9 @@ function fixture() {
   chmodSync(git, 0o755);
   const data = { claim: { id: ID, type: 'implementation', spec_ref: 'specs/fixture.md#ac-1', description: 'Valid owned fixture declaration.',
     proof: { git_sha: SHA, files_changed: ['claimed.txt'], test_command: 'printf harmless', test_exit_code: 0,
-      test_output_path: '.workflow/proofs/fixture-output.log', environment: { MODE: 'fixture' } }, confidence: 'high',
+      test_output_path: '.workflow/proofs/fixture-output.log', environment: { MODE: 'fixture' },
+      red: { sha: 'b'.repeat(40), exit_code: 1 } // Synthetic declaration only; the Git stub admits only GREEN SHA.
+    }, confidence: 'high',
     timestamp: '2026-10-03T12:34:56Z', reproducibility_hash: '' } };
   function save() {
     const c = data.claim;
@@ -118,10 +120,18 @@ test('copied sibling maxLength is authoritative rather than a hardcoded limit', 
   refused(f.invoke(), 'maxLength');
 }));
 
-test('inclusive description limit and nonzero exit/additional data/no RED remain allowed', () => withFixture((f) => {
+test('C1 implementation without RED is refused despite valid description/exit/extra data', () => withFixture((f) => {
+  f.data.claim.description = 'x'.repeat(280); f.data.claim.proof.test_exit_code = 7;
+  f.data.claim.extra = 'permitted extra member'; delete f.data.claim.proof.red; f.save();
+  assert.equal(f.data.claim.proof.red, undefined);
+  refused(f.invoke(), 'required');
+}));
+
+test('C1 valid RED preserves inclusive description and nonzero GREEN exit/additional data', () => withFixture((f) => {
   f.data.claim.description = 'x'.repeat(280); f.data.claim.proof.test_exit_code = 7;
   f.data.claim.extra = 'permitted extra member'; f.save();
-  assert.equal(f.data.claim.proof.red, undefined);
+  assert.equal(f.data.claim.proof.red.sha, 'b'.repeat(40));
+  assert.equal(f.data.claim.proof.red.exit_code, 1);
   accepted(f.invoke());
 }));
 
@@ -253,4 +263,58 @@ test('validation does not remove a schema-forbidden additional property', () => 
 
 test('schema diagnostics do not expose arbitrary environment-property names', () => withFixture((f) => {
   f.data.claim.proof.environment = { [SENTINEL]: 1 }; f.save(); refused(f.invoke(), 'type');
+}));
+
+// specs/verification/red-declarations.md REQ-1..4 / AC-1..4; no RED lookup or replay.
+test('C1 test claims require RED as well as implementation claims', () => withFixture((f) => {
+  f.data.claim.type = 'test'; delete f.data.claim.proof.red; f.save(); refused(f.invoke(), 'required');
+}));
+
+for (const kind of ['scan', 'deploy', 'migration', 'refactor', 'perf', 'doc', 'security-review', 'threat-model']) test(`C1 ${kind} may omit RED but every supplied declaration is validated`, () => withFixture((f) => {
+  f.data.claim.type = kind; delete f.data.claim.proof.red; f.save(); accepted(f.invoke());
+  f.data.claim.proof.red = { sha: 'b'.repeat(40), exit_code: 1 }; f.save(); accepted(f.invoke());
+  f.data.claim.proof.red.exit_code = 0; f.save();
+  const result = f.invoke(); refused(result); assert.match(result.output, /claim schema/);
+}));
+
+for (const [name, value, keyword] of [
+  ['null RED', null, 'type'], ['array RED', [], 'type'], ['string RED', 'invalid', 'type'],
+  ['missing SHA', { exit_code: 1 }, 'required'], ['missing exit', { sha: 'b'.repeat(40) }, 'required'],
+  ['short SHA', { sha: 'b'.repeat(39), exit_code: 1 }, 'minLength'],
+  ['long SHA', { sha: 'b'.repeat(41), exit_code: 1 }, 'maxLength'],
+  ['trailing newline SHA', { sha: 'b'.repeat(40) + '\n', exit_code: 1 }, 'maxLength'],
+  ['uppercase SHA', { sha: 'B'.repeat(40), exit_code: 1 }, 'pattern'],
+  ['nonhex SHA', { sha: SENTINEL.padEnd(40, 'x'), exit_code: 1 }, 'pattern'],
+  ['numeric SHA', { sha: 123, exit_code: 1 }, 'type'],
+  ['whitespace SHA', { sha: 'b'.repeat(39) + ' ', exit_code: 1 }, 'pattern'],
+  ['zero exit', { sha: 'b'.repeat(40), exit_code: 0 }, undefined],
+  ['negative zero exit', { sha: 'b'.repeat(40), exit_code: -0 }, undefined],
+  ['boolean exit', { sha: 'b'.repeat(40), exit_code: true }, 'type'],
+  ['null exit', { sha: 'b'.repeat(40), exit_code: null }, 'type'],
+  ['fractional exit', { sha: 'b'.repeat(40), exit_code: 0.5 }, 'type'],
+  ['string exit', { sha: 'b'.repeat(40), exit_code: '1' }, 'type'],
+]) test(`C1 RED schema rejects ${name}`, () => withFixture((f) => {
+  f.data.claim.proof.red = value; f.save();
+  // JSON flow preserves a real empty array, rather than the small fixture YAML writer's empty block.
+  const json = JSON.stringify(f.data);
+  writeFileSync(f.claim, name === 'negative zero exit' ? json.replace('"exit_code":0', '"exit_code":-0') : json);
+  if (name === 'negative zero exit') assert.match(readFileSync(f.claim, 'utf8'), /"exit_code":-0/);
+  const result = f.invoke(); refused(result, keyword); assert.match(result.output, /claim schema/);
+}));
+
+for (const exit of [-1, 256]) test(`C1 nonzero RED integer ${exit} remains declared data`, () => withFixture((f) => {
+  f.data.claim.type = 'test'; f.data.claim.proof.red.exit_code = exit; f.save(); accepted(f.invoke());
+}));
+
+test('C1 valid optional RED and extra RED fields preserve the original hash formula', () => withFixture((f) => {
+  const before = f.data.claim.reproducibility_hash;
+  f.data.claim.type = 'doc'; f.data.claim.proof.red = { sha: 'c'.repeat(40), exit_code: -27, extra: SENTINEL };
+  f.save(); assert.equal(f.data.claim.reproducibility_hash, before);
+  const result = f.invoke(); accepted(result); assert.doesNotMatch(result.output, new RegExp(SENTINEL));
+}));
+
+
+test('C1 nonempty implicit discovery applies the same RED schema', () => withFixture((f) => {
+  delete f.data.claim.proof.red; f.save(); refused(f.invoke(['--no-rerun']), 'required');
+  f.data.claim.proof.red = { sha: 'b'.repeat(40), exit_code: 1 }; f.save(); accepted(f.invoke(['--no-rerun']));
 }));
