@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "upstream_repository": "https://github.com/projectdiscovery/nuclei-templates",
+  "upstream_commit": "893122ffce8ebf8e264f15d2cd3960cb1dd36d6c",
+  "upstream_release": "v10.4.9",
+  "license": "MIT",
+  "copyright_notice": "Copyright (c) 2025 ProjectDiscovery, Inc.",
+  "license_file": "LICENSE.md",
+  "modifications": "None. Selected upstream files retained byte-for-byte, including author metadata and signature comments.",
+  "files": [
+    {
+      "path": "http/exposures/configs/laravel-env.yaml",
+      "upstream_path": "http/exposures/configs/laravel-env.yaml",
+      "git_blob_sha": "fc81dbd31f7c4dab0614cf692e5ab2d217bbdbd4",
+      "bytes": 1888,
+      "sha256": "37566f5fb1764be65072836390d4ff3f40af4917ecf00bdb08dbfcf862bb09c7"
+    },
+    {
+      "path": "http/exposures/configs/git-config.yaml",
+      "upstream_path": "http/exposures/configs/git-config.yaml",
+      "git_blob_sha": "f5ff87ae6ab7b0cd2fcfec65e2dba17abb2e2eed",
+      "bytes": 1237,
+      "sha256": "bd8bdfa0b5ed5bf4d3712edb793adfd0987d9282e51c6f7d673bf14b9e4dd524"
+    },
+    {
+      "path": ".nuclei-ignore",
+      "upstream_path": ".nuclei-ignore",
+      "git_blob_sha": "8f0786f8ab02b60c26b9ee2076f8c7d1bcd916f2",
+      "bytes": 1503,
+      "sha256": "699053f709b11e80d853b63ebdcfe7ea0b15464f7d9709379c71bb12a41c627b"
+    },
+    {
+      "path": "LICENSE.md",
+      "upstream_path": "LICENSE.md",
+      "git_blob_sha": "93c6a78f51fce232923d923e5e1fa1080eeb99df",
+      "bytes": 1079,
+      "sha256": "5fa6644d2dd1987a79c06f4af210d2cf8cfc4ee799999029d0f9980c9cf95a2c"
+    }
+  ]
+}
