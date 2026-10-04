@@ -53,7 +53,7 @@ THE SYSTEM SHALL list `api.typesafe.ai` and `docs.typesafe.ai` in `.workflow/net
 
 ### REQ-J8 (Event-driven) — Proof-failure triage
 **Enforced by:** UNENFORCED
-**Enforcement note:** Helper fixtures exist; the complete re-execution and real-key acceptance are not established by those references.
+**Enforcement note:** Helper fixtures remain. The later [triage refusal contract](../verification/triage-replay-refusal.md) supersedes only this direct CLI's rerun/model/report availability and AC-J8.1's acceptance for that removed path. The original requirement/AC text is retained; imported helpers and Jev J1–J7/J9 are unchanged. This does not establish safe triage or real-key acceptance; J8 remains UNENFORCED.
 WHEN `scripts/triage-claims.mjs` runs, THE SYSTEM SHALL re-run each failing claim's `test_command` with a timeout. It SHALL send Jev the claim's description, command, exit code and the last 60 lines of output with secret redaction, ask one Choice for the failure's cause, and write a table of claim, cause, probability, confidence and whether the case needs escalation to `.workflow/state/claim-triage-<date>.md`.
 
 ### REQ-J9 (Event-driven) — Residual fault classification
