@@ -60,6 +60,13 @@ each suite (`root` and `runtime`). CI parses each suite's output with
 - no count can be found in the output, so an emptied suite never reads as a
   pass.
 
+The [count-admission contract](../specs/ops/test-count-admission.md) requires
+parsed `passed`, `failed` and `total` counts to be nonnegative safe integers,
+with `passed + failed <= total`. Missing root failure counts are refused;
+Vitest's omitted zero-failure fragment still means zero. Skipped/todo totals
+remain valid. This checks parsed values; raw-summary extraction and its limits
+remain as described in the contract.
+
 On pull requests CI also runs the ratchet: a floor lower than `main`'s
 fails, unless the change adds a one-time `lowerings` entry in
 `governance/test-floors.json` (suite, from, to, reason and decision). The
