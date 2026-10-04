@@ -30,3 +30,6 @@ auth.docker.io
 # MR21 exact artifact hosts observed in no-follow GET redirects from pinned registries.
 pkg-containers.githubusercontent.com
 production.cloudfront.docker.com
+
+# MR21 AC-12: exact GitHub Actions artifact redirect observed for run 37193372293.
+productionresultssa11.blob.core.windows.net
