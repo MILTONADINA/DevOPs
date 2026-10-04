@@ -9,6 +9,7 @@ export type CommittedSelection = { all: true } | { id: string };
 type Category = 'usage' | 'manifest' | 'member' | 'publication' | 'git' | 'claim' | 'spec';
 type Member = { path: string; sha256: string };
 type ClaimMember = Member & { id: string };
+type ClaimDeclaration = Readonly<{ id: string; state?: Claim['state'] }>;
 type Manifest = { schema_version: 1; claims: ClaimMember[]; artifacts: Member[] };
 const DIRECTORY = '.workflow/proofs/committed';
 const MANIFEST = `${DIRECTORY}/manifest.json`;
@@ -107,7 +108,7 @@ function validatePublication(
   { root, manifestBytes, manifest, git }: ReturnType<typeof openPublicationInputs>,
   selection: CommittedSelection,
   recomputeHash: (claim: Claim) => string,
-): ValidationResult[] {
+): { results: ValidationResult[]; declarations: ClaimDeclaration[] } {
   const entries = within('git', () => git.listPublication());
   const expected = new Set([MANIFEST, ...manifest.claims.map(m => `${DIRECTORY}/${m.path}`), ...manifest.artifacts.map(m => `${DIRECTORY}/${m.path}`)]);
   requireValue(entries.size === expected.size && [...entries.keys()].every(name => expected.has(name)), 'publication');
@@ -125,7 +126,8 @@ function validatePublication(
     if (selected.some(claim => claim.path === member.path)) texts.set(member.path, text);
   }
   const validate = within('claim', () => loadSchema());
-  return selected.map(member => {
+  const declarations: ClaimDeclaration[] = [];
+  const results = selected.map(member => {
     try {
       const doc = within('claim', () => parseInput(texts.get(member.path)!, 'claim'));
       if (validate(doc) !== true) {
@@ -142,17 +144,20 @@ function validatePublication(
       requireValue(parts.length === 2 && normalized(parts[0]) && /^specs\/.+\.md$/.test(parts[0]) && parts[1].length > 0, 'spec');
       const spec = within('spec', () => decodeInput(git.readRegularBlob(claim.proof.git_sha, parts[0], MEMBER_CAP), 'spec'));
       requireValue(anchorCount(spec, parts[1]) === 1, 'spec');
+      declarations.push(Object.freeze(Object.hasOwn(claim, 'state')
+        ? { id: claim.id, state: claim.state } : { id: claim.id }));
       return { claim_id: member.id, ok: true, failures: [] };
     } catch (error) {
       return { claim_id: member.id, ok: false, failures: [error instanceof CommittedFailure ? error.message : 'committed: claim'] };
     }
   });
+  return { results, declarations };
 }
 
 export function validateCommitted(selection: CommittedSelection, recomputeHash: (claim: Claim) => string): ValidationResult[] {
   try {
     const root = within('publication', () => fs.realpathSync(process.cwd()));
-    return validatePublication(openPublicationInputs(root), selection, recomputeHash);
+    return validatePublication(openPublicationInputs(root), selection, recomputeHash).results;
   } catch (error) {
     return [{ claim_id: '[invalid claim]', ok: false, failures: [error instanceof CommittedFailure ? error.message : 'committed: publication'] }];
   }
@@ -162,12 +167,13 @@ export function validateCommitted(selection: CommittedSelection, recomputeHash: 
 // The document reader closes over that one captured HEAD, never a fresh ref.
 export function openValidatedPublication(root: string, recomputeHash: (claim: Claim) => string) {
   const inputs = openPublicationInputs(root);
-  const results = validatePublication(inputs, { all: true }, recomputeHash);
+  const { results, declarations } = validatePublication(inputs, { all: true }, recomputeHash);
   requireValue(results.length > 0 && results.every(result => result.ok), 'claim');
   const { git } = inputs;
   return Object.freeze({
     head: git.head,
     claimIds: Object.freeze(results.map(result => result.claim_id)),
+    claimDeclarations: Object.freeze(declarations),
     readHeadBlob(file: string, cap: number, optional = false): Buffer | null {
       return optional ? git.readOptionalRegularBlob(git.head, file, cap) : git.readRegularBlob(git.head, file, cap);
     },

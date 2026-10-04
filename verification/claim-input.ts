@@ -20,6 +20,7 @@ export interface ClaimProof {
 export interface Claim {
   id: string;
   type: string;
+  state?: 'implemented' | 'verified' | 'code_converged' | 'release_ready' | 'fixed_not_live' | 'production_complete';
   spec_ref: string;
   description: string;
   proof: ClaimProof;
