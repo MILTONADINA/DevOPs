@@ -265,3 +265,25 @@ test('moving HEAD and main after capture cannot substitute the snapshot', () => 
   assert.equal(captures.filter(call => call.args.at(-1) === 'HEAD').length, 1);
   assert.equal(captures.filter(call => call.args.at(-1) === 'refs/remotes/origin/main').length, 1);
 }));
+
+// specs/verification/red-declarations.md REQ-1..4 / AC-1, AC-3..4; RED is inert.
+for (const kind of ['implementation', 'test']) test(`C1 committed ${kind} without RED refuses`, () => withFixture(f => {
+  changedClaim(f, c => { c.type = kind; }); const result = f.invoke(); refused(result, /claim schema/i);
+}));
+
+test('C1 committed valid implementation/test RED declarations pass both selectors without RED Git lookup', () => withFixture(f => {
+  for (const [index, kind] of ['implementation', 'test'].entries()) {
+    const claim = f.documents[index].claim; claim.type = kind;
+    claim.proof.red = { sha: (index === 0 ? 'b' : 'c').repeat(40), exit_code: index === 0 ? -1 : 256 };
+  }
+  f.saveClaims(); f.bind(); f.commit();
+  for (const args of [['--all', '--no-rerun'], ['--claim', IDS[1], '--no-rerun']]) {
+    const result = f.invoke(args); accepted(result);
+    for (const call of result.calls) assert.equal(call.args.some(arg => arg.includes('b'.repeat(40)) || arg.includes('c'.repeat(40))), false, 'RED SHA is schema data, not new Git authority');
+  }
+}));
+
+test('C1 committed optional doc RED with zero exit refuses named selection', () => withFixture(f => {
+  changedClaim(f, c => { c.proof.red = { sha: 'b'.repeat(40), exit_code: 0 }; });
+  refused(f.invoke(['--claim', IDS[0], '--no-rerun']), /claim schema/i);
+}));
