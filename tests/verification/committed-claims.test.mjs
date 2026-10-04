@@ -287,3 +287,36 @@ test('C1 committed optional doc RED with zero exit refuses named selection', () 
   changedClaim(f, c => { c.proof.red = { sha: 'b'.repeat(40), exit_code: 0 }; });
   refused(f.invoke(['--claim', IDS[0], '--no-rerun']), /claim schema/i);
 }));
+
+// specs/verification/completion-state-declarations.md REQ-1..3 / AC-2..4.
+test('MR12-A committed valid state is optional metadata under both selectors', () => withFixture(f => {
+  const selectors = [['--all', '--no-rerun'], ['--claim', IDS[0], '--no-rerun']];
+  const before = selectors.map(args => { const result = f.invoke(args); accepted(result); return result.calls.map(call => call.args); });
+  const hashes = f.documents.map(document => document.claim.reproducibility_hash);
+  for (const document of f.documents) {
+    assert.equal(Object.hasOwn(document.claim, 'state'), false);
+    document.claim.state = 'production_complete';
+    assert.equal(Object.hasOwn(document.claim.proof, 'deploy'), false);
+  }
+  f.saveClaims(); f.bind(); f.commit();
+  assert.deepEqual(f.documents.map(document => document.claim.reproducibility_hash), hashes);
+  for (const [index, args] of selectors.entries()) {
+    const result = f.invoke(args); accepted(result);
+    // Publication object IDs change when state bytes change; operation count and
+    // absence of state arguments remain observable without inventing stable OIDs.
+    assert.equal(result.calls.length, before[index].length);
+    assert.equal(result.calls.some(call => call.args.some(arg => arg.includes('production_complete'))), false);
+  }
+}));
+test('MR12-A committed malformed selected state refuses both selectors', () => withFixture(f => {
+  changedClaim(f, claim => { claim.state = SENTINEL; });
+  for (const args of [['--all', '--no-rerun'], ['--claim', IDS[0], '--no-rerun']]) {
+    const result = f.invoke(args); refused(result, /claim schema/i); assert.match(result.output, /\benum\b/);
+  }
+}));
+test('MR12-A committed named selection binds but does not schema-validate the unselected state', () => withFixture(f => {
+  f.documents[0].claim.state = 'verified'; f.documents[1].claim.state = SENTINEL;
+  f.saveClaims(); f.bind(); f.commit();
+  accepted(f.invoke(['--claim', IDS[0], '--no-rerun']));
+  refused(f.invoke(), /claim schema/i);
+}));
