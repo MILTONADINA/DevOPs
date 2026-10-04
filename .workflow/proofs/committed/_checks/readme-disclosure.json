@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "target_git_sha": "daa1250309c770f322d73d872af3d83b42bd7d24",
+  "target_path": "verification/README.md",
+  "required_phrases": [
+    "Omitting `--no-rerun` retains the existing behavior: the validator executes claim-controlled shell text with the caller's environment and may write a `.rerun` file.",
+    "That replay path is not a safe execution boundary.",
+    "A successful `--no-rerun` result accepts declared data and metadata; it does not establish that the declared command, GREEN or RED was observed."
+  ]
+}
