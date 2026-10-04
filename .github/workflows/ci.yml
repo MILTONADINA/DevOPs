@@ -68,6 +68,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
+        with: { fetch-depth: 0 }
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444  # v5.0.0
         with: { node-version: 22 }
       # tsx comes from the root lockfile, never from an unpinned global install. The
@@ -75,8 +76,7 @@ jobs:
       - run: npm ci
       - name: Test dashboard and test hermeticity (REQ-R12..R13), held to its floor (REQ-M23)
         shell: bash
-        # No directories are created first: the suite must pass in a fresh checkout with no
-        # .workflow/proofs (PB-59). The preflight tests bring their own fixtures.
+        # The suite brings its own fixtures; local ignored proofs are not a prerequisite.
         run: |
           npm test 2>&1 | tee "$RUNNER_TEMP/root-tests.log"
           node scripts/check-test-floor.mjs root "$RUNNER_TEMP/root-tests.log"
@@ -86,7 +86,7 @@ jobs:
         env:
           BASE_REF: ${{ github.base_ref }}
         run: |
-          git fetch --no-tags --depth=1 origin "$BASE_REF"
+          git fetch --no-tags origin "$BASE_REF"
           git show FETCH_HEAD:governance/test-floors.json > "$RUNNER_TEMP/base-floors.json" 2>/dev/null || echo '{}' > "$RUNNER_TEMP/base-floors.json"
           node scripts/check-test-floor.mjs --ratchet "$RUNNER_TEMP/base-floors.json"
           mapfile -t added < <(git diff --name-only --diff-filter=A FETCH_HEAD HEAD -- ':(glob)tests/**/*.test.mjs' ':(glob)runtime/test/**/*.test.ts')
@@ -101,15 +101,83 @@ jobs:
         env:
           BASE_REF: ${{ github.base_ref }}
         run: |
-          git fetch --no-tags --depth=1 origin "$BASE_REF"
+          git fetch --no-tags origin "$BASE_REF"
           git show FETCH_HEAD:governance/traceability-baseline.json > "$RUNNER_TEMP/base-traceability.json" 2>/dev/null || echo '{}' > "$RUNNER_TEMP/base-traceability.json"
           node scripts/lint-spec-status.mjs --ratchet "$RUNNER_TEMP/base-traceability.json"
-      - name: Validate all claims
+      - name: Prepare committed-claim ancestry authority
+        run: git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+      - name: Prepare checkout residue for committed claims
+        run: |
+          node --input-type=commonjs <<'NODE'
+          const fs = require('node:fs');
+          const path = require('node:path');
+          const expected = Buffer.from('[core]\n\tsparseCheckout = false\n\tsparseCheckoutCone = false\n[index]\n\tsparse = false\n');
+          const fail = () => { throw new Error(); };
+          const same = (a, b) => a.dev === b.dev && a.ino === b.ino &&
+            a.size === b.size && a.mtimeNs === b.mtimeNs && a.ctimeNs === b.ctimeNs &&
+            a.mode === b.mode && a.nlink === b.nlink;
+          function readRegular(file, cap) {
+            const before = fs.lstatSync(file, { bigint: true });
+            if (!before.isFile() || before.nlink !== 1n || before.size > BigInt(cap)) fail();
+            let fd;
+            try {
+              fd = fs.openSync(file, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK);
+              if (!same(before, fs.fstatSync(fd, { bigint: true }))) fail();
+              const buffer = Buffer.alloc(cap + 1);
+              let used = 0;
+              while (used < buffer.length) {
+                const count = fs.readSync(fd, buffer, used, buffer.length - used, used);
+                if (count === 0) break;
+                used += count;
+              }
+              if (used > cap || BigInt(used) !== before.size ||
+                  !same(before, fs.fstatSync(fd, { bigint: true })) ||
+                  !same(before, fs.lstatSync(file, { bigint: true }))) fail();
+              return { bytes: buffer.subarray(0, used), stat: before };
+            } finally {
+              if (fd !== undefined) fs.closeSync(fd);
+            }
+          }
+          function prepare() {
+            const root = process.cwd();
+            if (fs.realpathSync(root) !== root) fail();
+            const git = path.join(root, '.git');
+            const directory = fs.lstatSync(git, { bigint: true });
+            if (!directory.isDirectory() || directory.isSymbolicLink()) fail();
+            const residue = path.join(git, 'config.worktree');
+            try { fs.lstatSync(residue); }
+            catch (error) {
+              if (error.code !== 'ENOENT') throw error;
+              console.log('checkout residue: absent');
+              return;
+            }
+            const worktree = readRegular(residue, 83);
+            if (!worktree.bytes.equals(expected)) fail();
+            const configPath = path.join(git, 'config');
+            const config = readRegular(configPath, 65536);
+            const text = new TextDecoder('utf-8', { fatal: true }).decode(config.bytes);
+            if (text.includes('\0') || /\\(?:\r?\n|$)/.test(text)) fail();
+            for (const raw of text.split('\n')) {
+              const line = raw.trim();
+              if (!line.startsWith('[')) continue;
+              const header = /^\[([A-Za-z][A-Za-z0-9-]*(?:\.[A-Za-z0-9_.:/-]+)?)(?:[ \t]+"[^"\\\x00-\x1f]*")?\][ \t]*(?:[#;].*)?$/.exec(line);
+              if (!header || ['include', 'includeif', 'extensions'].includes(header[1].split('.')[0].toLowerCase())) fail();
+            }
+            if (!same(directory, fs.lstatSync(git, { bigint: true })) ||
+                !same(config.stat, fs.lstatSync(configPath, { bigint: true })) ||
+                !same(worktree.stat, fs.lstatSync(residue, { bigint: true }))) fail();
+            fs.unlinkSync(residue);
+            console.log('checkout residue: removed known inactive settings');
+          }
+          try { prepare(); }
+          catch {
+            console.error('checkout residue: unavailable or unsupported');
+            process.exitCode = 1;
+          }
+          NODE
+      - name: Validate committed claim metadata
         run: npx --no-install tsx verification/claim-validator.ts --all --no-rerun
-        # --no-rerun: re-running proofs needs the local environment. .workflow/proofs/ is
-        # gitignored, so on a CI checkout this finds no claims and passes (PB-60).
-      - name: Check stale proofs
-        run: npx --no-install tsx verification/stale-proof-detector.ts
+        # Strict nonempty publication at HEAD; logs and command execution are not observed.
       - name: Lint Renovate template (REQ-H1..H6)
         run: npm run lint:renovate
       - name: Lint stack-specific skills (REQ-D2..D7)

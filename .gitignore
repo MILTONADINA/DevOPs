@@ -2,7 +2,24 @@
 
 # Per-project state (never committed at the workflow repo level)
 .workflow/state/*
-.workflow/proofs/
+.workflow/proofs/*
+# Reviewed committed proof declarations; logs and local history remain ignored.
+!.workflow/proofs/committed/
+.workflow/proofs/committed/*
+!.workflow/proofs/committed/manifest.json
+!.workflow/proofs/committed/claims/
+.workflow/proofs/committed/claims/*
+!.workflow/proofs/committed/claims/claim-*.yml
+!.workflow/proofs/committed/scripts/
+.workflow/proofs/committed/scripts/*
+!.workflow/proofs/committed/scripts/*.ts
+!.workflow/proofs/committed/_checks/
+.workflow/proofs/committed/_checks/*
+!.workflow/proofs/committed/_checks/*.json
+.workflow/proofs/committed/manifest.json/
+.workflow/proofs/committed/claims/*/
+.workflow/proofs/committed/scripts/*/
+.workflow/proofs/committed/_checks/*/
 .workflow/erasure-artifacts/
 # Exception: plan files are reviewable artifacts that ship with the branch.
 !.workflow/state/plans/

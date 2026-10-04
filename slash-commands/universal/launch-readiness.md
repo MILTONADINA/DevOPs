@@ -24,7 +24,7 @@ Reads the following files in order and assembles the canonical launch-readiness 
 6. **`.workflow/state/session-handoff.md`** — operational rules + carry-forward
 7. **`git rev-parse HEAD`**, **`git tag --list`**, **`git branch -a`** — branch + tag reality
 8. **`gh pr list --state all --limit 10`** — recent PR merge history
-9. **`npm run validate:claims -- --all`** (optional, if requested) — current validator state
+9. **`npm run validate:claims -- --all --no-rerun`** (optional, if requested) — current committed metadata result; never command replay
 
 ## Output format (canonical)
 
@@ -56,7 +56,11 @@ Cite source: `.workflow/state/polish-backlog.md`.
 | Metric | Value |
 |---|---:|
 
-Cite source: `npm run validate:claims -- --all` output OR last-known state recorded in baton.md.
+Cite source: `npm run validate:claims -- --all --no-rerun` output for current
+committed metadata counts. Label a last-known baton result as historical with
+its recorded date and selector; do not convert an old local-corpus count into
+a current committed-set result. Missing or empty committed sets are failures,
+not zero-proof success. These counts do not measure observed GREEN or RED.
 
 ### 5. Branch matrix
 
@@ -101,7 +105,10 @@ Three short paragraphs:
 
 - **If a number isn't in the .md sources, surface that gap explicitly** ("not yet recorded in LR — refresh required"). Never invent.
 - **Effort estimates** cite their source line in `plan.md`.
-- **Validator counts** cite either live `validate:claims --all` output OR, for a claim that fails, the exception recorded for it in `.workflow/state/polish-backlog.md` or `plan.md` (name the claim and cite that entry).
+- **Committed metadata counts** cite live `npm run validate:claims -- --all --no-rerun`
+  output, or clearly labeled historical evidence with its original selector.
+  For a failure, cite the actual result and any recorded exception separately;
+  an exception does not make failed metadata accepted or establish test execution.
 - **Polish-backlog status** cites `.workflow/state/polish-backlog.md` even though gitignored (it is the local record of truth).
 - **Branch matrix** cites `git rev-parse` / `git ls-remote` outputs, not memory.
 - **PR history** cites `gh pr list` / `gh pr view` outputs, not memory.

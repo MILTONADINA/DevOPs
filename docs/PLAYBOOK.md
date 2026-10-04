@@ -105,10 +105,17 @@ Cost ledgers are scoped per `tenant_id` (Stratum) for per-client invoicing.
 - Re-run the deploy command
 
 ### Claim validator fails
-- Read which claim failed and why (`npm run validate:claims -- --all`)
-- Fix: re-run the test, update the proof, or retract the claim
-- Never edit the proof to hide a failure — the validator will catch it via
-  reproducibility hash mismatch
+- Inspect the committed metadata result with
+  `npm run validate:claims -- --all --no-rerun`. A missing or empty manifest is
+  a failure; this command does not discover local claims or execute tests.
+- For a just-emitted local claim, name that file explicitly with `--no-rerun`.
+  Local validation and the generated project hook do not publish a committed set.
+- Correct the actual declaration, target, manifest or publication fault. If a
+  fresh test is needed, review and run its known check separately, then record
+  its observed result; never execute arbitrary claim text to repair metadata.
+- Never hide a failure by editing proof fields. A recomputed hash binds declared
+  strings and does not establish that a result was observed. Legacy replay
+  without `--no-rerun` remains unsafe.
 
 ## Documentation map (Diataxis-aligned)
 

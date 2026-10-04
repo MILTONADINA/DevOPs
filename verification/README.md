@@ -16,8 +16,11 @@ The proof-of-work enforcement layer.
 # Validate a single claim without executing its command
 npm run validate:claims -- .workflow/proofs/claim-2026-05-22-018.yml --no-rerun
 
-# Validate selected local claims (schema, Git metadata and declared hash)
+# Validate the complete committed manifest set
 npm run validate:claims -- --all --no-rerun
+
+# Validate one committed claim after binding every manifest member
+npm run validate:claims -- --claim claim-2026-10-03-019 --no-rerun
 
 # Find stale proofs
 npx tsx verification/stale-proof-detector.ts
@@ -26,7 +29,9 @@ npx tsx verification/stale-proof-detector.ts
 npx tsx verification/reproducibility-check.ts 7c4a9f2 "pnpm test auth/token"
 ```
 
-Omitting `--no-rerun` retains the existing behavior: the validator executes
+The committed selectors require `--no-rerun`; omitting it fails usage. In
+legacy explicit-file or implicit local-discovery mode only, omission retains
+the existing behavior: the validator executes
 claim-controlled shell text with the caller's environment and may write a
 `.rerun` file. That replay path is not a safe execution boundary. A successful
 `--no-rerun` result accepts declared data and metadata; it does not establish
@@ -50,24 +55,59 @@ remove properties. New failures use fixed input categories or escaped schema
 paths and keywords without printing claim contents.
 
 This is the schema-loading slice of
-[MR10](../specs/verification/claim-schema-loading.md). The existing Git checks
+[MR10](../specs/verification/claim-schema-loading.md). The legacy explicit-file and implicit-discovery Git checks
 establish commit-object existence and whether each claimed filename appears in
 the commit's changed-file list; they do not prove reachability or regular-file
 existence at that commit. The hash is recomputed from declared command,
 environment and SHA strings. The current schema permits additional properties,
 nonzero integer exits and implementation claims without `proof.red`.
-Nonempty committed proof selection, missing-ID refusal, real spec anchors,
-SHA reachability, safe RED replay and `/sprint` integration remain pending.
+Safe implementation/test RED replay and `/sprint` integration remain pending.
+The committed metadata checks below do not complete all of MR10.
+
+## Committed metadata validation (MR10-B)
+
+`--all --no-rerun` selects exactly
+`.workflow/proofs/committed/manifest.json`. `--claim <id> --no-rerun` selects
+one claim after checking the bindings of every manifest member. Both refuse
+a missing/empty set, unknown IDs, conflicting flags or replay-enabled usage;
+neither falls back to local proof discovery.
+
+The manifest names committed claim YAML and reviewed scripts/checks, with
+SHA-256 hashes. It and every listed member must be regular blobs at captured
+HEAD with identical working bytes; an unlisted tracked entry in the dedicated
+subtree fails. Untracked or staged-only publication is insufficient. Logs and
+ordinary local proof history stay ignored and are not selected.
+
+Each selected claim must pass the packaged schema, match its manifest ID and
+retain the declared reproducibility hash. Its full commit ID must be an
+ancestor of captured `refs/remotes/origin/main`. Changed paths must occur in
+the target's first-parent difference and remain regular blobs there. The
+referenced spec and its unique supported fragment must exist in that same
+target snapshot. The supported ordinary Git layout requires full local
+history without shared/redirected, shallow or partial stores; the checker
+never fetches or repairs it. See the [finite contract](../specs/verification/committed-claims.md).
+
+Success accepts committed metadata. It does not authenticate the local main
+ref, observe an ignored log, execute a command, or prove that command text uses
+the named scripts/checks. A project's first committed set requires separately
+reviewed YAML, artifacts, manifest and a publication commit; local emission
+alone does not create it.
 
 ## Integration points
 
 - Session-end hook (`write-baton.sh`) counts the claim files in `.workflow/proofs/`
   that are newer than the previous baton.
-- CI (`.github/workflows/ci.yml`) runs `claim-validator.ts --all --no-rerun` and the
-  stale-proof detector on every PR. `.workflow/proofs/` is gitignored, so on a CI
-  checkout both find no claims and pass. MR10-A deliberately preserves that
-  empty-selection exit0 without loading a schema. A committed proof set and
-  nonempty CI enforcement remain pending under PB-60 and roadmap MR10.
+- CI (`.github/workflows/ci.yml`) prepares full history and the fixed main ref,
+  then runs `claim-validator.ts --all --no-rerun` against the committed nonempty
+  set. The legacy stale detector is no longer a second CI gate.
+- The generated consuming-project pre-commit hook validates explicit top-level
+  local `.yml` files with `--no-rerun`, including hidden names, without recursing
+  into the committed set. It skips an empty list and retains its existing
+  optional-tool behavior. This compatibility check does not require a manifest
+  and cannot substitute for committed CI validation.
+- Implicit local discovery still permits an empty result. The standalone stale
+  detector still checks local object existence only; it does not use the
+  committed selector or prove ancestry.
 
 ## How a claim is born
 

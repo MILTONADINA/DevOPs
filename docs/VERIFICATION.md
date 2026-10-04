@@ -28,15 +28,39 @@ Every claim of completed work ships with a proof artifact in
 - `medium` — reproducible in controlled env
 - `low` — subjective; **triggers explicit human review**
 
-Low confidence claims block merge until human approves.
+Low confidence requires human review under policy. Schema/metadata validation
+does not itself enforce or prove that approval.
 
-## Re-running
+## Validation modes
 
 ```bash
-npm run validate:claims -- --all              # validates everything, re-running each proof
-npm run validate:claims -- --all --no-rerun   # schema + git only
+# Committed nonempty set; the flag is required
+npm run validate:claims -- --all --no-rerun
+
+# One committed ID, after binding every member of the manifest
+npm run validate:claims -- --claim claim-2026-10-03-019 --no-rerun
+
+# A named local claim, without a committed-set requirement
+npm run validate:claims -- .workflow/proofs/claim-2026-10-03-001.yml --no-rerun
 ```
 
-CI runs the `--no-rerun` form on every PR, but `.workflow/proofs/` is gitignored,
-so on a CI checkout it finds no claims and passes (polish backlog PB-60). Before
-merging, re-run the claims locally with the first form.
+The committed selectors read only `.workflow/proofs/committed/manifest.json`.
+They bind all listed YAML/scripts/checks to captured HEAD and their hashes;
+selected claims must have matching IDs, main-ancestor targets, changed regular
+blobs and a spec fragment in the target snapshot. Missing or empty sets fail.
+CI prepares full local history and `origin/main` before this nonempty metadata
+gate; logs remain ignored and are not required as committed evidence.
+
+Explicit local files retain the older Git object-existence/changed-name and
+hash checks. Generated consuming-project hooks use that explicit-file mode,
+include hidden top-level YAML and skip empty lists; they are not the committed
+CI gate. Local emission does not automatically publish a committed set.
+
+All `--no-rerun` forms accept declarations and metadata, not independently
+observed commands, logs, GREEN or RED. Omitting the flag is refused for
+committed selectors. Legacy explicit/implicit mode still executes raw
+claim-controlled shell text when the flag is omitted; that replay path is
+unsafe and is not hardened by MR10-B. Implicit empty discovery remains a
+compatibility behavior. Safe RED replay and `/sprint` integration remain open.
+See [the active reference](../verification/README.md) for the supported Git
+layout, limits and finite spec-anchor rules.

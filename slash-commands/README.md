@@ -9,7 +9,7 @@ User-invoked commands available in supported tools.
 | `/checkpoint` | baton-handoff | Write session baton for handoff |
 | `/resume` | (reads baton) | Resume from last session |
 | `/security-scan` | security subagent | Run tiered security scan (gitleaks + semgrep + threat-model-validity) |
-| `/verify-claims` | claim-validator | Re-run all proofs across claim corpus |
+| `/verify-claims` | claim-validator | Validate the committed claim metadata set with `--no-rerun` |
 | `/session-summary` | session-summary | Generate human-reviewable report |
 | `/threat-model` | owasp-asi-threat-model | Produce STRIDE + OWASP ASI 2026 threat model |
 | `/ears-spec` | ears-spec-writing | Author EARS-formatted spec |

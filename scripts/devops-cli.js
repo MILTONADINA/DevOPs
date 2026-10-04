@@ -73,9 +73,13 @@ const COMMANDS = {
 Commands:
   devops analyze            Detect project stack, produce .workflow/profile.yml
   devops init               Install DevOPs into current project (after analyze)
-  devops verify [options]   Run claim-validator
-                            --all       validate all proofs
-                            --no-rerun  schema + git checks only
+  devops verify [options]   Validate declared claim metadata
+                            --all --no-rerun       committed nonempty set
+                            --claim ID --no-rerun  one committed ID; bind all members
+                            FILE --no-rerun        local compatibility checks
+                            Committed selectors require a published manifest.
+                            Metadata acceptance does not prove command execution.
+                            Legacy replay without --no-rerun is unsafe.
   devops approve <claim-id> --rationale="..."
                             Log a one-shot approval token (REQ-C6) to
                             .workflow/state/approvals.jsonl. Consumed
