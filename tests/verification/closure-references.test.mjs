@@ -60,7 +60,7 @@ function withFixture(run) {
   }
   function gitSetup(args) {
     assert.ok(git && existsSync(path.join(root, '.git/mr10b-owned')), 'only previously admitted own Git fixture');
-    return setupResult(spawnSync(git, ['-C', root, '-c', 'user.name=MR18 owned fixture', '-c', 'user.email=fixture@example.invalid', '-c', 'commit.gpgsign=false', '-c', 'core.hooksPath=/dev/null', ...args], { cwd: outer, env: setupEnv, encoding: 'utf8', timeout: 10000 }));
+    return setupResult(spawnSync(git, ['-C', root, '-c', 'user.name=MR18 owned fixture', '-c', 'user.email=fixture@example.invalid', '-c', 'commit.gpgsign=false', '-c', 'core.hooksPath=/dev/null', '-c', 'gc.auto=0', '-c', 'maintenance.auto=false', ...args], { cwd: outer, env: setupEnv, encoding: 'utf8', timeout: 10000 }));
   }
   try {
     file('package.json', '{"type":"module"}\n');

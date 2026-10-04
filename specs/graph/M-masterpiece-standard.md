@@ -328,7 +328,7 @@ THE SYSTEM SHALL:
 SBOM and provenance are deferred until a release artifact exists; `release-sign.yml` signs only `SKILL.md` files.
 **Enforced by:** UNENFORCED
 **Enforcement note (pre-MR17 annotation):** CI job and git hook.
-**Enforcement note:** The dedicated dependency-audit contract is implemented; local missing-scanner behavior remains the existing tested policy.
+**Enforcement note:** The dedicated contract in `specs/security/ci-dependency-audit.md` governs the existing high-threshold audits and pinned PR dependency-review action. Its finite report gate requires positive integer dependency counts, consistent severity totals and independent refusal of high/critical reports. Synthetic workflow-step fixtures are separate from a real registry audit or hosted-action run. Local missing-scanner behavior and setup's preservation of alternate hook authority remain the existing tested policy, so this whole mixed requirement remains UNENFORCED.
 **Falsified by:** a PR adding a dependency with a known critical advisory that passes, or a staged fake AWS key that commits.
 
 ### REQ-M23 (Unwanted behaviour): An emptied or assertion-free suite never reads as PASS

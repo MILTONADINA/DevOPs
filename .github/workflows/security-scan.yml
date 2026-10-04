@@ -104,19 +104,45 @@ jobs:
             python3 - "$dir" "$rc" "$RUNNER_TEMP/audit.json" <<'PY' || status=1
           import json, sys
           directory, rc, path = sys.argv[1], int(sys.argv[2]), sys.argv[3]
-          d = json.load(open(path))
-          meta = d.get("metadata", {})
-          total = meta.get("dependencies", {}).get("total", 0)
-          vulns = meta.get("vulnerabilities", {})
+          levels = ("info", "low", "moderate", "high", "critical")
+          try:
+              with open(path, encoding="utf-8") as report:
+                  d = json.load(report)
+              if type(d) is not dict or "error" in d:
+                  raise ValueError()
+              meta = d["metadata"]
+              if type(meta) is not dict:
+                  raise ValueError()
+              dependencies, summary, entries = meta["dependencies"], meta["vulnerabilities"], d["vulnerabilities"]
+              if any(type(value) is not dict for value in (dependencies, summary, entries)):
+                  raise ValueError()
+              total = dependencies["total"]
+              if type(total) is not int or total < 0:
+                  raise ValueError()
+              vulns = {level: summary[level] for level in (*levels, "total")}
+              if any(type(value) is not int or value < 0 for value in vulns.values()):
+                  raise ValueError()
+              if vulns["total"] != sum(vulns[level] for level in levels):
+                  raise ValueError()
+              for name, entry in entries.items():
+                  if type(name) is not str or not name or type(entry) is not dict:
+                      raise ValueError()
+                  if type(entry.get("severity")) is not str or entry["severity"] not in levels:
+                      raise ValueError()
+          except Exception:
+              sys.exit(f"npm audit {directory}: invalid audit report; refusing to report a pass")
           print(f"npm audit {directory}: exit {rc}, {total} dependencies, vulnerabilities {vulns}")
-          for name, v in sorted(d.get("vulnerabilities", {}).items()):
-              if v.get("severity") in ("high", "critical"):
-                  print(f"VULNERABLE {v['severity']} {name} {v.get('range', '')}")
+          blocked = bool(vulns["high"] or vulns["critical"])
+          for name, entry in sorted(entries.items()):
+              if entry["severity"] in ("high", "critical"):
+                  blocked = True
+                  fields = ["VULNERABLE", entry["severity"], json.dumps(name)]
+                  if type(entry.get("range")) is str:
+                      fields.append(json.dumps(entry["range"]))
+                  print(" ".join(fields))
           if total == 0:
               sys.exit(f"npm audit {directory} saw no dependencies: refusing to report a pass")
-          if "error" in d:
-              sys.exit(f"npm audit {directory} failed: {d['error']}")
-          sys.exit(1 if rc else 0)
+          sys.exit(1 if rc or blocked else 0)
           PY
           done
           exit $status
