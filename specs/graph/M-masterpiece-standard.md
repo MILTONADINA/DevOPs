@@ -316,6 +316,7 @@ THE SYSTEM SHALL require every `REQ-` in `specs/graph/` and `specs/security/`, a
 THE SYSTEM SHALL fail a CI lint (`scripts/lint-closures.mjs`) when a `.workflow/state/polish-backlog.md` or `SHIP_BLOCKERS.md` item marked `CLOSED` does not cite a commit or PR plus a claim id present in the committed proof set (REQ-M9). This applies only to committed copies; the polish backlog is checked locally when it is gitignored. `hooks/universal/post-tool/sync-lr-refined-date.sh` SHALL bump "Last refined" only when invoked by `/launch-readiness` after re-derivation, not on every `plan.md` edit.
 **Enforced by:** UNENFORCED
 **Enforcement note (pre-MR17 annotation):** CI lint; the hook change; tests.
+**Enforcement note:** The scoped MR18-A contract in `specs/graph/closure-references.md` covers citation syntax and validated committed-claim membership through `tests/verification/closure-references.test.mjs` and the `validate` job. It does not prove closure truth. The freshness-hook obligation and whole MR18 remain open, so the whole requirement stays UNENFORCED.
 **Falsified by:** a CLOSED row with no claim id passing, or a `plan.md` whitespace edit changing the Last refined date.
 
 ### REQ-M22 (Ubiquitous): Dependency and secret gates exist where the docs claim them
