@@ -79,7 +79,7 @@ Commands:
                             FILE --no-rerun        local compatibility checks
                             Committed selectors require a published manifest.
                             Metadata acceptance does not prove command execution.
-                            Legacy replay without --no-rerun is unsafe.
+                            --no-rerun is required; command replay is disabled.
   devops approve <claim-id> --rationale="..."
                             Log a one-shot approval token (REQ-C6) to
                             .workflow/state/approvals.jsonl. Consumed

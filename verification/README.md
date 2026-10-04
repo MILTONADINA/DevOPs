@@ -5,7 +5,7 @@ The proof-of-work enforcement layer.
 ## Files
 
 - `claim-schema.yml` — the structure every proof artifact must satisfy
-- `claim-validator.ts` — validates the packaged schema, checks Git metadata and hashes, and optionally re-runs declared commands
+- `claim-validator.ts` — requires `--no-rerun` and validates the packaged schema, Git metadata and hashes without executing declared commands
 - `confidence-rules.yml` — when a claim should be downgraded to medium/low
 - `reproducibility-check.ts` — helper to compute reproducibility_hash before emitting a claim
 - `stale-proof-detector.ts` — finds proofs whose Git commit is absent from the local object store
@@ -29,13 +29,14 @@ npx tsx verification/stale-proof-detector.ts
 npx tsx verification/reproducibility-check.ts 7c4a9f2 "pnpm test auth/token"
 ```
 
-The committed selectors require `--no-rerun`; omitting it fails usage. In
-legacy explicit-file or implicit local-discovery mode only, omission retains
-the existing behavior: the validator executes
-claim-controlled shell text with the caller's environment and may write a
-`.rerun` file. That replay path is not a safe execution boundary. A successful
-`--no-rerun` result accepts declared data and metadata; it does not establish
-that the declared command, GREEN or RED was observed.
+All validator modes require the exact `--no-rerun` token. Committed selectors
+retain their existing usage rules. Legacy explicit-file or implicit local
+mode without the token is refused before claim discovery, schema loading or
+Git checks, with `claim validation: command replay is disabled; use --no-rerun`.
+The validator never executes a declared command or writes a `.rerun` file.
+A successful result accepts declared data and metadata; it does not establish
+that the declared command, GREEN or RED was observed. See the
+[refusal contract](../specs/verification/claim-replay-refusal.md).
 
 ## Packaged schema validation (MR10-A)
 
@@ -99,7 +100,7 @@ those checks does not satisfy AC-M10.1. `fixed_not_live` is not called deployed.
 Authors need evidence for a declared state; schema acceptance supplies none.
 The reproducibility hash excludes state, while committed member hashes bind
 its declared bytes. Existing claims need no state backfill or evidence upgrade.
-Whole MR12 and MR10 remain open; legacy raw replay remains unsafe.
+Whole MR12 and MR10 remain open; the validator offers no command replay.
 
 ## Readiness declaration references (MR12-B)
 
@@ -148,7 +149,7 @@ A matching declaration is metadata association, not convergence, release-graph
 or deployment evidence. Zero selection is not readiness. EVIDENCE PENDING
 preserves recorded release events without inventing claim states or
 revalidating history. M10 remains UNENFORCED and whole MR12/MR10 stay open;
-legacy raw command replay remains unsafe.
+the validator offers no command replay.
 
 ## Committed metadata validation (MR10-B)
 
@@ -246,7 +247,7 @@ freshness hook remains unchanged and its remaining M21 obligation stays open.
   into the committed set. It skips an empty list and retains its existing
   optional-tool behavior. This compatibility check does not require a manifest
   and cannot substitute for committed CI validation.
-- Implicit local discovery still permits an empty result. The standalone stale
+- Implicit local discovery with `--no-rerun` still permits an empty result. The standalone stale
   detector still checks local object existence only; it does not use the
   committed selector or prove ancestry.
 

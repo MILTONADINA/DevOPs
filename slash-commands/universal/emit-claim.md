@@ -125,7 +125,7 @@ Emission is not committed-set publication. Publishing requires a separately
 reviewed manifest plus named YAML/scripts/checks, exact hashes and a commit;
 logs stay ignored. Only then use `--all --no-rerun` or
 `--claim <id> --no-rerun` for the committed gate. Omitting `--no-rerun` from
-legacy local mode still enables unsafe raw shell replay. Metadata acceptance
+legacy local mode is refused; the validator offers no command replay. Metadata acceptance
 does not establish the observed check result recorded in Step 4.
 
 If validator regresses → STOP + surface (per AP-5 Reflexive Patch discipline).
