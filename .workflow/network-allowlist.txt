@@ -20,3 +20,13 @@ api.anthropic.com
 127.0.0.1
 api.typesafe.ai
 docs.typesafe.ai
+
+# MR21 local DAST: official pinned ZAP and Node image manifest/auth discovery.
+# Blob redirects require an observed exact-host allowlist entry before fetching.
+ghcr.io
+registry-1.docker.io
+auth.docker.io
+
+# MR21 exact artifact hosts observed in no-follow GET redirects from pinned registries.
+pkg-containers.githubusercontent.com
+production.cloudfront.docker.com
