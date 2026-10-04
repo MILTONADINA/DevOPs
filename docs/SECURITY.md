@@ -260,6 +260,31 @@ The reproducibility hash excludes state; committed member digests bind its
 bytes without authenticating its truth. No historical states are invented or
 upgraded. Legacy raw shell replay and the remaining MR10/MR12 work are unchanged.
 
+### Closure-reference boundary (MR18-A)
+
+The [closure lint](../specs/graph/closure-references.md) checks explicit CLOSED
+items in two named documents against the existing validated committed proof
+set. For authority substitution, document blobs and publication validation use
+one captured HEAD/main context under the finite MR10-B Git boundary. The fixed
+`--local-backlog` flag opts into the one named local document, not arbitrary
+paths, alternate proof stores or command replay. Even a zero-item result
+requires a valid nonempty publication.
+
+For cross-project disclosure and resource exhaustion, local backlog reads are
+bounded, strict UTF8 and refuse redirected/nonregular/hard-linked inputs;
+Git blobs retain the existing bounded regular-blob checks. Fixed failure
+categories expose no item text, claim IDs, command/environment contents or
+parser exceptions. Physical status/evidence forms and standalone comment
+blocks prevent comment removal from manufacturing a closure literal. The
+trusted Node/dependency/Git tools remain outside this finite input policy;
+it is not an atomic hostile-filesystem sandbox or remote ref authentication.
+
+A syntactically valid commit/PR citation can be false or unrelated to the item.
+Validated claim membership likewise does not observe an execution or establish
+closure truth. The lint neither contacts GitHub nor upgrades completion state,
+changes freshness dates or repairs historical evidence. Whole MR18/MR10 and
+the freshness-hook obligation remain open.
+
 ### Tier-3 LLM-orchestrated pentest
 
 Beyond the static tier-3 scanners, DevOPs ships configurations for four

@@ -130,6 +130,61 @@ the named scripts/checks. A project's first committed set requires separately
 reviewed YAML, artifacts, manifest and a publication commit; local emission
 alone does not create it.
 
+## Closure references (MR18-A)
+
+```bash
+# Check the two named documents from captured HEAD
+npx --no-install tsx scripts/lint-closures.mjs
+
+# Explicitly substitute the named local polish backlog
+npx --no-install tsx scripts/lint-closures.mjs --local-backlog
+```
+
+The lint derives its repository root from the script, independently of CWD.
+Default mode requires committed `SHIP_BLOCKERS.md` and checks committed
+`.workflow/state/polish-backlog.md` if present. The flag takes no path and
+requires that exact local backlog; it does not also count the committed copy.
+Default mode does not read the ignored local backlog or discover old claims.
+
+Both modes validate the entire nonempty committed proof publication with the
+existing metadata checks. Document blobs and proof membership share one
+captured HEAD/main context; changing a worktree document does not change the
+default result. Local backlog selection is the one explicit exception for
+document bytes, never for claim membership. No declared command is executed.
+
+The [closure contract](../specs/graph/closure-references.md) supports two forms:
+
+- A level2/3 heading-owned item with the exact line `**Status:** CLOSED` and one
+  `**Closure evidence:** VALUE` line owned by that same heading.
+- A three-column `Item | Status | Evidence` table, with a delimiter row and
+  outer pipes; a `CLOSED` status cell selects that row.
+
+VALUE is exactly `commit:<sha>; claim:<id>` or `pr:<number>; claim:<id>`.
+Replace those placeholders with a 40-character lowercase hexadecimal commit
+SHA or canonical positive PR number of at most10 digits, and a full published
+`claim-YYYY-MM-DD-NNN` ID. These are format templates, not closure evidence.
+The lint checks citation syntax and validated membership; it does not resolve
+the cited PR/commit or prove that either the change or claim closes the item.
+
+Evidence cannot be borrowed from another heading/row. An open parent may
+contain a closed child; two closed ancestor/descendant items are ambiguous.
+Other standalone `CLOSED` occurrences outside fenced examples and standalone
+HTML-comment blocks refuse, including unsupported prose/list forms. Mixed
+text/comment lines, unclosed comments/fences and comment-synthesized literals
+also refuse. Unrelated open items and historical `resolved` prose are untouched.
+
+Selected documents are bounded to256KiB of strict UTF8, physical lines to16384
+characters and closed items to1024 total. Success prints
+`closures: references valid documents=N closed=N` and exits0. Refusal exits1
+with a fixed `closures:` category (`usage`, `input`, `structure`, `publication`
+or `reference`) without printing source text or identifiers.
+
+As of2026-10-04, the current ship-blocker document selects zero CLOSED items.
+Zero is a valid reported count only with a valid nonempty proof set; it does
+not verify historical closures. This lint does not replace the separate
+committed metadata gate, change freshness dates or complete MR18/MR10. The
+freshness hook remains unchanged and its remaining M21 obligation stays open.
+
 ## Integration points
 
 - Session-end hook (`write-baton.sh`) counts the claim files in `.workflow/proofs/`

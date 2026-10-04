@@ -88,3 +88,26 @@ unsafe and is not hardened by MR10-B. Implicit empty discovery remains a
 compatibility behavior. Safe RED replay and `/sprint` integration remain open.
 See [the active reference](../verification/README.md) for the supported Git
 layout, limits and finite spec-anchor rules.
+
+## Closure citation checks
+
+The [MR18-A contract](../specs/graph/closure-references.md) checks literal CLOSED
+items for a commit/PR citation and an ID accepted by the committed proof set:
+
+```bash
+npx --no-install tsx scripts/lint-closures.mjs
+npx --no-install tsx scripts/lint-closures.mjs --local-backlog
+```
+
+Default selection uses committed `SHIP_BLOCKERS.md` and the optional committed
+polish backlog. The flag explicitly requires only the named local
+`.workflow/state/polish-backlog.md` as its replacement; no arbitrary path or
+historical claim discovery is supported. Both modes validate the full nonempty
+publication and keep command declarations inert. The [usage reference](../verification/README.md#closure-references-mr18-a)
+defines the exact heading/table and evidence forms, limits and diagnostics.
+
+A passing result is citation and membership integrity. It does not prove that
+a PR merged, a cited commit fixes the item or the claim substantiates closure.
+The current ship-blocker document has zero literal CLOSED items; that count is
+not historical verification. Preserve resolved prose and original evidence.
+Freshness dates/hooks, whole MR18 and the remaining MR10 work stay open.

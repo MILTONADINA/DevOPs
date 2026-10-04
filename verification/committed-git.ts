@@ -206,6 +206,20 @@ export function createGitContext(root: string) {
     return entry;
   };
 
+  const readRegularBlob = (commit: string, file: string, cap: number): Buffer => {
+    if (!Number.isSafeInteger(cap) || cap < 0 || cap > 262144) refuse('invalid blob cap');
+    checkCommit(commit);
+    const entry = regularEntry(commit, file);
+    if (line(['cat-file', '-t', entry.oid]) !== 'blob') refuse('invalid blob kind');
+    const sizeText = line(['cat-file', '-s', entry.oid]);
+    if (!/^(?:0|[1-9][0-9]*)$/.test(sizeText)) refuse('invalid blob size');
+    const size = Number(sizeText);
+    if (!Number.isSafeInteger(size) || size > cap) refuse('blob size exceeded');
+    const bytes = run(['cat-file', 'blob', entry.oid], cap + 1);
+    if (bytes.length !== size) refuse('changed blob response');
+    return bytes;
+  };
+
   return Object.freeze({
     head, main,
     listPublication(): ReadonlyMap<string, TreeEntry> {
@@ -215,18 +229,21 @@ export function createGitContext(root: string) {
       if ([...entries.keys()].some(file => !file.startsWith(`${PUBLICATION}/`))) refuse('invalid publication listing');
       return entries;
     },
-    readRegularBlob(commit: string, file: string, cap: number): Buffer {
+    readRegularBlob,
+    readOptionalRegularBlob(commit: string, file: string, cap: number): Buffer | null {
       if (!Number.isSafeInteger(cap) || cap < 0 || cap > 262144) refuse('invalid blob cap');
+      if (!isOid(commit) || !literalPath(file)) refuse('invalid literal path or commit');
       checkCommit(commit);
-      const entry = regularEntry(commit, file);
-      if (line(['cat-file', '-t', entry.oid]) !== 'blob') refuse('invalid blob kind');
-      const sizeText = line(['cat-file', '-s', entry.oid]);
-      if (!/^(?:0|[1-9][0-9]*)$/.test(sizeText)) refuse('invalid blob size');
-      const size = Number(sizeText);
-      if (!Number.isSafeInteger(size) || size > cap) refuse('blob size exceeded');
-      const bytes = run(['cat-file', 'blob', entry.oid], cap + 1);
-      if (bytes.length !== size) refuse('changed blob response');
-      return bytes;
+      const parts = file.split('/');
+      for (let i = 1; i <= parts.length; i++) {
+        const prefix = parts.slice(0, i).join('/');
+        const entries = tree(['ls-tree', '-z', '--full-tree', commit, '--', prefix]);
+        if (entries.size === 0) return null;
+        const entry = entries.get(prefix);
+        if (entries.size !== 1 || !entry) refuse('invalid optional tree entry');
+        if (i < parts.length && (entry.mode !== '040000' || entry.type !== 'tree')) refuse('non-directory parent');
+      }
+      return readRegularBlob(commit, file, cap);
     },
     assertClaimTarget(commit: string, changedPaths: string[]): void {
       checkCommit(commit);
