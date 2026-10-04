@@ -64,8 +64,19 @@ The [count-admission contract](../specs/ops/test-count-admission.md) requires
 parsed `passed`, `failed` and `total` counts to be nonnegative safe integers,
 with `passed + failed <= total`. Missing root failure counts are refused;
 Vitest's omitted zero-failure fragment still means zero. Skipped/todo totals
-remain valid. This checks parsed values; raw-summary extraction and its limits
-remain as described in the contract.
+remain valid.
+
+The [runtime token contract](../specs/ops/runtime-count-tokens.md) requires the
+whole selected payload to contain unsigned ASCII decimal fragments labelled
+`failed`, `passed`, `expected fail`, `skipped` or `todo`, followed by a terminal
+`(total)`. Count-to-label separation is one ASCII space; edges, pipes and the
+required separator before total allow spaces/tabs. ANSI and ordinary CRLF
+remain supported. Omitted passed/failed mean zero; duplicate labels use their
+first value, but every fragment must be well formed. Only the three returned
+counts receive numeric/consistency checks; metadata is not reconciled with
+total. A malformed selected payload is refused without trying a later one.
+The existing `Tests` selector, including its cross-line behavior, is unchanged.
+These checks do not authenticate a log or prove that its tests ran.
 
 On pull requests CI also runs the ratchet: a floor lower than `main`'s
 fails, unless the change adds a one-time `lowerings` entry in

@@ -32,10 +32,11 @@ export function parseCounts(suite, text) {
   }
   if (suite === 'runtime') {
     const line = (t.match(/^\s*Tests\s+(.+)$/m) || [])[1];
-    if (!line) return { passed: null, failed: null, total: null };
+    // specs/ops/runtime-count-tokens.md: admit the entire selected payload before extracting counts.
+    const total = (line?.match(/^[ \t]*[0-9]+ (?:failed|passed|expected fail|skipped|todo)(?:[ \t]*\|[ \t]*[0-9]+ (?:failed|passed|expected fail|skipped|todo))*[ \t]+\(([0-9]+)\)[ \t]*\r?$/) || [])[1];
+    if (!total) return { passed: null, failed: null, total: null };
     const n = (word) => { const m = line.match(new RegExp(`(\\d+) ${word}`)); return m ? Number(m[1]) : 0; };
-    const total = (line.match(/\((\d+)\)/) || [])[1];
-    return { passed: n('passed'), failed: n('failed'), total: total ? Number(total) : null };
+    return { passed: n('passed'), failed: n('failed'), total: Number(total) };
   }
   throw new Error(`unknown suite: ${suite}`);
 }
