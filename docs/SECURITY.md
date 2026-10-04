@@ -182,6 +182,21 @@ bytes without authenticating their asserted history. No historical evidence
 is manufactured or retargeted. Safe execution, durable RED retention and
 provenance remain open; legacy raw shell replay is not hardened by this change.
 
+### Completion-state declaration boundary (MR12-A)
+
+The [optional state policy](../specs/verification/completion-state-declarations.md)
+constrains supplied `claim.state` values to six exact strings through the shared
+schema. Missing state stays missing. For misleading completion claims, a valid
+string can still be false: this change provides no convergence, release-graph,
+deployment or document-citation evidence, and does not set readiness. The
+semantic refusals in AC-M10.1 remain unimplemented.
+
+No state-dependent command or external evidence lookup is added. Existing
+controlled schema diagnostics reject malformed values without printing them.
+The reproducibility hash excludes state; committed member digests bind its
+bytes without authenticating its truth. No historical states are invented or
+upgraded. Legacy raw shell replay and the remaining MR10/MR12 work are unchanged.
+
 ### Tier-3 LLM-orchestrated pentest
 
 Beyond the static tier-3 scanners, DevOPs ships configurations for four
