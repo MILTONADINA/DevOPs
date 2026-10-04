@@ -195,6 +195,10 @@ function rewrite(f, name, raw) {
   writeFileSync(path.join(f.dir, name), raw);
   if (name !== 'run.json') edit(f, 'run.json', value => { value.artifacts[name] = { bytes: raw.length, sha256: hash(raw) }; });
 }
+function rewriteBoundZap(f, raw) {
+  rewrite(f, 'zap.json', raw);
+  edit(f, 'zap-completion.json', value => { value.report_sha256 = hash(raw); value.report_bytes = raw.length; });
+}
 const addFindings = (b, list) => { b.findings = list; for (const item of b.stats) item.matched = String(list.length); };
 
 test('complete empty native report passes with real zero counts and safe >2^53 monotonic strings', () => fixture(f => {
@@ -249,7 +253,7 @@ test('missing reports or hook receipts refuse independently of claimed terminal 
 });
 test('malformed UTF8/JSON/native JSONL cannot pass or leak source text', () => {
   for (const [name, raw] of [['zap.json', Buffer.from('{'+SENTINEL)], ['nuclei.jsonl', Buffer.from([0xff])],
-    ['nuclei.jsonl', Buffer.from(JSON.stringify(finding())+'\n\n')]]) fixture(f => refuse(invoke(f), ['input', 'report']), { after: f => rewrite(f, name, raw) });
+    ['nuclei.jsonl', Buffer.from(JSON.stringify(finding())+'\n\n')]]) fixture(f => refuse(invoke(f), ['input', 'report']), { after: f => name === 'zap.json' ? rewriteBoundZap(f, raw) : rewrite(f, name, raw) });
 });
 test('LF/CRLF and optional final terminator preserve valid JSONL counts', () => {
   for (const ending of ['', '\r\n']) fixture(f => { const r = invoke(f); pass(r); assert.equal(r.value.nuclei.counts.medium, 1); }, {
@@ -373,7 +377,7 @@ test('all three input size classes refuse cap-plus-one before parsing', () => {
     fixture(f => refuse(invoke(f), 'input'), { after: f => rewrite(f, name, Buffer.alloc(cap+1, 32)) });
 });
 test('malformed sensitive/control bytes stay out of bounded verdict output', () => fixture(f => refuse(invoke(f), ['input', 'report']), {
-  after: f => rewrite(f, 'zap.json', Buffer.from('{"secret":"'+SENTINEL+'\u001b[31m\n::error::raw"')) }));
+  after: f => rewriteBoundZap(f, Buffer.from('{"secret":"'+SENTINEL+'\u001b[31m\n::error::raw"')) }));
 test('wrong CLI arity and outside-owned-root directory refuse with inert usage/input verdicts', () => fixture(f => {
   for (const args of [[], [f.dir, 'extra']]) refuse(invoke(f, args), 'usage');
   refuse(invoke(f, [f.sibling]), 'input');
