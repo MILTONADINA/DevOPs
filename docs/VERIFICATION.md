@@ -80,12 +80,12 @@ hash checks. Generated consuming-project hooks use that explicit-file mode,
 include hidden top-level YAML and skip empty lists; they are not the committed
 CI gate. Local emission does not automatically publish a committed set.
 
-All `--no-rerun` forms accept declarations and metadata, not independently
-observed commands, logs, GREEN or RED. Omitting the flag is refused for
-committed selectors. Legacy explicit/implicit mode still executes raw
-claim-controlled shell text when the flag is omitted; that replay path is
-unsafe and is not hardened by MR10-B. Implicit empty discovery remains a
-compatibility behavior. Safe RED replay and `/sprint` integration remain open.
+All validator modes require `--no-rerun` and accept declarations and metadata,
+not independently observed commands, logs, GREEN or RED. Committed usage rules
+remain unchanged; legacy explicit/implicit omission is refused before discovery
+or metadata checks. No declared command executes and no `.rerun` file is written.
+Implicit empty discovery remains compatible when the flag is supplied.
+Safe RED replay and `/sprint` integration remain open.
 See [the active reference](../verification/README.md) for the supported Git
 layout, limits and finite spec-anchor rules.
 

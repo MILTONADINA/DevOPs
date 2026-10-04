@@ -3,11 +3,11 @@
 //
 // Committed selectors bind a nonempty manifest to HEAD and check declared
 // schema, main ancestry, changed regular blobs, target spec anchors and hash.
-// Legacy explicit-file/implicit modes retain their older Git checks and
-// optional unsafe shell replay. --no-rerun never observes command execution.
+// Legacy explicit-file/implicit modes retain their older Git checks.
+// Every mode requires --no-rerun; metadata checks never execute declared commands.
 //
 // Usage:
-//   npm run validate:claims -- <claim-file> [--no-rerun]
+//   npm run validate:claims -- <claim-file> --no-rerun
 //   npm run validate:claims -- --all --no-rerun
 //   npm run validate:claims -- --claim <id> --no-rerun
 //
@@ -56,26 +56,6 @@ function validateFilesInCommit(sha: string, files: string[]): string[] {
   return failures;
 }
 
-function rerunTest(command: string, expectedExit: number, outputPath: string): string[] {
-  const failures: string[] = [];
-  try {
-    const start = Date.now();
-    execSync(command, { stdio: 'pipe', timeout: 300_000 }); // 5 min cap
-    const duration = Date.now() - start;
-    if (expectedExit !== 0) {
-      failures.push(`Re-run exited 0 but expected ${expectedExit}`);
-    }
-    fs.mkdirSync(path.dirname(outputPath), { recursive: true });
-    fs.writeFileSync(outputPath + '.rerun', `OK (${duration}ms)`);
-  } catch (e: unknown) {
-    const exitCode = (e as { status?: number }).status ?? -1;
-    if (exitCode !== expectedExit) {
-      failures.push(`Re-run exit code ${exitCode} != expected ${expectedExit}`);
-    }
-  }
-  return failures;
-}
-
 function recomputeReproducibilityHash(claim: Claim): string {
   const env = claim.proof.environment ?? {};
   const sortedEnv = Object.keys(env).sort().map(k => `${k}=${env[k]}`).join('\n');
@@ -85,7 +65,7 @@ function recomputeReproducibilityHash(claim: Claim): string {
 
 // ─── Main ────────────────────────────────────────────────────────────────
 
-function validateClaim(filePath: string, options: { rerun: boolean }, validate: ValidateFunction<ClaimDoc>): ValidationResult {
+function validateClaim(filePath: string, validate: ValidateFunction<ClaimDoc>): ValidationResult {
   let doc: unknown;
   try {
     const root = fs.realpathSync(process.cwd());
@@ -111,10 +91,6 @@ function validateClaim(filePath: string, options: { rerun: boolean }, validate: 
     );
   }
 
-  if (options.rerun) {
-    failures.push(...rerunTest(claim.proof.test_command, claim.proof.test_exit_code, claim.proof.test_output_path));
-  }
-
   return { claim_id: id, ok: failures.length === 0, failures };
 }
 
@@ -136,7 +112,10 @@ function main() {
     console.log(`${passed}/${results.length} committed claim metadata accepted`);
     process.exit(results.length > 0 && passed === results.length ? 0 : 1);
   }
-  const rerun = !args.includes('--no-rerun');
+  if (!args.includes('--no-rerun')) {
+    console.error('claim validation: command replay is disabled; use --no-rerun');
+    process.exit(1);
+  }
   const proofsDir = '.workflow/proofs';
   let files: string[] = [];
 
@@ -160,7 +139,7 @@ function main() {
   let schemaError = 'schema: compilation failed';
   try { validate = loadSchema(); }
   catch (error) { if (error instanceof InputFailure) schemaError = error.message; }
-  const results = files.map(f => validate ? validateClaim(f, { rerun }, validate) : failedInput(schemaError));
+  const results = files.map(f => validate ? validateClaim(f, validate) : failedInput(schemaError));
   let anyFailed = false;
   for (const r of results) {
     if (r.ok) {

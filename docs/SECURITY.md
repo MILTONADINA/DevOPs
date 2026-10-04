@@ -272,15 +272,24 @@ For diagnostic disclosure and log tampering, new input/parser/compiler
 failures use fixed role/category messages and a placeholder ID. Schema failures
 print only JSON-escaped schema paths and keywords, without source excerpts,
 input property names, command text or environment values. The existing later
-Git/hash/replay diagnostics retain their older behavior.
+Git/hash diagnostics retain their older behavior.
 
-Explicit `--no-rerun` acceptance does not execute a claim's command or write a
-`.rerun` file. Default replay still executes raw claim-controlled shell text
-with inherited privileges; this slice does not harden or authorize it.
-Existing Git routing, commit reachability, changed-file semantics, empty-set
-success and uncommitted proof selection also remain unchanged. Schema-valid
-declarations and a recomputed string hash do not independently prove GREEN,
-RED, scan results or cycle readiness. The rest of MR10 remains open.
+Under the later [command-refusal contract](../specs/verification/claim-replay-refusal.md),
+all validator modes require `--no-rerun`. For instruction injection and privilege
+escalation, legacy omission is refused before claim discovery, schema loading
+or Git checks; the raw declared-command branch and its `.rerun` writes are
+removed. The fixed refusal reveals no argument, command or claim contents.
+Existing legacy Git routing and diagnostics remain unchanged, as do flagged
+metadata selection and empty-set success. This is not a general Git sandbox.
+Schema-valid declarations and a recomputed string hash do not independently
+prove GREEN, RED, scan results or cycle readiness; safe execution remains open.
+
+This boundary belongs to the validator only. `scripts/triage-claims.mjs` retains
+its separate raw Bash executor; it is not made safe by this refusal. The
+historical `scripts/recover-claim-provenance.sh` still omits the required flag
+and swallows validator failure, so its old workflow is incompatible with the
+new admission rule. Neither script is used as acceptance or repaired here.
+The rest of MR10 remains open.
 
 ### RED declaration boundary (MR10-C1)
 
@@ -296,7 +305,7 @@ neither commit existence/ancestry nor an observed assertion failure. The
 unchanged reproducibility hash excludes RED fields; publication hashes bind
 bytes without authenticating their asserted history. No historical evidence
 is manufactured or retargeted. Safe execution, durable RED retention and
-provenance remain open; legacy raw shell replay is not hardened by this change.
+provenance remain open; the validator offers no command replay.
 
 ### Completion-state declaration boundary (MR12-A)
 
@@ -311,7 +320,7 @@ No state-dependent command or external evidence lookup is added. Existing
 controlled schema diagnostics reject malformed values without printing them.
 The reproducibility hash excludes state; committed member digests bind its
 bytes without authenticating its truth. No historical states are invented or
-upgraded. Legacy raw shell replay and the remaining MR10/MR12 work are unchanged.
+upgraded. The remaining MR10/MR12 semantic work stays open.
 
 ### Readiness-declaration reference boundary (MR12-B)
 
@@ -339,8 +348,8 @@ contact a service, rank completion states or establish semantic evidence. The
 existing reproducibility hash excludes state; member hashes bind bytes only.
 Zero declarations report none selected, never ready. Trusted source/dependency
 changes can change the checker itself; this is no authenticity or hostile
-filesystem sandbox. M10 semantic gates, whole MR12/MR10 and legacy replay
-safety remain separate work.
+filesystem sandbox. M10 semantic gates, whole MR12/MR10 and safe proof
+execution remain separate work.
 
 ### Closure-reference boundary (MR18-A)
 

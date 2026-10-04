@@ -180,7 +180,7 @@ THE SYSTEM SHALL meet each of the following:
 
 **Enforced by:** UNENFORCED
 **Enforcement note (pre-MR17 annotation):** `claim-validator.ts`; the `ci.yml` validate job; the `/sprint` post-cycle step.
-**Enforcement note:** Schema, committed metadata and RED declarations are implemented; safe replay, RED retention and sprint integration remain open.
+**Enforcement note:** Schema, committed metadata and RED declarations are implemented. The [validator refusal contract](../verification/claim-replay-refusal.md) removes legacy command replay and requires `--no-rerun`; it does not implement the safe replay, RED retention or sprint integration required here, which remain open.
 **Falsified by:** a claim with `description` longer than 280 characters, or `spec_ref` pointing at a missing file, passing; or CI's claim step printing "No claim files to validate." and exiting 0.
 
 ### REQ-M10 (Ubiquitous): Completion states are a closed vocabulary, never estimated upward

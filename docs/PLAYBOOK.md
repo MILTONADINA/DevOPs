@@ -65,7 +65,8 @@ work: write user journeys, then EARS specs via `/ears-spec`.
    write failing test → implement → verify → emit proof
 5. **Review**: the Reviewer subagent (Sonnet) reads the diff against spec
 6. **Security**: `/security-scan` runs the Tier 2 stack
-7. **Validate**: the Validator subagent (Opus) re-runs all proofs
+7. **Validate**: validate explicitly selected claim metadata with `--no-rerun`;
+   review separately observed check results. The validator does not execute proofs.
 8. **Summary**: `/session-summary` generates `.workflow/state/session-summary.md`
 9. **Merge**: only after Validator says SAFE TO MERGE
 
@@ -114,8 +115,8 @@ Cost ledgers are scoped per `tenant_id` (Stratum) for per-client invoicing.
   fresh test is needed, review and run its known check separately, then record
   its observed result; never execute arbitrary claim text to repair metadata.
 - Never hide a failure by editing proof fields. A recomputed hash binds declared
-  strings and does not establish that a result was observed. Legacy replay
-  without `--no-rerun` remains unsafe.
+  strings and does not establish that a result was observed. Omission of
+  `--no-rerun` is refused; the validator offers no command replay.
 
 ## Documentation map (Diataxis-aligned)
 
