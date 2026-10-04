@@ -384,10 +384,35 @@ establishes worst-case execution time. Resource-limit failures remain failures.
 | AC-11 | Given startup/scan/post-health/upload failure, evidence survives and cleanup remains scoped/independent; cleanup cannot turn failure into PASS. | 9 |
 | AC-12 | Given workflow registration after merge, actual dispatch executes both app scans and uploads complete evidence before reporting MR21 completion. | 1, 9; roadmap21 |
 
-## Verification status and remaining acceptance
+## Verification status
+
+Observed acceptance on 2026-10-04: tests-first commits preceded implementation;
+the final root suite passed 1199 tests with 0 failures and 17 expected skips.
+Actual ARM64 detector controls produced the required Nuclei high/medium and
+ZAP 10062 high findings and were correctly rejected. The unchanged ARM64
+application passed the report, isolation, health and owned cleanup gates.
+
+[PR #239](https://github.com/MILTONADINA/DevOPs/pull/239) passed all six required
+checks and merged an equal tested tree. Actual default-branch
+[dispatch 37193372293](https://github.com/MILTONADINA/DevOPs/actions/runs/37193372293),
+attempt 1 at `cf7658df7a95c08746003dd7d1d072cf1f370226`, then passed on Linux/amd64.
+Artifact 11299423835 contains both native reports and has SHA-256
+`8f19169a5bd758865c1b13715e67c87902b580819e5d468c3815cffcb3ab87be`, matching the
+downloaded archive. The checker copied from the dispatched commit accepted its
+application run `mr21-dast-e8cca75060df01f45b24714ba7836f77`: complete reports,
+five real health/provider/capture rounds, zero Nuclei findings and ZAP high0/medium2/low1.
+Preparation and application evidence each show two exact owned removals; the
+always cleanup and upload steps also succeeded. The retained
+`.workflow/proofs/mr21-dast-2026-10-03/amd64-acceptance.json` and independent
+review bind these observations. AC-12 is satisfied; no AMD64 detector-control
+run is claimed. This completes the local contract, not the broader security
+roadmap or whole-masterpiece approval. Lower-risk findings remain visible.
+
+### Historical prerequisites and failure retention
 
 This draft records the selected MR21 implementation contract under continued
-roadmap work; it is not a DAST acceptance result or whole-masterpiece approval.
+roadmap work. The earlier prerequisites below do not themselves establish
+product acceptance; the completed product observations are recorded above.
 The retained ARM64 prerequisites observed the unchanged proxy readiness/drain,
 Nuclei cold operation and positive native findings, and the corrected traditional
 ZAP baseline with rule10062/risk3,61 enabled rules and5 scoped URLs. These
@@ -405,7 +430,7 @@ No failed receipt is rewritten into success.
 
 Never-started AMD64 source inspection found the four selected scripts and all82
 plugin files identical to ARM64; that is source identity only. Actual Linux/amd64
-execution remains mandatory. The state proof directory
+execution was still required at that stage; the dispatch above later met that gate. The state proof directory
 `.workflow/proofs/mr21-dast-2026-10-03/` retains the bounded prerequisite records;
 product behavior SHALL depend on committed inputs and fresh run evidence.
 
