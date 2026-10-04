@@ -116,6 +116,24 @@ it does not establish safety of arbitrary container code or every scan target.
 DeepTeam/Claude's visible unfunded skips and the rest of MR-7 remain separate
 under owner Decision 9. This Semgrep gate does not claim those reviews ran.
 
+### CI baseline acquisition boundary
+
+The [baseline-read contract](../specs/ops/ci-baseline-read-failures.md)
+requires the test-floor and spec-status ratchet steps to stop before their Node
+checkers when the existing Git fetch or show fails. A missing base member or
+failed read cannot be replaced with an empty object that erases the comparison.
+Successful reads still supply the exact shown bytes to the existing checkers;
+declared lowerings, renames and shrinking status-baseline rules are unchanged.
+The checkers' historical standalone empty-object bootstrap is retained, without
+making it a CI fallback for unavailable input.
+
+The boundary is failure propagation in two existing Bash steps. Their fetch,
+`FETCH_HEAD` source selection and native diagnostics remain unchanged; this is
+not a new Git provenance or hostile-filesystem boundary. The adjacent added-test
+process-substitution failure remains separate. The acceptance fixtures use owned
+local Git and the copied existing checkers, with no remote service; their results
+must remain distinct from an actual hosted CI observation.
+
 ### Dependency-audit report boundary (MR19 / M22)
 
 The [dependency-audit contract](../specs/security/ci-dependency-audit.md)
