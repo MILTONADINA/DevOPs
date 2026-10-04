@@ -127,12 +127,18 @@ declared lowerings, renames and shrinking status-baseline rules are unchanged.
 The checkers' historical standalone empty-object bootstrap is retained, without
 making it a CI fallback for unavailable input.
 
+The [added-test discovery contract](../specs/ops/ci-added-test-discovery.md)
+also requires the existing `git diff` to finish successfully before `mapfile`
+consumes its captured filenames. Empty or partial output from a failed diff
+cannot reach the assertion checker or produce a no-added-tests success message.
+A successful empty diff and the existing assertion-checker branch are preserved.
+
 The boundary is failure propagation in two existing Bash steps. Their fetch,
-`FETCH_HEAD` source selection and native diagnostics remain unchanged; this is
-not a new Git provenance or hostile-filesystem boundary. The adjacent added-test
-process-substitution failure remains separate. The acceptance fixtures use owned
-local Git and the copied existing checkers, with no remote service; their results
-must remain distinct from an actual hosted CI observation.
+`FETCH_HEAD` source selection, test globs and native diagnostics remain unchanged;
+this is not a new Git provenance or hostile-filesystem boundary. Existing
+line-based filename and Git-quoting limitations remain. The acceptance fixtures
+use owned local Git and the copied existing checkers, with no remote service;
+their results must remain distinct from an actual hosted CI observation.
 
 ### Dependency-audit report boundary (MR19 / M22)
 
