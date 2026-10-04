@@ -40,6 +40,15 @@ MODULE_NOT_FOUND. Pass files or globs, as the root `test` script does.
 - **It asserts.** CI rejects an added test file that makes no assertion
   (`scripts/check-assertions.mjs`).
 
+The [assertion syntax contract](../specs/ops/assertion-syntax.md) defines this as
+a source check for unqualified `assert(...)`, `assert.NAME(...)` (ASCII-letter
+member names) or `expect(...)` calls, including the specified transparent and
+optional forms. Strings, comments, declarations and malformed source do not
+satisfy it. `.ts` files use TypeScript; other filenames use JavaScript parsing.
+Run this repository tooling with the root development dependencies installed.
+Finding a call does not prove it executes, comes from an assertion library,
+asserts something useful, or makes the test pass.
+
 ## Test floors
 
 `governance/test-floors.json` sets the minimum number of passing tests for
