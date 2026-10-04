@@ -31,25 +31,31 @@ The default local setup must keep working with no new settings: an AI client on 
 ## Requirements
 
 ### REQ-1 — No cross-origin access without auth
+**Enforced by:** test:runtime/test/proxy/local-network.test.ts
 WHERE no auth is configured, THE PROXY SHALL NOT send an `Access-Control-Allow-Origin` header for any origin, and SHALL answer a CORS preflight (`OPTIONS` with `Origin` and `Access-Control-Request-Method`) with status 403. WHERE auth is configured, THE PROXY SHALL allow only the origins listed in `DEVOPS_PROXY_CORS_ORIGINS` (comma-separated, empty by default).
 
 ### REQ-2 — Loopback Host only without auth
+**Enforced by:** test:runtime/test/proxy/local-network.test.ts
 WHERE no auth is configured, THE PROXY SHALL refuse with status 403, before routing, every request whose `Host` header is missing or is not a loopback name. WHERE auth is configured, THE PROXY SHALL accept any `Host`, unless `DEVOPS_PROXY_ALLOWED_HOSTS` (comma-separated) is set, in which case only those hosts and the loopback names are accepted. IF a request carries more than one Host header, THEN the proxy SHALL refuse it with 400, in every mode.
 
 ### REQ-3 — No unauthenticated remote bind
+**Enforced by:** test:runtime/test/proxy/start-options.test.ts; test:runtime/test/proxy/start-entrypoint.test.ts
 - The listen address SHALL be read from `DEVOPS_PROXY_HOST`.
 - `HOST` SHALL still be honoured for one release as a deprecated alias, and the proxy SHALL log a warning that names `DEVOPS_PROXY_HOST` when `HOST` is used.
 - IF the listen address is not a loopback address, AND no auth is configured, AND `DEVOPS_PROXY_ALLOW_REMOTE_UNAUTHENTICATED` is not `1`, THEN THE PROXY SHALL refuse to start. It exits non-zero with a message that names the three ways forward: bind to loopback, configure auth, or set the opt-in.
 
 ### REQ-4 — Numeric settings fail closed
+**Enforced by:** test:runtime/test/proxy/start-options.test.ts; test:runtime/test/proxy/start-entrypoint.test.ts
 IF `PORT` is set and is not an integer from 1 to 65535, OR `RATE_LIMIT_MAX` is set and is not a positive integer, THEN THE PROXY SHALL refuse to start. It exits non-zero with a message that names the variable and the value it rejected.
 
 ### REQ-5 — Upstream transport
+**Enforced by:** test:runtime/test/proxy/start-options.test.ts; test:runtime/test/proxy/start-entrypoint.test.ts
 - THE PROXY SHALL refuse at startup any provider base URL (`ANTHROPIC_BASE_URL`, `OPENAI_BASE_URL`, `OPENROUTER_BASE_URL`, `GEMINI_BASE_URL`, `CQ_LOCAL_BASE_URL`) that uses plain `http` to a non-loopback host, unless `DEVOPS_PROXY_ALLOW_INSECURE_UPSTREAM` is `1`.
 - It SHALL refuse a base URL whose host and port equal its own listen address (a self-loop).
 - Loopback `http` stays allowed, for local model servers such as Ollama.
 
 ### REQ-6 — Docs and packaging match the behaviour
+**Enforced by:** test:runtime/test/proxy/local-network-docs.test.ts
 - `runtime/docs/API_REFERENCE.md` SHALL state which requests need auth in each mode.
 - The local setup docs SHALL name the new variables and the reason for the default.
 - `runtime/Dockerfile` SHALL be removed (owner decision O-11: no deployment; Compose already covers local use). Every doc that tells a user to run it SHALL be removed or rewritten.

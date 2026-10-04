@@ -6,6 +6,7 @@ tier-2 gate, but no workflow ran one.
 
 ## REQ-1 — Audit both lockfiles on every PR and push
 
+**Enforced by:** job:.github/workflows/security-scan.yml#dependency-audit
 THE PIPELINE SHALL run `npm audit --audit-level=high` against the root and
 `stratum/` lockfiles in the `dependency-audit` job of
 `.github/workflows/security-scan.yml`. The job SHALL fail on any high or
@@ -13,11 +14,13 @@ critical advisory, and SHALL print each vulnerable package with its severity.
 
 ## REQ-2 — Never pass an empty audit
 
+**Enforced by:** job:.github/workflows/security-scan.yml#dependency-audit
 IF an audited lockfile resolves no dependencies, or `npm audit` reports an
 error, THEN THE JOB SHALL fail with a message that it refuses to report a pass.
 
 ## REQ-3 — Review dependency changes on pull requests
 
+**Enforced by:** job:.github/workflows/security-scan.yml#dependency-audit
 WHEN the event is a pull request, THE JOB SHALL run
 `actions/dependency-review-action` (pinned by commit SHA) with
 `fail-on-severity: high`.
