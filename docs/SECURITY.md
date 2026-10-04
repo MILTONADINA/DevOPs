@@ -116,6 +116,35 @@ it does not establish safety of arbitrary container code or every scan target.
 DeepTeam/Claude's visible unfunded skips and the rest of MR-7 remain separate
 under owner Decision 9. This Semgrep gate does not claim those reviews ran.
 
+### Dependency-audit report boundary (MR19 / M22)
+
+The [dependency-audit contract](../specs/security/ci-dependency-audit.md)
+keeps `npm audit --audit-level=high --json` for both root and `runtime/`,
+including development dependencies, and the pinned PR dependency-review action
+with the high threshold. Either audit can fail without skipping the other tree;
+every nonzero npm status remains a failure.
+
+For false passes from malformed or contradictory reports, the inline gate
+requires a positive nonboolean integer dependency count, six nonnegative integer
+severity counters with a consistent total, and known per-package severities.
+High or critical findings in either summary or entries fail independently of
+npm's exit status. Unknown extra fields remain allowed; map size is not assumed
+to equal dependency or vulnerability counts. This validates a finite report
+subset, not report authenticity or the complete npm schema.
+
+For log injection and disclosure through parser errors, invalid reports use a
+fixed failure message without report bodies, paths or Python tracebacks. Normal
+summaries project validated counters; vulnerable package names and string ranges
+are JSON-escaped. Native npm stderr and hosted dependency-review output are
+outside that diagnostic boundary and are not claimed to be redacted.
+
+The [acceptance fixtures](../tests/ci/dependency-audit.test.mjs) execute the
+actual workflow step with owned npm stubs. Their scope is parser and threshold
+behavior; real registry audits and hosted-action execution remain separate CI
+observations. The existing local missing-scanner policy and setup's
+preservation of alternate hook authority are unchanged; whole MR19/M22 remains
+open and M22 remains UNENFORCED.
+
 ### Detector source lint boundary (MR22 / M25)
 
 The [detector-source contract](../specs/security/detector-source-lint.md)
