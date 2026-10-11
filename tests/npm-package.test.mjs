@@ -100,6 +100,23 @@ function runInit(dir, args = []) {
   return spawnSync('bash', [path.join(ROOT, 'scripts/init-project.sh'), ...args], { cwd: dir, env, encoding: 'utf8' });
 }
 
+test(`devops init --target puts the git hook in the target project, not the current directory (${SPEC}#ac-3)`, () => {
+  withTempDir((dir) => {
+    const target = path.join(dir, 'other project');
+    mkdirSync(path.join(target, '.workflow'), { recursive: true });
+    writeFileSync(path.join(target, '.workflow', 'profile.yml'), 'state: greenfield\n');
+    mkdirSync(path.join(target, '.git'));
+    mkdirSync(path.join(dir, '.git'));
+    for (const args of [['--target', target], [`--target=${target}`]]) {
+      rmSync(path.join(target, '.git', 'hooks'), { recursive: true, force: true });
+      const result = runInit(dir, args);
+      assert.equal(result.status, 0, result.stderr);
+      assert.ok(existsSync(path.join(target, '.git', 'hooks', 'pre-commit')), `hook in the target for ${args.join(' ')}`);
+      assert.ok(!existsSync(path.join(dir, '.git', 'hooks', 'pre-commit')), 'no hook in the current directory');
+    }
+  });
+});
+
 test(`devops init --dry-run writes no git hook (${SPEC}#ac-3)`, () => {
   withTempDir((dir) => {
     mkdirSync(path.join(dir, '.workflow'), { recursive: true });

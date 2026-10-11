@@ -45,8 +45,8 @@ start:
 ```bash
 mkdir my-new-project && cd my-new-project
 git init
-analyze.sh   # detects "greenfield" state
-init-project.sh
+devops analyze   # detects "greenfield" state
+devops init
 ```
 
 Greenfield mode is auto-selected. The lifecycle phase is `discovery`. First

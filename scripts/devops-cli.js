@@ -114,6 +114,9 @@ if (!cmd || cmd === '--help' || cmd === '-h') {
   try {
     status = COMMANDS[cmd]();
   } catch (e) {
+    // A child that ran and failed has already reported; anything else (tsx missing in a
+    // clone without `npm ci`, say) would otherwise exit with no message.
+    if (!(e && e.status)) console.error(`devops ${cmd}: ${e && e.message ? e.message : e}`);
     process.exit((e && e.status) || 1);
   }
   if (typeof status === 'number' && status !== 0) process.exit(status);
