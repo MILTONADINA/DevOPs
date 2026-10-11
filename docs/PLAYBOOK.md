@@ -5,24 +5,21 @@ The operational guide. How to actually use DevOPs on a real project.
 ## Day 0 — install DevOPs on your machine
 
 ```bash
-git clone https://github.com/MILTONADINA/DevOPs.git ~/DevOPs
-cd ~/DevOPs
-./scripts/install.sh
+npm install -g @miltonadina/devops
+devops version
 ```
 
-Add to your shell rc (~/.bashrc, ~/.zshrc):
-```bash
-export DEVOPS_ROOT="$HOME/DevOPs"
-export PATH="$DEVOPS_ROOT/scripts:$PATH"
-```
+The `devops` command reads from the installed package. Set `DEVOPS_ROOT` only
+to point it at a checkout of the DevOPs repository instead.
 
 ## Day 1 — open an existing project
 
 ```bash
 cd ~/my-project
-analyze.sh                # detect stack, write .workflow/profile.yml
+devops analyze            # detect stack, write .workflow/profile.yml
 cat .workflow/profile.yml # review recommendations
-init-project.sh           # install hooks, skills, subagents
+devops init --dry-run     # see what init would install
+devops init               # install hooks, skills, subagents
 ```
 
 Fill in the client profile:

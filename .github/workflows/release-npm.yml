@@ -1,0 +1,105 @@
+name: Release to npm
+
+# specs/release/npm-package.md REQ-7. A pushed tag vX.Y.Z publishes @miltonadina/devops
+# X.Y.Z to npm with a provenance attestation, after the verify job passes and a person
+# approves the npm-release environment. The steps for a release are in docs/RELEASING.md.
+#
+# Authentication: npm trusted publishing (OIDC) once the package is linked to this
+# workflow on npmjs.com. npm only allows that link for a package that already exists,
+# so the first release uses an NPM_TOKEN environment secret instead; delete the secret
+# once trusted publishing is set up.
+#
+# Every `uses:` is pinned by commit SHA, as in the other workflows.
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: npm-release
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444  # v5.0.0
+        with: { node-version: 22 }
+
+      - name: The tag names a main commit, the package version and a CHANGELOG section
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "Invalid release tag: $TAG" >&2; exit 1; }
+          git merge-base --is-ancestor HEAD origin/main || { echo "The tag does not point to a commit on main." >&2; exit 1; }
+          VERSION="$(node -p "require('./package.json').version")"
+          [[ "$TAG" == "v$VERSION" ]] || { echo "Tag $TAG does not match package.json version $VERSION." >&2; exit 1; }
+          grep -q "^## \[$VERSION\]" CHANGELOG.md || { echo "CHANGELOG.md has no '## [$VERSION]' section." >&2; exit 1; }
+
+      - name: Root tests
+        run: |
+          npm ci
+          npm test
+
+      - name: Pack, install and run the package
+        run: bash scripts/package-smoke.sh
+
+      - name: Install cosign (pinned, as in release-sign.yml)
+        uses: sigstore/cosign-installer@f713795cb21599bc4e5c4b58cbad1da852d7eeb9  # v3
+        with:
+          cosign-release: 'v2.4.3'
+
+      - name: Every shipped skill carries a valid signature from release-sign.yml
+        run: |
+          set -euo pipefail
+          node --input-type=module -e "
+            import { readFileSync } from 'node:fs';
+            import YAML from 'yaml';
+            for (const s of YAML.parse(readFileSync('governance/skill-manifest.yml', 'utf8')).skills) console.log(s.path + '\t' + s.bundle_path);
+          " > "$RUNNER_TEMP/skills.tsv"
+          IDENTITY='^https://github\.com/MILTONADINA/DevOPs/\.github/workflows/release-sign\.yml@refs/heads/'
+          count=0
+          while IFS=$'\t' read -r skill bundle; do
+            cosign verify-blob --bundle "$bundle" \
+              --certificate-identity-regexp "$IDENTITY" \
+              --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+              "$skill" > /dev/null
+            count=$((count + 1))
+          done < "$RUNNER_TEMP/skills.tsv"
+          [[ "$count" -gt 0 ]] || { echo "No signed skills found in the manifest." >&2; exit 1; }
+          echo "Verified $count signed skills."
+
+  publish:
+    needs: verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    # A required reviewer on this environment approves each publish.
+    environment: npm-release
+    permissions:
+      contents: read
+      id-token: write   # npm trusted publishing and the provenance attestation
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444  # v5.0.0
+        with:
+          node-version: 22
+          registry-url: 'https://registry.npmjs.org'
+
+      # Trusted publishing needs npm 11.5.1 or later; Node 22 bundles npm 10.
+      - name: Install the pinned npm
+        run: npm install -g npm@11.16.0
+
+      - name: Publish with provenance
+        env:
+          # Empty unless the first-release NPM_TOKEN secret is set; trusted publishing needs none.
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --provenance --access public
