@@ -78,7 +78,7 @@ Produces `.workflow/profile.yml` and a human-readable
 After user approval:
 
 ```bash
-./scripts/init-project.sh
+devops init
 ```
 
 Installs the recommended components and wires the universal hooks into the

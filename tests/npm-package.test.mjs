@@ -93,9 +93,11 @@ test(`an unknown command, including an inherited object key, is refused (${SPEC}
 });
 
 // init-project.sh with a stub in place of the installer, so only its hook logic runs.
+// The stub records the arguments it receives in installer-args.json.
 function runInit(dir, args = []) {
   const stub = path.join(dir, 'installer-stub.mjs');
-  writeFileSync(stub, 'process.exit(0);\n');
+  const record = JSON.stringify(path.join(dir, 'installer-args.json'));
+  writeFileSync(stub, `import { writeFileSync } from 'node:fs';\nwriteFileSync(${record}, JSON.stringify(process.argv.slice(3)));\nprocess.exit(0);\n`);
   const env = { ...cleanEnv(dir), DEVOPS_ROOT: ROOT, DEVOPS_NODE: process.execPath, DEVOPS_TSX: stub };
   return spawnSync('bash', [path.join(ROOT, 'scripts/init-project.sh'), ...args], { cwd: dir, env, encoding: 'utf8' });
 }
@@ -113,7 +115,26 @@ test(`devops init --target puts the git hook in the target project, not the curr
       assert.equal(result.status, 0, result.stderr);
       assert.ok(existsSync(path.join(target, '.git', 'hooks', 'pre-commit')), `hook in the target for ${args.join(' ')}`);
       assert.ok(!existsSync(path.join(dir, '.git', 'hooks', 'pre-commit')), 'no hook in the current directory');
+      // The installer receives the same target, in the form it was given.
+      assert.deepEqual(JSON.parse(readFileSync(path.join(dir, 'installer-args.json'), 'utf8')), args);
     }
+  });
+});
+
+test(`the real installer reads --target in both forms, and refuses an empty one (${SPEC}#ac-3)`, () => {
+  withTempDir((dir) => {
+    const target = path.join(dir, 'project');
+    mkdirSync(path.join(target, '.workflow'), { recursive: true });
+    writeFileSync(path.join(target, '.workflow', 'profile.yml'), 'state: greenfield\nskills: []\nhooks: []\nsubagents: []\n');
+    const install = path.join(ROOT, 'analyzer/install.ts');
+    for (const args of [['--target', target], [`--target=${target}`]]) {
+      const result = spawnSync(process.execPath, [tsxCli(), install, ...args, '--dry-run'], { cwd: dir, env: cleanEnv(dir), encoding: 'utf8' });
+      assert.equal(result.status, 0, result.stderr);
+      assert.match(result.stdout, new RegExp(`Installing into ${target.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\n`));
+    }
+    const empty = spawnSync(process.execPath, [tsxCli(), install, '--target='], { cwd: dir, env: cleanEnv(dir), encoding: 'utf8' });
+    assert.equal(empty.status, 1);
+    assert.match(empty.stderr, /--target needs a directory/);
   });
 });
 

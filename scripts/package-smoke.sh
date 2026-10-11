@@ -28,9 +28,14 @@ for needed in package.json AGENTS.md CLAUDE.md LICENSE README.md \
   grep -qxF "$needed" "$CONTENTS" || fail "tarball is missing $needed"
 done
 # Repository records, tooling and the graph pipeline's pieces.
-EXCLUDED='^(\.workflow/|specs/|tests/|runtime/|\.github/|\.env|docs/(handoff/|LAUNCH_READINESS\.md|GAP_61_COVERAGE_MATRIX\.md|TESTING\.md|RELEASING\.md|runbooks/|threat-models/)|governance/(graph/|test-floors\.json|claim-retirements\.json|traceability-baseline\.json|required-checks\.yml|enforcement-baseline\.json|decisions/|changelog/)|hooks/universal/session-start/graph-preflight\.sh|slash-commands/universal/(sprint|sprint-approve|graph-halt|graph-resume)\.md)'
+EXCLUDED='^(\.workflow/|specs/|tests/|runtime/|\.github/|docs/(handoff/|LAUNCH_READINESS\.md|GAP_61_COVERAGE_MATRIX\.md|TESTING\.md|RELEASING\.md|runbooks/|threat-models/)|governance/(graph/|test-floors\.json|claim-retirements\.json|traceability-baseline\.json|required-checks\.yml|enforcement-baseline\.json|decisions/|changelog/)|hooks/universal/session-start/graph-preflight\.sh|slash-commands/universal/(sprint|sprint-approve|graph-halt|graph-resume)\.md)'
 if grep -E "$EXCLUDED" "$CONTENTS"; then
   fail "tarball ships repository-internal files (listed above)"
+fi
+# npm does not ignore .env files, so one inside any shipped folder would be published
+# (runtime/.env.example is not shipped, so no example file is allowed for here).
+if grep -E '(^|/)\.env' "$CONTENTS"; then
+  fail "tarball ships a .env file (listed above)"
 fi
 # Only the command entry points and their helpers ship from scripts/; CI tooling stays out.
 SHIPPED_SCRIPTS='^scripts/(devops-cli\.js|devops-analyze\.js|devops-paths\.js|init-project\.sh|post-install\.sh)$'

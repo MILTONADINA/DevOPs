@@ -51,7 +51,13 @@ function parseFlags(argv: string[]): CliFlags {
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
-    if (a === '--target') { flags.target = argv[++i]; }
+    // Both forms, as scripts/init-project.sh reads them, so the git hook and the
+    // installed components always land in the same project.
+    if (a === '--target' || a.startsWith('--target=')) {
+      const value = a === '--target' ? argv[++i] : a.slice('--target='.length);
+      if (!value) { console.error('--target needs a directory'); process.exit(1); }
+      flags.target = value;
+    }
     else if (a === '--allow-unsigned') { flags.allowUnsigned = true; }
     else if (a.startsWith('--rationale=')) { flags.rationale = a.slice('--rationale='.length).replace(/^"|"$/g, ''); }
     else if (a === '--rationale') { flags.rationale = (argv[++i] || '').replace(/^"|"$/g, ''); }
