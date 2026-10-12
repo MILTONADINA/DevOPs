@@ -303,6 +303,30 @@ test(`devops help lists --no-agile-graph (${SPEC}#ac-2)`, () => {
   assert.match(help.stdout, /--no-agile-graph/);
 });
 
+test(`comparing an engine's tool hashes with the pins names every changed, added and removed tool (${SPEC}#ac-7)`, async () => {
+  const { comparePins } = await import('../scripts/agile-graph-pin-diff.mjs');
+  const pins = JSON.parse(readFileSync(path.join(ROOT, PIN_SOURCE), 'utf8'));
+  assert.deepEqual(comparePins({ ...pins }, pins), { match: true, changed: [], added: [], removed: [] });
+  const engine = { ...pins, context_get: 'f'.repeat(64), run_start: 'e'.repeat(64) };
+  delete engine.symbol_search;
+  assert.deepEqual(comparePins(engine, pins), { match: false, changed: ['context_get'], added: ['run_start'], removed: ['symbol_search'] });
+  assert.throws(() => comparePins([], pins), /JSON objects/);
+});
+
+test(`the weekly version check runs on a schedule, may only write issues, and never runs the new engine's install scripts (${SPEC}#ac-7)`, () => {
+  const workflow = readFileSync(path.join(ROOT, '.github/workflows/agile-graph-versions.yml'), 'utf8');
+  assert.match(workflow, /^\s+schedule:\n\s+# [^\n]*\n\s+- cron: '[^']+'$/m);
+  assert.match(workflow, /^\s+workflow_dispatch:$/m);
+  assert.match(workflow, /^permissions:\n\s+contents: read$/m);
+  assert.match(workflow, /permissions:\n\s+contents: read\n\s+issues: write\n/);
+  assert.doesNotMatch(workflow, /contents: write|pull-requests: write|gh pr create|git push/);
+  assert.match(workflow, /GRAPH_ENGINE_NO_FEEDBACK: '1'/);
+  assert.match(workflow, /bash scripts\/agile-graph-version-check\.sh/);
+  const check = readFileSync(path.join(ROOT, 'scripts/agile-graph-version-check.sh'), 'utf8');
+  assert.match(check, /npm install --ignore-scripts [^\n]*@agile-graph\/engine@\$LATEST/);
+  assert.match(check, /^export GRAPH_ENGINE_NO_FEEDBACK=1/m);
+});
+
 test(`/sprint describes the Agile Graph cycle, its prerequisites and the fallback (${SPEC}#ac-6)`, () => {
   const sprint = readFileSync(path.join(ROOT, 'slash-commands/universal/sprint.md'), 'utf8');
   const section = sprint.slice(sprint.indexOf('## With Agile Graph'));
