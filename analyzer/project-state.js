@@ -11,8 +11,10 @@ import { execFileSync } from 'node:child_process';
 // Fewer commits than this in full history means a new project.
 export const GREENFIELD_COMMITS = 5;
 
-export function runGit(args, cwd) {
-  return execFileSync('git', args, { cwd, stdio: ['ignore', 'pipe', 'ignore'], encoding: 'utf8' });
+// `execFile` is execFileSync (no shell); tests pass a fake to see the options without
+// running git.
+export function runGit(args, cwd, execFile = execFileSync) {
+  return execFile('git', args, { cwd, stdio: ['ignore', 'pipe', 'ignore'], encoding: 'utf8' });
 }
 
 /**
@@ -26,7 +28,9 @@ export function detectState(root, { git = runGit, year = new Date().getFullYear(
   let shallow = false;
   try {
     shallow = git(['rev-parse', '--is-shallow-repository'], root).trim() === 'true';
-  } catch { /* an old git or no git: fall back to the commit count */ }
+  } catch { /* no git, or git refused: fall back to the commit count */ }
+  // A git older than 2.15 echoes the unknown flag back instead of failing; that is not
+  // "true" either, so it also falls back to the count.
 
   let note = null;
   if (shallow) {

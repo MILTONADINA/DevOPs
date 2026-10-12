@@ -49,9 +49,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
 ### Fixed
 
 - `devops analyze` no longer calls a shallow clone, CI's default checkout, a new
-  project (#263, `specs/ops/analyzer-detection.md`). Its git commands run in the
-  analyzed project. A shallow clone's commit count is not read as the project's
-  age, and the printed state says why.
+  project (#263, `specs/ops/analyzer-detection.md`). A shallow clone's commit
+  count is not read as the project's age, and the printed state says why. Its git
+  commands now name the analyzed folder explicitly rather than relying on the
+  working directory, which is the same folder today.
 - `package.json` writes its bin paths and repository URL the way `npm publish`
   normalizes them, so a publish corrects nothing. npm reported the old `./` bin
   paths as "invalid and removed", though it only dropped the `./`.

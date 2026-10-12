@@ -2,11 +2,13 @@
 // stands in for the real one (tests do not run git), and records where it was run.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { detectState, GREENFIELD_COMMITS } from '../analyzer/project-state.js';
+import { detectState, GREENFIELD_COMMITS, runGit } from '../analyzer/project-state.js';
 
+const ROOT = path.resolve(import.meta.dirname, '..');
 const SPEC = 'specs/ops/analyzer-detection.md';
 
 function withProject({ git = true, incidents = [] } = {}, fn) {
@@ -46,6 +48,25 @@ test(`every git call runs in the analyzed project, not the working directory (${
   });
 });
 
+test(`the real git runner runs git in the given folder, without a shell (${SPEC}#ac-1)`, () => {
+  const seen = [];
+  const output = runGit(['rev-list', '--count', 'HEAD'], '/some/project', (file, args, options) => {
+    seen.push({ file, args, options });
+    return '7\n';
+  });
+  assert.equal(output, '7\n');
+  assert.equal(seen.length, 1);
+  assert.equal(seen[0].file, 'git');
+  assert.deepEqual(seen[0].args, ['rev-list', '--count', 'HEAD']);
+  assert.equal(seen[0].options.cwd, '/some/project');
+  assert.ok(!seen[0].options.shell, 'no shell');
+});
+
+test(`the greenfield threshold is the spec's five commits (${SPEC}#ac-1)`, () => {
+  assert.equal(GREENFIELD_COMMITS, 5);
+  assert.match(readFileSync(path.join(ROOT, SPEC), 'utf8'), /fewer than\s+five\s+commits/);
+});
+
 test(`no .git, or under ${GREENFIELD_COMMITS} commits in full history, is greenfield (${SPEC}#ac-1)`, () => {
   withProject({ git: false }, root => {
     const { git, calls } = fakeGit({ commits: 300 });
@@ -71,6 +92,30 @@ test(`a shallow clone with one commit is brownfield, and the note says why (${SP
 test(`a failing git does not fail the analysis (${SPEC}#ac-1)`, () => {
   withProject({}, root => {
     assert.deepEqual(detectState(root, { git: fakeGit({ fail: true }).git }), { state: 'brownfield', note: null });
+  });
+});
+
+test(`devops analyze prints the shallow-clone note after the state (${SPEC}#ac-1)`, () => {
+  withProject({}, root => {
+    // A stub git on PATH answers like a one-commit shallow clone; the analyzer's own
+    // execFileSync('git') finds it. Tests never run the real git.
+    const bin = path.join(root, '.stub-bin');
+    mkdirSync(bin);
+    writeFileSync(path.join(bin, 'git'), [
+      '#!/usr/bin/env bash',
+      'case "$*" in',
+      '  "rev-parse --is-shallow-repository") echo true ;;',
+      '  "rev-list --count HEAD") echo 1 ;;',
+      '  *) exit 1 ;;',
+      'esac',
+      '',
+    ].join('\n'));
+    chmodSync(path.join(bin, 'git'), 0o755);
+    const result = spawnSync(process.execPath, [path.join(ROOT, 'node_modules/tsx/dist/cli.mjs'), path.join(ROOT, 'analyzer/scan.ts')],
+      { cwd: root, env: { ...process.env, PATH: `${bin}${path.delimiter}${process.env.PATH}` }, encoding: 'utf8', timeout: 30_000 });
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /^State: brownfield \(shallow clone: .+\)$/m);
+    assert.match(readFileSync(path.join(root, '.workflow/profile.yml'), 'utf8'), /^state: "brownfield"$/m);
   });
 });
 
