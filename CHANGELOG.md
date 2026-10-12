@@ -8,6 +8,20 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- On 2026-10-11 the commit history was rewritten to remove Claude attribution
+  lines (Co-Authored-By, Claude-Session and "Generated with Claude Code") from
+  93 commit messages. No file content changed, but every commit from the first
+  such commit onward has a new ID.
+  - The old history stays reachable at the tag `archive/pre-attribution-rewrite`.
+  - `governance/changelog/2026-10-11-attribution-rewrite-commit-map.txt` maps
+    each old commit ID to its new one.
+  - The tags `v0.3.0` and `v0.4.0` move to the new commits; `v0.2.0` stays on
+    the old history.
+  - The committed claim `claim-2026-10-03-019` now names commit `0737952`
+    (formerly `daa1250`), which has the same tree.
+
 ### Fixed
 
 - `package.json` writes its bin paths and repository URL the way `npm publish`

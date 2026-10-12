@@ -2,9 +2,9 @@ claim:
   id: "claim-2026-10-03-019"
   type: "doc"
   spec_ref: "specs/verification/claim-schema-loading.md#req-4--fail-safely-and-retain-the-read-only-acceptance-mode"
-  description: "At commit daa1250, the verification README states that default replay executes claim-controlled shell text and that --no-rerun accepts metadata without observing commands, GREEN or RED."
+  description: "At commit 0737952, the verification README states that default replay executes claim-controlled shell text and that --no-rerun accepts metadata without observing commands, GREEN or RED."
   proof:
-    git_sha: "daa1250309c770f322d73d872af3d83b42bd7d24"
+    git_sha: "0737952d63edbbe56e324d70d6a9343df920b5cd"
     files_changed:
       - "verification/README.md"
     test_command: "docker run --rm --pull=never --network none --tmpfs /workspace/.workflow/state:rw,exec,mode=1777 --mount type=bind,source=/Users/milto/Projects/DevOps/.workflow/state/mr10b/committed-repo,target=/workspace --mount type=bind,source=/Users/milto/Projects/DevOps/.workflow/state/mr3/linux-tmp,target=/tmp --mount type=bind,source=/Users/milto/Projects/DevOps/.workflow/state/mr3/linux-home,target=/root --mount type=bind,source=/Users/milto/Projects/DevOps/.workflow/state/mr3/jq-1.8.1-arm64/jq-linux-arm64,target=/usr/local/bin/jq,readonly --workdir /workspace --env DOTENV_CONFIG_PATH=/workspace/.absent-dotenv --mount type=bind,source=/Users/milto/Projects/DevOps/.workflow/state/mr3/clean-repo/node_modules,target=/workspace/node_modules,readonly --mount type=bind,source=/Users/milto/Projects/DevOps/.workflow/state/mr10b,target=/mr10b,readonly --env TSX_DISABLE_CACHE=1 node:24-bookworm node node_modules/tsx/dist/cli.mjs .workflow/proofs/committed/scripts/verify-readme.ts"
@@ -20,6 +20,6 @@ claim:
       PROOF_SCRIPT_SHA256: "8bacceec395208d337218980eddce3d0c6848dee1652a8b61bffbc90c29382b6"
       TSX_DISABLE_CACHE: "1"
   confidence: "medium"
-  reproducibility_hash: "sha256:d685e1ae061bfd48af988936888e743ee2df374ff2f76908b2e9e37880d596ba"
+  reproducibility_hash: "sha256:bbd59bca3fb656b0ee06cc55186d0b1beaf06d8ade3574e33432450d3d2ccd61"
   timestamp: "2026-10-03T23:37:50.206367+00:00"
-  caveats: "Named documentation blob-content proof in an owned ordinary local clone using cached Linux Node24 and locked dependencies; not a worktree replay at target G. The later published script/checks and declared helper hashes bind the reviewed observation, not executable author authentication. Three altered-content and four malformed-phrase controls were refused separately. The ignored log is local evidence; CI validates declarations and committed bytes without observing this command or log. This doc claim does not assert implementation/test success, historical RED, safe replay or whole MR10 completion."
+  caveats: "Named documentation blob-content proof in an owned ordinary local clone using cached Linux Node24 and locked dependencies; not a worktree replay at target G. The later published script/checks and declared helper hashes bind the reviewed observation, not executable author authentication. Three altered-content and four malformed-phrase controls were refused separately. The ignored log is local evidence; CI validates declarations and committed bytes without observing this command or log. This doc claim does not assert implementation/test success, historical RED, safe replay or whole MR10 completion. On 2026-10-11 git_sha was re-pointed from daa1250 to 0737952: a message-only history rewrite removed attribution lines, and both commits have the same tree (governance/changelog/2026-10-11-attribution-rewrite-commit-map.txt). The observation was not re-run; the proof script and checks still name the original commit, kept reachable by the tag archive/pre-attribution-rewrite."
