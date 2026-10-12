@@ -297,6 +297,19 @@ jobs:
       - name: Lint stack-specific skills (REQ-D2..D7)
         run: npm run lint:stack-specific-skills
 
+  package-smoke:
+    # specs/release/npm-package.md REQ-6: pack the npm package, install the tarball into an
+    # empty project with runtime dependencies only, and run every command. It fails when a
+    # skill was edited after it was signed (run release-sign.yml on the branch).
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444  # v5.0.0
+        with: { node-version: 22 }
+      - name: Pack, install and run the package
+        run: bash scripts/package-smoke.sh
+
   node-compat:
     # The required jobs run on Node 22, the supported floor (engines >=22.12.0). This job
     # runs the same suites on the newer supported majors. It is not a required check.

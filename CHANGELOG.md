@@ -18,6 +18,19 @@ product. See `docs/LAUNCH_READINESS.md` for current, frequently-updated
 status — this file intentionally does not duplicate that detail while the
 phase is open.
 
+### Added — npm package release (specs/release/npm-package.md)
+
+- DevOPs installs from npm: `npm install -g @miltonadina/devops`, then `devops analyze` and `devops init` in a project. 0.4.0 is the first npm release; `docs/RELEASING.md` has the steps.
+- **Fixed** for anyone installing from npm:
+  - The commands read their files from the installed package; they no longer assume a `~/DevOPs` folder. `DEVOPS_ROOT` still points them at a checkout.
+  - `devops-analyze` now works through npm's command symlink.
+  - The TypeScript tools run with the package's own `tsx`, now a runtime dependency, so nothing is needed on PATH.
+  - `devops toString` and similar inherited names are refused as unknown commands.
+- **Changed:** `devops init` never replaces a git pre-commit hook another tool wrote. The hook it writes scans with `gitleaks --redact`, so a found secret stays out of the terminal, and validates claims with `devops verify`. `devops init --dry-run` writes nothing.
+- **Removed:** the `devops-install` command and `scripts/install.sh`, which copied a clone into `~/DevOPs`. npm installs the package instead.
+- The package ships the product and none of this repository's own records. It is 206 files, down from 289; the graph pipeline's pieces stay out, because they still assume this repository.
+- CI's new `package-smoke` job packs, installs and runs the package on every pull request. It fails when a skill differs from its signed manifest entry. `.github/workflows/release-npm.yml` publishes a `vX.Y.Z` tag with provenance after checks and an approval.
+
 ### Added — limited managed session erasure (specs/memory/session-erasure.md, C4-B)
 
 - Organization-only authenticated erasure for newly enrolled explicit sessions

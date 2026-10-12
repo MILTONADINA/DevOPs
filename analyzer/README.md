@@ -69,7 +69,7 @@ For each detection, the analyzer suggests:
 ## Run
 
 ```bash
-./scripts/analyze.sh
+devops analyze        # or, in a clone of this repository: npm run analyze
 ```
 
 Produces `.workflow/profile.yml` and a human-readable
@@ -78,7 +78,7 @@ Produces `.workflow/profile.yml` and a human-readable
 After user approval:
 
 ```bash
-./scripts/init-project.sh
+devops init
 ```
 
 Installs the recommended components and wires the universal hooks into the

@@ -1,4 +1,6 @@
-// specs/verification/committed-claims.md REQ-9 / AC-4.
+// specs/verification/committed-claims.md REQ-9 / AC-4, with the hook's command form from
+// specs/release/npm-package.md REQ-3: claims are validated by the installed `devops`
+// command, and gitleaks redacts what it finds.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -9,6 +11,7 @@ import path from 'node:path';
 const ROOT = path.resolve(import.meta.dirname, '..', '..');
 const GENERATOR = path.join(ROOT, 'scripts/init-project.sh');
 const SENTINEL = 'owned-command-must-not-execute';
+const GITLEAKS_ARGS = ['git', '--pre-commit', '--staged', '--redact', '--no-banner'];
 
 function withHook(run) {
   const outer = realpathSync(mkdtempSync(path.join(tmpdir(), 'committed-hook-')));
@@ -24,9 +27,11 @@ function withHook(run) {
       assert.ok(existsSync(`/bin/${tool}`), `fixture tool prerequisite: /bin/${tool}`);
       symlinkSync(`/bin/${tool}`, path.join(bin, tool));
     }
-    for (const tool of ['tsx', 'gitleaks']) {
+    // tsx stands in for the installer at generation time; devops stands in for the
+    // claim validator when the hook runs; gitleaks for the secret scan.
+    for (const tool of ['tsx', 'gitleaks', 'devops']) {
       const file = path.join(bin, tool);
-      writeFileSync(file, `#!${process.execPath}\nconst fs=require('node:fs');const args=process.argv.slice(2);fs.appendFileSync(${JSON.stringify(log)},JSON.stringify({tool:${JSON.stringify(tool)},args})+'\\n');if(${JSON.stringify(tool)}==='gitleaks')process.exit(Number(process.env.FIXTURE_GITLEAKS_EXIT||0));if(args[0]===${JSON.stringify(path.join(source, 'analyzer/install.ts'))})process.exit(0);if(args[0]===${JSON.stringify(path.join(source, 'verification/claim-validator.ts'))})process.exit(Number(process.env.FIXTURE_CLAIM_EXIT||0));process.exit(91);\n`);
+      writeFileSync(file, `#!${process.execPath}\nconst fs=require('node:fs');const args=process.argv.slice(2);fs.appendFileSync(${JSON.stringify(log)},JSON.stringify({tool:${JSON.stringify(tool)},args})+'\\n');if(${JSON.stringify(tool)}==='gitleaks')process.exit(Number(process.env.FIXTURE_GITLEAKS_EXIT||0));if(${JSON.stringify(tool)}==='devops'&&args[0]==='verify')process.exit(Number(process.env.FIXTURE_CLAIM_EXIT||0));if(args[0]===${JSON.stringify(path.join(source, 'analyzer/install.ts'))})process.exit(0);process.exit(91);\n`);
       chmodSync(file, 0o755);
     }
     const env = { PATH: bin, HOME: consumer, DEVOPS_ROOT: source, LANG: 'C', LC_ALL: 'C' };
@@ -50,15 +55,16 @@ function withHook(run) {
     run({ consumer, source, bin, writeProof, invoke });
   } finally { rmSync(outer, { recursive: true, force: true }); }
 }
-function validatorCalls(result, source) {
-  return result.calls.filter((call) => call.tool === 'tsx' && call.args[0] === path.join(source, 'verification/claim-validator.ts'));
+// Validator invocations: `devops verify <files...> --no-rerun`.
+function validatorCalls(result) {
+  return result.calls.filter((call) => call.tool === 'devops' && call.args[0] === 'verify');
 }
 function expectExplicit(result, source, files) {
   assert.equal(result.status, 0, result.stdout + result.stderr);
-  const calls = validatorCalls(result, source); assert.equal(calls.length, 1);
+  const calls = validatorCalls(result); assert.equal(calls.length, 1);
   assert.deepEqual(calls[0].args.slice(1).sort(), [...files, '--no-rerun'].sort());
   assert.equal(calls[0].args.includes('--all'), false);
-  assert.deepEqual(result.calls[0], { tool: 'gitleaks', args: ['protect', '--staged', '--no-banner'] });
+  assert.deepEqual(result.calls[0], { tool: 'gitleaks', args: GITLEAKS_ARGS });
 }
 
 for (const present of [false, true]) test(`generated hook skips empty local proofs, directory present=${present}`, () => withHook((f) => {
@@ -94,11 +100,11 @@ test('generated hook propagates the owned validator failure', () => withHook((f)
 test('generated hook preserves gitleaks failure before validation', () => withHook((f) => {
   f.writeProof('ordinary.yml'); const result = f.invoke({ FIXTURE_GITLEAKS_EXIT: '17' });
   assert.notEqual(result.status, 0); assert.deepEqual(validatorCalls(result, f.source), []);
-  assert.deepEqual(result.calls, [{ tool: 'gitleaks', args: ['protect', '--staged', '--no-banner'] }]);
+  assert.deepEqual(result.calls, [{ tool: 'gitleaks', args: GITLEAKS_ARGS }]);
 }));
 
-test('generated hook preserves missing-tsx compatibility after generation', () => withHook((f) => {
-  f.writeProof('ordinary.yml'); rmSync(path.join(f.bin, 'tsx'));
+test('generated hook skips validation when no devops command is installed', () => withHook((f) => {
+  f.writeProof('ordinary.yml'); rmSync(path.join(f.bin, 'devops'));
   const result = f.invoke(); assert.equal(result.status, 0); assert.deepEqual(validatorCalls(result, f.source), []);
 }));
 
