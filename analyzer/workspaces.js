@@ -8,15 +8,19 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import YAML from 'yaml';
 
-// Bounds for a hostile or huge tree (the patterns come from the analyzed repository):
-// how deep `**` reaches, how many folder entries expansion may read in total, and how
-// many packages count.
-export const MAX_DEPTH = 6;
-export const MAX_VISITED = 20000;
-export const MAX_PACKAGES = 500;
+// Bounds for a hostile or huge repository (the patterns come from it):
+export const MAX_DEPTH = 6;          // how deep `**` reaches
+export const MAX_VISITED = 20000;    // folder entries expansion may read in total
+export const MAX_PACKAGES = 500;     // workspace packages that count
+export const MAX_PATTERNS = 100;     // patterns read
+export const MAX_PATTERN_LENGTH = 256;
+export const MAX_SEGMENTS = 16;      // path segments in one pattern
 
+// Only a regular file is read: a symlinked package.json could point outside the
+// repository, or at a device such as /dev/stdin that never ends.
 function readJson(file) {
   try {
+    if (!fs.lstatSync(file).isFile()) return null;
     const value = JSON.parse(fs.readFileSync(file, 'utf8'));
     return value !== null && typeof value === 'object' && !Array.isArray(value) ? value : null;
   } catch {
@@ -24,26 +28,40 @@ function readJson(file) {
   }
 }
 
+function readYaml(file) {
+  try {
+    if (!fs.lstatSync(file).isFile()) return null;
+    return YAML.parse(fs.readFileSync(file, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
 // The workspace globs: package.json "workspaces" (an array, or yarn's { packages: [...] })
-// and pnpm-workspace.yaml "packages".
+// and pnpm-workspace.yaml "packages". Over-long or excess patterns are dropped.
 export function workspacePatterns(root) {
   const patterns = [];
   const pkg = readJson(path.join(root, 'package.json'));
   const declared = Array.isArray(pkg?.workspaces) ? pkg.workspaces : pkg?.workspaces?.packages;
   if (Array.isArray(declared)) patterns.push(...declared);
-  try {
-    const pnpm = YAML.parse(fs.readFileSync(path.join(root, 'pnpm-workspace.yaml'), 'utf8'));
-    if (Array.isArray(pnpm?.packages)) patterns.push(...pnpm.packages);
-  } catch { /* no pnpm workspace file, or not readable YAML */ }
-  return [...new Set(patterns.filter(p => typeof p === 'string' && p.trim() !== ''))];
+  const pnpm = readYaml(path.join(root, 'pnpm-workspace.yaml'));
+  if (Array.isArray(pnpm?.packages)) patterns.push(...pnpm.packages);
+  const usable = patterns.filter(p => typeof p === 'string' && p.trim() !== '' && p.length <= MAX_PATTERN_LENGTH);
+  return [...new Set(usable)].slice(0, MAX_PATTERNS);
 }
 
-// Folders below `dir` that a real package can live in: no node_modules and no hidden
-// folders. Symlinks are skipped too (they could leave the project or loop): a Dirent's
-// type is the entry's own, so a symlink to a folder is never isDirectory() here.
-// `budget.left` counts folder entries still allowed to be read. Entries are read one at a
-// time, so even one huge folder stops at the budget.
+function segmentsOf(pattern) {
+  const segments = pattern.replace(/^\.\//, '').replace(/\/+$/, '').split('/').filter(Boolean);
+  // Consecutive `**` mean the same as one.
+  return segments.filter((s, i) => !(s === '**' && segments[i - 1] === '**'));
+}
+
+// Folders below `dir` that a real package can live in: no node_modules, no hidden folders,
+// no symlinks (a Dirent's type is the entry's own, so a symlink is never isDirectory()).
+// `budget.left` counts entries still allowed to be read; once it is spent, no folder is
+// even opened.
 function subdirs(dir, budget) {
+  if (budget.left <= 0) return [];
   const found = [];
   let handle;
   try {
@@ -78,25 +96,44 @@ export function segmentMatches(segment, name) {
   return s === segment.length;
 }
 
-function expand(root, pattern, budget) {
-  const segments = pattern.replace(/^\.\//, '').replace(/\/+$/, '').split('/').filter(Boolean);
-  if (segments.some(s => s === '..')) return [];
+// A relative folder path against a pattern's segments, `**` matching any number of
+// folders. Memoised on (segment, part), so time is bounded by their product.
+export function pathMatches(segments, parts) {
+  const memo = new Map();
+  const at = (s, p) => {
+    const key = s * (parts.length + 1) + p;
+    if (memo.has(key)) return memo.get(key);
+    let ok;
+    if (s === segments.length) ok = p === parts.length;
+    else if (segments[s] === '**') ok = at(s + 1, p) || (p < parts.length && at(s, p + 1));
+    else ok = p < parts.length && segmentMatches(segments[s], parts[p]) && at(s + 1, p + 1);
+    memo.set(key, ok);
+    return ok;
+  };
+  return at(0, 0);
+}
+
+// Every folder an include pattern names, walking the tree once per segment with each
+// folder visited at most once per segment.
+function expand(root, segments, budget) {
   let current = [root];
   for (const segment of segments) {
-    const next = [];
+    const next = new Set();
     for (const dir of current) {
       if (segment === '**') {
         const stack = [[dir, 0]];
         while (stack.length) {
           const [d, depth] = stack.pop();
-          next.push(d);
+          if (next.has(d)) continue;
+          next.add(d);
           if (depth < MAX_DEPTH) for (const child of subdirs(d, budget)) stack.push([child, depth + 1]);
         }
       } else {
-        for (const child of subdirs(dir, budget)) if (segmentMatches(segment, path.basename(child))) next.push(child);
+        for (const child of subdirs(dir, budget)) if (segmentMatches(segment, path.basename(child))) next.add(child);
       }
     }
-    current = next;
+    current = [...next];
+    if (current.length === 0) break;
   }
   return current;
 }
@@ -104,23 +141,21 @@ function expand(root, pattern, budget) {
 /** The package.json files of the workspace packages under `root` (not the root's own). */
 export function workspacePackages(root, { maxVisited = MAX_VISITED } = {}) {
   const patterns = workspacePatterns(root);
-  // Exclusions first, with their own budget, so a large include cannot use up the reads
-  // an exclusion needs and let an excluded package back in.
-  const exclude = new Set();
-  const excludeBudget = { left: maxVisited };
-  for (const pattern of patterns.filter(p => p.startsWith('!'))) {
-    for (const dir of expand(root, pattern.slice(1), excludeBudget)) exclude.add(dir);
-  }
+  const usable = list => list.map(segmentsOf).filter(s => s.length > 0 && s.length <= MAX_SEGMENTS && !s.includes('..'));
+  const includes = usable(patterns.filter(p => !p.startsWith('!')));
+  // Exclusions are matched against the folders found, not walked, so they hold whatever
+  // the read budget did.
+  const excludes = usable(patterns.filter(p => p.startsWith('!')).map(p => p.slice(1)));
+  const budget = { left: maxVisited };
   const include = new Set();
-  const includeBudget = { left: maxVisited };
-  for (const pattern of patterns.filter(p => !p.startsWith('!'))) {
-    for (const dir of expand(root, pattern, includeBudget)) include.add(dir);
-  }
+  for (const segments of includes) for (const dir of expand(root, segments, budget)) include.add(dir);
   const files = [];
   for (const dir of [...include].sort()) {
-    if (exclude.has(dir) || dir === root) continue;
+    if (dir === root) continue;
+    const parts = path.relative(root, dir).split(path.sep);
+    if (excludes.some(segments => pathMatches(segments, parts))) continue;
     const file = path.join(dir, 'package.json');
-    if (fs.existsSync(file)) files.push(file);
+    try { if (fs.lstatSync(file).isFile()) files.push(file); } catch { /* none */ }
     if (files.length >= MAX_PACKAGES) break;
   }
   return files;
@@ -128,13 +163,15 @@ export function workspacePackages(root, { maxVisited = MAX_VISITED } = {}) {
 
 /** Dependencies and devDependencies of the root and every workspace package, merged. */
 export function allDependencies(root) {
-  const deps = {};
+  const deps = Object.create(null);
   for (const file of [path.join(root, 'package.json'), ...workspacePackages(root)]) {
     const pkg = readJson(file);
     if (!pkg) continue;
     for (const field of ['dependencies', 'devDependencies']) {
       const value = pkg[field];
-      if (value && typeof value === 'object' && !Array.isArray(value)) Object.assign(deps, value);
+      if (value && typeof value === 'object' && !Array.isArray(value)) {
+        for (const name of Object.keys(value)) deps[name] = value[name];
+      }
     }
   }
   return deps;

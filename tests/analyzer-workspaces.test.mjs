@@ -6,7 +6,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { allDependencies, segmentMatches, workspacePackages, workspacePatterns } from '../analyzer/workspaces.js';
+import { allDependencies, pathMatches, segmentMatches, workspacePackages, workspacePatterns } from '../analyzer/workspaces.js';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 const SPEC = 'specs/ops/analyzer-detection.md';
@@ -75,16 +75,54 @@ test(`segment matching follows * and stays fast on a pattern built to backtrack 
   assert.ok(ms < 250, `matched in ${ms.toFixed(1)} ms`);
 });
 
-test(`a tree larger than the read budget stops expanding and keeps its exclusions (${SPEC}#ac-2)`, () => {
-  const files = { 'package.json': { workspaces: ['packages/**', '!packages/p00'] } };
-  for (let i = 0; i < 40; i++) files[`packages/p${String(i).padStart(2, '0')}/package.json`] = pkg({ react: '1' });
+test(`a tree larger than the read budget stops expanding, and exclusions still hold (${SPEC}#ac-2)`, () => {
+  const files = { 'package.json': { workspaces: ['packages/**', '!**/test/**'] } };
+  for (let i = 0; i < 40; i++) {
+    files[`packages/p${String(i).padStart(2, '0')}/package.json`] = pkg({ react: '1' });
+    files[`packages/p${String(i).padStart(2, '0')}/test/fixture/package.json`] = pkg({ express: '1' });
+  }
   withRepo(files, root => {
-    const all = workspacePackages(root);
-    assert.equal(all.length, 39, 'within the default budget every package but the excluded one');
-    const bounded = workspacePackages(root, { maxVisited: 10 });
-    assert.ok(bounded.length > 0 && bounded.length < 39, `a budget of 10 reads stops early (${bounded.length})`);
-    assert.ok(!bounded.some(f => f.includes(`${path.sep}p00${path.sep}`)), 'the exclusion still holds');
+    assert.equal(workspacePackages(root).length, 40, 'every package, no test fixture');
+    for (const maxVisited of [5, 20]) {
+      const bounded = workspacePackages(root, { maxVisited });
+      assert.ok(bounded.length < 40, `a budget of ${maxVisited} stops early (${bounded.length})`);
+      // The budget reaches some test fixtures' folders; none may be counted.
+      assert.ok(!bounded.some(f => f.includes(`${path.sep}test${path.sep}`)), `exclusions hold at ${maxVisited}`);
+    }
+    assert.ok(!Object.hasOwn(allDependencies(root), 'express'));
   });
+});
+
+test(`many ** segments, long patterns and too many patterns stay fast (${SPEC}#ac-2)`, () => {
+  withRepo({
+    'package.json': { workspaces: ['**/'.repeat(80) + 'x', `${'*a'.repeat(120)}*b`, 'x'.repeat(5000), ...Array.from({ length: 500 }, (_, i) => `p${i}/**/x`)] },
+    'a/b/c/package.json': pkg({ react: '1' }),
+  }, root => {
+    const started = process.hrtime.bigint();
+    workspacePackages(root);
+    const ms = Number(process.hrtime.bigint() - started) / 1e6;
+    assert.ok(ms < 2000, `expanded in ${ms.toFixed(0)} ms`);
+  });
+});
+
+test(`symlinked package.json and pnpm-workspace.yaml files are not read (${SPEC}#ac-2)`, () => {
+  withRepo({
+    'package.json': { workspaces: ['packages/*'] },
+    'outside/package.json': pkg({ next: '1' }),
+    'packages/web/.keep': '',
+  }, root => {
+    symlinkSync(path.join(root, 'outside/package.json'), path.join(root, 'packages/web/package.json'));
+    symlinkSync(path.join(root, 'outside/package.json'), path.join(root, 'pnpm-workspace.yaml'));
+    assert.deepEqual(workspacePackages(root), []);
+    assert.ok(!Object.hasOwn(allDependencies(root), 'next'));
+  });
+});
+
+test(`path matching follows ** across folders (${SPEC}#ac-2)`, () => {
+  for (const [pattern, rel, expected] of [
+    ['**/test/**', 'packages/app/test/fixture', true], ['**/test/**', 'packages/app/test', true],
+    ['**/test/**', 'packages/tests', false], ['packages/*', 'packages/web', true], ['packages/*', 'packages/web/x', false],
+  ]) assert.equal(pathMatches(pattern.split('/'), rel.split('/')), expected, `${pattern} vs ${rel}`);
 });
 
 test(`a repository without workspaces reads only the root package (${SPEC}#ac-2)`, () => {

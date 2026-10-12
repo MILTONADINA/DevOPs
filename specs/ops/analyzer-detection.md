@@ -59,8 +59,14 @@ The patterns come from the analyzed repository, so expansion SHALL stay bounded 
 any input:
 - matching a segment SHALL take at most time proportional to the product of the
   pattern's and the folder name's lengths (no backtracking regex);
-- includes and exclusions SHALL each read at most 20,000 folder entries;
-- exclusions SHALL be expanded first, so an include cannot use up their reads.
+- at most 100 patterns of at most 256 characters and 16 segments are read, and
+  consecutive `**` count as one;
+- includes SHALL read at most 20,000 folder entries in total, and no folder is opened
+  once that budget is spent; each folder is visited at most once per segment;
+- exclusions SHALL be matched against the folders found, not walked, so they hold
+  however the budget ran;
+- only regular files are read: a symlinked `package.json` or `pnpm-workspace.yaml` is
+  ignored.
 
 ## Acceptance criteria
 
