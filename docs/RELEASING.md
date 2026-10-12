@@ -9,12 +9,16 @@ How a version of `@miltonadina/devops` reaches npm. The rules are in
    you own. Sign in at npmjs.com and turn on two-factor authentication.
 2. **The approval gate.** In the GitHub repository, go to Settings → Environments and
    create an environment named `npm-release`. Add yourself as a required reviewer and
-   allow deployments from tags only (`v*`). Every publish waits for that approval.
+   allow deployments from tags only (`v*.*.*`). Every publish waits for that approval.
+   (Done for this repository on 2026-10-11: reviewer MILTONADINA, tag rule `v*.*.*`.)
 3. **The first release's token.** npm can link a package to a workflow (trusted
    publishing) only once the package exists, so the first release needs a token:
-   - On npmjs.com, create a granular access token with read and write access to
-     `@miltonadina/devops` (or to the scope, before the package exists), with a short
-     expiry.
+   - On npmjs.com, create a granular access token with read and write access and a
+     short expiry. Under "Packages and scopes", select the `@miltonadina` scope; the
+     package does not exist yet.
+   - Tick "Bypass two-factor authentication". It is off by default, and without it
+     an account that requires 2FA for publishing makes the CI publish fail, because
+     the workflow cannot enter a one-time password.
    - Add it as the secret `NPM_TOKEN` on the `npm-release` environment, not as a
      repository secret.
 4. **After the first release: trusted publishing.**
