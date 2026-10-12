@@ -3,12 +3,13 @@
 // (tests/hermeticity.test.mjs). CI's package-smoke job installs the real tarball.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { PACKAGE_ROOT, devopsRoot, tsxCli } from '../scripts/devops-paths.js';
+import { writeStubGit } from './fixtures/stub-git.mjs';
 
 const ROOT = realpathSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'));
 const pkg = JSON.parse(readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
@@ -93,14 +94,41 @@ test(`an unknown command, including an inherited object key, is refused (${SPEC}
 });
 
 // init-project.sh with a stub in place of the installer, so only its hook logic runs.
-// The stub records the arguments it receives in installer-args.json.
-function runInit(dir, args = []) {
+// The stub records the arguments it receives in installer-args.json, and copies the
+// hook scripts named in STUB_COPY_HOOKS into the target's .claude/hooks/. A stub git
+// (tests/fixtures/stub-git.mjs) answers where hooks live; `extraEnv` steers it.
+function runInit(dir, args = [], extraEnv = {}) {
   const stub = path.join(dir, 'installer-stub.mjs');
   const record = JSON.stringify(path.join(dir, 'installer-args.json'));
-  writeFileSync(stub, `import { writeFileSync } from 'node:fs';\nwriteFileSync(${record}, JSON.stringify(process.argv.slice(3)));\nprocess.exit(0);\n`);
-  const env = { ...cleanEnv(dir), DEVOPS_ROOT: ROOT, DEVOPS_NODE: process.execPath, DEVOPS_TSX: stub };
+  writeFileSync(stub, [
+    `import { mkdirSync, writeFileSync } from 'node:fs';`,
+    `import path from 'node:path';`,
+    `const args = process.argv.slice(3);`,
+    `writeFileSync(${record}, JSON.stringify(args));`,
+    `const t = args.findIndex(a => a === '--target' || a.startsWith('--target='));`,
+    `const target = t < 0 ? '.' : args[t] === '--target' ? args[t + 1] : args[t].slice('--target='.length);`,
+    `for (const name of (process.env.STUB_COPY_HOOKS || '').split(',').filter(Boolean)) {`,
+    `  mkdirSync(path.join(target, '.claude/hooks'), { recursive: true });`,
+    `  writeFileSync(path.join(target, '.claude/hooks', name), '#!/bin/sh\\n');`,
+    `}`,
+    `process.exit(0);`,
+  ].join('\n'));
+  const bin = path.join(dir, '.stub-bin');
+  mkdirSync(bin, { recursive: true });
+  writeStubGit(bin);
+  const base = cleanEnv(dir);
+  const env = { ...base, PATH: `${bin}${path.delimiter}${base.PATH}`, DEVOPS_ROOT: ROOT, DEVOPS_NODE: process.execPath, DEVOPS_TSX: stub, ...extraEnv };
   return spawnSync('bash', [path.join(ROOT, 'scripts/init-project.sh'), ...args], { cwd: dir, env, encoding: 'utf8' });
 }
+
+// A project folder with a profile, and optionally a .git folder.
+function initProject(dir, { git = true } = {}) {
+  mkdirSync(path.join(dir, '.workflow'), { recursive: true });
+  writeFileSync(path.join(dir, '.workflow', 'profile.yml'), 'state: greenfield\n');
+  if (git) mkdirSync(path.join(dir, '.git'), { recursive: true });
+}
+const gateLine = (stdout) => stdout.split('\n').find(line => line.startsWith('  pre-commit gate: ')) ?? '';
+const claudeLine = (stdout) => stdout.split('\n').find(line => line.startsWith('  Claude Code hooks: ')) ?? '';
 
 test(`devops init --target puts the git hook in the target project, not the current directory (${SPEC}#ac-3)`, () => {
   withTempDir((dir) => {
@@ -177,6 +205,61 @@ test(`devops init never replaces a pre-commit hook it did not write (${SPEC}#ac-
     assert.equal(result.status, 0, result.stderr);
     assert.equal(readFileSync(path.join(dir, '.git', 'hooks', 'pre-commit'), 'utf8'), theirs);
     assert.match(result.stdout, /Left the existing \.git\/hooks\/pre-commit unchanged/);
+  });
+});
+
+test(`a worktree or submodule gets its hook where git runs hooks, and the summary says where (${SPEC}#ac-8)`, () => {
+  withTempDir((dir) => {
+    const project = path.join(dir, 'worktree');
+    initProject(project, { git: false });
+    writeFileSync(path.join(project, '.git'), 'gitdir: ../main/.git/worktrees/worktree\n');   // .git is a file here
+    const shared = path.join(dir, 'main', '.git', 'hooks');
+    const result = runInit(project, [], {
+      STUB_GIT_DIR: path.join(dir, 'main/.git/worktrees/worktree'), STUB_GIT_COMMON_DIR: path.join(dir, 'main/.git'), STUB_GIT_PATH_HOOKS: shared,
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(readFileSync(path.join(shared, 'pre-commit'), 'utf8'), /^# DevOPs pre-commit hook$/m);
+    assert.equal(gateLine(result.stdout), `  pre-commit gate: installed at ${shared}/pre-commit (shared by every worktree of this repository)`);
+  });
+});
+
+test(`with core.hooksPath set, init writes no hook anywhere and says what to add (${SPEC}#ac-8)`, () => {
+  withTempDir((dir) => {
+    initProject(dir);
+    mkdirSync(path.join(dir, '.githooks'));
+    const result = runInit(dir, [], { STUB_HOOKS_PATH: '.githooks', STUB_GIT_PATH_HOOKS: '.githooks' });
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(readdirSync(path.join(dir, '.githooks')), [], 'the hooks folder is untouched');
+    assert.ok(!existsSync(path.join(dir, '.git', 'hooks', 'pre-commit')));
+    assert.match(gateLine(result.stdout), /not installed: core\.hooksPath is '\.githooks'.*Add 'gitleaks git --pre-commit --staged --redact' and 'devops verify <claim files> --no-rerun'/);
+  });
+});
+
+test(`outside a git repository the summary says the gate is not installed (${SPEC}#ac-8)`, () => {
+  withTempDir((dir) => {
+    initProject(dir, { git: false });
+    const result = runInit(dir);
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(gateLine(result.stdout), '  pre-commit gate: not installed: this folder is not a git repository');
+  });
+});
+
+test(`the summary names the copied Claude Code hooks that settings.json does not reference (${SPEC}#ac-8)`, () => {
+  withTempDir((dir) => {
+    initProject(dir);
+    mkdirSync(path.join(dir, '.claude'), { recursive: true });
+    writeFileSync(path.join(dir, '.claude', 'settings.json'), JSON.stringify({ hooks: { PreToolUse: [{ hooks: [{ type: 'command', command: 'bash .claude/hooks/block-secrets.sh' }] }] } }));
+    const result = runInit(dir, [], { STUB_COPY_HOOKS: 'block-secrets.sh,budget-brake.sh' });
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(claudeLine(result.stdout), /2 copied to \.claude\/hooks\/; 1 not referenced by \.claude\/settings\.json, so Claude Code does not run them: budget-brake\.sh\./);
+    assert.equal(gateLine(result.stdout), '  pre-commit gate: installed at .git/hooks/pre-commit');
+  });
+  withTempDir((dir) => {
+    initProject(dir);
+    mkdirSync(path.join(dir, '.claude'), { recursive: true });
+    writeFileSync(path.join(dir, '.claude', 'settings.local.json'), '{"hooks":{"x":"bash .claude/hooks/block-secrets.sh"}}');
+    const result = runInit(dir, [], { STUB_COPY_HOOKS: 'block-secrets.sh' });
+    assert.match(claudeLine(result.stdout), /1 copied to \.claude\/hooks\/, and Claude Code's settings reference each/);
   });
 });
 

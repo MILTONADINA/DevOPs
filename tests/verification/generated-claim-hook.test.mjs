@@ -7,6 +7,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, copyFileSync, symlinkSync, chmodSync, rmSync, existsSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { writeStubGit } from '../fixtures/stub-git.mjs';
 
 const ROOT = path.resolve(import.meta.dirname, '..', '..');
 const GENERATOR = path.join(ROOT, 'scripts/init-project.sh');
@@ -34,6 +35,9 @@ function withHook(run) {
       writeFileSync(file, `#!${process.execPath}\nconst fs=require('node:fs');const args=process.argv.slice(2);fs.appendFileSync(${JSON.stringify(log)},JSON.stringify({tool:${JSON.stringify(tool)},args})+'\\n');if(${JSON.stringify(tool)}==='gitleaks')process.exit(Number(process.env.FIXTURE_GITLEAKS_EXIT||0));if(${JSON.stringify(tool)}==='devops'&&args[0]==='verify')process.exit(Number(process.env.FIXTURE_CLAIM_EXIT||0));if(args[0]===${JSON.stringify(path.join(source, 'analyzer/install.ts'))})process.exit(0);process.exit(91);\n`);
       chmodSync(file, 0o755);
     }
+    // A stub git says where the hooks live (.git/hooks); it records nothing, so the call
+    // log below still holds only the installer.
+    writeStubGit(bin);
     const env = { PATH: bin, HOME: consumer, DEVOPS_ROOT: source, LANG: 'C', LC_ALL: 'C' };
     writeFileSync(log, '');
     const generated = spawnSync('/bin/bash', [path.join(source, 'scripts/init-project.sh')], { cwd: consumer, env, encoding: 'utf8', timeout: 10000 });
