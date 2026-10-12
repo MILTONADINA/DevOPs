@@ -53,6 +53,11 @@ Versions follow [Semantic Versioning](https://semver.org/).
   count is not read as the project's age, and the printed state says why. Its git
   commands now name the analyzed folder explicitly rather than relying on the
   working directory, which is the same folder today.
+- `devops analyze` reads the dependencies of npm, yarn and pnpm workspace
+  packages, not only the root `package.json`, so a monorepo's frameworks are
+  detected (#264, `specs/ops/analyzer-detection.md` REQ-2). Expanding the
+  repository's workspace patterns is bounded for any input: no regex
+  backtracking, and at most 20,000 folder entries read.
 - `package.json` writes its bin paths and repository URL the way `npm publish`
   normalizes them, so a publish corrects nothing. npm reported the old `./` bin
   paths as "invalid and removed", though it only dropped the `./`.

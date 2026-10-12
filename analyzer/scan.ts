@@ -7,6 +7,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { detectState } from './project-state.js';
+import { allDependencies } from './workspaces.js';
 
 interface Profile {
   detected_at: string;
@@ -45,10 +46,6 @@ function fileExists(p: string): boolean {
   try { return fs.existsSync(p); } catch { return false; }
 }
 
-function readJson(p: string): Record<string, unknown> {
-  try { return JSON.parse(fs.readFileSync(p, 'utf-8')); } catch { return {}; }
-}
-
 function detectStack(root: string): Profile['stack'] {
   const stack: Profile['stack'] = {
     language: [],
@@ -68,9 +65,9 @@ function detectStack(root: string): Profile['stack'] {
     else if (fileExists(path.join(root, 'package-lock.json'))) stack.package_managers.push('npm');
     else if (fileExists(path.join(root, 'bun.lockb'))) stack.package_managers.push('bun');
 
-    const pkg = readJson(path.join(root, 'package.json'));
-    const deps = { ...(pkg.dependencies as object ?? {}), ...(pkg.devDependencies as object ?? {}) };
-    const has = (name: string) => name in deps;
+    // specs/ops/analyzer-detection.md REQ-2: the root and every workspace package.
+    const deps: Record<string, unknown> = allDependencies(root);
+    const has = (name: string) => Object.hasOwn(deps, name);
 
     if (has('next')) stack.frameworks.push('next.js');
     if (has('@remix-run/react')) stack.frameworks.push('remix');
