@@ -2,6 +2,7 @@
 
 **Status**: draft
 **Amended**: 2026-10-11, by `specs/release/npm-package.md` REQ-3. REQ-9's generated hook now validates claims with the installed `devops verify` (skipping when no `devops` command is available) and scans with `gitleaks git --pre-commit --staged --redact`. Its explicit-array, nullglob/dotglob, empty-skip and failure-propagation rules are unchanged.
+**Amended**: 2026-10-11. A message-only history rewrite removed attribution lines from commit messages, so REQ-8's commit daa1250 is now 0737952, with the same tree. The claim's git_sha follows it; the old commit stays reachable by the tag archive/pre-attribution-rewrite (governance/changelog/2026-10-11-attribution-rewrite-commit-map.txt).
 
 **Scope:** MR10-B, the committed selection and provenance portion of
 masterpiece REQ-M9 under the owner's roadmap continuation and Decision 3.
