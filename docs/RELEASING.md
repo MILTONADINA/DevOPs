@@ -12,19 +12,26 @@ How a version of `@miltonadina/devops` reaches npm. The rules are in
    allow deployments from tags only (`v*.*.*`). Every publish waits for that approval.
    (Done for this repository on 2026-10-11: reviewer MILTONADINA, tag rule `v*.*.*`.)
 3. **The first release's token.** npm can link a package to a workflow (trusted
-   publishing) only once the package exists, so the first release needs a token:
+   publishing) only once the package exists, so the first release needs a token.
+   Running `npm trust github` before the package existed did not help: the first
+   v0.4.0 run (38191691780) had no token and failed with `ENEEDAUTH`.
    - On npmjs.com, create a granular access token with read and write access and a
      short expiry. Under "Packages and scopes", select the `@miltonadina` scope; the
      package does not exist yet.
    - Tick "Bypass two-factor authentication". It is off by default, and without it
      an account that requires 2FA for publishing makes the CI publish fail, because
-     the workflow cannot enter a one-time password.
+     the workflow cannot enter a one-time password. GitHub's changelog of 2026-07-31
+     says such tokens lose direct publishing around January 2027.
    - Add it as the secret `NPM_TOKEN` on the `npm-release` environment, not as a
      repository secret.
 4. **After the first release: trusted publishing.**
    - On npmjs.com, open the package's Settings → Trusted Publisher and choose GitHub
      Actions with repository `MILTONADINA/DevOPs`, workflow `release-npm.yml` and
-     environment `npm-release`.
+     environment `npm-release`. From a terminal signed in to npm, this does the same:
+     `npm trust github @miltonadina/devops --file release-npm.yml --repository MILTONADINA/DevOPs --environment npm-release --allow-publish`.
+   - npm says a new link must be used for a successful publish within two days. Set
+     it up shortly before the next release, and check it with `npm trust list
+     @miltonadina/devops`.
    - Then delete the `NPM_TOKEN` secret and revoke the token. Later releases
      authenticate with OIDC and store no secret.
 

@@ -4,8 +4,8 @@
   "description": "A self-configuring, verification-first DevOps workflow for AI coding agents. Built for Claude Code; its AGENTS.md contract is tool-agnostic (Codex reads it natively), and no adapters for other tools ship yet.",
   "type": "module",
   "bin": {
-    "devops": "./scripts/devops-cli.js",
-    "devops-analyze": "./scripts/devops-analyze.js"
+    "devops": "scripts/devops-cli.js",
+    "devops-analyze": "scripts/devops-analyze.js"
   },
   "scripts": {
     "setup": "node scripts/setup-local.mjs",
@@ -46,7 +46,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/MILTONADINA/DevOPs.git"
+    "url": "git+https://github.com/MILTONADINA/DevOPs.git"
   },
   "engines": {
     "node": ">=22.12.0"
