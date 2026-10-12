@@ -31,17 +31,22 @@ separate, later work.
 - The engine's MCP server needs a pinned list of tool definitions. Without one, a
   changed or added tool, including one that starts runs, would reach the client
   unreviewed.
-- By default the engine opens public GitHub issues for some failures, under the user's
-  own GitHub account, when the project's policy allows `api.github.com`. DevOps does not
-  collect user data, so nothing it starts may do that.
+- The engine's automatic feedback is on by default. It opens public GitHub issues under
+  the user's own GitHub account, though only for a project whose policy allows
+  `api.github.com`. DevOps does not collect user data, so nothing it starts may leave
+  that switch on.
 
 ## Requirements
 
-### REQ-1 — An exact optional peer
+### REQ-1 — An optional peer and one pinned version
 
-`package.json` SHALL list `@agile-graph/engine` under `peerDependencies` at the exact
-version that the shipped tool pins describe, marked optional in
-`peerDependenciesMeta`. The pins and the version SHALL change together.
+`package.json` SHALL list `@agile-graph/engine` under `peerDependencies` with a range
+that never stops `npm install` (`>=0.1.0`), marked optional in `peerDependenciesMeta`.
+`ENGINE_VERSION` in `analyzer/agile-graph.js` SHALL name the one engine version whose
+tools the shipped pins describe. The constant and the pins SHALL change together, and the
+peer range SHALL include that version.
+
+**Enforced by:** test:tests/agile-graph-link.test.mjs
 
 ### REQ-2 — Pinned tool definitions
 
@@ -51,13 +56,20 @@ client with no optional tools: `context_get`, `graph_neighbors`, `memory_propose
 `symbol_search`. It SHALL pin no tool that starts, plans or cancels a run. The engine
 refuses to start when an exposed tool is unpinned or differs.
 
+**Enforced by:** test:tests/agile-graph-link.test.mjs; job:.github/workflows/ci.yml#agile-graph-link
+
 ### REQ-3 — `devops init` registers the MCP server when it can
 
-WHEN `devops init` runs, THE INSTALLER SHALL register the engine for the project only if
-all of these hold:
+WHEN `devops init` runs, THE INSTALLER SHALL look for the engine in this order:
 
-- the engine resolves from the project, or else from where DevOps is installed;
-- its version equals the REQ-1 version;
+- in the project's `node_modules` or that of any folder above it (a workspace root);
+- above where DevOps is installed (a global install);
+- as an `agile-graph` command on `PATH`.
+
+It SHALL register the engine only if all of these hold:
+
+- the engine was found;
+- its version equals `ENGINE_VERSION`;
 - the installer runs on a Node version the engine supports (24 or later, below 27);
 - `--no-agile-graph` was not given.
 
@@ -67,8 +79,12 @@ register the server it SHALL:
 - copy the REQ-2 pins to `.claude/agile-graph-tool-hashes.json` unless that file exists.
   An existing file is kept, with a note when its content differs.
 - add an `agile-graph` entry under `mcpServers` in the project's `.mcp.json`, creating
-  the file if needed. It keeps every other key, never replaces an existing `agile-graph`
-  entry, and leaves a `.mcp.json` it cannot parse unchanged, with a message.
+  the file if needed. It keeps every other key and never replaces an existing
+  `agile-graph` entry. It leaves a `.mcp.json` it cannot parse unchanged, with a message.
+- check that both files can be written before writing either. If `.mcp.json` still
+  cannot be written, it SHALL remove the pins it copied, report that nothing was linked,
+  and let the install finish with exit status 0. Nothing in the link SHALL fail
+  `devops init`.
 - print the two commands the person runs next: `agile-graph -C . init --cloud-mcp
   --export '<glob>'` and `agile-graph -C . index --lexical`.
 
@@ -78,6 +94,8 @@ choice. Claude Code also asks each person to approve a project's `.mcp.json` ser
 before it starts one. With `--dry-run` the installer SHALL write nothing and report what
 it would do.
 
+**Enforced by:** test:tests/agile-graph-link.test.mjs
+
 ### REQ-4 — The registered launch line
 
 The `.mcp.json` entry SHALL:
@@ -86,53 +104,71 @@ The `.mcp.json` entry SHALL:
   .claude/agile-graph-tool-hashes.json`, and with no `--allow-tool`, `--allow-run` or
   `--allow-run-status`;
 - set `GRAPH_ENGINE_NO_FEEDBACK=1`;
-- run `npx --no-install agile-graph` when the engine resolved from the project, or
-  `agile-graph` when it resolved from where DevOps is installed.
+- run `npx --no-install agile-graph` when the engine was found in the project or above
+  it, or `agile-graph` otherwise. `npx --no-install` never downloads a package; it
+  refuses when the engine is missing.
 
 The paths are relative so that a committed `.mcp.json` works on every clone; Claude Code
 starts project servers in the project root. Started anywhere else, the server finds no
-Agile Graph project and refuses to start.
+pin file or project and refuses to start.
+
+**Enforced by:** test:tests/agile-graph-link.test.mjs; job:.github/workflows/ci.yml#agile-graph-link
 
 ### REQ-5 — No feedback from anything DevOps documents
 
 Every Agile Graph command that DevOps documents or runs SHALL set
-`GRAPH_ENGINE_NO_FEEDBACK=1`. This covers the README, `/sprint`, the MCP template and
-CI.
+`GRAPH_ENGINE_NO_FEEDBACK=1`. This covers the README, `/sprint`, the MCP template and its
+README, the lines `devops init` prints, and CI.
+
+**Enforced by:** test:tests/agile-graph-link.test.mjs; job:.github/workflows/ci.yml#agile-graph-link
 
 ### REQ-6 — `/sprint` through Agile Graph
 
 This repository's `/sprint` SHALL describe a person-driven cycle through the engine's CLI
-for a project that holds `.graph/project.json` with the REQ-1 engine on a supported Node:
+for a project that holds `.graph/project.json`, with the REQ-1 engine on a supported
+Node:
 
 - `plan` (from an objective with acceptance criteria, or from a spec);
 - `run`;
 - `inspect`;
 - `accept` or `reject`, which a person decides.
 
-It SHALL keep the halt check and preflight first. It SHALL state the prerequisites `run`
-needs: a worker provider, a registered check whose image is already pulled, and a
-running Docker-compatible engine. It SHALL keep the deploy gate for anything after
-`accept`. It SHALL NOT enable run tools over MCP by default; it explains how a person
-opts in after reviewing new pins. Without those conditions `/sprint` runs DevOps's own
-pipeline unchanged.
+It SHALL keep the halt check and preflight first. It SHALL state the prerequisites and
+where each one fails:
+
+- `plan` needs a permitted worker;
+- `plan` warns and `run` refuses without a registered check;
+- `run` refuses while a check's image is not pulled;
+- runs need a running Docker-compatible engine.
+
+It SHALL keep the deploy gate for anything after `accept`. It SHALL NOT enable run
+tools over MCP by default; it explains how a person opts in after reviewing new pins.
+Without those conditions `/sprint` runs DevOps's own pipeline unchanged.
+
+**Enforced by:** test:tests/agile-graph-link.test.mjs
 
 ### REQ-7 — An end-to-end check
 
-CI SHALL run, on a Node version the engine supports:
+CI SHALL run these steps on a Node version the engine supports:
 
-- install the packed DevOps and the REQ-1 engine into an empty project;
+- install the packed DevOps and the `ENGINE_VERSION` engine into an empty project;
 - check that `mcp-tools --client cloud --hashes` equals the shipped pins;
 - run `devops init`;
 - start exactly the command and arguments `devops init` wrote, and check that
-  `tools/list` returns the four pinned tools.
+  `tools/list` returns the four pinned tools;
+- stop the server's whole process group, and finish within a fixed deadline.
+
+**Enforced by:** job:.github/workflows/ci.yml#agile-graph-link
 
 ## Acceptance criteria
 
 ### AC-1
 
-**Given** `package.json` **When** it is read **Then** `@agile-graph/engine` is an
-optional peer at an exact version, and the shipped pin file holds exactly the four REQ-2
-tools, each with a 64-character lowercase hex SHA-256.
+**Given** `package.json` and the link module **When** they are read **Then**:
+- `@agile-graph/engine` is an optional peer whose range includes `ENGINE_VERSION`;
+- the shipped pin file holds exactly the four REQ-2 tools, each with a 64-character
+  lowercase hex SHA-256;
+- the MCP template uses the REQ-4 arguments and environment.
 
 **Verified by:** `tests/agile-graph-link.test.mjs`, test titles naming
 `specs/graph/agile-graph-link.md#ac-1`.
@@ -141,15 +177,18 @@ tools, each with a 64-character lowercase hex SHA-256.
 
 **Given** a project **When** the link runs with the engine missing, at another version,
 on Node 22 or 27, or with `--no-agile-graph` **Then** it writes nothing and reports one
-reason, and `devops init` still succeeds.
+reason. **When** `.mcp.json` cannot be written **Then** no pins are left behind. In every
+case `devops init` still succeeds.
 
 **Verified by:** `tests/agile-graph-link.test.mjs` (`#ac-2`).
 
 ### AC-3
 
-**Given** the REQ-1 engine in the project and a supported Node **When** the link runs
-**Then** `.mcp.json` gains an `agile-graph` entry that matches REQ-4 and the pin file is
-copied. With `--dry-run` it writes nothing.
+**Given** the engine at `ENGINE_VERSION` and a supported Node **When** the link runs
+**Then** `.mcp.json` gains an `agile-graph` entry that matches REQ-4, and the pin file is
+copied. The entry starts the engine with `npx --no-install` when the engine is in the
+project or a workspace root above it, and with `agile-graph` when it is next to DevOps or
+on `PATH`. With `--dry-run` the link writes nothing.
 
 **Verified by:** `tests/agile-graph-link.test.mjs` (`#ac-3`).
 
@@ -172,9 +211,11 @@ REQ-7 with `GRAPH_ENGINE_NO_FEEDBACK=1`.
 
 ### AC-6
 
-**Given** this repository's `/sprint` **When** it is read **Then** it describes the
-REQ-6 cycle, its prerequisites, the person's accept step and the unchanged fallback, and
-the dashboard line still follows the Workflow block.
+**Given** this repository's `/sprint`, the README, the MCP template and its README
+**When** they are read **Then** `/sprint` describes the REQ-6 cycle, its prerequisites,
+the person's accept step and the unchanged fallback, and every documented
+`agile-graph -C` command sets `GRAPH_ENGINE_NO_FEEDBACK=1`. The dashboard line still
+follows the Workflow block.
 
 **Verified by:** `tests/agile-graph-link.test.mjs` (`#ac-6`) and
 `tests/graph-dashboard/sprint-doc.test.mjs`.
@@ -184,6 +225,8 @@ the dashboard line still follows the Workflow block.
 - A `/sprint` for npm users.
 - Wiring Agile Graph into Codex, Cursor or other clients. The MCP template documents the
   launch line for manual use.
-- Running `agile-graph init`, `index` or `embeddings-provision` for the user.
+- Native Windows, which DevOps does not support (README prerequisites). There an `npx`
+  entry would need `cmd /c`.
+- Running `agile-graph init`, `index`, `watch` or `embeddings-provision` for the user.
 - Enabling run tools (`--allow-run`) or run status (`--allow-run-status`) for a cloud
   client.

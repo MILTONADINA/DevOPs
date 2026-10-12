@@ -87,6 +87,9 @@ const COMMANDS = {
 Commands:
   devops analyze            Detect project stack, produce .workflow/profile.yml
   devops init               Install DevOPs into current project (after analyze)
+                            --dry-run              show what it would do
+                            --target DIR           install into DIR
+                            --no-agile-graph       skip the optional Agile Graph link
   devops verify [options]   Validate declared claim metadata
                             --all --no-rerun       committed nonempty set
                             --claim ID --no-rerun  one committed ID; bind all members

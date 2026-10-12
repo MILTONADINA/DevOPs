@@ -9,6 +9,8 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 
 export const ENGINE = '@agile-graph/engine';
+// The engine version whose tools PIN_SOURCE pins. Bump the two together (REQ-1).
+export const ENGINE_VERSION = '0.1.0';
 export const SERVER_KEY = 'agile-graph';
 export const PIN_SOURCE = 'mcp-configs/universal/agile-graph.tool-hashes.json';
 export const PIN_TARGET = '.claude/agile-graph-tool-hashes.json';
@@ -20,38 +22,43 @@ export function supportedNode(version) {
   return Number.isInteger(major) && major >= 24 && major < 27;
 }
 
-// The engine version this DevOps pins (REQ-1): its exact optional peer.
-export function pinnedEngineVersion(devopsRoot) {
+function engineAt(packageDir) {
   try {
-    const pkg = JSON.parse(fs.readFileSync(path.join(devopsRoot, 'package.json'), 'utf8'));
-    const version = pkg.peerDependencies?.[ENGINE];
-    return typeof version === 'string' && /^\d+\.\d+\.\d+$/.test(version) ? version : null;
-  } catch {
-    return null;
-  }
-}
-
-function engineIn(nodeModules) {
-  const file = path.join(nodeModules, ...ENGINE.split('/'), 'package.json');
-  try {
-    const pkg = JSON.parse(fs.readFileSync(file, 'utf8'));
+    const pkg = JSON.parse(fs.readFileSync(path.join(packageDir, 'package.json'), 'utf8'));
     return pkg.name === ENGINE && typeof pkg.version === 'string' ? { version: pkg.version } : null;
   } catch {
     return null;
   }
 }
 
-// The project's own node_modules first (run with `npx --no-install`), then the
-// node_modules folders above where DevOps is installed, which covers a global install
-// next to the engine (run with the `agile-graph` command).
-export function findEngine(projectRoot, devopsRoot) {
-  const local = engineIn(path.join(projectRoot, 'node_modules'));
-  if (local) return { ...local, via: 'project' };
-  for (let dir = path.resolve(devopsRoot); ; dir = path.dirname(dir)) {
-    const found = engineIn(path.join(dir, 'node_modules'));
-    if (found) return { ...found, via: 'devops' };
+function engineAbove(start) {
+  for (let dir = path.resolve(start); ; dir = path.dirname(dir)) {
+    const found = engineAt(path.join(dir, 'node_modules', ...ENGINE.split('/')));
+    if (found) return found;
     if (path.dirname(dir) === dir) return null;
   }
+}
+
+// An `agile-graph` command on PATH is a symlink into the engine package (dist/cli.js).
+function engineOnPath(pathEnv) {
+  for (const dir of String(pathEnv ?? '').split(path.delimiter).filter(Boolean)) {
+    try {
+      const cli = fs.realpathSync(path.join(dir, 'agile-graph'));
+      const found = engineAt(path.dirname(path.dirname(cli)));
+      if (found) return found;
+    } catch { /* not in this directory */ }
+  }
+  return null;
+}
+
+// REQ-3. In the project or a folder above it (a workspace root): run it with
+// `npx --no-install`, which resolves those same folders. Otherwise next to DevOps (a
+// global install) or on PATH: run the `agile-graph` command.
+export function findEngine(projectRoot, devopsRoot, pathEnv = process.env.PATH) {
+  const local = engineAbove(projectRoot);
+  if (local) return { ...local, via: 'project' };
+  const beside = engineAbove(devopsRoot) ?? engineOnPath(pathEnv);
+  return beside ? { ...beside, via: 'command' } : null;
 }
 
 // REQ-4: relative paths so a committed .mcp.json works on every clone; no optional tools.
@@ -74,21 +81,34 @@ function readMcpJson(file) {
   }
 }
 
+// The file itself when it exists, else the nearest folder that does (it would be created).
+function writable(file) {
+  let target = file;
+  while (!fs.existsSync(target) && path.dirname(target) !== target) target = path.dirname(target);
+  try {
+    fs.accessSync(target, fs.constants.W_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Register the engine for one project. Returns { status, lines }: status is "linked",
- * "kept" (something already there was left alone) or "skipped"; lines are for the user.
+ * "kept" (something already there was left alone, or could not be written) or
+ * "skipped"; lines are for the user. It never throws for a project it cannot change.
  */
-export function linkAgileGraph({ projectRoot, devopsRoot, dryRun = false, skip = false, nodeVersion = process.versions.node }) {
+export function linkAgileGraph({
+  projectRoot, devopsRoot, dryRun = false, skip = false, nodeVersion = process.versions.node, pathEnv = process.env.PATH,
+}) {
   const done = (status, ...lines) => ({ status, lines });
   if (skip) return done('skipped', 'Agile Graph: skipped (--no-agile-graph).');
-  const wanted = pinnedEngineVersion(devopsRoot);
-  if (!wanted) return done('skipped', `Agile Graph: this DevOps pins no ${ENGINE} version; not linked.`);
-  const engine = findEngine(projectRoot, devopsRoot);
+  const engine = findEngine(projectRoot, devopsRoot, pathEnv);
   if (!engine) {
-    return done('skipped', `Agile Graph: not installed (optional). To link it, install ${ENGINE}@${wanted} and run devops init again.`);
+    return done('skipped', `Agile Graph: not installed (optional). To link it, install ${ENGINE}@${ENGINE_VERSION} and run devops init again.`);
   }
-  if (engine.version !== wanted) {
-    return done('skipped', `Agile Graph: found ${ENGINE}@${engine.version}, but this DevOps pins ${wanted}; not linked.`);
+  if (engine.version !== ENGINE_VERSION) {
+    return done('skipped', `Agile Graph: found ${ENGINE}@${engine.version}, but this DevOps pins ${ENGINE_VERSION}; not linked.`);
   }
   if (!supportedNode(nodeVersion)) {
     return done('skipped', `Agile Graph: the engine needs Node 24 to 26, and this is Node ${nodeVersion}; not linked.`);
@@ -100,36 +120,52 @@ export function linkAgileGraph({ projectRoot, devopsRoot, dryRun = false, skip =
   if (config.mcpServers && Object.hasOwn(config.mcpServers, SERVER_KEY)) {
     return done('kept', `Agile Graph: .mcp.json already registers "${SERVER_KEY}"; left unchanged.`);
   }
-
-  const lines = [];
   const pinSource = path.join(devopsRoot, PIN_SOURCE);
   const pinTarget = path.join(projectRoot, PIN_TARGET);
-  if (fs.existsSync(pinTarget)) {
+  const copyPins = !fs.existsSync(pinTarget);
+  if (!dryRun && (!writable(mcpFile) || (copyPins && !writable(pinTarget)))) {
+    return done('kept', 'Agile Graph: .mcp.json or .claude/ is not writable; left unchanged, not linked.');
+  }
+
+  const lines = [];
+  if (!copyPins) {
     const same = fs.readFileSync(pinTarget).equals(fs.readFileSync(pinSource));
     lines.push(same
       ? `Agile Graph: ${PIN_TARGET} is already in place.`
       : `Agile Graph: kept your ${PIN_TARGET}; it differs from the pins this DevOps ships (${PIN_SOURCE}).`);
-  } else if (dryRun) {
-    lines.push(`Agile Graph: would copy the pinned tool definitions to ${PIN_TARGET}.`);
-  } else {
-    fs.mkdirSync(path.dirname(pinTarget), { recursive: true });
-    fs.copyFileSync(pinSource, pinTarget);
-    lines.push(`Agile Graph: copied the pinned tool definitions to ${PIN_TARGET}.`);
   }
-
   const entry = serverEntry(engine.via);
   if (dryRun) {
+    if (copyPins) lines.push(`Agile Graph: would copy the pinned tool definitions to ${PIN_TARGET}.`);
     lines.push(`Agile Graph: would register the MCP server "${SERVER_KEY}" in .mcp.json.`);
     return { status: 'linked', lines };
   }
+
+  // Pins first, then .mcp.json; if .mcp.json cannot be written, take back the pins this
+  // run copied, so a project never holds one half of the link.
   const next = { ...config, mcpServers: { ...(config.mcpServers ?? {}), [SERVER_KEY]: entry } };
-  fs.writeFileSync(mcpFile, `${JSON.stringify(next, null, 2)}\n`);
+  try {
+    if (copyPins) {
+      fs.mkdirSync(path.dirname(pinTarget), { recursive: true });
+      fs.copyFileSync(pinSource, pinTarget, fs.constants.COPYFILE_EXCL);
+    }
+    try {
+      fs.writeFileSync(mcpFile, `${JSON.stringify(next, null, 2)}\n`);
+    } catch (error) {
+      if (copyPins) fs.rmSync(pinTarget, { force: true });
+      throw error;
+    }
+  } catch (error) {
+    return done('kept', `Agile Graph: could not write the link (${error.code ?? error.message}); left unchanged, not linked.`);
+  }
+  if (copyPins) lines.push(`Agile Graph: copied the pinned tool definitions to ${PIN_TARGET}.`);
   const run = engine.via === 'project' ? 'npx --no-install agile-graph' : 'agile-graph';
   lines.push(
     `Agile Graph: registered the MCP server "${SERVER_KEY}" in .mcp.json; Claude Code asks you to approve it.`,
     '  Next, choose which files Claude Code may receive, then build the index:',
     `    GRAPH_ENGINE_NO_FEEDBACK=1 ${run} -C . init --cloud-mcp --export '<glob>'`,
     `    GRAPH_ENGINE_NO_FEEDBACK=1 ${run} -C . index --lexical`,
+    '  The index is a snapshot: run index again after changes, or keep `watch` running.',
   );
   return { status: 'linked', lines };
 }

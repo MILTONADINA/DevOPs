@@ -17,7 +17,7 @@ fail() { echo "agile-graph-smoke: FAIL: $*" >&2; exit 1; }
 
 NODE_MAJOR="$(node -p 'process.versions.node.split(".")[0]')"
 (( NODE_MAJOR >= 24 && NODE_MAJOR < 27 )) || fail "needs Node 24 to 26 (the engine's range), not $(node --version)"
-ENGINE_VERSION="$(node -p "require('$ROOT/package.json').peerDependencies['@agile-graph/engine']")"
+ENGINE_VERSION="$(node --input-type=module -e "import { ENGINE_VERSION } from '$ROOT/analyzer/agile-graph.js'; console.log(ENGINE_VERSION)")"
 PINS="$ROOT/mcp-configs/universal/agile-graph.tool-hashes.json"
 
 # 1. The packed DevOps and the pinned engine, installed into an empty project.
@@ -52,15 +52,22 @@ grep -q 'registered the MCP server "agile-graph" in .mcp.json' "$WORK/init.log" 
 cmp -s "$PINS" .claude/agile-graph-tool-hashes.json || fail "devops init did not copy the pins"
 
 # 4. Start exactly the command, arguments and environment devops init wrote, from the
-# project root as Claude Code does, and list the tools over MCP.
+# project root as Claude Code does, and list the tools over MCP. The server runs in its
+# own process group: `npx` starts the engine as a child, so stopping only `npx` would
+# leave the engine holding the pipes open.
 node --input-type=module - "$APP" <<'NODE' || fail "the registered MCP server did not serve the four pinned tools"
 import { spawn } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 const project = process.argv[2];
+const deadline = setTimeout(() => { console.error('agile-graph-smoke: no answer within 60 s'); process.exit(1); }, 60000);
 const entry = JSON.parse(readFileSync(`${project}/.mcp.json`, 'utf8')).mcpServers['agile-graph'];
 if (entry.env?.GRAPH_ENGINE_NO_FEEDBACK !== '1') throw new Error('the entry does not turn feedback off');
 if (entry.args.some(arg => arg.startsWith('--allow'))) throw new Error('the entry enables optional tools');
-const child = spawn(entry.command, entry.args, { cwd: project, env: { ...process.env, ...entry.env } });
+const child = spawn(entry.command, entry.args, { cwd: project, env: { ...process.env, ...entry.env }, detached: true });
+const stop = () => {
+  child.stdin.end();
+  try { process.kill(-child.pid, 'SIGTERM'); } catch { /* already gone */ }
+};
 let out = '', err = '';
 child.stdout.on('data', d => { out += d; });
 child.stderr.on('data', d => { err += d; });
@@ -83,8 +90,13 @@ try {
   const expected = ['context_get', 'graph_neighbors', 'memory_propose', 'symbol_search'];
   if (JSON.stringify(names) !== JSON.stringify(expected)) throw new Error(`tools: ${names.join(', ')}`);
   console.log(`agile-graph-smoke: ${entry.command} ${entry.args.join(' ')} serves ${names.join(', ')}`);
+} catch (error) {
+  console.error(`agile-graph-smoke: ${error.message}`);
+  process.exitCode = 1;
 } finally {
-  child.kill();
+  stop();
+  clearTimeout(deadline);
+  process.exit(process.exitCode ?? 0);
 }
 NODE
 

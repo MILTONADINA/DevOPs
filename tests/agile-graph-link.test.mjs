@@ -4,38 +4,57 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
-  ENGINE, PIN_SOURCE, PIN_TARGET, SERVER_KEY, linkAgileGraph, pinnedEngineVersion, serverEntry, supportedNode,
+  ENGINE, ENGINE_VERSION, PIN_SOURCE, PIN_TARGET, SERVER_KEY, linkAgileGraph, serverEntry, supportedNode,
 } from '../analyzer/agile-graph.js';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 const SPEC = 'specs/graph/agile-graph-link.md';
 const pkg = JSON.parse(readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
-const PINNED = pkg.peerDependencies?.[ENGINE];
 const DEFAULT_TOOLS = ['context_get', 'graph_neighbors', 'memory_propose', 'symbol_search'];
 const NODE_OK = '26.3.0';
+const NO_PATH = '';
 
-// A DevOps root (package.json + pins) and a project, inside one temporary folder, so the
-// search above the DevOps root ends in that folder's own node_modules or nowhere.
+// Separate trees, as on a real machine:
+//   global/lib/node_modules/@miltonadina/devops   DevOps installed globally (devopsRoot)
+//   work/project                                  the project, inside a workspace root (work)
+//   elsewhere/node_modules/@agile-graph/engine    an engine reachable only through bin/
 function withSetup(fn) {
   const dir = realpathSync(mkdtempSync(path.join(tmpdir(), 'agile-graph-link-')));
   try {
-    const devopsRoot = path.join(dir, 'lib', 'devops');
-    const projectRoot = path.join(dir, 'project');
+    const globalModules = path.join(dir, 'global', 'lib', 'node_modules');
+    const devopsRoot = path.join(globalModules, '@miltonadina', 'devops');
+    const workspace = path.join(dir, 'work');
+    const projectRoot = path.join(workspace, 'project');
     mkdirSync(path.join(devopsRoot, path.dirname(PIN_SOURCE)), { recursive: true });
     mkdirSync(projectRoot, { recursive: true });
-    copyFileSync(path.join(ROOT, 'package.json'), path.join(devopsRoot, 'package.json'));
     copyFileSync(path.join(ROOT, PIN_SOURCE), path.join(devopsRoot, PIN_SOURCE));
-    const installEngine = (where, version = PINNED) => {
-      const base = where === 'project' ? path.join(projectRoot, 'node_modules') : path.join(dir, 'node_modules');
-      const engineDir = path.join(base, ...ENGINE.split('/'));
-      mkdirSync(engineDir, { recursive: true });
-      writeFileSync(path.join(engineDir, 'package.json'), JSON.stringify({ name: ENGINE, version }));
+    const places = {
+      project: path.join(projectRoot, 'node_modules'),
+      workspace: path.join(workspace, 'node_modules'),
+      global: globalModules,
+      elsewhere: path.join(dir, 'elsewhere', 'node_modules'),
     };
-    fn({ dir, devopsRoot, projectRoot, installEngine });
+    const installEngine = (where, version = ENGINE_VERSION) => {
+      const engineDir = path.join(places[where], ...ENGINE.split('/'));
+      mkdirSync(path.join(engineDir, 'dist'), { recursive: true });
+      writeFileSync(path.join(engineDir, 'package.json'), JSON.stringify({ name: ENGINE, version }));
+      writeFileSync(path.join(engineDir, 'dist', 'cli.js'), '#!/usr/bin/env node\n');
+      return engineDir;
+    };
+    // An `agile-graph` command on PATH, symlinked into the engine as npm links it.
+    const binWith = engineDir => {
+      const bin = path.join(dir, 'bin');
+      mkdirSync(bin, { recursive: true });
+      symlinkSync(path.join(engineDir, 'dist', 'cli.js'), path.join(bin, 'agile-graph'));
+      return bin;
+    };
+    fn({ dir, devopsRoot, projectRoot, installEngine, binWith });
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -43,11 +62,18 @@ function withSetup(fn) {
 
 const listing = dir => readdirSync(dir, { recursive: true }).map(String).sort();
 const mcpJson = projectRoot => JSON.parse(readFileSync(path.join(projectRoot, '.mcp.json'), 'utf8'));
+const link = (setup, extra = {}) => linkAgileGraph({
+  projectRoot: setup.projectRoot, devopsRoot: setup.devopsRoot, nodeVersion: NODE_OK, pathEnv: NO_PATH, ...extra,
+});
 
-test(`the engine is an exact optional peer, and the shipped pins cover only the four default tools (${SPEC}#ac-1)`, () => {
-  assert.match(PINNED ?? '', /^\d+\.\d+\.\d+$/, 'an exact version, not a range');
+test(`the engine is an optional peer that includes ENGINE_VERSION, and the shipped pins cover only the four default tools (${SPEC}#ac-1)`, () => {
+  const range = pkg.peerDependencies?.[ENGINE];
+  assert.match(range ?? '', /^>=\d+\.\d+\.\d+$/, 'a lower bound only, so npm install never refuses');
   assert.deepEqual(pkg.peerDependenciesMeta?.[ENGINE], { optional: true });
-  assert.equal(pinnedEngineVersion(ROOT), PINNED);
+  const parts = version => version.replace('>=', '').split('.').map(Number);
+  const [min, pinned] = [parts(range), parts(ENGINE_VERSION)];
+  assert.ok(pinned[0] > min[0] || (pinned[0] === min[0] && (pinned[1] > min[1] || (pinned[1] === min[1] && pinned[2] >= min[2]))),
+    `${ENGINE_VERSION} is inside ${range}`);
   const pins = JSON.parse(readFileSync(path.join(ROOT, PIN_SOURCE), 'utf8'));
   assert.deepEqual(Object.keys(pins).sort(), DEFAULT_TOOLS);
   for (const [tool, hash] of Object.entries(pins)) assert.match(hash, /^[0-9a-f]{64}$/, tool);
@@ -59,7 +85,7 @@ test(`the engine is an exact optional peer, and the shipped pins cover only the 
 
 test(`the manual MCP template uses cloud mode, the pins, no optional tools and no feedback (${SPEC}#ac-1)`, () => {
   const template = JSON.parse(readFileSync(path.join(ROOT, 'mcp-configs/universal/agile-graph.json'), 'utf8'));
-  assert.deepEqual(template.args, serverEntry('devops').args);
+  assert.deepEqual(template.args, serverEntry('command').args);
   assert.deepEqual(template.env, { GRAPH_ENGINE_NO_FEEDBACK: '1' });
   assert.ok(!template.args.some(arg => arg.startsWith('--allow')));
 });
@@ -71,73 +97,102 @@ test(`only Node 24 to 26 is supported (${SPEC}#ac-2)`, () => {
 
 test(`without the engine, at another version, on Node 22 or 27, or with --no-agile-graph, nothing is written (${SPEC}#ac-2)`, () => {
   const cases = [
-    { name: 'missing', setup: () => {}, nodeVersion: NODE_OK, reason: /not installed/ },
-    { name: 'other version', setup: e => e('project', '0.1.1'), nodeVersion: NODE_OK, reason: /pins/ },
-    { name: 'Node 22', setup: e => e('project'), nodeVersion: '22.12.0', reason: /Node 24 to 26/ },
-    { name: 'Node 27', setup: e => e('project'), nodeVersion: '27.0.0', reason: /Node 24 to 26/ },
-    { name: 'skip flag', setup: e => e('project'), nodeVersion: NODE_OK, skip: true, reason: /--no-agile-graph/ },
+    { name: 'missing', setup: () => {}, extra: {}, reason: /not installed/ },
+    { name: 'other version', setup: s => s.installEngine('project', '0.1.1'), extra: {}, reason: /pins 0\.1\.0|pins/ },
+    { name: 'Node 22', setup: s => s.installEngine('project'), extra: { nodeVersion: '22.12.0' }, reason: /Node 24 to 26/ },
+    { name: 'Node 27', setup: s => s.installEngine('project'), extra: { nodeVersion: '27.0.0' }, reason: /Node 24 to 26/ },
+    { name: 'skip flag', setup: s => s.installEngine('project'), extra: { skip: true }, reason: /--no-agile-graph/ },
   ];
   for (const c of cases) {
-    withSetup(({ devopsRoot, projectRoot, installEngine }) => {
-      c.setup(installEngine);
-      const before = listing(projectRoot);
-      const result = linkAgileGraph({ projectRoot, devopsRoot, nodeVersion: c.nodeVersion, skip: c.skip });
+    withSetup(setup => {
+      c.setup(setup);
+      const before = listing(setup.projectRoot);
+      const result = link(setup, c.extra);
       assert.equal(result.status, 'skipped', c.name);
       assert.equal(result.lines.length, 1, c.name);
       assert.match(result.lines[0], c.reason, c.name);
-      assert.deepEqual(listing(projectRoot), before, `${c.name}: nothing written`);
+      assert.deepEqual(listing(setup.projectRoot), before, `${c.name}: nothing written`);
     });
   }
 });
 
+test(`an unwritable .mcp.json leaves no pins behind and reports that nothing was linked (${SPEC}#ac-2)`, { skip: process.getuid?.() === 0 && 'root ignores file modes' }, () => {
+  withSetup(setup => {
+    setup.installEngine('project');
+    const mcp = path.join(setup.projectRoot, '.mcp.json');
+    writeFileSync(mcp, '{}\n');
+    chmodSync(mcp, 0o444);
+    try {
+      const result = link(setup);
+      assert.equal(result.status, 'kept');
+      assert.match(result.lines.join('\n'), /not writable[\s\S]*not linked/);
+      assert.ok(!existsSync(path.join(setup.projectRoot, PIN_TARGET)), 'no pins left behind');
+      assert.equal(readFileSync(mcp, 'utf8'), '{}\n');
+    } finally {
+      chmodSync(mcp, 0o644);
+    }
+  });
+});
+
 test(`with the engine in the project, .mcp.json gains the pinned cloud entry and the pins are copied (${SPEC}#ac-3)`, () => {
-  withSetup(({ devopsRoot, projectRoot, installEngine }) => {
-    installEngine('project');
-    const result = linkAgileGraph({ projectRoot, devopsRoot, nodeVersion: NODE_OK });
+  withSetup(setup => {
+    setup.installEngine('project');
+    const result = link(setup);
     assert.equal(result.status, 'linked');
-    const entry = mcpJson(projectRoot).mcpServers[SERVER_KEY];
+    const entry = mcpJson(setup.projectRoot).mcpServers[SERVER_KEY];
     assert.deepEqual(entry, {
       type: 'stdio', command: 'npx',
       args: ['--no-install', 'agile-graph', '-C', '.', 'mcp', '--client', 'cloud', '--tool-hashes', PIN_TARGET],
       env: { GRAPH_ENGINE_NO_FEEDBACK: '1' },
     });
-    assert.deepEqual(readFileSync(path.join(projectRoot, PIN_TARGET)), readFileSync(path.join(ROOT, PIN_SOURCE)));
+    assert.deepEqual(readFileSync(path.join(setup.projectRoot, PIN_TARGET)), readFileSync(path.join(ROOT, PIN_SOURCE)));
     const next = result.lines.join('\n');
     assert.match(next, /GRAPH_ENGINE_NO_FEEDBACK=1 npx --no-install agile-graph -C \. init --cloud-mcp --export/);
     assert.match(next, /GRAPH_ENGINE_NO_FEEDBACK=1 npx --no-install agile-graph -C \. index --lexical/);
-    assert.ok(!existsSync(path.join(projectRoot, '.graph')), 'the installer never runs agile-graph init');
+    assert.ok(!existsSync(path.join(setup.projectRoot, '.graph')), 'the installer never runs agile-graph init');
   });
 });
 
-test(`with the engine next to DevOps (a global install), the entry runs the agile-graph command (${SPEC}#ac-3)`, () => {
-  withSetup(({ devopsRoot, projectRoot, installEngine }) => {
-    installEngine('beside-devops');
-    const result = linkAgileGraph({ projectRoot, devopsRoot, nodeVersion: NODE_OK });
-    assert.equal(result.status, 'linked');
-    const entry = mcpJson(projectRoot).mcpServers[SERVER_KEY];
-    assert.equal(entry.command, 'agile-graph');
-    assert.deepEqual(entry.args, ['-C', '.', 'mcp', '--client', 'cloud', '--tool-hashes', PIN_TARGET]);
+test(`a workspace root's engine runs through npx; a global or PATH engine runs the agile-graph command (${SPEC}#ac-3)`, () => {
+  const cases = [
+    { name: 'workspace root', prepare: s => { s.installEngine('workspace'); return {}; }, command: 'npx' },
+    { name: 'global, next to DevOps', prepare: s => { s.installEngine('global'); return {}; }, command: 'agile-graph' },
+    { name: 'on PATH only', prepare: s => ({ pathEnv: s.binWith(s.installEngine('elsewhere')) }), command: 'agile-graph' },
+  ];
+  for (const c of cases) {
+    withSetup(setup => {
+      const extra = c.prepare(setup);
+      const result = link(setup, extra);
+      assert.equal(result.status, 'linked', c.name);
+      const entry = mcpJson(setup.projectRoot).mcpServers[SERVER_KEY];
+      assert.equal(entry.command, c.command, c.name);
+      assert.deepEqual(entry.args.slice(-7), ['-C', '.', 'mcp', '--client', 'cloud', '--tool-hashes', PIN_TARGET], c.name);
+    });
+  }
+  withSetup(setup => {
+    const result = link(setup, { pathEnv: setup.binWith(setup.installEngine('elsewhere', '0.2.0')) });
+    assert.equal(result.status, 'skipped', 'a PATH engine at another version is not linked');
   });
 });
 
 test(`--dry-run reports the link and writes nothing (${SPEC}#ac-3)`, () => {
-  withSetup(({ devopsRoot, projectRoot, installEngine }) => {
-    installEngine('project');
-    const before = listing(projectRoot);
-    const result = linkAgileGraph({ projectRoot, devopsRoot, nodeVersion: NODE_OK, dryRun: true });
+  withSetup(setup => {
+    setup.installEngine('project');
+    const before = listing(setup.projectRoot);
+    const result = link(setup, { dryRun: true });
     assert.equal(result.status, 'linked');
     assert.match(result.lines.join('\n'), /would copy[\s\S]*would register/);
-    assert.deepEqual(listing(projectRoot), before);
+    assert.deepEqual(listing(setup.projectRoot), before);
   });
 });
 
 test(`other servers and keys in .mcp.json are kept when the entry is added (${SPEC}#ac-4)`, () => {
-  withSetup(({ devopsRoot, projectRoot, installEngine }) => {
-    installEngine('project');
+  withSetup(setup => {
+    setup.installEngine('project');
     const other = { command: 'other-server', args: ['--flag'] };
-    writeFileSync(path.join(projectRoot, '.mcp.json'), JSON.stringify({ $schema: 'x', mcpServers: { other } }));
-    assert.equal(linkAgileGraph({ projectRoot, devopsRoot, nodeVersion: NODE_OK }).status, 'linked');
-    const config = mcpJson(projectRoot);
+    writeFileSync(path.join(setup.projectRoot, '.mcp.json'), JSON.stringify({ $schema: 'x', mcpServers: { other } }));
+    assert.equal(link(setup).status, 'linked');
+    const config = mcpJson(setup.projectRoot);
     assert.equal(config.$schema, 'x');
     assert.deepEqual(config.mcpServers.other, other);
     assert.ok(config.mcpServers[SERVER_KEY]);
@@ -152,35 +207,37 @@ test(`an existing agile-graph entry, an unreadable .mcp.json and existing pins a
     { name: 'mcpServers array', mcp: '{"mcpServers": []}' },
   ];
   for (const c of kept) {
-    withSetup(({ devopsRoot, projectRoot, installEngine }) => {
-      installEngine('project');
-      writeFileSync(path.join(projectRoot, '.mcp.json'), c.mcp);
-      const result = linkAgileGraph({ projectRoot, devopsRoot, nodeVersion: NODE_OK });
+    withSetup(setup => {
+      setup.installEngine('project');
+      writeFileSync(path.join(setup.projectRoot, '.mcp.json'), c.mcp);
+      const result = link(setup);
       assert.equal(result.status, 'kept', c.name);
-      assert.equal(readFileSync(path.join(projectRoot, '.mcp.json'), 'utf8'), c.mcp, `${c.name}: unchanged`);
-      assert.ok(!existsSync(path.join(projectRoot, PIN_TARGET)), `${c.name}: no pins copied`);
+      assert.equal(readFileSync(path.join(setup.projectRoot, '.mcp.json'), 'utf8'), c.mcp, `${c.name}: unchanged`);
+      assert.ok(!existsSync(path.join(setup.projectRoot, PIN_TARGET)), `${c.name}: no pins copied`);
     });
   }
-  withSetup(({ devopsRoot, projectRoot, installEngine }) => {
-    installEngine('project');
-    mkdirSync(path.join(projectRoot, '.claude'), { recursive: true });
+  withSetup(setup => {
+    setup.installEngine('project');
+    mkdirSync(path.join(setup.projectRoot, '.claude'), { recursive: true });
     const reviewed = '{"context_get":"' + 'a'.repeat(64) + '"}\n';
-    writeFileSync(path.join(projectRoot, PIN_TARGET), reviewed);
-    const result = linkAgileGraph({ projectRoot, devopsRoot, nodeVersion: NODE_OK });
+    writeFileSync(path.join(setup.projectRoot, PIN_TARGET), reviewed);
+    const result = link(setup);
     assert.equal(result.status, 'linked');
-    assert.equal(readFileSync(path.join(projectRoot, PIN_TARGET), 'utf8'), reviewed, 'existing pins kept');
+    assert.equal(readFileSync(path.join(setup.projectRoot, PIN_TARGET), 'utf8'), reviewed, 'existing pins kept');
     assert.match(result.lines.join('\n'), /kept your .*differs/);
   });
 });
 
 test(`devops init runs the link: one line without the engine, the skip flag honoured, exit 0 (${SPEC}#ac-2)`, () => {
-  withSetup(({ devopsRoot, projectRoot, installEngine }) => {
+  withSetup(setup => {
+    const { devopsRoot, projectRoot } = setup;
     for (const file of ['AGENTS.md', 'CLAUDE.md']) copyFileSync(path.join(ROOT, file), path.join(devopsRoot, file));
     const manifest = path.join(devopsRoot, 'empty-manifest.yml');
     writeFileSync(manifest, 'skills:\n');
     mkdirSync(path.join(projectRoot, '.workflow'), { recursive: true });
     writeFileSync(path.join(projectRoot, '.workflow/profile.yml'), 'skills:\nhooks:\nsubagents:\n');
-    const env = { ...process.env, DEVOPS_ROOT: devopsRoot };
+    // PATH holds only node's own folder, so an engine installed on this machine is not found.
+    const env = { ...process.env, DEVOPS_ROOT: devopsRoot, PATH: path.dirname(process.execPath) };
     const run = (...extra) => spawnSync(process.execPath,
       [path.join(ROOT, 'node_modules/tsx/dist/cli.mjs'), path.join(ROOT, 'analyzer/install.ts'), '--target', projectRoot, '--manifest', manifest, ...extra],
       { cwd: projectRoot, env, encoding: 'utf8', timeout: 30_000 });
@@ -190,7 +247,7 @@ test(`devops init runs the link: one line without the engine, the skip flag hono
     assert.equal(absent.stdout.split('\n').filter(line => line.startsWith('Agile Graph:')).length, 1);
     assert.match(absent.stdout, /Agile Graph: not installed \(optional\)/);
 
-    installEngine('project');
+    setup.installEngine('project');
     const skipped = run('--no-agile-graph');
     assert.equal(skipped.status, 0, skipped.stderr);
     assert.match(skipped.stdout, /Agile Graph: skipped \(--no-agile-graph\)/);
@@ -198,6 +255,7 @@ test(`devops init runs the link: one line without the engine, the skip flag hono
 
     const linked = run();
     assert.equal(linked.status, 0, linked.stderr);
+    assert.match(linked.stdout, /Installation complete/);
     if (supportedNode(process.versions.node)) {
       assert.match(linked.stdout, /registered the MCP server "agile-graph" in \.mcp\.json/);
       assert.equal(mcpJson(projectRoot).mcpServers[SERVER_KEY].command, 'npx');
@@ -208,22 +266,34 @@ test(`devops init runs the link: one line without the engine, the skip flag hono
   });
 });
 
+test(`devops help lists --no-agile-graph (${SPEC}#ac-2)`, () => {
+  const help = spawnSync(process.execPath, [path.join(ROOT, 'scripts/devops-cli.js'), 'help'], { encoding: 'utf8', timeout: 30_000 });
+  assert.equal(help.status, 0, help.stderr);
+  assert.match(help.stdout, /--no-agile-graph/);
+});
+
 test(`/sprint describes the Agile Graph cycle, its prerequisites and the fallback (${SPEC}#ac-6)`, () => {
   const sprint = readFileSync(path.join(ROOT, 'slash-commands/universal/sprint.md'), 'utf8');
   const section = sprint.slice(sprint.indexOf('## With Agile Graph'));
   assert.ok(sprint.includes('## With Agile Graph'), 'the section exists');
   assert.ok(sprint.includes('Sprint runs use Agile Graph (MIT, https://github.com/MILTONADINA/agile-graph) when it is installed.'));
   for (const needed of ['.graph/project.json', ' plan ', ' run ', ' inspect ', ' accept ', ' reject ', 'check-add', 'provider-add', 'Docker',
-    'graph-preflight.sh', 'graph-halt', 'deploy gate', '--allow-run']) {
+    'graph-preflight.sh', 'graph-halt', 'deploy gate', '--allow-run', 'ENGINE_VERSION']) {
     assert.ok(section.includes(needed), `mentions ${needed.trim()}`);
   }
+  assert.match(section, /`plan` refuses without a permitted worker/);
   assert.match(section, /Otherwise[\s\S]*Workflow/, 'falls back to the existing pipeline');
 });
 
 test(`every documented agile-graph command turns feedback off (${SPEC}#ac-6)`, () => {
-  for (const file of ['README.md', 'slash-commands/universal/sprint.md', 'mcp-configs/README.md']) {
-    const commands = readFileSync(path.join(ROOT, file), 'utf8').split('\n').filter(line => /agile-graph -C /.test(line));
-    assert.ok(commands.length > 0, `${file} documents at least one command`);
-    for (const line of commands) assert.match(line, /GRAPH_ENGINE_NO_FEEDBACK=1/, `${file}: ${line.trim()}`);
+  for (const file of ['README.md', 'slash-commands/universal/sprint.md', 'mcp-configs/README.md', 'mcp-configs/universal/agile-graph.json']) {
+    const text = readFileSync(path.join(ROOT, file), 'utf8');
+    let count = 0;
+    for (let at = text.indexOf('agile-graph -C '); at !== -1; at = text.indexOf('agile-graph -C ', at + 1)) {
+      count++;
+      const before = text.slice(Math.max(0, text.lastIndexOf('\n', at) + 1, at - 60), at);
+      assert.match(before, /GRAPH_ENGINE_NO_FEEDBACK=1 (npx --no-install )?$/, `${file}: ${text.slice(at - 30, at + 40)}`);
+    }
+    assert.ok(count > 0, `${file} documents at least one command`);
   }
 });

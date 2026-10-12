@@ -376,12 +376,17 @@ function main() {
   }
 
   // specs/graph/agile-graph-link.md REQ-3: optional; without the engine this prints
-  // one line and changes nothing.
-  const agileGraph = linkAgileGraph({
-    projectRoot: PROJECT_ROOT, devopsRoot: DEVOPS_ROOT, dryRun: flags.dryRun, skip: flags.noAgileGraph,
-  });
+  // one line and changes nothing, and nothing in it can fail the install.
+  let agileGraphLines: string[];
+  try {
+    agileGraphLines = linkAgileGraph({
+      projectRoot: PROJECT_ROOT, devopsRoot: DEVOPS_ROOT, dryRun: flags.dryRun, skip: flags.noAgileGraph,
+    }).lines;
+  } catch (error) {
+    agileGraphLines = [`Agile Graph: not linked (${error instanceof Error ? error.message : String(error)}).`];
+  }
   console.log('');
-  for (const line of agileGraph.lines) console.log(line);
+  for (const line of agileGraphLines) console.log(line);
 
   console.log('');
   if (flags.dryRun) {

@@ -288,8 +288,8 @@ See `docs/PLAYBOOK.md` for the full operational guide.
 
 DevOps links to Agile Graph (MIT, https://github.com/MILTONADINA/agile-graph) when it
 is installed. Agile Graph indexes your project for an AI client and keeps engineering
-memory. Install the engine version DevOps pins (its optional peer, `0.1.0` today) on
-Node 24 to 26, then run `devops init`:
+memory. Install the engine version whose tools DevOps pins (`0.1.0` today) on Node 24
+to 26, then run `devops init`:
 
 ```bash
 npm install -g @agile-graph/engine@0.1.0      # or as a devDependency of the project
@@ -309,11 +309,19 @@ Claude Code asks you to approve the server before it starts it.
 
 You choose which files Claude Code may receive: `--export` takes a glob, repeatable,
 and a leading `!` excludes. `devops init` never runs that step for you.
+`init --cloud-mcp` only sets up a new project. If you already ran a plain
+`agile-graph init`, edit `policy.inference`, `policy.network` and
+`policy.exportPaths` in `.graph/project.json` yourself.
 
-By default the engine can open public GitHub issues about its failures under your
-GitHub account. Every command DevOps writes or documents sets
-`GRAPH_ENGINE_NO_FEEDBACK=1` to stop that. `devops init --no-agile-graph` skips the
-link. Without the engine, `devops init` prints one line and carries on.
+The index is a snapshot. Run `index --lexical` again after changes, or keep
+`GRAPH_ENGINE_NO_FEEDBACK=1 agile-graph -C . watch` running.
+
+The engine's automatic feedback is on by default, but it can only send when a
+project's policy allows `api.github.com`. `GRAPH_ENGINE_NO_FEEDBACK=1` turns it off
+completely, and every command DevOps writes or documents sets it.
+
+`devops init --no-agile-graph` skips the link. Without the engine, `devops init`
+prints one line and carries on.
 
 For the optional local DevOps database and proxy smoke check, install Docker
 Compose and run `npm run setup` from this repository root. See

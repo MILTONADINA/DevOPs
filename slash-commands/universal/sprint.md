@@ -29,16 +29,18 @@ the current phase and gate configuration.
 ## With Agile Graph
 
 Sprint runs use Agile Graph (MIT, https://github.com/MILTONADINA/agile-graph) when it is installed.
-That means: the project holds `.graph/project.json`, the engine version that
-`package.json` pins as an optional peer (`@agile-graph/engine`) is installed, and
-Node is 24 to 26 (`specs/graph/agile-graph-link.md` REQ-6).
+That means three things, per `specs/graph/agile-graph-link.md` REQ-6:
+- the project holds `.graph/project.json`;
+- `@agile-graph/engine` is installed at the version whose tools DevOps pins
+  (`ENGINE_VERSION` in `analyzer/agile-graph.js`);
+- Node is 24 to 26.
 
 The halt check and `bash scripts/graph-preflight.sh` still come first, exactly as in
 "Before running". The engine reads neither `.workflow/state/graph-halt` nor the deploy
 gate's approval markers, so /sprint checks them before every `agile-graph` command.
 The cycle is the engine's CLI, run by a person. Every command sets
-`GRAPH_ENGINE_NO_FEEDBACK=1`, so the engine never opens a GitHub issue under the
-person's account.
+`GRAPH_ENGINE_NO_FEEDBACK=1`, which turns the engine's automatic feedback (GitHub
+issues under the person's account, when policy allows `api.github.com`) off completely.
 
 ```
 GRAPH_ENGINE_NO_FEEDBACK=1 agile-graph -C . plan "<objective>" --accept "<criterion>" "<criterion>"
@@ -56,12 +58,16 @@ GRAPH_ENGINE_NO_FEEDBACK=1 agile-graph -C . reject <runId> --note "<why>"
 - **Run and inspect:** `run`, then `inspect` the result.
 - **Decide:** `accept` or `reject` is the person's decision, and the engine never
   offers it over MCP.
-- **Prerequisites:** `run` refuses unless the project has all three:
-  - a worker provider (`provider-add`; workers are local by default, and a cloud or
-    installed worker needs `--enable` and a policy change);
-  - at least one registered check (`check-add <image> <argv...>`) whose image is
-    already pulled;
-  - a running Docker-compatible engine.
+- **Prerequisites:**
+  - `plan` refuses without a permitted worker. Add one with `provider-add`; the default
+    policy permits only local workers, none is configured, and a cloud or installed
+    worker also needs `--enable` and a policy change.
+  - `plan` warns and `run` refuses without a registered check
+    (`check-add <image> <argv...>`).
+  - `run` refuses while a check's image is not pulled.
+  - Runs need a running Docker-compatible engine.
+  - The context index is a snapshot: run
+    `GRAPH_ENGINE_NO_FEEDBACK=1 agile-graph -C . index --lexical` again after changes.
 - **Publication:** the default `policy.publication` is `none`, so a run pushes nothing
   and opens no pull request. Anything after `accept` that deploys still goes through
   the deploy gate and `/sprint-approve`.
@@ -71,8 +77,9 @@ GRAPH_ENGINE_NO_FEEDBACK=1 agile-graph -C . reject <runId> --note "<why>"
   --client cloud --allow-run --hashes`, adds those pins to
   `.claude/agile-graph-tool-hashes.json`, and adds `--allow-run` to the `.mcp.json`
   entry. The server refuses to start while an exposed tool is unpinned. Every MCP
-  `run_start` still waits for a person's `plan-approve <planId> --yes --expect
-  <planSha256>`.
+  `run_start` still waits for a person's `plan-approve <planId> --yes` (adding
+  `--expect <planSha256>` approves only the plan exactly as reviewed; it is required
+  when approving several plans at once).
 
 Otherwise, run DevOps's own Workflow pipeline as below.
 

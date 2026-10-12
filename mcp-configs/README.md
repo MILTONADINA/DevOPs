@@ -18,8 +18,9 @@ JSON configs for MCP (Model Context Protocol) servers DevOPs uses.
   GRAPH_ENGINE_NO_FEEDBACK=1 agile-graph -C . index --lexical
   ```
 
-  `GRAPH_ENGINE_NO_FEEDBACK=1` stops the engine opening public GitHub issues under your
-  account. The template sets it for the server too.
+  The engine's automatic feedback is on by default but can only send when a project's
+  policy allows `api.github.com`. `GRAPH_ENGINE_NO_FEEDBACK=1` turns it off completely;
+  the template sets it for the server too.
 
 ## Installation
 
