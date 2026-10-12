@@ -10,20 +10,22 @@ DevOPs ships as a Claude Code plugin via `.claude-plugin/plugin.json`.
 ```
 (once the plugin is published to a marketplace)
 
-### Method 2: Clone + install
+### Method 2: npm (0.4.0 and later)
 ```bash
-git clone https://github.com/MILTONADINA/DevOPs.git ~/DevOPs
-~/DevOPs/scripts/install.sh
+npm install -g @miltonadina/devops
 ```
+or run any command once with `npx @miltonadina/devops <command>`.
 
-### Method 3: npm/npx (when published)
+### Method 3: a clone of this repository
 ```bash
-npx @miltonadina/devops init
+git clone https://github.com/MILTONADINA/DevOPs.git
+cd DevOPs && npm ci
+node scripts/devops-cli.js help
 ```
 
 ## Per-project install
 
-After global install, per project:
+After installing, per project:
 ```bash
 cd ~/my-project
 devops analyze

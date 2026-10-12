@@ -12,8 +12,8 @@ git init
 ## 2. Run the analyzer
 
 ```bash
-analyze.sh
-init-project.sh
+devops analyze
+devops init
 ```
 
 ## 3. Fill in client profile

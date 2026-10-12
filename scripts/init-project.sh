@@ -2,46 +2,75 @@
 # scripts/init-project.sh
 #
 # Install DevOPs components into the current project per the recommendations
-# in .workflow/profile.yml. Run after analyze.sh.
+# in .workflow/profile.yml. Run after `devops analyze`; `devops init` runs this script.
 
 set -euo pipefail
-DEVOPS_ROOT="${DEVOPS_ROOT:-$HOME/DevOPs}"
+# specs/release/npm-package.md REQ-2: default to the checkout or package this script
+# belongs to. `devops init` passes DEVOPS_ROOT, DEVOPS_NODE and DEVOPS_TSX.
+DEVOPS_ROOT="${DEVOPS_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 
-if [[ ! -f .workflow/profile.yml ]]; then
-    echo "No .workflow/profile.yml found. Run analyze.sh first." >&2
+# The project to set up: the installer's --target, or the current directory. The
+# profile check and the git hook use the same project the installer writes to.
+PROJECT="."
+DRY_RUN=0
+args=("$@")
+for ((i = 0; i < ${#args[@]}; i++)); do
+    case "${args[$i]}" in
+        --dry-run) DRY_RUN=1 ;;
+        --target=*) PROJECT="${args[$i]#--target=}" ;;
+        --target) if (( i + 1 < ${#args[@]} )); then PROJECT="${args[$((i + 1))]}"; fi ;;
+    esac
+done
+
+if [[ ! -f "$PROJECT/.workflow/profile.yml" ]]; then
+    echo "No .workflow/profile.yml found in $PROJECT. Run 'devops analyze' there first." >&2
     exit 1
 fi
 
-if command -v tsx >/dev/null 2>&1; then
-    tsx "$DEVOPS_ROOT/analyzer/install.ts"
+if [[ -n "${DEVOPS_TSX:-}" ]]; then
+    "${DEVOPS_NODE:-node}" "$DEVOPS_TSX" "$DEVOPS_ROOT/analyzer/install.ts" "$@"
+elif command -v tsx >/dev/null 2>&1; then
+    tsx "$DEVOPS_ROOT/analyzer/install.ts" "$@"
 else
-    node --experimental-strip-types "$DEVOPS_ROOT/analyzer/install.ts"
+    node --experimental-strip-types "$DEVOPS_ROOT/analyzer/install.ts" "$@"
 fi
 
-# Set up git hooks if this is a git repo
-if [[ -d .git ]]; then
-    mkdir -p .git/hooks
-    cat > .git/hooks/pre-commit <<'HOOK'
+# Set up a git pre-commit hook if the project is a git repo. An existing hook is never
+# replaced: it may be the project's own, or another tool's. A dry run writes nothing.
+MARKER="# DevOPs pre-commit hook"
+if [[ -d "$PROJECT/.git" && "$DRY_RUN" == 1 ]]; then
+    echo "dry-run: would install .git/hooks/pre-commit unless another tool's hook is there"
+elif [[ -d "$PROJECT/.git" ]]; then
+    hook="$PROJECT/.git/hooks/pre-commit"
+    if [[ -e "$hook" ]] && ! grep -qxF "$MARKER" "$hook"; then
+        echo "! Left the existing .git/hooks/pre-commit unchanged. To add the DevOPs checks by hand, run"
+        echo "  'gitleaks git --pre-commit --staged --redact' and 'devops verify <claim files> --no-rerun'"
+        echo "  from it, without copying the '$MARKER' line (that line lets init replace the file)."
+    else
+        mkdir -p "$PROJECT/.git/hooks"
+        cat > "$hook" <<'HOOK'
 #!/usr/bin/env bash
 # DevOPs pre-commit hook
-DEVOPS_ROOT="${DEVOPS_ROOT:-$HOME/DevOPs}"
 
-# Gitleaks scan
+# Secret scan of the staged change. --redact keeps a found secret out of the terminal.
 if command -v gitleaks >/dev/null 2>&1; then
-    gitleaks protect --staged --no-banner || exit 1
+    gitleaks git --pre-commit --staged --redact --no-banner || exit 1
 fi
 
 # Local claim metadata (the committed --all selector is a separate gate).
 shopt -s nullglob dotglob
 claim_files=(.workflow/proofs/*.yml)
 if (( ${#claim_files[@]} )); then
-    if command -v tsx >/dev/null 2>&1; then
-        tsx "$DEVOPS_ROOT/verification/claim-validator.ts" "${claim_files[@]}" --no-rerun || exit 1
+    if command -v devops >/dev/null 2>&1; then
+        devops verify "${claim_files[@]}" --no-rerun || exit 1
+    elif [[ -x node_modules/.bin/devops ]]; then
+        node_modules/.bin/devops verify "${claim_files[@]}" --no-rerun || exit 1
     fi
 fi
 HOOK
-    chmod +x .git/hooks/pre-commit
-    echo "✓ Installed pre-commit hook"
+        chmod +x "$hook"
+        echo "✓ Installed pre-commit hook"
+    fi
 fi
 
 echo ""

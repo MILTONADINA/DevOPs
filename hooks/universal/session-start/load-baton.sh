@@ -66,7 +66,7 @@ if [[ -f "$PROFILE" ]]; then
         fi
     done
 else
-    echo "ℹ  No project profile. Run scripts/analyze.sh to detect stack and recommend config."
+    echo "ℹ  No project profile. Run 'devops analyze' to detect stack and recommend config."
     echo ""
 fi
 

@@ -27,6 +27,6 @@ For each detection:
 ## Run
 
 ```bash
-analyze.sh           # detects + writes profile
-init-project.sh      # installs the recommended config
+devops analyze       # detects + writes profile
+devops init          # installs the recommended config
 ```

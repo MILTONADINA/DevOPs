@@ -23,8 +23,13 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
-const DEVOPS_ROOT = process.env.DEVOPS_ROOT ?? path.join(process.env.HOME ?? '', 'DevOPs');
+// specs/release/npm-package.md REQ-2: DEVOPS_ROOT if set, else the package this file
+// ships in (analyzer/ sits directly under the package root).
+const DEVOPS_ROOT = process.env.DEVOPS_ROOT && process.env.DEVOPS_ROOT.trim() !== ''
+  ? process.env.DEVOPS_ROOT
+  : path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 // ─── CLI parsing (F.01) ──────────────────────────────────────────────────
 
@@ -46,7 +51,13 @@ function parseFlags(argv: string[]): CliFlags {
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
-    if (a === '--target') { flags.target = argv[++i]; }
+    // Both forms, as scripts/init-project.sh reads them, so the git hook and the
+    // installed components always land in the same project.
+    if (a === '--target' || a.startsWith('--target=')) {
+      const value = a === '--target' ? argv[++i] : a.slice('--target='.length);
+      if (!value) { console.error('--target needs a directory'); process.exit(1); }
+      flags.target = value;
+    }
     else if (a === '--allow-unsigned') { flags.allowUnsigned = true; }
     else if (a.startsWith('--rationale=')) { flags.rationale = a.slice('--rationale='.length).replace(/^"|"$/g, ''); }
     else if (a === '--rationale') { flags.rationale = (argv[++i] || '').replace(/^"|"$/g, ''); }
@@ -201,7 +212,7 @@ function copyDir(src: string, dst: string) {
 function loadProfileText(projectRoot: string): string {
   const p = path.join(projectRoot, '.workflow/profile.yml');
   if (!fs.existsSync(p)) {
-    console.error('No .workflow/profile.yml found. Run ./scripts/analyze.sh first.');
+    console.error('No .workflow/profile.yml found. Run `devops analyze` first.');
     process.exit(1);
   }
   return fs.readFileSync(p, 'utf-8');
@@ -251,7 +262,7 @@ function main() {
   const targetAgents = path.join(PROJECT_ROOT, 'AGENTS.md');
   if (!fs.existsSync(targetAgents) && fs.existsSync(srcAgents)) {
     if (!flags.dryRun) copy(srcAgents, targetAgents);
-    console.log('✓ Installed AGENTS.md');
+    console.log(flags.dryRun ? 'would install: AGENTS.md' : '✓ Installed AGENTS.md');
   } else if (fs.existsSync(targetAgents)) {
     console.log('⚠ AGENTS.md already exists; not overwriting');
   }
@@ -259,7 +270,7 @@ function main() {
   const targetClaude = path.join(PROJECT_ROOT, 'CLAUDE.md');
   if (!fs.existsSync(targetClaude) && fs.existsSync(srcClaude)) {
     if (!flags.dryRun) copy(srcClaude, targetClaude);
-    console.log('✓ Installed CLAUDE.md');
+    console.log(flags.dryRun ? 'would install: CLAUDE.md' : '✓ Installed CLAUDE.md');
   }
 
   // Skills with verification (F.01..F.07)

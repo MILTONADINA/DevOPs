@@ -1,6 +1,7 @@
 # Validate an exact committed proof set
 
 **Status**: draft
+**Amended**: 2026-10-11, by `specs/release/npm-package.md` REQ-3. REQ-9's generated hook now validates claims with the installed `devops verify` (skipping when no `devops` command is available) and scans with `gitleaks git --pre-commit --staged --redact`. Its explicit-array, nullglob/dotglob, empty-skip and failure-propagation rules are unchanged.
 
 **Scope:** MR10-B, the committed selection and provenance portion of
 masterpiece REQ-M9 under the owner's roadmap continuation and Decision 3.

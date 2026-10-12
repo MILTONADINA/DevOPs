@@ -238,42 +238,45 @@ AI coding agent and ask it to follow this section.
 
 - macOS, Linux, or WSL2 (native Windows is not supported)
 - `git` and `bash`
-- Node.js 22.12 or later. The analyzer runs its TypeScript with `tsx` when it
-  is on your PATH, and otherwise with Node's `--experimental-strip-types`.
+- Node.js 22.12 or later
 - Optional, only for the local DevOps database and proxy: Docker with
   Compose, and a running Docker engine
 - Optional: `cosign`, to verify skill signatures during install. Without it,
   the installer falls back to the manifest's SHA-256 check.
 
+**From npm** (version 0.4.0 and later):
+
 ```bash
-# 1. Clone DevOPs (one-time). The scripts default to ~/DevOPs.
-git clone https://github.com/MILTONADINA/DevOPs.git ~/DevOPs
+npm install -g @miltonadina/devops     # or run any command with npx @miltonadina/devops
 
-# 2. Install: marks the hook and script files executable
-cd ~/DevOPs && ./scripts/install.sh
-
-# 3. In any new or existing project:
 cd ~/my-project
-~/DevOPs/scripts/analyze.sh        # detects stack, writes .workflow/profile.yml
-~/DevOPs/scripts/init-project.sh   # installs the recommended config
+devops analyze                          # detects the stack, writes .workflow/profile.yml
+devops init                             # installs the recommended config
+devops init --dry-run                   # shows what init would do, and changes nothing
 ```
 
-If step 1 clones to `~/DevOPs` as shown, you do not need to set
-`DEVOPS_ROOT`: the scripts default to that path. `DEVOPS_ROOT` matters only
-if you clone somewhere else in step 1. Then set
-`export DEVOPS_ROOT=/path/to/your/clone` before step 2, keep it set in your
-shell rc file, and use your clone path in place of `~/DevOPs` in steps 2 and
-3, because `install.sh` and `init-project.sh` both default to `~/DevOPs`
-(without it, `install.sh` copies the clone there). To call `analyze.sh` and
-`init-project.sh` without the full path, add `export PATH="$DEVOPS_ROOT/scripts:$PATH"`
-to your shell rc file, as `install.sh` prints.
+The package carries its own `tsx` for the TypeScript tools, so you need
+nothing else on your PATH. The commands read from the installed package;
+set `DEVOPS_ROOT` only to point them at a checkout of this repository
+instead.
 
-`init-project.sh` copies `AGENTS.md` and `CLAUDE.md` into the project (it
+**From a clone** (to work on DevOPs itself):
+
+```bash
+git clone https://github.com/MILTONADINA/DevOPs.git
+cd DevOPs && npm ci
+cd ~/my-project
+node /path/to/DevOPs/scripts/devops-cli.js analyze
+node /path/to/DevOPs/scripts/devops-cli.js init
+```
+
+`devops init` copies `AGENTS.md` and `CLAUDE.md` into the project (it
 does not overwrite existing ones), copies the recommended skills, hook
 scripts and subagents into the project's `.claude/` directory, and, in a git
-repository, writes `.git/hooks/pre-commit`. **This overwrites any existing
-pre-commit hook in the project without a backup**, so copy yours aside first
-if you have one. It does not write `.claude/settings.json`,
+repository, writes `.git/hooks/pre-commit`. It never replaces a pre-commit
+hook it did not write; it tells you to add its checks to yours by hand.
+Each skill is checked against its signed manifest entry first, and an edited
+or unsigned skill stops the install. It does not write `.claude/settings.json`,
 so the copied hook scripts run only after you wire them there (this
 repository's own `.claude/settings.json` is a working example; `docs/HOOKS.md`
 lists what each hook does). Other coding agents read `AGENTS.md`; see the note at the

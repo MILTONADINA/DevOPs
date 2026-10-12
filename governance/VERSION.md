@@ -1,8 +1,8 @@
 # DevOPs Version Manifest
 
-**Current version**: 0.3.0
+**Current version**: 0.4.0
 **Phase**: 3 of 6 (memory & observability), in progress
-**Released**: 2026-09-23
+**Released**: pending: 0.4.0 is the first npm release (`docs/RELEASING.md`); 0.3.0 was tagged on 2026-09-23
 
 ## Phase status
 

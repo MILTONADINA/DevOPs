@@ -11,11 +11,11 @@ From the DevOPs repository root:
 npm run validate:claims -- --all --no-rerun
 ```
 
-From a consuming project's root, with the installed `tsx` launcher and
-`DEVOPS_ROOT` identifying the DevOPs checkout:
+From a consuming project's root, with the installed package
+(`npm install -g @miltonadina/devops`):
 
 ```bash
-tsx "${DEVOPS_ROOT:-$HOME/DevOPs}/verification/claim-validator.ts" --all --no-rerun
+devops verify --all --no-rerun
 ```
 
 Both forms require that calling project's reviewed, committed

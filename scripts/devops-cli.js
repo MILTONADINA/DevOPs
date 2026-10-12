@@ -3,13 +3,26 @@
 //
 // Main CLI dispatcher for `devops` command.
 
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { createHmac, randomBytes } from 'node:crypto';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
+import { devopsRoot, runTs, tsxCli } from './devops-paths.js';
 
-const DEVOPS_ROOT = process.env.DEVOPS_ROOT ?? path.join(process.env.HOME ?? '', 'DevOPs');
+// specs/release/npm-package.md REQ-2: the installed package, not a fixed home folder.
+const DEVOPS_ROOT = devopsRoot();
 const [, , cmd, ...args] = process.argv;
+
+// `devops init` is a shell script; it runs the installer with this Node and the
+// package's own tsx, so it needs neither on PATH (REQ-3).
+function initCommand() {
+  const result = spawnSync('bash', [path.join(DEVOPS_ROOT, 'scripts/init-project.sh'), ...args], {
+    stdio: 'inherit',
+    env: { ...process.env, DEVOPS_ROOT, DEVOPS_NODE: process.execPath, DEVOPS_TSX: tsxCli() },
+  });
+  if (result.error) throw result.error;
+  return result.status ?? 1;
+}
 
 // Phase 2 Area C / REQ-C6 — `devops approve <claim-id> --rationale="..."` writes
 // a structured JSONL line to .workflow/state/approvals.jsonl. Each entry carries
@@ -58,10 +71,11 @@ function approveCommand(approveArgs) {
   console.log(`approval logged: claim_id=${claimId} approval_token=${approvalToken} (one-shot; consume by destructive tool call)`);
 }
 
+// Each command returns an exit status, or undefined for success.
 const COMMANDS = {
-  analyze: () => execFileSync(path.join(DEVOPS_ROOT, 'scripts/analyze.sh'), args, { stdio: 'inherit' }),
-  init:    () => execFileSync(path.join(DEVOPS_ROOT, 'scripts/init-project.sh'), args, { stdio: 'inherit' }),
-  verify:  () => execFileSync('tsx', [path.join(DEVOPS_ROOT, 'verification/claim-validator.ts'), ...args], { stdio: 'inherit' }),
+  analyze: () => runTs(path.join(DEVOPS_ROOT, 'analyzer/scan.ts'), args),
+  init:    () => initCommand(),
+  verify:  () => runTs(path.join(DEVOPS_ROOT, 'verification/claim-validator.ts'), args),
   approve: () => approveCommand(args),
   version: () => {
     const v = fs.readFileSync(path.join(DEVOPS_ROOT, 'package.json'), 'utf-8');
@@ -95,12 +109,17 @@ DevOPs root: ${DEVOPS_ROOT}
 
 if (!cmd || cmd === '--help' || cmd === '-h') {
   COMMANDS.help();
-} else if (COMMANDS[cmd]) {
+} else if (Object.hasOwn(COMMANDS, cmd)) {
+  let status;
   try {
-    COMMANDS[cmd]();
+    status = COMMANDS[cmd]();
   } catch (e) {
+    // A child that ran and failed has already reported; anything else (tsx missing in a
+    // clone without `npm ci`, say) would otherwise exit with no message.
+    if (!(e && e.status)) console.error(`devops ${cmd}: ${e && e.message ? e.message : e}`);
     process.exit((e && e.status) || 1);
   }
+  if (typeof status === 'number' && status !== 0) process.exit(status);
 } else {
   console.error(`Unknown command: ${cmd}`);
   COMMANDS.help();
