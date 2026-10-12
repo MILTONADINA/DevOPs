@@ -186,7 +186,10 @@ test(`every bin exists, starts with a shebang and is in the package (${SPEC}#ac-
     const file = path.join(ROOT, target);
     assert.ok(existsSync(file), target);
     assert.equal(readFileSync(file, 'utf8').slice(0, 2), '#!', `${target} has a shebang`);
-    assert.ok(pkg.files.includes(target.replace(/^\.\//, '')), `${target} is listed in files`);
+    assert.ok(pkg.files.includes(target), `${target} is listed in files`);
+    // npm publish rewrites a "./"-prefixed bin path and reports it as "script name ...
+    // was invalid and removed" (run 38191691780), so bins are written the way npm keeps them.
+    assert.ok(!target.startsWith('./'), `${target} is written without a leading ./`);
   }
 });
 
@@ -212,5 +215,6 @@ test(`publishing is public, with provenance, and the metadata npm shows is fille
   assert.equal(pkg.license, 'MIT');
   assert.match(pkg.homepage, /^https:\/\/github\.com\/MILTONADINA\/DevOPs/);
   assert.match(pkg.bugs.url, /^https:\/\/github\.com\/MILTONADINA\/DevOPs\/issues$/);
-  assert.match(pkg.repository.url, /github\.com\/MILTONADINA\/DevOPs\.git$/);
+  // In the git+https form npm normalizes to at publish, so publishing corrects nothing.
+  assert.equal(pkg.repository.url, 'git+https://github.com/MILTONADINA/DevOPs.git');
 });

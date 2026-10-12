@@ -106,3 +106,9 @@ jobs:
           # Empty unless the first-release NPM_TOKEN secret is set; trusted publishing needs none.
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: npm publish --provenance --access public
+
+      # npm logs a refused trusted-publishing exchange only at verbose level, then reports
+      # just "ENEEDAUTH" (run 38191691780). Its debug log keeps the verbose lines.
+      - name: On failure, show npm's trusted-publishing (OIDC) log lines
+        if: failure()
+        run: grep -h oidc "$HOME"/.npm/_logs/*-debug-*.log || echo "npm logged no OIDC lines."

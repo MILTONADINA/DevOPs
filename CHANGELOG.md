@@ -8,6 +8,14 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- `package.json` writes its bin paths and repository URL the way `npm publish`
+  normalizes them, so a publish corrects nothing. npm reported the old `./` bin
+  paths as "invalid and removed", though it only dropped the `./`.
+- When the release workflow's publish fails, it prints npm's trusted-publishing
+  (OIDC) log lines; npm otherwise reports only `ENEEDAUTH`.
+
 ## [0.4.0] — 2026-10-11
 
 The first release published to npm, as `@miltonadina/devops`.
