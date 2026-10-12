@@ -9,8 +9,11 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 
 export const ENGINE = '@agile-graph/engine';
-// The engine version whose tools PIN_SOURCE pins. Bump the two together (REQ-1).
-export const ENGINE_VERSION = '0.1.0';
+// The engine versions whose cloud-default tools are exactly the ones PIN_SOURCE pins,
+// oldest first; CI checks every one against the real engine (REQ-1, REQ-7). Add a
+// version only after its `mcp-tools --client cloud --hashes` matches the pins.
+export const ENGINE_VERSIONS = ['0.1.0', '0.1.1'];
+const NEWEST = ENGINE_VERSIONS[ENGINE_VERSIONS.length - 1];
 export const SERVER_KEY = 'agile-graph';
 export const PIN_SOURCE = 'mcp-configs/universal/agile-graph.tool-hashes.json';
 export const PIN_TARGET = '.claude/agile-graph-tool-hashes.json';
@@ -105,10 +108,10 @@ export function linkAgileGraph({
   if (skip) return done('skipped', 'Agile Graph: skipped (--no-agile-graph).');
   const engine = findEngine(projectRoot, devopsRoot, pathEnv);
   if (!engine) {
-    return done('skipped', `Agile Graph: not installed (optional). To link it, install ${ENGINE}@${ENGINE_VERSION} and run devops init again.`);
+    return done('skipped', `Agile Graph: not installed (optional). To link it, install ${ENGINE}@${NEWEST} and run devops init again.`);
   }
-  if (engine.version !== ENGINE_VERSION) {
-    return done('skipped', `Agile Graph: found ${ENGINE}@${engine.version}, but this DevOps pins ${ENGINE_VERSION}; not linked.`);
+  if (!ENGINE_VERSIONS.includes(engine.version)) {
+    return done('skipped', `Agile Graph: found ${ENGINE}@${engine.version}, but this DevOps links only ${ENGINE_VERSIONS.join(', ')}; not linked.`);
   }
   if (!supportedNode(nodeVersion)) {
     return done('skipped', `Agile Graph: the engine needs Node 24 to 26, and this is Node ${nodeVersion}; not linked.`);
@@ -156,7 +159,7 @@ export function linkAgileGraph({
       throw error;
     }
   } catch (error) {
-    return done('kept', `Agile Graph: could not write the link (${error.code ?? error.message}); left unchanged, not linked.`);
+    return done('kept', `Agile Graph: could not write the link (${error.code ?? error.message}); not linked. Check .mcp.json.`);
   }
   if (copyPins) lines.push(`Agile Graph: copied the pinned tool definitions to ${PIN_TARGET}.`);
   const run = engine.via === 'project' ? 'npx --no-install agile-graph' : 'agile-graph';

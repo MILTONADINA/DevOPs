@@ -10,8 +10,10 @@ import {
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
-  ENGINE, ENGINE_VERSION, PIN_SOURCE, PIN_TARGET, SERVER_KEY, linkAgileGraph, serverEntry, supportedNode,
+  ENGINE, ENGINE_VERSIONS, PIN_SOURCE, PIN_TARGET, SERVER_KEY, linkAgileGraph, serverEntry, supportedNode,
 } from '../analyzer/agile-graph.js';
+
+const NEWEST = ENGINE_VERSIONS[ENGINE_VERSIONS.length - 1];
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 const SPEC = 'specs/graph/agile-graph-link.md';
@@ -40,7 +42,7 @@ function withSetup(fn) {
       global: globalModules,
       elsewhere: path.join(dir, 'elsewhere', 'node_modules'),
     };
-    const installEngine = (where, version = ENGINE_VERSION) => {
+    const installEngine = (where, version = NEWEST) => {
       const engineDir = path.join(places[where], ...ENGINE.split('/'));
       mkdirSync(path.join(engineDir, 'dist'), { recursive: true });
       writeFileSync(path.join(engineDir, 'package.json'), JSON.stringify({ name: ENGINE, version }));
@@ -66,14 +68,18 @@ const link = (setup, extra = {}) => linkAgileGraph({
   projectRoot: setup.projectRoot, devopsRoot: setup.devopsRoot, nodeVersion: NODE_OK, pathEnv: NO_PATH, ...extra,
 });
 
-test(`the engine is an optional peer that includes ENGINE_VERSION, and the shipped pins cover only the four default tools (${SPEC}#ac-1)`, () => {
+test(`the engine is an optional peer that includes every listed version, and the shipped pins cover only the four default tools (${SPEC}#ac-1)`, () => {
   const range = pkg.peerDependencies?.[ENGINE];
   assert.match(range ?? '', /^>=\d+\.\d+\.\d+$/, 'a lower bound only, so npm install never refuses');
   assert.deepEqual(pkg.peerDependenciesMeta?.[ENGINE], { optional: true });
+  assert.ok(ENGINE_VERSIONS.length > 0 && ENGINE_VERSIONS.every(v => /^\d+\.\d+\.\d+$/.test(v)), 'exact versions');
   const parts = version => version.replace('>=', '').split('.').map(Number);
-  const [min, pinned] = [parts(range), parts(ENGINE_VERSION)];
-  assert.ok(pinned[0] > min[0] || (pinned[0] === min[0] && (pinned[1] > min[1] || (pinned[1] === min[1] && pinned[2] >= min[2]))),
-    `${ENGINE_VERSION} is inside ${range}`);
+  const min = parts(range);
+  for (const version of ENGINE_VERSIONS) {
+    const pinned = parts(version);
+    assert.ok(pinned[0] > min[0] || (pinned[0] === min[0] && (pinned[1] > min[1] || (pinned[1] === min[1] && pinned[2] >= min[2]))),
+      `${version} is inside ${range}`);
+  }
   const pins = JSON.parse(readFileSync(path.join(ROOT, PIN_SOURCE), 'utf8'));
   assert.deepEqual(Object.keys(pins).sort(), DEFAULT_TOOLS);
   for (const [tool, hash] of Object.entries(pins)) assert.match(hash, /^[0-9a-f]{64}$/, tool);
@@ -98,7 +104,7 @@ test(`only Node 24 to 26 is supported (${SPEC}#ac-2)`, () => {
 test(`without the engine, at another version, on Node 22 or 27, or with --no-agile-graph, nothing is written (${SPEC}#ac-2)`, () => {
   const cases = [
     { name: 'missing', setup: () => {}, extra: {}, reason: /not installed/ },
-    { name: 'other version', setup: s => s.installEngine('project', '0.1.1'), extra: {}, reason: /pins 0\.1\.0|pins/ },
+    { name: 'unlisted version', setup: s => s.installEngine('project', '0.2.0'), extra: {}, reason: /links only/ },
     { name: 'Node 22', setup: s => s.installEngine('project'), extra: { nodeVersion: '22.12.0' }, reason: /Node 24 to 26/ },
     { name: 'Node 27', setup: s => s.installEngine('project'), extra: { nodeVersion: '27.0.0' }, reason: /Node 24 to 26/ },
     { name: 'skip flag', setup: s => s.installEngine('project'), extra: { skip: true }, reason: /--no-agile-graph/ },
@@ -132,6 +138,27 @@ test(`an unwritable .mcp.json leaves no pins behind and reports that nothing was
       chmodSync(mcp, 0o644);
     }
   });
+});
+
+test(`a failed .mcp.json write after the pins were copied takes the pins back (${SPEC}#ac-2)`, () => {
+  withSetup(setup => {
+    setup.installEngine('project');
+    // A .mcp.json symlink into a missing folder: the folder above is writable, the write is not.
+    symlinkSync(path.join(setup.projectRoot, 'missing', 'mcp.json'), path.join(setup.projectRoot, '.mcp.json'));
+    const result = link(setup);
+    assert.equal(result.status, 'kept');
+    assert.match(result.lines.join('\n'), /could not write the link \(ENOENT\); not linked/);
+    assert.ok(!existsSync(path.join(setup.projectRoot, PIN_TARGET)), 'the copied pins were taken back');
+  });
+});
+
+test(`every listed engine version links (${SPEC}#ac-3)`, () => {
+  for (const version of ENGINE_VERSIONS) {
+    withSetup(setup => {
+      setup.installEngine('project', version);
+      assert.equal(link(setup).status, 'linked', version);
+    });
+  }
 });
 
 test(`with the engine in the project, .mcp.json gains the pinned cloud entry and the pins are copied (${SPEC}#ac-3)`, () => {
@@ -236,8 +263,12 @@ test(`devops init runs the link: one line without the engine, the skip flag hono
     writeFileSync(manifest, 'skills:\n');
     mkdirSync(path.join(projectRoot, '.workflow'), { recursive: true });
     writeFileSync(path.join(projectRoot, '.workflow/profile.yml'), 'skills:\nhooks:\nsubagents:\n');
-    // PATH holds only node's own folder, so an engine installed on this machine is not found.
-    const env = { ...process.env, DEVOPS_ROOT: devopsRoot, PATH: path.dirname(process.execPath) };
+    // PATH holds only a link to node. npm puts global commands next to node, so node's own
+    // folder could hold a globally installed agile-graph.
+    const nodeOnly = path.join(setup.dir, 'node-only');
+    mkdirSync(nodeOnly);
+    symlinkSync(process.execPath, path.join(nodeOnly, 'node'));
+    const env = { ...process.env, DEVOPS_ROOT: devopsRoot, PATH: nodeOnly };
     const run = (...extra) => spawnSync(process.execPath,
       [path.join(ROOT, 'node_modules/tsx/dist/cli.mjs'), path.join(ROOT, 'analyzer/install.ts'), '--target', projectRoot, '--manifest', manifest, ...extra],
       { cwd: projectRoot, env, encoding: 'utf8', timeout: 30_000 });
@@ -278,7 +309,7 @@ test(`/sprint describes the Agile Graph cycle, its prerequisites and the fallbac
   assert.ok(sprint.includes('## With Agile Graph'), 'the section exists');
   assert.ok(sprint.includes('Sprint runs use Agile Graph (MIT, https://github.com/MILTONADINA/agile-graph) when it is installed.'));
   for (const needed of ['.graph/project.json', ' plan ', ' run ', ' inspect ', ' accept ', ' reject ', 'check-add', 'provider-add', 'Docker',
-    'graph-preflight.sh', 'graph-halt', 'deploy gate', '--allow-run', 'ENGINE_VERSION']) {
+    'graph-preflight.sh', 'graph-halt', 'deploy gate', '--allow-run', 'ENGINE_VERSIONS']) {
     assert.ok(section.includes(needed), `mentions ${needed.trim()}`);
   }
   assert.match(section, /`plan` refuses without a permitted worker/);

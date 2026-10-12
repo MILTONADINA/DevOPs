@@ -11,8 +11,9 @@ Versions follow [Semantic Versioning](https://semver.org/).
 ### Added — the optional Agile Graph link (specs/graph/agile-graph-link.md)
 
 - `@agile-graph/engine` is an optional peer (`>=0.1.0`, so `npm install` never
-  refuses). `ENGINE_VERSION` in `analyzer/agile-graph.js` names the one version
-  whose tools `mcp-configs/universal/agile-graph.tool-hashes.json` pins (0.1.0).
+  refuses). `ENGINE_VERSIONS` in `analyzer/agile-graph.js` lists the versions
+  whose tools `mcp-configs/universal/agile-graph.tool-hashes.json` pins: 0.1.0
+  and 0.1.1, which have identical tool definitions.
 - When that engine is installed and Node is 24 to 26, `devops init` adds an
   `agile-graph` server to the project's `.mcp.json` and copies the pins to
   `.claude/agile-graph-tool-hashes.json`.
@@ -27,9 +28,9 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - This repository's `/sprint` can run a person-driven cycle through the
   engine's CLI. The halt check, the preflight and the deploy gate stay in
   front of it.
-- CI's new `agile-graph-link` job installs the packed DevOps and the real
-  engine on Node 24. It checks that the shipped pins match the engine, then
-  starts the exact server `devops init` registers.
+- CI's new `agile-graph-link` job installs the packed DevOps with each listed
+  engine version on Node 24. It checks that the shipped pins match the engine,
+  then starts the exact server `devops init` registers.
 
 ### Changed
 

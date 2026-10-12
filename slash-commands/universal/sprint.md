@@ -31,8 +31,8 @@ the current phase and gate configuration.
 Sprint runs use Agile Graph (MIT, https://github.com/MILTONADINA/agile-graph) when it is installed.
 That means three things, per `specs/graph/agile-graph-link.md` REQ-6:
 - the project holds `.graph/project.json`;
-- `@agile-graph/engine` is installed at the version whose tools DevOps pins
-  (`ENGINE_VERSION` in `analyzer/agile-graph.js`);
+- `@agile-graph/engine` is installed at a version whose tools DevOps pins
+  (`ENGINE_VERSIONS` in `analyzer/agile-graph.js`);
 - Node is 24 to 26.
 
 The halt check and `bash scripts/graph-preflight.sh` still come first, exactly as in

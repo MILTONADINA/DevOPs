@@ -38,13 +38,14 @@ separate, later work.
 
 ## Requirements
 
-### REQ-1 — An optional peer and one pinned version
+### REQ-1 — An optional peer and the pinned versions
 
 `package.json` SHALL list `@agile-graph/engine` under `peerDependencies` with a range
 that never stops `npm install` (`>=0.1.0`), marked optional in `peerDependenciesMeta`.
-`ENGINE_VERSION` in `analyzer/agile-graph.js` SHALL name the one engine version whose
-tools the shipped pins describe. The constant and the pins SHALL change together, and the
-peer range SHALL include that version.
+`ENGINE_VERSIONS` in `analyzer/agile-graph.js` SHALL list the engine versions whose
+cloud-default tools are exactly the ones the shipped pins describe (0.1.0 and 0.1.1 have
+identical definitions). A version SHALL be added only with pins that match it, and the
+peer range SHALL include every listed version.
 
 **Enforced by:** test:tests/agile-graph-link.test.mjs
 
@@ -69,7 +70,7 @@ WHEN `devops init` runs, THE INSTALLER SHALL look for the engine in this order:
 It SHALL register the engine only if all of these hold:
 
 - the engine was found;
-- its version equals `ENGINE_VERSION`;
+- its version is in `ENGINE_VERSIONS`;
 - the installer runs on a Node version the engine supports (24 or later, below 27);
 - `--no-agile-graph` was not given.
 
@@ -105,8 +106,10 @@ The `.mcp.json` entry SHALL:
   `--allow-run-status`;
 - set `GRAPH_ENGINE_NO_FEEDBACK=1`;
 - run `npx --no-install agile-graph` when the engine was found in the project or above
-  it, or `agile-graph` otherwise. `npx --no-install` never downloads a package; it
-  refuses when the engine is missing.
+  it, or `agile-graph` otherwise. `npx --no-install` never downloads a package. If the
+  project's engine is later removed, it can fall back to a global `agile-graph` of any
+  version. The version check `devops init` made then no longer applies, but the pins
+  still do: that server starts only if its tools match them.
 
 The paths are relative so that a committed `.mcp.json` works on every clone; Claude Code
 starts project servers in the project root. Started anywhere else, the server finds no
@@ -149,9 +152,10 @@ Without those conditions `/sprint` runs DevOps's own pipeline unchanged.
 
 ### REQ-7 — An end-to-end check
 
-CI SHALL run these steps on a Node version the engine supports:
+CI SHALL run these steps on a Node version the engine supports, for every version in
+`ENGINE_VERSIONS`:
 
-- install the packed DevOps and the `ENGINE_VERSION` engine into an empty project;
+- install the packed DevOps and that engine version into an empty project;
 - check that `mcp-tools --client cloud --hashes` equals the shipped pins;
 - run `devops init`;
 - start exactly the command and arguments `devops init` wrote, and check that
@@ -165,7 +169,8 @@ CI SHALL run these steps on a Node version the engine supports:
 ### AC-1
 
 **Given** `package.json` and the link module **When** they are read **Then**:
-- `@agile-graph/engine` is an optional peer whose range includes `ENGINE_VERSION`;
+- `@agile-graph/engine` is an optional peer whose range includes every version in
+  `ENGINE_VERSIONS`;
 - the shipped pin file holds exactly the four REQ-2 tools, each with a 64-character
   lowercase hex SHA-256;
 - the MCP template uses the REQ-4 arguments and environment.
@@ -184,7 +189,7 @@ case `devops init` still succeeds.
 
 ### AC-3
 
-**Given** the engine at `ENGINE_VERSION` and a supported Node **When** the link runs
+**Given** the engine at any version in `ENGINE_VERSIONS` and a supported Node **When** the link runs
 **Then** `.mcp.json` gains an `agile-graph` entry that matches REQ-4, and the pin file is
 copied. The entry starts the engine with `npx --no-install` when the engine is in the
 project or a workspace root above it, and with `agile-graph` when it is next to DevOps or
