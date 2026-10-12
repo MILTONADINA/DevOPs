@@ -284,6 +284,48 @@ top of this file about which adapters exist.
 
 See `docs/PLAYBOOK.md` for the full operational guide.
 
+### Agile Graph (optional)
+
+DevOps links to Agile Graph (MIT, https://github.com/MILTONADINA/agile-graph) when it
+is installed. Agile Graph indexes your project for an AI client and keeps engineering
+memory. Install an engine version whose tools DevOps pins (0.1.0 or 0.1.1 today) on
+Node 24 to 26, then run `devops init`:
+
+```bash
+npm install -g @agile-graph/engine@0.1.1      # or as a devDependency of the project
+devops init                                   # registers the MCP server in .mcp.json
+GRAPH_ENGINE_NO_FEEDBACK=1 agile-graph -C . init --cloud-mcp --export 'src/**'
+GRAPH_ENGINE_NO_FEEDBACK=1 agile-graph -C . index --lexical
+```
+
+With a project install, put `npx` before `agile-graph`. `devops init` prints the exact
+commands for your setup.
+
+`devops init` adds an `agile-graph` server to the project's `.mcp.json`:
+- Its launch line uses `--client cloud`, because Claude Code's model runs at Anthropic.
+- It pins the four tools the server may expose (`context_get`, `symbol_search`,
+  `graph_neighbors`, `memory_propose`). The server refuses to start if any of them
+  changes.
+- It exposes no tool that plans or starts a run.
+
+Claude Code asks you to approve the server before it starts it.
+
+You choose which files Claude Code may receive: `--export` takes a glob, repeatable,
+and a leading `!` excludes. `devops init` never runs that step for you.
+`init --cloud-mcp` only sets up a new project. If you already ran a plain
+`agile-graph init`, edit `policy.inference`, `policy.network` and
+`policy.exportPaths` in `.graph/project.json` yourself.
+
+The index is a snapshot. Run `index --lexical` again after changes, or keep
+`GRAPH_ENGINE_NO_FEEDBACK=1 agile-graph -C . watch` running.
+
+The engine's automatic feedback is on by default, but it can only send when a
+project's policy allows `api.github.com`. `GRAPH_ENGINE_NO_FEEDBACK=1` turns it off
+completely, and every command DevOps writes or documents sets it.
+
+`devops init --no-agile-graph` skips the link. Without the engine, `devops init`
+prints one line and carries on.
+
 For the optional local DevOps database and proxy smoke check, install Docker
 Compose and run `npm run setup` from this repository root. See
 `runtime/README.md` for provider setup and proxy startup.

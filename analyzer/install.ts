@@ -18,12 +18,14 @@
 // F.06 — install.log JSONL writer for every verification decision.
 // F.07 — --dry-run prints "would copy N skills"; no target mutation.
 // F.08 — --manifest <path> loads alternate manifest.
+// --no-agile-graph skips the optional Agile Graph link (specs/graph/agile-graph-link.md).
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { linkAgileGraph } from './agile-graph.js';
 
 // specs/release/npm-package.md REQ-2: DEVOPS_ROOT if set, else the package this file
 // ships in (analyzer/ sits directly under the package root).
@@ -39,6 +41,7 @@ interface CliFlags {
   rationale: string | null;
   dryRun: boolean;
   manifestPath: string;
+  noAgileGraph: boolean;
 }
 
 function parseFlags(argv: string[]): CliFlags {
@@ -48,6 +51,7 @@ function parseFlags(argv: string[]): CliFlags {
     rationale: null,
     dryRun: false,
     manifestPath: path.join(DEVOPS_ROOT, 'governance/skill-manifest.yml'),
+    noAgileGraph: false,
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -63,6 +67,7 @@ function parseFlags(argv: string[]): CliFlags {
     else if (a === '--rationale') { flags.rationale = (argv[++i] || '').replace(/^"|"$/g, ''); }
     else if (a === '--dry-run') { flags.dryRun = true; }
     else if (a === '--manifest') { flags.manifestPath = argv[++i]; }
+    else if (a === '--no-agile-graph') { flags.noAgileGraph = true; }
   }
   // F.05: --allow-unsigned without non-empty --rationale → exit non-zero
   if (flags.allowUnsigned && (flags.rationale === null || flags.rationale.trim() === '')) {
@@ -369,6 +374,19 @@ function main() {
       copy(srcBudget, dstBudget);
     }
   }
+
+  // specs/graph/agile-graph-link.md REQ-3: optional; without the engine this prints
+  // one line and changes nothing, and nothing in it can fail the install.
+  let agileGraphLines: string[];
+  try {
+    agileGraphLines = linkAgileGraph({
+      projectRoot: PROJECT_ROOT, devopsRoot: DEVOPS_ROOT, dryRun: flags.dryRun, skip: flags.noAgileGraph,
+    }).lines;
+  } catch (error) {
+    agileGraphLines = [`Agile Graph: not linked (${error instanceof Error ? error.message : String(error)}).`];
+  }
+  console.log('');
+  for (const line of agileGraphLines) console.log(line);
 
   console.log('');
   if (flags.dryRun) {
