@@ -6,7 +6,7 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { execSync } from 'node:child_process';
+import { detectState } from './project-state.js';
 
 interface Profile {
   detected_at: string;
@@ -135,26 +135,6 @@ function detectStack(root: string): Profile['stack'] {
   if (fileExists(path.join(root, 'Dockerfile'))) stack.deploy_targets.push('docker');
 
   return stack;
-}
-
-function detectState(root: string): Profile['state'] {
-  if (!fileExists(path.join(root, '.git'))) return 'greenfield';
-  try {
-    const commitCount = parseInt(
-      execSync('git rev-list --count HEAD', { stdio: ['pipe', 'pipe', 'ignore'] }).toString().trim(),
-      10,
-    );
-    if (commitCount < 5) return 'greenfield';
-  } catch { /* ignore */ }
-
-  // Check for recent incident markers
-  if (fileExists(path.join(root, 'docs/incidents'))) {
-    const dir = path.join(root, 'docs/incidents');
-    const recent = fs.readdirSync(dir).filter(f => f.startsWith(new Date().getFullYear().toString())).length > 0;
-    if (recent) return 'hotfix';
-  }
-
-  return 'brownfield';
 }
 
 function detectDomain(stack: Profile['stack']): Profile['domain'] {
@@ -362,7 +342,8 @@ function main() {
   console.log(`Analyzing ${root}...`);
 
   const stack = detectStack(root);
-  const state = detectState(root);
+  // specs/ops/analyzer-detection.md REQ-1: git runs in root; a shallow clone is not new.
+  const { state, note: stateNote } = detectState(root) as { state: Profile['state']; note: string | null };
   const domain = detectDomain(stack);
 
   const partial: Omit<Profile, 'recommended'> = {
@@ -383,7 +364,7 @@ function main() {
   fs.mkdirSync('.workflow', { recursive: true });
   fs.writeFileSync('.workflow/profile.yml', toYaml(profile));
   console.log('Wrote .workflow/profile.yml');
-  console.log(`State: ${state}`);
+  console.log(`State: ${state}${stateNote ? ` (${stateNote})` : ''}`);
   console.log(`Languages: ${stack.language.join(', ') || '(none detected)'}`);
   console.log(`Frameworks: ${stack.frameworks.join(', ') || '(none detected)'}`);
   console.log(`Compliance scope: ${domain.compliance.join(', ') || '(none detected)'}`);
