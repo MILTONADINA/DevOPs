@@ -284,6 +284,37 @@ top of this file about which adapters exist.
 
 See `docs/PLAYBOOK.md` for the full operational guide.
 
+### Agile Graph (optional)
+
+DevOps links to Agile Graph (MIT, https://github.com/MILTONADINA/agile-graph) when it
+is installed. Agile Graph indexes your project for an AI client and keeps engineering
+memory. Install the engine version DevOps pins (its optional peer, `0.1.0` today) on
+Node 24 to 26, then run `devops init`:
+
+```bash
+npm install -g @agile-graph/engine@0.1.0      # or as a devDependency of the project
+devops init                                   # registers the MCP server in .mcp.json
+GRAPH_ENGINE_NO_FEEDBACK=1 agile-graph -C . init --cloud-mcp --export 'src/**'
+GRAPH_ENGINE_NO_FEEDBACK=1 agile-graph -C . index --lexical
+```
+
+`devops init` adds an `agile-graph` server to the project's `.mcp.json`:
+- Its launch line uses `--client cloud`, because Claude Code's model runs at Anthropic.
+- It pins the four tools the server may expose (`context_get`, `symbol_search`,
+  `graph_neighbors`, `memory_propose`). The server refuses to start if any of them
+  changes.
+- It exposes no tool that plans or starts a run.
+
+Claude Code asks you to approve the server before it starts it.
+
+You choose which files Claude Code may receive: `--export` takes a glob, repeatable,
+and a leading `!` excludes. `devops init` never runs that step for you.
+
+By default the engine can open public GitHub issues about its failures under your
+GitHub account. Every command DevOps writes or documents sets
+`GRAPH_ENGINE_NO_FEEDBACK=1` to stop that. `devops init --no-agile-graph` skips the
+link. Without the engine, `devops init` prints one line and carries on.
+
 For the optional local DevOps database and proxy smoke check, install Docker
 Compose and run `npm run setup` from this repository root. See
 `runtime/README.md` for provider setup and proxy startup.

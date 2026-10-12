@@ -1,0 +1,9 @@
+{
+  "name": "agile-graph",
+  "command": "agile-graph",
+  "args": ["-C", ".", "mcp", "--client", "cloud", "--tool-hashes", ".claude/agile-graph-tool-hashes.json"],
+  "env": {
+    "GRAPH_ENGINE_NO_FEEDBACK": "1"
+  },
+  "description": "Agile Graph (MIT, https://github.com/MILTONADINA/agile-graph) project context for a cloud-backed client such as Claude Code: context_get, symbol_search, graph_neighbors and memory_propose, pinned by agile-graph.tool-hashes.json for @agile-graph/engine 0.1.0. No run tools. Start it from the project root after `agile-graph -C . init --cloud-mcp --export '<glob>'` and `agile-graph -C . index --lexical`. GRAPH_ENGINE_NO_FEEDBACK=1 stops the engine opening public GitHub issues under your account. devops init writes this entry for you (specs/graph/agile-graph-link.md)."
+}

@@ -310,6 +310,21 @@ jobs:
       - name: Pack, install and run the package
         run: bash scripts/package-smoke.sh
 
+  agile-graph-link:
+    # specs/graph/agile-graph-link.md REQ-7: install the packed package with the pinned
+    # Agile Graph engine on a Node it supports, check the shipped tool pins against the real
+    # engine, and start the MCP server devops init registers. Not a required check.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      GRAPH_ENGINE_NO_FEEDBACK: '1'
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444  # v5.0.0
+        with: { node-version: 24 }
+      - name: Install the package with the engine, check the pins, start the server
+        run: bash scripts/agile-graph-smoke.sh
+
   node-compat:
     # The required jobs run on Node 22, the supported floor (engines >=22.12.0). This job
     # runs the same suites on the newer supported majors. It is not a required check.

@@ -26,6 +26,56 @@ the current phase and gate configuration.
 3. Identify the next backlog item: `SHIP_BLOCKERS.md` during Phase 0, then
    `plan.md` / `blueprint.md` afterward.
 
+## With Agile Graph
+
+Sprint runs use Agile Graph (MIT, https://github.com/MILTONADINA/agile-graph) when it is installed.
+That means: the project holds `.graph/project.json`, the engine version that
+`package.json` pins as an optional peer (`@agile-graph/engine`) is installed, and
+Node is 24 to 26 (`specs/graph/agile-graph-link.md` REQ-6).
+
+The halt check and `bash scripts/graph-preflight.sh` still come first, exactly as in
+"Before running". The engine reads neither `.workflow/state/graph-halt` nor the deploy
+gate's approval markers, so /sprint checks them before every `agile-graph` command.
+The cycle is the engine's CLI, run by a person. Every command sets
+`GRAPH_ENGINE_NO_FEEDBACK=1`, so the engine never opens a GitHub issue under the
+person's account.
+
+```
+GRAPH_ENGINE_NO_FEEDBACK=1 agile-graph -C . plan "<objective>" --accept "<criterion>" "<criterion>"
+GRAPH_ENGINE_NO_FEEDBACK=1 agile-graph -C . plan --spec specs/<area>/<id>.md
+GRAPH_ENGINE_NO_FEEDBACK=1 agile-graph -C . plan-approve <planId>
+GRAPH_ENGINE_NO_FEEDBACK=1 agile-graph -C . run <planId>
+GRAPH_ENGINE_NO_FEEDBACK=1 agile-graph -C . inspect <runId>
+GRAPH_ENGINE_NO_FEEDBACK=1 agile-graph -C . accept <runId> --note "<why>"
+GRAPH_ENGINE_NO_FEEDBACK=1 agile-graph -C . reject <runId> --note "<why>"
+```
+
+- **Plan:** plan from an objective with acceptance criteria, or from a spec (the second
+  command).
+- **Review:** `plan-approve` without `--yes` shows the plan in full.
+- **Run and inspect:** `run`, then `inspect` the result.
+- **Decide:** `accept` or `reject` is the person's decision, and the engine never
+  offers it over MCP.
+- **Prerequisites:** `run` refuses unless the project has all three:
+  - a worker provider (`provider-add`; workers are local by default, and a cloud or
+    installed worker needs `--enable` and a policy change);
+  - at least one registered check (`check-add <image> <argv...>`) whose image is
+    already pulled;
+  - a running Docker-compatible engine.
+- **Publication:** the default `policy.publication` is `none`, so a run pushes nothing
+  and opens no pull request. Anything after `accept` that deploys still goes through
+  the deploy gate and `/sprint-approve`.
+- **Run tools over MCP:** they stay off. The MCP server `devops init` registers exposes
+  only context, symbol, neighbour and memory-proposal tools. To let Claude Code plan or
+  start runs, a person reviews `GRAPH_ENGINE_NO_FEEDBACK=1 agile-graph -C . mcp-tools
+  --client cloud --allow-run --hashes`, adds those pins to
+  `.claude/agile-graph-tool-hashes.json`, and adds `--allow-run` to the `.mcp.json`
+  entry. The server refuses to start while an exposed tool is unpinned. Every MCP
+  `run_start` still waits for a person's `plan-approve <planId> --yes --expect
+  <planSha256>`.
+
+Otherwise, run DevOps's own Workflow pipeline as below.
+
 ## Running it
 
 For a new cycle, record its exact input before launching:

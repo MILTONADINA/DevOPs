@@ -6,6 +6,20 @@ JSON configs for MCP (Model Context Protocol) servers DevOPs uses.
 
 - **memory-stratum** — Stratum structured fact store
 - **playwright** — browser automation for full-stack UI verification
+- **agile-graph** — Agile Graph (MIT, https://github.com/MILTONADINA/agile-graph)
+  project context for Claude Code. Its four tools are pinned by
+  `agile-graph.tool-hashes.json` for `@agile-graph/engine` 0.1.0, and it exposes no run
+  tools. `devops init` registers it in the project's `.mcp.json` when the engine is
+  installed (`specs/graph/agile-graph-link.md`). Before Claude Code can use it, choose
+  what it may receive and build the index, from the project root:
+
+  ```bash
+  GRAPH_ENGINE_NO_FEEDBACK=1 agile-graph -C . init --cloud-mcp --export '<glob>'
+  GRAPH_ENGINE_NO_FEEDBACK=1 agile-graph -C . index --lexical
+  ```
+
+  `GRAPH_ENGINE_NO_FEEDBACK=1` stops the engine opening public GitHub issues under your
+  account. The template sets it for the server too.
 
 ## Installation
 

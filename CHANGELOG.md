@@ -8,6 +8,24 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — the optional Agile Graph link (specs/graph/agile-graph-link.md)
+
+- `@agile-graph/engine` is an optional peer at the exact version whose tools
+  `mcp-configs/universal/agile-graph.tool-hashes.json` pins (0.1.0).
+- When that engine is installed and Node is 24 to 26, `devops init` adds an
+  `agile-graph` server to the project's `.mcp.json` and copies the pins to
+  `.claude/agile-graph-tool-hashes.json`. The server uses cloud client mode,
+  the pinned tool definitions, no run tools and `GRAPH_ENGINE_NO_FEEDBACK=1`.
+  It never replaces an existing entry or a `.mcp.json` it cannot read.
+  `--no-agile-graph` skips the link, and without the engine `devops init`
+  prints one line.
+- This repository's `/sprint` can run a person-driven cycle through the
+  engine's CLI. The halt check, the preflight and the deploy gate stay in
+  front of it.
+- CI's new `agile-graph-link` job installs the packed DevOps and the real
+  engine on Node 24. It checks that the shipped pins match the engine, then
+  starts the exact server `devops init` registers.
+
 ### Changed
 
 - On 2026-10-11 the commit history was rewritten to remove Claude attribution

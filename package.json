@@ -61,6 +61,14 @@
     "tsx": "4.23.13",
     "yaml": "2.9.1"
   },
+  "peerDependencies": {
+    "@agile-graph/engine": "0.1.0"
+  },
+  "peerDependenciesMeta": {
+    "@agile-graph/engine": {
+      "optional": true
+    }
+  },
   "devDependencies": {
     "@types/node": "^24.0.0",
     "@opentelemetry/core": "^2.0.0",
