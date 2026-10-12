@@ -6,7 +6,11 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
-## [Unreleased] — Later phases in progress
+## [Unreleased]
+
+## [0.4.0] — 2026-10-11
+
+The first release published to npm, as `@miltonadina/devops`.
 
 Phase 3 (Memory & observability — Stratum closeout, Option B: Stratum
 Phase 0 + 1 + 3 locked per session 7.5 audit) is underway on
