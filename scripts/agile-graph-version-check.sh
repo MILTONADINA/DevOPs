@@ -12,7 +12,8 @@
 set -euo pipefail
 export GRAPH_ENGINE_NO_FEEDBACK=1   # REQ-5
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-OUT="${1:?usage: agile-graph-version-check.sh <output-folder>}"
+OUT="${1:-}"
+[[ -n "$OUT" ]] || { echo "usage: agile-graph-version-check.sh OUTPUT_FOLDER" >&2; exit 2; }
 mkdir -p "$OUT"
 WORK="$(cd "$(mktemp -d)" && pwd -P)"
 trap 'rm -rf "$WORK"' EXIT
