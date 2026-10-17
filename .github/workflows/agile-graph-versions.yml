@@ -59,18 +59,19 @@ jobs:
             const fs = require("node:fs");
             const [file, runUrl, out] = process.argv.slice(1);
             const r = JSON.parse(fs.readFileSync(file, "utf8"));
-            const code = s => "`" + String(s).replace(/`/g, "") + "`";
+            // Registry text is untrusted: one line, printable ASCII, no backticks, bounded.
+            const code = s => "`" + String(s).replace(/[^\x20-\x7e]/g, " ").replace(/`/g, "").slice(0, 120) + "`";
             const list = names => names.length ? names.map(code).join(", ") : "none";
             const lines = [`@agile-graph/engine ${code(r.latest)} is published, and ENGINE_VERSIONS in ${code("analyzer/agile-graph.js")} does not list it, so ${code("devops init")} does not link it.`, ""];
             if (r.match) {
               lines.push("Its cloud-default tool definitions match the shipped pins exactly.", "",
-                `To link it: add ${code(r.latest)} to ENGINE_VERSIONS in a normal pull request; CI's ${code("agile-graph-link")} job then checks it against the real engine.`);
+                `To link it: add ${code(r.latest)} to ENGINE_VERSIONS in a normal pull request; the ${code("agile-graph-link")} CI job then checks it against the real engine.`);
             } else {
               lines.push("Its cloud-default tool definitions differ from the shipped pins:", "",
                 `- changed: ${list(r.changed)}`, `- added: ${list(r.added)}`, `- removed: ${list(r.removed)}`, "",
                 "Review the new definitions before accepting them. Then update `mcp-configs/universal/agile-graph.tool-hashes.json` and ENGINE_VERSIONS together in a normal pull request.");
             }
-            lines.push("", `Workflow run: ${runUrl}`, "", "<details><summary>The new version's hashes</summary>", "", "```json", JSON.stringify(r.hashes, null, 2), "```", "</details>");
+            lines.push("", `Workflow run: ${runUrl}`, "", "<details><summary>Hashes of the new version</summary>", "", "```json", JSON.stringify(r.hashes, null, 2).replace(/`/g, "\u0027"), "```", "</details>");
             fs.writeFileSync(out, lines.join("\n") + "\n");
           ' "$result" "$RUN_URL" "$RUNNER_TEMP/issue-body.md"
           if [ -n "$number" ]; then gh issue edit "$number" --body-file "$RUNNER_TEMP/issue-body.md"; else gh issue create --title "$title" --body-file "$RUNNER_TEMP/issue-body.md"; fi

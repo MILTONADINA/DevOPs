@@ -352,3 +352,31 @@ test(`every documented agile-graph command turns feedback off (${SPEC}#ac-6)`, (
     assert.ok(count > 0, `${file} documents at least one command`);
   }
 });
+
+test('the issue step runs under bash and keeps registry text on one line (specs/graph/agile-graph-link.md#ac-7)', () => {
+  const workflow = readFileSync(path.join(ROOT, '.github/workflows/agile-graph-versions.yml'), 'utf8');
+  // The step's run block, de-indented, exactly as Actions hands it to bash.
+  const block = workflow.split('- name: Open, update or close the issue')[1].split('run: |\n')[1];
+  const script = block.split('\n').map((line) => line.replace(/^ {10}/, '')).join('\n');
+  const dir = mkdtempSync(path.join(tmpdir(), 'ag-versions-'));
+  mkdirSync(path.join(dir, 'bin'));
+  mkdirSync(path.join(dir, 'agile-graph'));
+  writeFileSync(path.join(dir, 'bin', 'gh'), `#!/bin/sh\necho "$*" >> "${dir}/gh.log"\n`);
+  chmodSync(path.join(dir, 'bin', 'gh'), 0o755);
+  writeFileSync(path.join(dir, 'agile-graph', 'result.json'), JSON.stringify({
+    listed: false, latest: '9.9.9\n# injected', match: false, changed: ['a\nb'], added: [], removed: [],
+    hashes: { t: '```evil' },
+  }));
+  writeFileSync(path.join(dir, 'step.sh'), script);
+  const run = spawnSync('bash', [path.join(dir, 'step.sh')], {
+    encoding: 'utf8',
+    env: { ...process.env, PATH: `${path.join(dir, 'bin')}:${process.env.PATH}`, RUNNER_TEMP: dir, RUN_URL: 'URL' },
+  });
+  assert.equal(run.status, 0, run.stderr);
+  assert.match(readFileSync(path.join(dir, 'gh.log'), 'utf8'), /issue create/);
+  const body = readFileSync(path.join(dir, 'issue-body.md'), 'utf8');
+  assert.ok(!/^# injected/m.test(body), 'a registry newline must not start a Markdown heading');
+  assert.ok(body.includes('`9.9.9 # injected`'));
+  assert.equal((body.match(/```/g) ?? []).length, 2, 'only the fence itself may contain triple backticks');
+  rmSync(dir, { recursive: true, force: true });
+});
