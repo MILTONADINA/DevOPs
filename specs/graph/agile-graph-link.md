@@ -164,6 +164,24 @@ CI SHALL run these steps on a Node version the engine supports, for every versio
 
 **Enforced by:** job:.github/workflows/ci.yml#agile-graph-link
 
+### REQ-8 — A weekly check of new engine versions
+
+Issue #266: each new engine release needed a manual check before it could be listed.
+A workflow SHALL run weekly and on demand. It SHALL read the newest published
+`@agile-graph/engine` version, and WHEN that version is not in `ENGINE_VERSIONS` it SHALL:
+
+- install it with its install scripts off, because it is not reviewed yet;
+- compare its `mcp-tools --client cloud --hashes` with the shipped pins;
+- open or update one issue that says whether they match, and if not, which tools
+  changed, were added or were removed.
+
+It SHALL close that issue once the newest version is listed. It SHALL accept nothing by
+itself and SHALL open no branch or pull request (owner decision 2026-09-26: no bot
+branches). Its permissions SHALL be reading the repository and writing issues, with
+`GRAPH_ENGINE_NO_FEEDBACK=1` set.
+
+**Enforced by:** test:tests/agile-graph-link.test.mjs; job:.github/workflows/agile-graph-versions.yml#check
+
 ## Acceptance criteria
 
 ### AC-1
@@ -224,6 +242,19 @@ follows the Workflow block.
 
 **Verified by:** `tests/agile-graph-link.test.mjs` (`#ac-6`) and
 `tests/graph-dashboard/sprint-doc.test.mjs`.
+
+### AC-7
+
+**Given** the newest engine's tool hashes and the shipped pins **When** they are
+compared **Then** an exact match is reported as matching, and every changed, added and
+removed tool is named. **Given** the weekly workflow **When** it is read **Then** it
+runs on a schedule and on demand, can read the repository and write issues and nothing
+else, sets `GRAPH_ENGINE_NO_FEEDBACK=1`, and installs the new version with its install
+scripts off.
+
+**Verified by:** `tests/agile-graph-link.test.mjs` (`#ac-7`), and
+`.github/workflows/agile-graph-versions.yml` job `check`, which runs
+`scripts/agile-graph-version-check.sh`.
 
 ## Out of scope
 

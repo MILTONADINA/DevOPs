@@ -1,0 +1,76 @@
+name: Agile Graph engine versions
+
+# specs/graph/agile-graph-link.md REQ-8. Weekly, and on demand: is the newest published
+# @agile-graph/engine one DevOps links (ENGINE_VERSIONS in analyzer/agile-graph.js)? If
+# not, the new version is installed with its install scripts off and its cloud-default
+# tool hashes are compared with the shipped pins.
+#
+# No bot branches (owner decision 2026-09-26): this opens or updates ONE issue saying
+# whether the new version's tools match the pins. A maintainer then adds the version, or
+# reviews changed tools and updates the pins, in a normal pull request. Nothing is
+# accepted automatically. The issue closes once the newest version is listed.
+
+on:
+  schedule:
+    # Weekly Monday 06:30 UTC, after the trust-bundle refresh.
+    - cron: '30 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+    env:
+      GRAPH_ENGINE_NO_FEEDBACK: '1'
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444  # v5.0.0
+        with: { node-version: 24 }
+
+      - name: Compare the newest engine with the shipped pins
+        run: bash scripts/agile-graph-version-check.sh "$RUNNER_TEMP/agile-graph"
+
+      - name: Open, update or close the issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          title='New Agile Graph engine version is not linked yet'
+          result="$RUNNER_TEMP/agile-graph/result.json"
+          # Only issues this workflow opened (author app/github-actions), as in refresh-trust-bundle.yml.
+          number=$(gh issue list --state open --limit 100 --json number,title,author --jq ".[] | select(.title == \"$title\" and .author.login == \"app/github-actions\" and .author.is_bot) | .number" | head -1)
+          if [ "$(node -p "require('$result').listed")" = true ]; then
+            if [ -n "$number" ]; then gh issue close "$number" --comment "The newest engine version is listed in ENGINE_VERSIONS."; fi
+            exit 0
+          fi
+          # The body is written by node from the JSON, so nothing from the registry is
+          # interpreted by the shell.
+          node -e '
+            const fs = require("node:fs");
+            const [file, runUrl, out] = process.argv.slice(1);
+            const r = JSON.parse(fs.readFileSync(file, "utf8"));
+            const code = s => "`" + String(s).replace(/`/g, "") + "`";
+            const list = names => names.length ? names.map(code).join(", ") : "none";
+            const lines = [`@agile-graph/engine ${code(r.latest)} is published, and ENGINE_VERSIONS in ${code("analyzer/agile-graph.js")} does not list it, so ${code("devops init")} does not link it.`, ""];
+            if (r.match) {
+              lines.push("Its cloud-default tool definitions match the shipped pins exactly.", "",
+                `To link it: add ${code(r.latest)} to ENGINE_VERSIONS in a normal pull request; CI's ${code("agile-graph-link")} job then checks it against the real engine.`);
+            } else {
+              lines.push("Its cloud-default tool definitions differ from the shipped pins:", "",
+                `- changed: ${list(r.changed)}`, `- added: ${list(r.added)}`, `- removed: ${list(r.removed)}`, "",
+                "Review the new definitions before accepting them. Then update `mcp-configs/universal/agile-graph.tool-hashes.json` and ENGINE_VERSIONS together in a normal pull request.");
+            }
+            lines.push("", `Workflow run: ${runUrl}`, "", "<details><summary>The new version's hashes</summary>", "", "```json", JSON.stringify(r.hashes, null, 2), "```", "</details>");
+            fs.writeFileSync(out, lines.join("\n") + "\n");
+          ' "$result" "$RUN_URL" "$RUNNER_TEMP/issue-body.md"
+          if [ -n "$number" ]; then gh issue edit "$number" --body-file "$RUNNER_TEMP/issue-body.md"; else gh issue create --title "$title" --body-file "$RUNNER_TEMP/issue-body.md"; fi
