@@ -8,6 +8,12 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — security policy
+
+- `SECURITY.md`: supported versions (latest 0.x minor), supported Node range,
+  private reporting through GitHub private vulnerability reporting, scope, and
+  how to verify release provenance with `npm audit signatures`.
+
 ### Added — the optional Agile Graph link (specs/graph/agile-graph-link.md)
 
 - `@agile-graph/engine` is an optional peer (`>=0.1.0`, so `npm install` never

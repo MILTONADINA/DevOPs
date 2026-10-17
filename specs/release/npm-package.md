@@ -123,6 +123,34 @@ implicit:
   `.claude/settings.local.json` references, so Claude Code does not run them, with
   where wiring is described.
 
+### REQ-9 — `devops-analyze` answers its flags before it scans
+
+When `devops-analyze` receives `--help` or `-h`, `devops-analyze` SHALL print its usage and exit 0.
+When it receives `--version` or `-v`, it SHALL print the package version and exit 0.
+When `devops-analyze` receives any argument that begins with `-` other than those four, even alongside them, it SHALL exit non-zero with
+a one-line message on stderr that names the argument and points to `--help`. In all
+three cases it SHALL NOT scan or write `.workflow/`.
+
+### REQ-10 — Init's agent bootstrap instructions are usable
+
+WHEN `devops init` generates `AGENTS.md` and prints its first steps, IT SHALL
+reference the live package's constitution, without copying constitution files.
+WHERE `DEVOPS_ROOT` (or the installed package root) is inside the target project,
+IT SHALL compute project-relative paths at init time and render forward slashes.
+WHERE the package is outside the target project (including npx/global installs),
+IT SHALL identify `@miltonadina/devops` and use package-relative
+`constitution/PRINCIPLES.md`, `constitution/ANTIPATTERNS.md` and
+`constitution/LOOP.md`, never machine-specific absolute constitution paths.
+
+WHEN init prints the first-spec step, IT SHALL tell the user to create `specs/`
+and write the first spec there, rather than imply the folder already exists.
+
+WHEN init runs, IT SHALL append the exact line `AGENTS.override.md` to the target's
+`.gitignore` if absent, creating the file if necessary, even outside git. IT SHALL
+preserve existing content and line endings and SHALL NOT duplicate an existing
+entry. WHEN `--dry-run` is given, IT SHALL write nothing and report a needed entry
+as an addition it would make.
+
 ## Acceptance criteria
 
 ### AC-1
@@ -196,6 +224,43 @@ or copied Claude Code hooks some of which `settings.json` references **When**
 
 **Verified by:** `tests/npm-package.test.mjs` (`#ac-8`), with a stub `git`
 (`tests/fixtures/stub-git.mjs`); tests never run the real git.
+
+### AC-9
+
+**Given** an empty folder **When** `devops-analyze --help`, `-h`, `--version`, `-v` or an
+unknown flag such as `--bogus` (also `--help --bogus`) runs **Then** the first two print usage and exit 0, the
+third prints the package version and exits 0, and the last exits non-zero with a
+one-line message naming `--bogus` and `--help`; the folder stays empty.
+
+**Verified by:** `tests/npm-package.test.mjs` (`#ac-9`).
+
+### AC-10
+
+**Given** a local package install (including a nonstandard path or `DEVOPS_ROOT`)
+**When** init runs **Then** every constitution read path in generated `AGENTS.md`
+exists relative to the target project, uses forward slashes, and appears in the
+printed first steps; no constitution is copied. With an external package root,
+both instructions name the package and package-relative files without absolute
+constitution paths. Both `--target` forms resolve against the target, not cwd.
+
+**Verified by:** `tests/init-agent-bootstrap.test.mjs` (`#ac-10`).
+
+### AC-11
+
+**Given** a project without `specs/` **When** init runs **Then** the printed steps
+say to create `specs/` and write the first spec there, with no auto-loaded claim.
+
+**Verified by:** `tests/init-agent-bootstrap.test.mjs` (`#ac-11`).
+
+### AC-12
+
+**Given** no `.gitignore`, or one with LF/CRLF content, with or without a final
+newline or an existing override entry **When** init runs twice **Then** exactly
+one `AGENTS.override.md` line exists and existing bytes and line endings remain
+unchanged. This also applies outside git. A dry run with a missing file or entry
+reports the proposed addition and leaves every project file and directory unchanged.
+
+**Verified by:** `tests/init-agent-bootstrap.test.mjs` (`#ac-12`).
 
 ## Out of scope
 

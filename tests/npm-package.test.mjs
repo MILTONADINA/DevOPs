@@ -83,6 +83,43 @@ test(`devops-analyze writes .workflow/profile.yml for the current directory (${S
   });
 });
 
+test(`devops-analyze --help and -h print usage and write nothing (${SPEC}#ac-9)`, () => {
+  withTempDir((dir) => {
+    for (const flag of ['--help', '-h']) {
+      const result = spawnSync(process.execPath, [path.join(ROOT, 'scripts/devops-analyze.js'), flag], { cwd: dir, env: cleanEnv(dir), encoding: 'utf8' });
+      assert.equal(result.status, 0, `${flag}: ${result.stderr}`);
+      assert.match(result.stdout, /Usage: devops-analyze/);
+      assert.deepEqual(readdirSync(dir), [], `${flag} wrote files`);
+    }
+  });
+});
+
+test(`devops-analyze --version prints the package version and writes nothing (${SPEC}#ac-9)`, () => {
+  withTempDir((dir) => {
+    const result = spawnSync(process.execPath, [path.join(ROOT, 'scripts/devops-analyze.js'), '--version'], { cwd: dir, env: cleanEnv(dir), encoding: 'utf8' });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout.trim(), pkg.version);
+    assert.deepEqual(readdirSync(dir), []);
+  });
+});
+
+test(`devops-analyze refuses an unknown flag in one line and writes nothing (${SPEC}#ac-9)`, () => {
+  withTempDir((dir) => {
+    const result = spawnSync(process.execPath, [path.join(ROOT, 'scripts/devops-analyze.js'), '--bogus'], { cwd: dir, env: cleanEnv(dir), encoding: 'utf8' });
+    assert.notEqual(result.status, 0);
+    assert.equal(result.stderr.trim().split('\n').length, 1, result.stderr);
+    assert.match(result.stderr, /--bogus/);
+    assert.match(result.stderr, /--help/);
+    assert.deepEqual(readdirSync(dir), []);
+    for (const args of [['--help', '--bogus'], ['--version', '--bogus'], ['-v', '-x']]) {
+      const mixed = spawnSync(process.execPath, [path.join(ROOT, 'scripts/devops-analyze.js'), ...args], { cwd: dir, env: cleanEnv(dir), encoding: 'utf8' });
+      assert.notEqual(mixed.status, 0, args.join(' '));
+      assert.match(mixed.stderr, new RegExp(args[1]));
+    }
+    assert.deepEqual(readdirSync(dir), []);
+  });
+});
+
 test(`an unknown command, including an inherited object key, is refused (${SPEC}#ac-1)`, () => {
   withTempDir((home) => {
     for (const cmd of ['toString', 'constructor', 'no-such-command']) {

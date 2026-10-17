@@ -82,6 +82,7 @@
     "CHANGELOG.md",
     "LICENSE",
     "README.md",
+    "SECURITY.md",
     ".claude-plugin/",
     "analyzer/",
     "constitution/",

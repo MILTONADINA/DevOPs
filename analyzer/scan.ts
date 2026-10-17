@@ -131,7 +131,56 @@ function detectStack(root: string): Profile['stack'] {
   if (fileExists(path.join(root, 'wrangler.toml'))) stack.deploy_targets.push('cloudflare-workers');
   if (fileExists(path.join(root, 'Dockerfile'))) stack.deploy_targets.push('docker');
 
+  // specs/ops/analyzer-detection.md REQ-3: no manifest named a language, so read the sources.
+  languageFromExtensions = false;
+  if (stack.language.length === 0) {
+    stack.language.push(...languagesFromExtensions(root));
+    languageFromExtensions = stack.language.length > 0;
+  }
+
   return stack;
+}
+
+let languageFromExtensions = false;
+
+const EXTENSION_LANGUAGES: Record<string, string> = {
+  '.ts': 'javascript/typescript', '.tsx': 'javascript/typescript', '.js': 'javascript/typescript',
+  '.jsx': 'javascript/typescript', '.mjs': 'javascript/typescript', '.cjs': 'javascript/typescript',
+  '.py': 'python', '.rs': 'rust', '.go': 'go',
+};
+
+// Bounded breadth-first walk: depth 4, 2000 entries; skips node_modules, hidden folders
+// and symbolic links.
+function languagesFromExtensions(root: string): string[] {
+  const found = new Set<string>();
+  let budget = 2000;
+  let level = [root];
+  for (let depth = 0; depth <= 4 && level.length > 0 && budget > 0; depth++) {
+    const next: string[] = [];
+    for (const dir of level) {
+      let handle: fs.Dir;
+      try { handle = fs.opendirSync(dir); } catch { continue; }
+      try {
+        // Read one entry at a time so a huge directory is never enumerated past the budget.
+        for (;;) {
+          if (budget-- <= 0) return [...found];
+          let entry: fs.Dirent | null;
+          try { entry = handle.readSync(); } catch { break; }
+          if (!entry) break;
+          if (entry.isSymbolicLink() || entry.name.startsWith('.') || entry.name === 'node_modules') continue;
+          if (entry.isDirectory()) next.push(path.join(dir, entry.name));
+          else if (entry.isFile()) {
+            const language = EXTENSION_LANGUAGES[path.extname(entry.name).toLowerCase()];
+            if (language) found.add(language);
+          }
+        }
+      } finally {
+        try { handle.closeSync(); } catch { /* already closed */ }
+      }
+    }
+    level = next;
+  }
+  return [...found];
 }
 
 function detectDomain(stack: Profile['stack']): Profile['domain'] {
@@ -362,7 +411,9 @@ function main() {
   fs.writeFileSync('.workflow/profile.yml', toYaml(profile));
   console.log('Wrote .workflow/profile.yml');
   console.log(`State: ${state}${stateNote ? ` (${stateNote})` : ''}`);
-  console.log(`Languages: ${stack.language.join(', ') || '(none detected)'}`);
+  console.log(`Languages: ${stack.language.length === 0
+    ? 'none detected (no manifest and no source files with known extensions). Run it from the project root or add package.json, pyproject.toml, Cargo.toml or go.mod.'
+    : stack.language.join(', ') + (languageFromExtensions ? ' (from file extensions; no manifest found)' : '')}`);
   console.log(`Frameworks: ${stack.frameworks.join(', ') || '(none detected)'}`);
   console.log(`Compliance scope: ${domain.compliance.join(', ') || '(none detected)'}`);
   console.log(`Recommended skills: ${profile.recommended.skills.length}`);
