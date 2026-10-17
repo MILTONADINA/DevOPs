@@ -125,9 +125,9 @@ implicit:
 
 ### REQ-9 — `devops-analyze` answers its flags before it scans
 
-When `devops-analyze` receives `--help` or `-h`, it SHALL print its usage and exit 0.
+When `devops-analyze` receives `--help` or `-h`, `devops-analyze` SHALL print its usage and exit 0.
 When it receives `--version` or `-v`, it SHALL print the package version and exit 0.
-When it receives any other argument that begins with `-`, it SHALL exit non-zero with
+When `devops-analyze` receives any argument that begins with `-` other than those four, even alongside them, it SHALL exit non-zero with
 a one-line message on stderr that names the argument and points to `--help`. In all
 three cases it SHALL NOT scan or write `.workflow/`.
 
@@ -207,8 +207,8 @@ or copied Claude Code hooks some of which `settings.json` references **When**
 
 ### AC-9
 
-**Given** an empty folder **When** `devops-analyze --help`, `-h`, `--version` or an
-unknown flag such as `--bogus` runs **Then** the first two print usage and exit 0, the
+**Given** an empty folder **When** `devops-analyze --help`, `-h`, `--version`, `-v` or an
+unknown flag such as `--bogus` (also `--help --bogus`) runs **Then** the first two print usage and exit 0, the
 third prints the package version and exits 0, and the last exits non-zero with a
 one-line message naming `--bogus` and `--help`; the folder stays empty.
 

@@ -111,6 +111,12 @@ test(`devops-analyze refuses an unknown flag in one line and writes nothing (${S
     assert.match(result.stderr, /--bogus/);
     assert.match(result.stderr, /--help/);
     assert.deepEqual(readdirSync(dir), []);
+    for (const args of [['--help', '--bogus'], ['--version', '--bogus'], ['-v', '-x']]) {
+      const mixed = spawnSync(process.execPath, [path.join(ROOT, 'scripts/devops-analyze.js'), ...args], { cwd: dir, env: cleanEnv(dir), encoding: 'utf8' });
+      assert.notEqual(mixed.status, 0, args.join(' '));
+      assert.match(mixed.stderr, new RegExp(args[1]));
+    }
+    assert.deepEqual(readdirSync(dir), []);
   });
 });
 

@@ -10,7 +10,9 @@ import * as path from 'node:path';
 import { devopsRoot, runTs } from './devops-paths.js';
 
 const args = process.argv.slice(2);
-const flag = args.find((a) => a.startsWith('-'));
+const KNOWN = ['--help', '-h', '--version', '-v'];
+const unknown = args.find((a) => a.startsWith('-') && !KNOWN.includes(a));
+const flag = unknown ?? args.find((a) => a.startsWith('-'));
 
 if (flag === '--help' || flag === '-h') {
   console.log(`Usage: devops-analyze
