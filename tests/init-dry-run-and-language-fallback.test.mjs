@@ -4,7 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -25,6 +25,7 @@ function withProject(files, fn) {
   }
 }
 const devops = (cwd, ...args) => spawnSync(process.execPath, [CLI, ...args], { cwd, encoding: 'utf8' });
+const listing = dir => readdirSync(dir, { recursive: true }).sort();
 const languagesLine = out => out.split('\n').find(l => l.startsWith('Languages:'));
 
 test(`sources without a manifest are detected from their extensions (${SPEC}#ac-3)`, () => {
@@ -37,15 +38,41 @@ test(`sources without a manifest are detected from their extensions (${SPEC}#ac-
   });
 });
 
-test(`node_modules, hidden folders and symlinks are not scanned (${SPEC}#ac-3)`, () => {
-  withProject({ 'node_modules/x/a.py': '', '.cache/b.go': '', 'readme.md': '' }, dir => {
-    mkdirSync(path.join(dir, 'real'));
-    writeFileSync(path.join(dir, 'real/c.rs'), '');
-    symlinkSync(path.join(dir, 'real'), path.join(dir, 'link'));
+test(`node_modules and hidden folders are not scanned (${SPEC}#ac-3)`, () => {
+  withProject({ 'node_modules/x/a.py': '', '.cache/b.go': '', 'main.js': '' }, dir => {
+    const line = languagesLine(devops(dir, 'analyze').stdout);
+    assert.ok(line.includes('javascript/typescript') && !line.includes('python') && !/\bgo\b(?!\.mod)/.test(line), line);
+  });
+});
+
+test(`symlinks to outside directories and files are not followed (${SPEC}#ac-3)`, () => {
+  withProject({ 'main.js': '' }, dir => {
+    withProject({ 'only.rs': '', 'o.go': '' }, outside => {
+      symlinkSync(outside, path.join(dir, 'link'));
+      symlinkSync(path.join(outside, 'only.rs'), path.join(dir, 'linked.rs'));
+      const r = devops(dir, 'analyze');
+      assert.equal(r.status, 0, r.stderr);
+      const line = languagesLine(r.stdout);
+      assert.ok(line.includes('javascript/typescript') && !line.includes('rust') && !/\bgo\b(?!\.mod)/.test(line), line);
+    });
+  });
+});
+
+test(`the walk stops at depth 4 (${SPEC}#ac-3)`, () => {
+  withProject({ 'a/b/c/d/ok.py': '', 'a/b/c/d/e/deep.rs': '' }, dir => {
+    const line = languagesLine(devops(dir, 'analyze').stdout);
+    assert.ok(line.includes('python') && !line.includes('rust'), line);
+  });
+});
+
+test(`the walk stops at the entry budget and still returns a result (${SPEC}#ac-3)`, () => {
+  withProject({ 'sub/late.rs': '', 'first.py': '' }, dir => {
+    for (let i = 0; i < 2500; i++) writeFileSync(path.join(dir, `f${i}.txt`), '');
     const r = devops(dir, 'analyze');
     assert.equal(r.status, 0, r.stderr);
     const line = languagesLine(r.stdout);
-    assert.ok(line.includes('rust') && !line.includes('python') && !line.includes('go,') && !/\bgo\b/.test(line), line);
+    assert.ok(!line.includes('rust'), line);
+    assert.ok(line.startsWith('Languages:'), line);
   });
 });
 
@@ -67,13 +94,13 @@ test(`nothing to detect says why and what to do next (${SPEC}#ac-3)`, () => {
 test(`init --dry-run says nothing was written and never says initialized (${SPEC}#ac-4)`, () => {
   withProject({ 'package.json': '{"name":"x"}' }, dir => {
     assert.equal(devops(dir, 'analyze').status, 0);
-    const before = existsSync(path.join(dir, 'AGENTS.md'));
+    const before = listing(dir);
     const r = devops(dir, 'init', '--dry-run');
     assert.equal(r.status, 0, r.stderr);
     assert.ok(!/initialized/i.test(r.stdout), r.stdout);
     assert.ok(r.stdout.includes('Dry run complete: nothing was written'), r.stdout);
     assert.ok(!r.stdout.includes('First steps in the agent'), r.stdout);
-    assert.equal(existsSync(path.join(dir, 'AGENTS.md')), before);
+    assert.deepEqual(listing(dir), before);
   });
 });
 

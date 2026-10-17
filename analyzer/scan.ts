@@ -158,16 +158,24 @@ function languagesFromExtensions(root: string): string[] {
   for (let depth = 0; depth <= 4 && level.length > 0 && budget > 0; depth++) {
     const next: string[] = [];
     for (const dir of level) {
-      let entries: fs.Dirent[];
-      try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { continue; }
-      for (const entry of entries) {
-        if (budget-- <= 0) return [...found];
-        if (entry.isSymbolicLink() || entry.name.startsWith('.') || entry.name === 'node_modules') continue;
-        if (entry.isDirectory()) next.push(path.join(dir, entry.name));
-        else if (entry.isFile()) {
-          const language = EXTENSION_LANGUAGES[path.extname(entry.name).toLowerCase()];
-          if (language) found.add(language);
+      let handle: fs.Dir;
+      try { handle = fs.opendirSync(dir); } catch { continue; }
+      try {
+        // Read one entry at a time so a huge directory is never enumerated past the budget.
+        for (;;) {
+          if (budget-- <= 0) return [...found];
+          let entry: fs.Dirent | null;
+          try { entry = handle.readSync(); } catch { break; }
+          if (!entry) break;
+          if (entry.isSymbolicLink() || entry.name.startsWith('.') || entry.name === 'node_modules') continue;
+          if (entry.isDirectory()) next.push(path.join(dir, entry.name));
+          else if (entry.isFile()) {
+            const language = EXTENSION_LANGUAGES[path.extname(entry.name).toLowerCase()];
+            if (language) found.add(language);
+          }
         }
+      } finally {
+        try { handle.closeSync(); } catch { /* already closed */ }
       }
     }
     level = next;
