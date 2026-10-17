@@ -22,6 +22,9 @@ Running the published 0.4.0 against a real repository found these gaps:
 - Issue #264: frameworks came only from the root `package.json`. An npm, yarn or pnpm
   workspaces monorepo keeps them in its packages, so it reported no frameworks and got
   no framework-specific recommendations.
+- Issue #271: with no manifest, `analyze` reported `(none detected)` for a repository of
+  TypeScript sources, and `init --dry-run` ended with "DevOPs initialized" though it
+  wrote nothing.
 
 ## Requirements
 
@@ -68,6 +71,24 @@ any input:
 - only regular files are read: a symlinked `package.json` or `pnpm-workspace.yaml` is
   ignored.
 
+### REQ-3 — Languages from file extensions when no manifest names one
+
+WHEN no manifest (`package.json`, `pyproject.toml`, `Cargo.toml`, `go.mod`) names a
+language, the analyzer SHALL read file extensions instead: `.ts .tsx .js .jsx .mjs .cjs`
+give `javascript/typescript`, `.py` python, `.rs` rust, `.go` go. The walk SHALL stop
+at depth 4 or 2,000 entries, and skip `node_modules`, hidden folders and symbolic links.
+A manifest SHALL win: the fallback runs only when it found no language.
+`devops analyze` SHALL print `(from file extensions; no manifest found)` after a
+fallback result. WHEN nothing is found it SHALL print that no manifest and no source
+files with known extensions were found, and to run it from the project root or add a
+manifest.
+
+### REQ-4 — A dry run says it wrote nothing
+
+WHEN `devops init` runs with `--dry-run`, its last output SHALL say
+`Dry run complete: nothing was written` and how to install for real. It SHALL NOT say
+the project was initialized or print the first-steps list.
+
 ## Acceptance criteria
 
 ### AC-1
@@ -94,6 +115,25 @@ stops expanding and still honours its exclusions.
 
 **Verified by:** `tests/analyzer-workspaces.test.mjs`, test titles naming
 `specs/ops/analyzer-detection.md#ac-2`.
+
+### AC-3
+
+**Given** a project with sources but no manifest **When** `devops analyze` runs **Then**
+it reports the languages of the source extensions and says they came from extensions.
+Sources under `node_modules`, hidden folders and symlinks do not count, a manifest
+wins, and a project with nothing recognisable says why and what to do next.
+
+**Verified by:** `tests/init-dry-run-and-language-fallback.test.mjs`, test titles naming
+`specs/ops/analyzer-detection.md#ac-3`.
+
+### AC-4
+
+**Given** an analyzed project **When** `devops init --dry-run` runs **Then** it writes
+nothing, ends with `Dry run complete: nothing was written`, and never says
+`initialized`; a real `devops init` still does.
+
+**Verified by:** `tests/init-dry-run-and-language-fallback.test.mjs`, test titles naming
+`specs/ops/analyzer-detection.md#ac-4`.
 
 ## Out of scope
 

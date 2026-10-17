@@ -133,6 +133,11 @@ echo "  pre-commit gate: $gate"
 [[ -z "$claude_hooks" ]] || echo "  Claude Code hooks: $claude_hooks"
 
 echo ""
+# specs/ops/analyzer-detection.md REQ-4: a dry run never claims it installed anything.
+if [[ "$DRY_RUN" == 1 ]]; then
+    echo "Dry run complete: nothing was written. Run without --dry-run to install."
+    exit 0
+fi
 echo "DevOPs initialized. Open this project in your coding agent of choice."
 echo ""
 echo "First steps in the agent:"
