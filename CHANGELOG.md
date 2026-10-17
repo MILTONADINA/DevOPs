@@ -48,6 +48,13 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- `devops init` no longer leaves its safety gates silently off (#267,
+  `specs/release/npm-package.md` REQ-3 and REQ-8).
+  - It writes the pre-commit hook where Git runs hooks
+    (`git rev-parse --git-path hooks`), so worktrees and submodules get one.
+  - It writes nothing into a `core.hooksPath` folder and says what to add there.
+  - It ends with a "Safety gates" summary: where the hook went or why there is
+    none, and which copied Claude Code hook scripts no settings file references.
 - `devops analyze` no longer calls a shallow clone, CI's default checkout, a new
   project (#263, `specs/ops/analyzer-detection.md`). A shallow clone's commit
   count is not read as the project's age, and the printed state says why. Its git

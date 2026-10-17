@@ -3,6 +3,7 @@
 **Status**: approved (owner, 2026-10-11, in chat: "get this repo ready to deploy an npm package"; first release 0.4.0, published from CI on a version tag, tsx shipped as a dependency, internal records trimmed and only what is ready shipped)
 **Spec ID**: release/npm-package
 **Owner**: Milton Adina
+**Amended**: 2026-10-12, for issue #267 (owner, in chat: fix issues #263–#267 directly). REQ-3 now writes the hook where Git runs hooks rather than always `.git/hooks`. The new REQ-8 makes `devops init` report each safety gate.
 
 ## Scope
 
@@ -52,12 +53,18 @@ with an error.
 
 ### REQ-3 — The generated pre-commit hook
 
-WHEN `devops init` runs in a git repository, IT SHALL write `.git/hooks/pre-commit`
-only if no hook exists there or the existing one carries the DevOPs marker line, and
-otherwise SHALL leave the existing hook unchanged and say so. The hook SHALL scan the
-staged change with `gitleaks git --pre-commit --staged --redact` and SHALL validate
-local claims with the `devops` command, not with a path under `~/DevOPs`. WHEN
-`--dry-run` is given, `devops init` SHALL write nothing.
+WHEN `devops init` runs in a git repository, IT SHALL write `pre-commit` into the
+folder `git rev-parse --git-path hooks` names. That folder can belong to a linked
+worktree's repository or to a submodule's git dir.
+
+- It SHALL write the hook only if no hook exists there or the existing one carries the
+  DevOPs marker line; otherwise it SHALL leave the existing hook unchanged and say so.
+- WHEN `core.hooksPath` is set, IT SHALL write no hook, because that folder is the
+  project's own or shared, and SHALL say which checks to add there by hand.
+- The hook SHALL scan the staged change with `gitleaks git --pre-commit --staged
+  --redact` and SHALL validate local claims with the `devops` command, not with a path
+  under `~/DevOPs`.
+- WHEN `--dry-run` is given, `devops init` SHALL write nothing.
 
 ### REQ-4 — Package contents
 
@@ -101,6 +108,20 @@ after it has checked that:
 The publish step SHALL run in a GitHub environment that a person approves, and SHALL
 authenticate with npm trusted publishing (OIDC), or with an `NPM_TOKEN` environment
 secret for the first release, before the package exists on npm.
+
+### REQ-8 — `devops init` reports each safety gate
+
+`devops init` SHALL end with a "Safety gates" summary that leaves no gate's state
+implicit:
+
+- **pre-commit gate:** installed and where, adding "shared by every worktree of this
+  repository" for a linked worktree; or not installed and why. The reasons are: git is
+  missing, the folder is not a repository, `core.hooksPath` is set, another tool's hook
+  is there, or it was a dry run.
+- **Claude Code hooks:** how many hook scripts were copied to `.claude/hooks/`, and,
+  by name, those that neither `.claude/settings.json` nor
+  `.claude/settings.local.json` references, so Claude Code does not run them, with
+  where wiring is described.
 
 ## Acceptance criteria
 
@@ -162,6 +183,19 @@ after the REQ-7 checks pass and the `npm-release` environment is approved.
 
 **Verified by:** `.github/workflows/release-npm.yml`, which is reviewed. A release
 dry run is described in `docs/RELEASING.md`.
+
+### AC-8
+
+**Given** a linked worktree, a repository with `core.hooksPath`, a folder outside git,
+or copied Claude Code hooks some of which `settings.json` references **When**
+`devops init` runs **Then**:
+- the worktree's hook lands where Git runs it, and the summary says so;
+- `core.hooksPath` gets nothing written and a hand-wiring note;
+- outside git, the summary says "not a git repository";
+- the summary names exactly the unreferenced hooks.
+
+**Verified by:** `tests/npm-package.test.mjs` (`#ac-8`), with a stub `git`
+(`tests/fixtures/stub-git.mjs`); tests never run the real git.
 
 ## Out of scope
 

@@ -48,7 +48,7 @@ echo "package-smoke: tarball $(basename "$TARBALL"), $(wc -l < "$CONTENTS" | tr 
 APP="$WORK/app"
 mkdir -p "$APP"
 cp -R "$ROOT/tests/fixtures/analyzer/nextjs-project/." "$APP/"
-mkdir "$APP/.git"   # a repository shape for `devops init`
+git init -q "$APP"   # a real repository for `devops init`
 cd "$APP"
 npm install --omit=dev --no-audit --no-fund --silent "$TARBALL"
 INSTALLED="$APP/node_modules/$NAME"
@@ -98,6 +98,13 @@ grep -qxF "DevOPs root: $INSTALLED" <<< "$HELP" || fail "devops help does not re
 "$BIN/devops" init --dry-run > "$WORK/init.log" || { cat "$WORK/init.log"; fail "devops init --dry-run failed"; }
 [[ ! -e .git/hooks/pre-commit ]] || fail "devops init --dry-run wrote a git hook"
 
+# A real init writes the gate where Git runs hooks and says so in its summary
+# (specs/release/npm-package.md REQ-3, REQ-8).
+"$BIN/devops" init > "$WORK/init-real.log" || { cat "$WORK/init-real.log"; fail "devops init failed"; }
+grep -qxF "  pre-commit gate: installed at .git/hooks/pre-commit" "$WORK/init-real.log" || { cat "$WORK/init-real.log"; fail "devops init did not report the installed gate"; }
+[[ -x .git/hooks/pre-commit ]] || fail "devops init did not write an executable .git/hooks/pre-commit"
+grep -q "^  Claude Code hooks: " "$WORK/init-real.log" || fail "devops init did not report the Claude Code hooks"
+
 if "$BIN/devops" toString > /dev/null 2>&1; then fail "devops accepted an unknown command"; fi
 
-echo "package-smoke: $NAME@$VERSION installs and runs: version, help, analyze, init --dry-run"
+echo "package-smoke: $NAME@$VERSION installs and runs: version, help, analyze, init --dry-run, init"

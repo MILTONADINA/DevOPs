@@ -272,15 +272,18 @@ node /path/to/DevOPs/scripts/devops-cli.js init
 
 `devops init` copies `AGENTS.md` and `CLAUDE.md` into the project (it
 does not overwrite existing ones), copies the recommended skills, hook
-scripts and subagents into the project's `.claude/` directory, and, in a git
-repository, writes `.git/hooks/pre-commit`. It never replaces a pre-commit
-hook it did not write; it tells you to add its checks to yours by hand.
+scripts and subagents into the project's `.claude/` directory. In a git repository it
+writes a `pre-commit` hook where Git runs hooks, which also covers worktrees and
+submodules. It never replaces a pre-commit hook it did not write, and never writes into
+a `core.hooksPath` folder; in both cases it tells you which checks to add by hand.
 Each skill is checked against its signed manifest entry first, and an edited
 or unsigned skill stops the install. It does not write `.claude/settings.json`,
 so the copied hook scripts run only after you wire them there (this
 repository's own `.claude/settings.json` is a working example; `docs/HOOKS.md`
-lists what each hook does). Other coding agents read `AGENTS.md`; see the note at the
-top of this file about which adapters exist.
+lists what each hook does). `devops init` ends with a "Safety gates" summary. It
+says where the pre-commit hook went or why there is none, and names the copied hook
+scripts that Claude Code does not run yet. Other coding agents read `AGENTS.md`; see
+the note at the top of this file about which adapters exist.
 
 See `docs/PLAYBOOK.md` for the full operational guide.
 
