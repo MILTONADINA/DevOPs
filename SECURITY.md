@@ -62,8 +62,9 @@ The command checks registry signatures and provenance attestations for the
 installed dependencies. The attestation is also shown on the package's npm
 page.
 
-Skill files are additionally signed with Sigstore (see
-`.github/workflows/release-sign.yml`).
+The universal skill files (`skills/universal/`) are additionally signed with
+Sigstore (see `.github/workflows/release-sign.yml`). Stack-specific skills are
+not signed individually; they are covered only by the package's provenance.
 
 For the threat model and the defenses built into DevOPs itself, see
 [docs/SECURITY.md](docs/SECURITY.md).
