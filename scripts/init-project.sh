@@ -139,8 +139,3 @@ if [[ "$DRY_RUN" == 1 ]]; then
     exit 0
 fi
 echo "DevOPs initialized. Open this project in your coding agent of choice."
-echo ""
-echo "First steps in the agent:"
-echo "  1. Read constitution/PRINCIPLES.md (auto-loaded on session start)"
-echo "  2. Write your first spec in /specs/"
-echo "  3. Run /ears-spec <feature-name> to convert prose to EARS"

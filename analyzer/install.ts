@@ -259,14 +259,33 @@ function main() {
   if (flags.allowUnsigned) console.log(`Override:      --allow-unsigned rationale="${flags.rationale}"`);
   console.log('');
 
-  // AGENTS.md + CLAUDE.md install (preserved; not skills, no verification).
+  // specs/release/npm-package.md REQ-10: keep the constitution a live dependency.
+  // Compare path components, not string prefixes (a sibling is not inside target).
+  const packageRelative = path.relative(fs.realpathSync(PROJECT_ROOT), fs.realpathSync(DEVOPS_ROOT));
+  const packageInProject = packageRelative !== '..' && !packageRelative.startsWith(`..${path.sep}`)
+    && !path.isAbsolute(packageRelative);
+  const constitutionRefs = new Map(['PRINCIPLES.md', 'ANTIPATTERNS.md', 'LOOP.md'].map(file => {
+    const inPackage = `constitution/${file}`;
+    const reference = packageInProject
+      ? `\`${path.join(packageRelative, inPackage).replace(/\\/g, '/')}\``
+      : `\`${inPackage}\` in the \`@miltonadina/devops\` package`;
+    return [inPackage, reference];
+  }));
+
+  // AGENTS.md + CLAUDE.md install (not skills, no verification).
   // Gracefully skip when DEVOPS_ROOT source is missing (test harnesses or
   // non-canonical layouts) — these are operator-convenience copies, not
   // verification-gated artifacts.
   const srcAgents = path.join(DEVOPS_ROOT, 'AGENTS.md');
   const targetAgents = path.join(PROJECT_ROOT, 'AGENTS.md');
   if (!fs.existsSync(targetAgents) && fs.existsSync(srcAgents)) {
-    if (!flags.dryRun) copy(srcAgents, targetAgents);
+    if (!flags.dryRun) {
+      const agents = fs.readFileSync(srcAgents, 'utf-8').replace(
+        /`(constitution\/(?:PRINCIPLES|ANTIPATTERNS|LOOP)\.md)`/g,
+        (_match, file) => constitutionRefs.get(file)!,
+      );
+      fs.writeFileSync(targetAgents, agents);
+    }
     console.log(flags.dryRun ? 'would install: AGENTS.md' : '✓ Installed AGENTS.md');
   } else if (fs.existsSync(targetAgents)) {
     console.log('⚠ AGENTS.md already exists; not overwriting');
@@ -276,6 +295,20 @@ function main() {
   if (!fs.existsSync(targetClaude) && fs.existsSync(srcClaude)) {
     if (!flags.dryRun) copy(srcClaude, targetClaude);
     console.log(flags.dryRun ? 'would install: CLAUDE.md' : '✓ Installed CLAUDE.md');
+  }
+
+  // Append only: retain existing bytes, including CRLF and a missing final newline.
+  // This local override is useful even before the project becomes a git repository.
+  const gitignore = path.join(PROJECT_ROOT, '.gitignore');
+  const ignored = fs.existsSync(gitignore) ? fs.readFileSync(gitignore, 'utf-8') : '';
+  if (!ignored.split(/\r?\n/).includes('AGENTS.override.md')) {
+    if (flags.dryRun) {
+      console.log('dry-run: would add AGENTS.override.md to .gitignore');
+    } else {
+      const eol = ignored.match(/\r?\n/)?.[0] ?? '\n';
+      fs.appendFileSync(gitignore, `${ignored && !ignored.endsWith('\n') ? eol : ''}AGENTS.override.md${eol}`);
+      console.log('✓ Added AGENTS.override.md to .gitignore');
+    }
   }
 
   // Skills with verification (F.01..F.07)
@@ -398,6 +431,11 @@ function main() {
     console.log('  1. Fill in .workflow/client/profile.yml with your client info');
     console.log('  2. Adjust .workflow/state/budget.yml for project budget');
     console.log('  3. Run /checkpoint at session end to write the baton');
+    console.log('');
+    console.log('First steps in the agent:');
+    console.log(`  1. Read ${[...constitutionRefs.values()].join(', ')}`);
+    console.log('  2. Create specs/ and write your first spec there');
+    console.log('  3. Run /ears-spec <feature-name> to convert prose to EARS');
   }
 }
 
