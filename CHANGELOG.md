@@ -31,6 +31,11 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - CI's new `agile-graph-link` job installs the packed DevOps with each listed
   engine version on Node 24. It checks that the shipped pins match the engine,
   then starts the exact server `devops init` registers.
+- A weekly workflow, `agile-graph-versions.yml` (#266, REQ-8), checks the
+  newest published engine. If `ENGINE_VERSIONS` does not list it, the workflow
+  installs it with install scripts off and compares its tools with the pins.
+  It then opens or updates one issue saying whether they match and which tools
+  changed. It opens no branch and accepts nothing by itself.
 
 ### Changed
 

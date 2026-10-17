@@ -303,6 +303,30 @@ test(`devops help lists --no-agile-graph (${SPEC}#ac-2)`, () => {
   assert.match(help.stdout, /--no-agile-graph/);
 });
 
+test(`comparing an engine's tool hashes with the pins names every changed, added and removed tool (${SPEC}#ac-7)`, async () => {
+  const { comparePins } = await import('../scripts/agile-graph-pin-diff.mjs');
+  const pins = JSON.parse(readFileSync(path.join(ROOT, PIN_SOURCE), 'utf8'));
+  assert.deepEqual(comparePins({ ...pins }, pins), { match: true, changed: [], added: [], removed: [] });
+  const engine = { ...pins, context_get: 'f'.repeat(64), run_start: 'e'.repeat(64) };
+  delete engine.symbol_search;
+  assert.deepEqual(comparePins(engine, pins), { match: false, changed: ['context_get'], added: ['run_start'], removed: ['symbol_search'] });
+  assert.throws(() => comparePins([], pins), /JSON objects/);
+});
+
+test(`the weekly version check runs on a schedule, may only write issues, and never runs the new engine's install scripts (${SPEC}#ac-7)`, () => {
+  const workflow = readFileSync(path.join(ROOT, '.github/workflows/agile-graph-versions.yml'), 'utf8');
+  assert.match(workflow, /^\s+schedule:\n\s+# [^\n]*\n\s+- cron: '[^']+'$/m);
+  assert.match(workflow, /^\s+workflow_dispatch:$/m);
+  assert.match(workflow, /^permissions:\n\s+contents: read$/m);
+  assert.match(workflow, /permissions:\n\s+contents: read\n\s+issues: write\n/);
+  assert.doesNotMatch(workflow, /contents: write|pull-requests: write|gh pr create|git push/);
+  assert.match(workflow, /GRAPH_ENGINE_NO_FEEDBACK: '1'/);
+  assert.match(workflow, /bash scripts\/agile-graph-version-check\.sh/);
+  const check = readFileSync(path.join(ROOT, 'scripts/agile-graph-version-check.sh'), 'utf8');
+  assert.match(check, /npm install --ignore-scripts [^\n]*@agile-graph\/engine@\$LATEST/);
+  assert.match(check, /^export GRAPH_ENGINE_NO_FEEDBACK=1/m);
+});
+
 test(`/sprint describes the Agile Graph cycle, its prerequisites and the fallback (${SPEC}#ac-6)`, () => {
   const sprint = readFileSync(path.join(ROOT, 'slash-commands/universal/sprint.md'), 'utf8');
   const section = sprint.slice(sprint.indexOf('## With Agile Graph'));
@@ -327,4 +351,32 @@ test(`every documented agile-graph command turns feedback off (${SPEC}#ac-6)`, (
     }
     assert.ok(count > 0, `${file} documents at least one command`);
   }
+});
+
+test('the issue step runs under bash and keeps registry text on one line (specs/graph/agile-graph-link.md#ac-7)', () => {
+  const workflow = readFileSync(path.join(ROOT, '.github/workflows/agile-graph-versions.yml'), 'utf8');
+  // The step's run block, de-indented, exactly as Actions hands it to bash.
+  const block = workflow.split('- name: Open, update or close the issue')[1].split('run: |\n')[1];
+  const script = block.split('\n').map((line) => line.replace(/^ {10}/, '')).join('\n');
+  const dir = mkdtempSync(path.join(tmpdir(), 'ag-versions-'));
+  mkdirSync(path.join(dir, 'bin'));
+  mkdirSync(path.join(dir, 'agile-graph'));
+  writeFileSync(path.join(dir, 'bin', 'gh'), `#!/bin/sh\necho "$*" >> "${dir}/gh.log"\n`);
+  chmodSync(path.join(dir, 'bin', 'gh'), 0o755);
+  writeFileSync(path.join(dir, 'agile-graph', 'result.json'), JSON.stringify({
+    listed: false, latest: '9.9.9\n# injected', match: false, changed: ['a\nb'], added: [], removed: [],
+    hashes: { t: '```evil' },
+  }));
+  writeFileSync(path.join(dir, 'step.sh'), script);
+  const run = spawnSync('bash', [path.join(dir, 'step.sh')], {
+    encoding: 'utf8',
+    env: { ...process.env, PATH: `${path.join(dir, 'bin')}:${process.env.PATH}`, RUNNER_TEMP: dir, RUN_URL: 'URL' },
+  });
+  assert.equal(run.status, 0, run.stderr);
+  assert.match(readFileSync(path.join(dir, 'gh.log'), 'utf8'), /issue create/);
+  const body = readFileSync(path.join(dir, 'issue-body.md'), 'utf8');
+  assert.ok(!/^# injected/m.test(body), 'a registry newline must not start a Markdown heading');
+  assert.ok(body.includes('`9.9.9 # injected`'));
+  assert.equal((body.match(/```/g) ?? []).length, 2, 'only the fence itself may contain triple backticks');
+  rmSync(dir, { recursive: true, force: true });
 });
