@@ -4,7 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -26,6 +26,26 @@ function withProject(files, fn) {
 }
 const devops = (cwd, ...args) => spawnSync(process.execPath, [CLI, ...args], { cwd, encoding: 'utf8' });
 const listing = dir => readdirSync(dir, { recursive: true }).sort();
+const COUNTER = path.join(ROOT, 'tests/fixtures/count-dir-reads.mjs');
+// Runs `analyze` with fs.Dir opens, reads and closes under the project counted.
+function analyzeCounted(dir, env = {}) {
+  const out = path.join(mkdtempSync(path.join(tmpdir(), 'dir-count-')), 'counts');
+  try {
+    const r = spawnSync(process.execPath, [CLI, 'analyze'], {
+      cwd: dir,
+      encoding: 'utf8',
+      env: { ...process.env, ...env, NODE_OPTIONS: `--import=${COUNTER}`, DIR_COUNT_ROOT: dir, DIR_COUNT_OUT: out },
+    });
+    const counts = { opened: 0, reads: 0, closed: 0 };
+    for (const name of readdirSync(path.dirname(out))) {
+      const c = JSON.parse(readFileSync(path.join(path.dirname(out), name), 'utf8'));
+      for (const k of Object.keys(counts)) counts[k] += c[k];
+    }
+    return { r, counts };
+  } finally {
+    rmSync(path.dirname(out), { recursive: true, force: true });
+  }
+}
 const languagesLine = out => out.split('\n').find(l => l.startsWith('Languages:'));
 
 test(`sources without a manifest are detected from their extensions (${SPEC}#ac-3)`, () => {
@@ -68,11 +88,34 @@ test(`the walk stops at depth 4 (${SPEC}#ac-3)`, () => {
 test(`the walk stops at the entry budget and still returns a result (${SPEC}#ac-3)`, () => {
   withProject({ 'sub/late.rs': '', 'first.py': '' }, dir => {
     for (let i = 0; i < 2500; i++) writeFileSync(path.join(dir, `f${i}.txt`), '');
-    const r = devops(dir, 'analyze');
+    const { r, counts } = analyzeCounted(dir);
     assert.equal(r.status, 0, r.stderr);
     const line = languagesLine(r.stdout);
     assert.ok(!line.includes('rust'), line);
     assert.ok(line.startsWith('Languages:'), line);
+    // Read one entry at a time and stop at the 2000-entry budget, not after listing all
+    // 2502; every directory opened is closed.
+    assert.equal(counts.reads, 2000, JSON.stringify(counts));
+    assert.equal(counts.closed, counts.opened, JSON.stringify(counts));
+  });
+});
+
+test(`a walk that reaches the end of each folder closes every one (${SPEC}#ac-3)`, () => {
+  withProject({ 'src/a.ts': '', 'src/deep/b.py': '', 'lib/c.rs': '' }, dir => {
+    const { r, counts } = analyzeCounted(dir);
+    assert.equal(r.status, 0, r.stderr);
+    assert.ok(counts.opened >= 4, JSON.stringify(counts));
+    assert.equal(counts.closed, counts.opened, JSON.stringify(counts));
+  });
+});
+
+test(`a folder that fails to read is closed and the walk goes on (${SPEC}#ac-3)`, () => {
+  withProject({ 'src/a.ts': '', 'lib/c.rs': '' }, dir => {
+    const { r, counts } = analyzeCounted(dir, { DIR_COUNT_THROW: '1' });
+    assert.equal(r.status, 0, r.stderr);
+    assert.ok(languagesLine(r.stdout).startsWith('Languages:'), r.stdout);
+    assert.ok(counts.opened >= 1, JSON.stringify(counts));
+    assert.equal(counts.closed, counts.opened, JSON.stringify(counts));
   });
 });
 
