@@ -19,7 +19,7 @@ test('reviewer definition carries the regression, privacy and cost checks (REQ-1
     /file:line, the inputs and state/,
     /\*\*Not applicable\*\*/,
     /existing specs\s+whose flows it crosses and confirm it\s+does not override one/,
-    /same gates \(consent, export policy, redaction\) as the existing path/,
+    /same\s+gates \(consent, export policy, redaction\)\s+as the existing path/,
     /file:line, the inputs and state that\s+reach it, and the wrong outcome/,
   ]) assert.match(text, needle);
   assert.doesNotMatch(text, /have OTel spans \(per/);
@@ -35,7 +35,7 @@ test('security definition carries offline, model, flag-injection and host-eviden
     /^## Code that calls language models$/m,
     /what data reaches which provider kind/,
     /re-checked at each use/,
-    /accept the host project's own evidence format\s+in place of the claim YAML/,
+    /accept its own evidence format\s+in\s+place of the claim YAML/,
     /model output persisted into future prompts/,
     /flag injection/,
     /^## Host project evidence$/m,
