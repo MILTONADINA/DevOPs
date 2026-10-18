@@ -94,6 +94,12 @@
     "specs/security/stratum-local-network.md#REQ-4",
     "specs/security/stratum-local-network.md#REQ-5",
     "specs/security/stratum-local-network.md#REQ-6",
-    "specs/security/stratum-local-network.md#REQ-7"
+    "specs/security/stratum-local-network.md#REQ-7",
+    "specs/security/subagent-definitions.md#REQ-1",
+    "specs/security/subagent-definitions.md#REQ-2",
+    "specs/security/subagent-definitions.md#REQ-3",
+    "specs/security/subagent-definitions.md#REQ-4",
+    "specs/security/subagent-definitions.md#REQ-5",
+    "specs/security/subagent-definitions.md#REQ-6"
   ]
 }
