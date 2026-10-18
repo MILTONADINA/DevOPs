@@ -114,7 +114,7 @@ describe("dashboard route", () => {
     expect(res.payload).toContain("file_path");
     expect(res.payload).toContain("summary");
     expect(res.payload).not.toContain("innerHTML");
-    const script = res.payload.match(/<script>([\s\S]*?)<\/script>/)?.[1];
+    const script = res.payload.match(/<script(?: [^>]*)?>([\s\S]*?)<\/script>/)?.[1];
     expect(script).toBeDefined();
     expect(() => new Script(script!)).not.toThrow();
   });
@@ -123,7 +123,7 @@ describe("dashboard route", () => {
     app = buildProxy({ cors: false, rateLimit: false, dashboard: { readSessions: () => [] } });
     await app.ready();
     const html = (await app.inject({ method: "GET", url: "/dashboard/graph" })).payload;
-    const script = html.match(/<script>([\s\S]*?)<\/script>/)?.[1];
+    const script = html.match(/<script(?: [^>]*)?>([\s\S]*?)<\/script>/)?.[1];
     expect(script).toBeDefined();
     class Node {
       children: Node[] = [];
@@ -388,7 +388,7 @@ describe("dashboard route", () => {
     app = buildProxy({ cors: false, rateLimit: false, dashboard: { readSessions: () => [] } });
     await app.ready();
     const html = (await app.inject({ method: "GET", url: "/dashboard" })).payload;
-    const script = html.match(/<script>([\s\S]*?)<\/script>/)?.[1];
+    const script = html.match(/<script(?: [^>]*)?>([\s\S]*?)<\/script>/)?.[1];
     expect(script).toBeDefined();
 
     class Node {
@@ -535,5 +535,41 @@ describe("dashboard route", () => {
     expect(res.statusCode).toBe(403);
     expect(res.body).not.toContain("private-session");
     expect(readSessions).not.toHaveBeenCalled();
+  });
+});
+
+describe("dashboard CSP nonce (specs/memory/graph-dashboard.md#REQ-3)", () => {
+  async function get(url: string) {
+    app ??= buildProxy({ cors: false, rateLimit: false, dashboard: { readSessions: () => [] } });
+    await app.ready();
+    return app.inject({ method: "GET", url });
+  }
+
+  test.each(["/dashboard", "/dashboard/graph"])("%s: script-src is a nonce, not unsafe-inline (REQ-3)", async (url) => {
+    const res = await get(url);
+    const csp = String(res.headers["content-security-policy"]);
+    const scriptSrc = csp.split(";").map((d) => d.trim()).find((d) => d.startsWith("script-src"));
+    expect(scriptSrc).toMatch(/^script-src 'nonce-[A-Za-z0-9+/]{22}=='$/);
+    expect(scriptSrc).not.toContain("unsafe-inline");
+    expect(csp).toContain("frame-ancestors 'none'");
+    expect(csp).toContain("default-src 'none'");
+    expect(res.headers["cache-control"]).toBe("no-store");
+  });
+
+  test.each(["/dashboard", "/dashboard/graph"])("%s: script tag nonce equals the header nonce (REQ-3)", async (url) => {
+    const res = await get(url);
+    const headerNonce = String(res.headers["content-security-policy"]).match(/'nonce-([^']+)'/)?.[1];
+    const tags = [...res.payload.matchAll(/<script\b([^>]*)>/g)];
+    expect(tags).toHaveLength(1);
+    expect(tags[0]![1]).toBe(` nonce="${headerNonce}"`);
+  });
+
+  test("each response gets a different nonce (REQ-3)", async () => {
+    const nonces = new Set<string>();
+    for (const url of ["/dashboard", "/dashboard", "/dashboard/graph", "/dashboard/graph"]) {
+      const res = await get(url);
+      nonces.add(String(res.headers["content-security-policy"]).match(/'nonce-([^']+)'/)![1]!);
+    }
+    expect(nonces.size).toBe(4);
   });
 });

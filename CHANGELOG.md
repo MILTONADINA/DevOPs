@@ -8,6 +8,13 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Security
+
+- The dashboard pages (`/dashboard`, `/dashboard/graph`) allow their inline script
+  by a per-response CSP nonce instead of `script-src 'unsafe-inline'`, and the HTML
+  is sent with `Cache-Control: no-store`
+  (`specs/memory/graph-dashboard.md` REQ-3).
+
 ## [0.5.0] — 2026-10-18
 
 ### Changed
