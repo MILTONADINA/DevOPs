@@ -32,7 +32,7 @@ main { display: grid; grid-template-columns: minmax(0, 1fr) 19rem; height: calc(
 <p id="status" role="status">Enter a CQ API key, or use ?org-id= in personal mode.</p>
 <main><svg id="canvas" xmlns="http://www.w3.org/2000/svg" aria-label="Knowledge graph" role="img"><g id="viewport"></g></svg>
 <aside id="details"><h2>Node details</h2><p>Select a node to see its source path, summary, and relationships. Selecting a node also reveals its neighbors.</p><ul id="relations"></ul></aside></main>
-<script>
+<script nonce="__CSP_NONCE__">
 const svgNS = 'http://www.w3.org/2000/svg';
 const svg = document.getElementById('canvas');
 const viewport = document.getElementById('viewport');

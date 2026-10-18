@@ -10,8 +10,9 @@
  * data/sessions/*.json.
  */
 
-import type { FastifyInstance, FastifyPluginCallback } from "fastify";
+import type { FastifyInstance, FastifyPluginCallback, FastifyReply } from "fastify";
 import { readdirSync, readFileSync } from "node:fs";
+import { randomBytes } from "node:crypto";
 import path from "node:path";
 import type { CaptureSession } from "../capture";
 import { buildDashboardData } from "../dashboard-data";
@@ -81,7 +82,7 @@ const HTML = `<!doctype html>
   <table id="waste"><thead><tr><th>Type</th><th>Severity</th><th>~Tokens</th><th>Detail</th></tr></thead><tbody></tbody></table>
   <h2>Sessions</h2>
   <table id="sessions"><thead><tr><th>Session</th><th>Started</th><th>Turns</th><th>Dropped</th><th>Input tok</th><th>Output tok</th></tr></thead><tbody></tbody></table>
-  <script>
+  <script nonce="__CSP_NONCE__">
     const fmt = (n) => Number(n).toLocaleString();
     const el = (tag, value, cls) => { const node = document.createElement(tag); if (value != null) node.textContent = String(value); if (cls) node.className = cls; return node; };
     const row = (values) => { const tr = document.createElement('tr'); values.forEach((v) => tr.appendChild(el('td', v))); return tr; };
@@ -180,6 +181,27 @@ const HTML = `<!doctype html>
   </script>
 </body></html>`;
 
+const CSP_NONCE_PLACEHOLDER = "__CSP_NONCE__";
+
+/**
+ * Send a dashboard page whose single inline script is allowed by a fresh
+ * per-response nonce (REQ-3), never by 'unsafe-inline' in script-src.
+ */
+function sendHtml(reply: FastifyReply, html: string): FastifyReply {
+  const nonce = randomBytes(16).toString("base64");
+  void reply.header("content-type", "text/html; charset=utf-8");
+  void reply.header("cache-control", "no-store");
+  void reply.header(
+    "content-security-policy",
+    `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`,
+  );
+  void reply.header("x-frame-options", "DENY");
+  void reply.header("x-content-type-options", "nosniff");
+  void reply.header("referrer-policy", "no-referrer");
+  // The nonce is base64, so it cannot close the attribute it fills.
+  return reply.send(html.replaceAll(CSP_NONCE_PLACEHOLDER, nonce));
+}
+
 /**
  * Build the dashboard Fastify plugin bound to the given session source.
  *
@@ -189,26 +211,10 @@ const HTML = `<!doctype html>
 export function makeDashboardRoute(deps: DashboardDeps): FastifyPluginCallback {
   return function dashboardPlugin(app: FastifyInstance, _opts, done): void {
     app.get("/dashboard/graph", async (_req, reply) => {
-      void reply.header("content-type", "text/html; charset=utf-8");
-      void reply.header(
-        "content-security-policy",
-        "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
-      );
-      void reply.header("x-frame-options", "DENY");
-      void reply.header("x-content-type-options", "nosniff");
-      void reply.header("referrer-policy", "no-referrer");
-      return reply.send(GRAPH_DASHBOARD_HTML);
+      return sendHtml(reply, GRAPH_DASHBOARD_HTML);
     });
     app.get("/dashboard", async (_req, reply) => {
-      void reply.header("content-type", "text/html; charset=utf-8");
-      void reply.header(
-        "content-security-policy",
-        "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
-      );
-      void reply.header("x-frame-options", "DENY");
-      void reply.header("x-content-type-options", "nosniff");
-      void reply.header("referrer-policy", "no-referrer");
-      return reply.send(HTML);
+      return sendHtml(reply, HTML);
     });
     app.get("/dashboard/api", async (req, reply) => {
       // Captured sessions have no tenant key; a commercial server cannot safely

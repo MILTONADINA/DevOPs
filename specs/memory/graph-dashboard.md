@@ -17,6 +17,16 @@ WHEN no scope is provided, authentication fails, or the bounded API fails,
 THE SYSTEM SHALL show a useful status in the view. WHEN 500 nodes are returned,
 THE SYSTEM SHALL state that the snapshot may be truncated.
 
+## REQ-3 — Nonce-only inline script
+
+THE SYSTEM SHALL allow only the dashboard's own inline script, by a per-response
+nonce generated with `crypto.randomBytes(16)` encoded as base64, and SHALL NOT
+send `'unsafe-inline'` in `script-src`. The nonce SHALL appear in the page's
+`<script nonce>` tag and in `script-src 'nonce-<value>'`, SHALL differ between
+responses, and the HTML SHALL be sent with `Cache-Control: no-store`. This
+applies to `/dashboard` and `/dashboard/graph`. Verified by the "dashboard CSP
+nonce" tests in `runtime/test/proxy/dashboard.test.ts`.
+
 ## Acceptance criteria
 
 - **AC-1:** the route serves a CSP-protected HTML shell that requests only the
