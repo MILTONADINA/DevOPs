@@ -59,6 +59,27 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- `devops init` installs a short consumer `CLAUDE.md` (from
+  `templates/claude-md/CLAUDE_TEMPLATE.md`) instead of this repository's own
+  development `CLAUDE.md`, which named files a project does not have (#284,
+  `specs/release/npm-package.md` REQ-11). The package no longer ships the
+  repository's `CLAUDE.md`. An existing `CLAUDE.md` is never replaced, and init
+  now says so.
+- `devops init` points the installed `AGENTS.md`, and the first steps it prints, at
+  the constitution files where the package is installed, instead of at
+  `constitution/` files a project does not have (#282,
+  `specs/release/npm-package.md` REQ-10). Nothing is copied: the package stays a
+  live dependency. Init adds `AGENTS.override.md` to `.gitignore` once, keeping
+  existing content and line endings, and says to create `specs/`.
+- `devops-analyze --help` and `-h` print usage and exit without writing any file;
+  an unknown flag exits 2 before any scan, also next to `--help` (#281,
+  `specs/release/npm-package.md` REQ-9).
+- `devops init --dry-run` ends by saying it wrote nothing, instead of saying the
+  project was initialized (#271, `specs/ops/analyzer-detection.md` REQ-4).
+- `devops analyze` detects languages from file extensions when no manifest names
+  one (#271, REQ-3): a breadth-first walk of at most depth 4 and 2,000 entries,
+  read one entry at a time, skipping symbolic links, hidden folders and
+  `node_modules`. A manifest still wins.
 - `devops init` no longer leaves its safety gates silently off (#267,
   `specs/release/npm-package.md` REQ-3 and REQ-8).
   - It writes the pre-commit hook where Git runs hooks

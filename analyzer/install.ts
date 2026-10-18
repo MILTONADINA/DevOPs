@@ -290,11 +290,21 @@ function main() {
   } else if (fs.existsSync(targetAgents)) {
     console.log('⚠ AGENTS.md already exists; not overwriting');
   }
-  const srcClaude = path.join(DEVOPS_ROOT, 'CLAUDE.md');
+  // specs/release/npm-package.md REQ-11: consumers get a short adapter template, not
+  // this repository's own development CLAUDE.md.
+  const srcClaude = path.join(DEVOPS_ROOT, 'templates/claude-md/CLAUDE_TEMPLATE.md');
   const targetClaude = path.join(PROJECT_ROOT, 'CLAUDE.md');
   if (!fs.existsSync(targetClaude) && fs.existsSync(srcClaude)) {
-    if (!flags.dryRun) copy(srcClaude, targetClaude);
+    if (!flags.dryRun) {
+      const claude = fs.readFileSync(srcClaude, 'utf-8').replace(
+        /\{\{(constitution\/(?:PRINCIPLES|ANTIPATTERNS|LOOP)\.md)\}\}/g,
+        (_match, file) => constitutionRefs.get(file)!,
+      );
+      fs.writeFileSync(targetClaude, claude);
+    }
     console.log(flags.dryRun ? 'would install: CLAUDE.md' : '✓ Installed CLAUDE.md');
+  } else if (fs.existsSync(targetClaude)) {
+    console.log('⚠ CLAUDE.md already exists; not overwriting');
   }
 
   // Append only: retain existing bytes, including CRLF and a missing final newline.

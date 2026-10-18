@@ -21,7 +21,7 @@ NAME="$(node -p "require('$ROOT/package.json').name")"
 TARBALL="$WORK/$(npm pack "$ROOT" --pack-destination "$WORK" --silent)"
 CONTENTS="$WORK/contents.txt"
 tar -tzf "$TARBALL" | sed 's#^package/##' | sort > "$CONTENTS"
-for needed in package.json AGENTS.md CLAUDE.md LICENSE README.md \
+for needed in package.json AGENTS.md templates/claude-md/CLAUDE_TEMPLATE.md LICENSE README.md \
   scripts/devops-cli.js scripts/devops-analyze.js scripts/devops-paths.js scripts/init-project.sh \
   analyzer/scan.ts analyzer/install.ts verification/claim-validator.ts governance/skill-manifest.yml \
   hooks/universal/pre-tool/graph-command-classifier.mjs; do

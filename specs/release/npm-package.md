@@ -68,7 +68,7 @@ worktree's repository or to a submodule's git dir.
 
 ### REQ-4 — Package contents
 
-The package SHALL contain the contract (`AGENTS.md`, `CLAUDE.md`), the constitution,
+The package SHALL contain the contract (`AGENTS.md` and the consumer `templates/claude-md/CLAUDE_TEMPLATE.md`), the constitution,
 the skills with their signatures and manifest, the hooks and the companion they need,
 the subagents, the slash commands, the analyzer, the verification tools, the
 templates, the user documentation and the files those reference. It SHALL NOT contain
@@ -150,6 +150,18 @@ WHEN init runs, IT SHALL append the exact line `AGENTS.override.md` to the targe
 preserve existing content and line endings and SHALL NOT duplicate an existing
 entry. WHEN `--dry-run` is given, IT SHALL write nothing and report a needed entry
 as an addition it would make.
+
+### REQ-11 — Init installs a consumer CLAUDE.md, not this repository's own
+
+WHEN `devops init` installs `CLAUDE.md`, IT SHALL write a short adapter from the
+package's `templates/claude-md/CLAUDE_TEMPLATE.md`, never this repository's own
+development `CLAUDE.md`. The adapter SHALL name only files that init installs or the
+package ships, at their real location (the constitution references follow REQ-10), and
+SHALL describe only hooks and settings that init installs in a consumer project. It SHALL
+carry no internal history, owner names or dates, and SHALL point to `AGENTS.override.md`
+for per-project rules. IF `CLAUDE.md` already exists, IT SHALL NOT overwrite it. WHEN
+`--dry-run` is given, IT SHALL write nothing. The published package SHALL NOT ship this
+repository's own `CLAUDE.md`.
 
 ## Acceptance criteria
 
@@ -262,11 +274,27 @@ reports the proposed addition and leaves every project file and directory unchan
 
 **Verified by:** `tests/init-agent-bootstrap.test.mjs` (`#ac-12`).
 
+### AC-13
+
+**Given** a project **When** init runs with the package inside it **Then** the installed
+`CLAUDE.md` names `AGENTS.md`, the live constitution files and `.workflow/state/budget.yml`,
+each backticked repository path it names exists from the project, and it contains none of
+`runtime/`, `blueprint.md`, `LAUNCH_READINESS` or `Stratum`. With the package outside the
+project the constitution references are package-relative with no absolute path.
+
+**Verified by:** `tests/init-agent-bootstrap.test.mjs` (`#ac-13`).
+
+### AC-14
+
+**Given** an existing `CLAUDE.md` **When** init runs **Then** it is unchanged. **Given**
+`--dry-run` **Then** nothing is written and `would install: CLAUDE.md` is reported. The
+package file list does not include the repository's `CLAUDE.md`.
+
+**Verified by:** `tests/init-agent-bootstrap.test.mjs` (`#ac-14`), `tests/npm-package.test.mjs`.
+
 ## Out of scope
 
 - Publishing `runtime/` (`@miltonadina/devops-runtime` stays `private`).
 - Making the graph pipeline (`/sprint` and `scripts/graph-*`) work outside this
   repository.
-- A CLAUDE.md template for consuming projects: `devops init` copies this repository's
-  own `CLAUDE.md` today.
 - Compiling the TypeScript tools to JavaScript.
