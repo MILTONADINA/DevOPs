@@ -89,6 +89,13 @@ WHEN `devops init` runs with `--dry-run`, its last output SHALL say
 `Dry run complete: nothing was written` and how to install for real. It SHALL NOT say
 the project was initialized or print the first-steps list.
 
+### REQ-5 — Webhook detection stays inside the scan budget
+
+`analyzer/scan.ts` `detectWebhookIndicators` SHALL read directories with the same bounded,
+one-entry-at-a-time walk as REQ-3, sharing one 2,000-entry budget across the root and
+every folder it lists. It SHALL skip symbolic links and return as soon as one file shows
+an indicator. On a tree within the budget its result is unchanged.
+
 ## Acceptance criteria
 
 ### AC-1
@@ -134,6 +141,16 @@ nothing, ends with `Dry run complete: nothing was written`, and never says
 
 **Verified by:** `tests/init-dry-run-and-language-fallback.test.mjs`, test titles naming
 `specs/ops/analyzer-detection.md#ac-4`.
+
+### AC-5
+
+**Given** a project with more than 2,000 entries in its root or `src` **When**
+`devops analyze` runs **Then** webhook detection reads at most 2,000 directory entries
+and closes every folder it opened. A webhook indicator in a normal tree is still found,
+a symlinked folder is not followed, and the scan stops reading once an indicator is found.
+
+**Verified by:** `tests/analyzer-webhook-budget.test.mjs`, test titles naming
+`specs/ops/analyzer-detection.md#ac-5`.
 
 ## Out of scope
 

@@ -69,13 +69,15 @@ function compose(args: string[], env: NodeJS.ProcessEnv, input?: string): string
 }
 
 export async function retryRateLimited(action: () => void, wait: (ms: number) => Promise<void> = (ms) => new Promise((resolve) => setTimeout(resolve, ms))): Promise<void> {
-  for (let attempt = 0; attempt < 3; attempt++) {
+  // Six exponential waits total 126s; tag-only images stay on their registry.
+  const maxAttempts = 7;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
     try {
       action();
       return;
     } catch (error) {
-      if (!(error instanceof Error) || !error.message.includes("public registry rate limit") || attempt === 2) throw error;
-      const delayMs = 2_000 * (attempt + 1);
+      if (!(error instanceof Error) || !error.message.includes("public registry rate limit") || attempt === maxAttempts - 1) throw error;
+      const delayMs = 2_000 * 2 ** attempt;
       process.stderr.write(`Public registry rate limit; retrying startup in ${delayMs / 1000}s.\n`);
       await wait(delayMs);
     }

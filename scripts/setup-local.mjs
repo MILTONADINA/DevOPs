@@ -106,6 +106,20 @@ export function configureGitHooks({
   return "set";
 }
 
+// Dependency install scripts do not run during setup (supply-chain risk). Packages listed here get
+// `npm rebuild` after the install. It is empty: the lockfile's install-script packages are esbuild,
+// fsevents, onnxruntime-node, protobufjs and workerd, and with their scripts skipped tsx,
+// `wrangler --version` and require("onnxruntime-node") still work. Add a package here only when
+// the runtime fails without its install script.
+export const RUNTIME_INSTALL_SCRIPT_ALLOWLIST = [];
+
+export function installRuntimeDependencies(runner = run, allowlist = RUNTIME_INSTALL_SCRIPT_ALLOWLIST) {
+  runner("npm", ["ci", "--prefix", "runtime", "--ignore-scripts"], "Runtime dependency installation failed. Check npm registry access, then rerun npm run setup.");
+  for (const pkg of allowlist) {
+    runner("npm", ["rebuild", "--prefix", "runtime", pkg], `Rebuilding ${pkg} failed. Check your toolchain, then rerun npm run setup.`);
+  }
+}
+
 export function main(argv = process.argv.slice(2)) {
   if (argv.includes("--help")) {
     process.stdout.write("Usage: npm run setup\nRequires Node >=22.12, Docker Compose and a running Docker engine on macOS, Linux, or WSL2.\nStarts local Supabase and smoke-tests the proxy. Configure a provider before sending messages.\nFor an isolated checkout, set DEVOPS_LOCAL_INSTANCE and DEVOPS_LOCAL_PORT together.\n");
@@ -119,7 +133,7 @@ export function main(argv = process.argv.slice(2)) {
   run("docker", ["compose", "version"], "Docker Compose is required. Install/start Docker Desktop or Docker Engine with Compose.");
   run("docker", ["info", "--format", "{{.ServerVersion}}"], "Docker is not running. Start Docker and rerun npm run setup.");
   if (!existsSync(join(runtime, "node_modules", ".bin", "tsx"))) {
-    run("npm", ["ci", "--prefix", "runtime"], "Runtime dependency installation failed. Check npm registry access, then rerun npm run setup.");
+    installRuntimeDependencies();
   }
   run("npm", ["run", "db:start", "--prefix", "runtime"], "The local Supabase stack did not start. Check Docker and the configured loopback port.");
   run("npm", ["run", "db:with-env", "--prefix", "runtime", "--", "tsx", "scripts/smoke-setup.ts"], "The proxy/database startup smoke check failed.");

@@ -43,6 +43,46 @@ the gate yet.
   exits 0. **Verified by:** the pull request's `runtime-test` job and its
   description.
 
+## REQ-4 — Bounded setup infrastructure retries
+
+WHEN local Compose startup reports a public registry rate limit, THE SYSTEM
+SHALL attempt startup at most seven times, waiting 2, 4, 8, 16, 32 and 64
+seconds between attempts (126 seconds total backoff). It SHALL stop immediately
+on success or a non-rate-limit error and preserve the final sanitized error on
+exhaustion. Normal local setup behavior SHALL otherwise remain unchanged.
+
+THE `setup-linux` job SHALL keep its required-check name and configure npm
+fetch-retries to 5, fetch-retry-mintimeout to 10000 and fetch-retry-maxtimeout
+to 60000 before setup. Its npm processes, including nested setup commands,
+SHALL inherit `NODE_OPTIONS=--dns-result-order=ipv4first`. These npm settings
+SHALL NOT change local setup or other CI jobs.
+
+IF Compose images are tag-only, THEN THE SYSTEM SHALL NOT switch registries.
+The current three images use tags on public.ecr.aws, so no mirror fallback
+is authorized.
+
+THE `setup-linux` job SHALL restore an `actions/cache` entry (pinned by full
+commit SHA) keyed on the SHA-256 of the sorted, exact image references in
+`runtime/supabase/docker-compose.local.yml`, before setup. On a hit it SHALL
+`docker load` the cached tarball. On a miss it SHALL, before setup, pull those
+references one at a time from their own registry, retrying each failed pull at
+most four times after waits of 5, 10, 20 and 40 seconds, then `docker save`
+exactly those references and save them to the cache. Because the cache is
+stored before setup runs, a run whose setup later fails still leaves a hit for
+the next run. Changing any image reference changes the key.
+
+"Cold" semantics: the cache holds only registry images. The cold-checkout
+checks (no `runtime/node_modules`, no project database volume) and the 300
+second assertion on `npm run setup` are unchanged. A cache-hit run measures
+setup without image pulls, so it is faster than a cache-miss run; only a
+cache-miss run exercises the full cold registry path.
+
+Acceptance: stubbed Docker exercises startup past the old three-attempt limit
+and exhaustion without real waits; helper tests cover immediate success and
+non-rate-limit errors; workflow tests verify job-scoped npm settings and that the cache restore,
+load, save and store steps exist, are SHA-pinned and are keyed on the image
+references.
+
 ## Out of scope
 
 The `db:verify-*` Node integration scripts need a real or local model

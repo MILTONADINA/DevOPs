@@ -12,10 +12,57 @@ jobs:
   setup-linux:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    env:
+      NODE_OPTIONS: --dns-result-order=ipv4first
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444  # v5.0.0
         with: { node-version: 22 }
+      - name: Retry transient npm registry failures
+        run: |
+          npm config set fetch-retries 5
+          npm config set fetch-retry-mintimeout 10000
+          npm config set fetch-retry-maxtimeout 60000
+      - name: Resolve local stack image references
+        id: images
+        run: |
+          refs=$(sed -nE 's/^[[:space:]]+image:[[:space:]]*([^[:space:]#]+).*/\1/p' runtime/supabase/docker-compose.local.yml | sort -u)
+          test -n "$refs"
+          printf '%s\n' "$refs" > "$RUNNER_TEMP/stack-images.txt"
+          echo "hash=$(sha256sum "$RUNNER_TEMP/stack-images.txt" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+      - name: Restore local stack image cache
+        id: image-cache
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830  # v4.3.0
+        with:
+          path: ~/.cache/devops-stack-images
+          key: stack-images-${{ runner.os }}-${{ steps.images.outputs.hash }}
+      - name: Load cached local stack images
+        if: steps.image-cache.outputs.cache-hit == 'true'
+        run: docker load --input ~/.cache/devops-stack-images/images.tar
+      - name: Pull local stack images one at a time
+        if: steps.image-cache.outputs.cache-hit != 'true'
+        run: |
+          mapfile -t refs < "$RUNNER_TEMP/stack-images.txt"
+          for ref in "${refs[@]}"; do
+            for delay in 5 10 20 40 0; do
+              docker pull --quiet "$ref" && continue 2
+              test "$delay" -gt 0 || { echo "could not pull $ref" >&2; exit 1; }
+              echo "pull of $ref failed; retrying in ${delay}s"
+              sleep "$delay"
+            done
+          done
+      - name: Save local stack images to cache
+        if: steps.image-cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p ~/.cache/devops-stack-images
+          mapfile -t refs < "$RUNNER_TEMP/stack-images.txt"
+          docker save --output ~/.cache/devops-stack-images/images.tar "${refs[@]}"
+      - name: Store local stack image cache
+        if: steps.image-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830  # v4.3.0
+        with:
+          path: ~/.cache/devops-stack-images
+          key: ${{ steps.image-cache.outputs.cache-primary-key }}
       - name: Cold checkout to local proxy and database
         run: |
           test ! -d runtime/node_modules

@@ -344,42 +344,52 @@ function recommend(profile: Omit<Profile, 'recommended'>): Profile['recommended'
 // route paths or header references that signal a webhook receiver. Cheap
 // heuristic; downstream human review of the recommendation is the final gate.
 function detectWebhookIndicators(root: string): boolean {
-  const candidates: string[] = [];
-  for (const rel of ['src', 'app', 'pages', 'api', 'routes', 'server']) {
-    const dir = path.join(root, rel);
-    if (!fileExists(dir)) continue;
-    try {
-      const entries = fs.readdirSync(dir, { withFileTypes: true });
-      for (const e of entries) {
-        if (e.isFile()) candidates.push(path.join(dir, e.name));
-        else if (e.isDirectory()) {
-          try {
-            const sub = fs.readdirSync(path.join(dir, e.name), { withFileTypes: true });
-            for (const s of sub) if (s.isFile()) candidates.push(path.join(dir, e.name, s.name));
-          } catch { /* skip unreadable */ }
-        }
-      }
-    } catch { /* skip unreadable */ }
-  }
-  try {
-    for (const e of fs.readdirSync(root, { withFileTypes: true })) {
-      if (e.isFile() && /\.(ts|tsx|js|jsx|py|rs|go)$/.test(e.name)) candidates.push(path.join(root, e.name));
-    }
-  } catch { /* skip */ }
-
   const webhookRoute = /['"\/]webhooks?[\/'"]/i;
   const stripeSig = /['"]Stripe-Signature['"]/;
   const githubSig = /['"]X-Hub-Signature(-256)?['"]/i;
   const sdkRef = /from\s+['"]@octokit\/webhooks['"]|require\s*\(\s*['"]@octokit\/webhooks['"]\s*\)|stripe\.webhooks\./;
-
-  for (const file of candidates) {
+  const hasIndicator = (file: string): boolean => {
     let text: string;
-    try { text = fs.readFileSync(file, 'utf-8'); } catch { continue; }
-    if (webhookRoute.test(text) || stripeSig.test(text) || githubSig.test(text) || sdkRef.test(text)) {
-      return true;
+    try { text = fs.readFileSync(file, 'utf-8'); } catch { return false; }
+    return webhookRoute.test(text) || stripeSig.test(text) || githubSig.test(text) || sdkRef.test(text);
+  };
+
+  // Same 2000-entry budget as languagesFromExtensions, shared by every listing below.
+  // Entries are read one at a time, symbolic links are skipped, and the scan returns as
+  // soon as one file shows an indicator.
+  let budget = 2000;
+  // Returns true when a file in `dir` has an indicator; sub-folders are handed to onDir.
+  const scanDir = (dir: string, accept: (name: string) => boolean, onDir?: (full: string) => void): boolean => {
+    let handle: fs.Dir;
+    try { handle = fs.opendirSync(dir); } catch { return false; }
+    try {
+      for (;;) {
+        if (budget-- <= 0) return false;
+        let entry: fs.Dirent | null;
+        try { entry = handle.readSync(); } catch { return false; }
+        if (!entry) return false;
+        if (entry.isSymbolicLink()) continue;
+        if (entry.isFile()) {
+          if (accept(entry.name) && hasIndicator(path.join(dir, entry.name))) return true;
+        } else if (entry.isDirectory() && onDir) onDir(path.join(dir, entry.name));
+      }
+    } finally {
+      try { handle.closeSync(); } catch { /* already closed */ }
+    }
+  };
+
+  for (const rel of ['src', 'app', 'pages', 'api', 'routes', 'server']) {
+    if (budget <= 0) return false;
+    const dir = path.join(root, rel);
+    try { if (fs.lstatSync(dir).isSymbolicLink()) continue; } catch { continue; }
+    const subdirs: string[] = [];
+    if (scanDir(dir, () => true, full => subdirs.push(full))) return true;
+    for (const sub of subdirs) {
+      if (budget <= 0) return false;
+      if (scanDir(sub, () => true)) return true;
     }
   }
-  return false;
+  return budget > 0 && scanDir(root, name => /\.(ts|tsx|js|jsx|py|rs|go)$/.test(name));
 }
 
 

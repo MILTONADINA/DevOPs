@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
-import { configureGitHooks, detectPlatform, listActiveHooks, main } from "../scripts/setup-local.mjs";
+import { RUNTIME_INSTALL_SCRIPT_ALLOWLIST, configureGitHooks, detectPlatform, installRuntimeDependencies, listActiveHooks, main } from "../scripts/setup-local.mjs";
 
 test("root setup supports macOS, Linux, and WSL2 but refuses native Windows", () => {
   assert.equal(detectPlatform("darwin", "Darwin Kernel Version 25"), "macOS");
@@ -35,6 +35,14 @@ test("Stratum setup uses the same local workflow without a dotenv-writing legacy
   const packageJson = JSON.parse(readFileSync(new URL("../runtime/package.json", import.meta.url), "utf8"));
   assert.equal(packageJson.scripts.setup, "node ../scripts/setup-local.mjs");
   assert.equal(existsSync(new URL("../runtime/scripts/setup.ts", import.meta.url)), false);
+});
+
+test("root setup keeps delegating Compose startup and leaves npm network settings to CI", () => {
+  const source = readFileSync(new URL("../scripts/setup-local.mjs", import.meta.url), "utf8");
+  const runtimePackage = JSON.parse(readFileSync(new URL("../runtime/package.json", import.meta.url), "utf8"));
+  assert.match(source, /run\("npm", \["run", "db:start", "--prefix", "runtime"\]/);
+  assert.equal(runtimePackage.scripts["db:start"], "tsx scripts/local-compose.ts start");
+  assert.doesNotMatch(source, /NODE_OPTIONS|fetch-retr|npm config/);
 });
 
 // A fake git for configureGitHooks: records each call. `top` answers rev-parse --show-toplevel
@@ -188,3 +196,31 @@ test("the pre-commit hook lets a clean commit through", () => withTempDir((dir) 
   assert.equal(run.status, 0);
   assert.equal(run.stderr, "");
 }));
+
+test("specs/security/stratum-local-network.md#AC-9 runtime install ignores dependency scripts", () => {
+  const calls = [];
+  installRuntimeDependencies((command, args, failure) => calls.push({ command, args, failure }));
+  assert.deepEqual(calls[0].args, ["ci", "--prefix", "runtime", "--ignore-scripts"]);
+  assert.equal(calls[0].command, "npm");
+  assert.match(calls[0].failure, /Runtime dependency installation failed/);
+  assert.deepEqual(
+    calls.slice(1).map((c) => c.args),
+    RUNTIME_INSTALL_SCRIPT_ALLOWLIST.map((pkg) => ["rebuild", "--prefix", "runtime", pkg]),
+  );
+  assert.ok(calls.every((c) => c.args[0] !== "ci" || c.args.includes("--ignore-scripts")));
+  assert.ok(RUNTIME_INSTALL_SCRIPT_ALLOWLIST.every((pkg) => /^(@[\w.-]+\/)?[\w.-]+$/.test(pkg)));
+});
+
+test("specs/security/stratum-local-network.md#AC-9 a failed install reports the setup message", () => {
+  assert.throws(() => installRuntimeDependencies((_c, _a, failure) => { throw new Error(failure); }), /Runtime dependency installation failed/);
+});
+
+test("specs/security/stratum-local-network.md#AC-9 rebuilds only allowlisted packages, after the script-free install", () => {
+  const calls = [];
+  installRuntimeDependencies((command, args) => calls.push([command, ...args]), ["esbuild", "@scope/native"]);
+  assert.deepEqual(calls, [
+    ["npm", "ci", "--prefix", "runtime", "--ignore-scripts"],
+    ["npm", "rebuild", "--prefix", "runtime", "esbuild"],
+    ["npm", "rebuild", "--prefix", "runtime", "@scope/native"],
+  ]);
+});
