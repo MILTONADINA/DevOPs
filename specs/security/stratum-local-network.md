@@ -60,6 +60,11 @@ IF `PORT` is set and is not an integer from 1 to 65535, OR `RATE_LIMIT_MAX` is s
 - The local setup docs SHALL name the new variables and the reason for the default.
 - `runtime/Dockerfile` SHALL be removed (owner decision O-11: no deployment; Compose already covers local use). Every doc that tells a user to run it SHALL be removed or rewritten.
 
+### REQ-7 — Local setup does not run dependency install scripts
+**Enforced by:** test:tests/setup-local.test.mjs
+- When `npm run setup` installs the runtime dependencies, it SHALL run `npm ci --prefix runtime --ignore-scripts`.
+- Where a runtime dependency needs its install script, setup SHALL run `npm rebuild --prefix runtime <package>` for that package only, from a commented allowlist in `scripts/setup-local.mjs` (currently empty).
+
 ## Acceptance criteria
 
 Tests live in `runtime/test/proxy/local-network.test.ts` unless stated. Each test title names its AC as `specs/security/stratum-local-network.md#AC-n`.
@@ -93,6 +98,7 @@ Tests live in `runtime/test/proxy/local-network.test.ts` unless stated. Each tes
   - `git ls-files runtime/Dockerfile` is empty;
   - `git grep -n "docker run.*stratum-proxy\|HOST=0.0.0.0" -- runtime/docs docs README.md` finds nothing;
   - API_REFERENCE states the per-mode auth rule.
+- **AC-9** (REQ-7). With a stubbed runner, `installRuntimeDependencies` issues exactly `npm ci --prefix runtime --ignore-scripts` followed by one `npm rebuild --prefix runtime <pkg>` per allowlisted package and nothing else, and a failing install raises the "Runtime dependency installation failed" message. Test: `tests/setup-local.test.mjs`.
 
 ## Falsified by
 

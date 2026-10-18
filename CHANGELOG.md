@@ -8,6 +8,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Security
+
+- `npm run setup` installs runtime dependencies with `npm ci --ignore-scripts`, so dependency install scripts no longer run on first setup; an explicit `npm rebuild` allowlist (empty today) covers any package that needs one.
+
 ### Added — security policy
 
 - `SECURITY.md`: supported versions (latest 0.x minor), supported Node range,
