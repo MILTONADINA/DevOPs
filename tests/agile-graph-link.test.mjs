@@ -104,7 +104,7 @@ test(`only Node 24 to 26 is supported (${SPEC}#ac-2)`, () => {
 test(`without the engine, at another version, on Node 22 or 27, or with --no-agile-graph, nothing is written (${SPEC}#ac-2)`, () => {
   const cases = [
     { name: 'missing', setup: () => {}, extra: {}, reason: /not installed/ },
-    { name: 'unlisted version', setup: s => s.installEngine('project', '0.2.0'), extra: {}, reason: /links only/ },
+    { name: 'unlisted version', setup: s => s.installEngine('project', '9.0.0'), extra: {}, reason: /links only/ },
     { name: 'Node 22', setup: s => s.installEngine('project'), extra: { nodeVersion: '22.12.0' }, reason: /Node 24 to 26/ },
     { name: 'Node 27', setup: s => s.installEngine('project'), extra: { nodeVersion: '27.0.0' }, reason: /Node 24 to 26/ },
     { name: 'skip flag', setup: s => s.installEngine('project'), extra: { skip: true }, reason: /--no-agile-graph/ },
@@ -197,7 +197,7 @@ test(`a workspace root's engine runs through npx; a global or PATH engine runs t
     });
   }
   withSetup(setup => {
-    const result = link(setup, { pathEnv: setup.binWith(setup.installEngine('elsewhere', '0.2.0')) });
+    const result = link(setup, { pathEnv: setup.binWith(setup.installEngine('elsewhere', '9.0.0')) });
     assert.equal(result.status, 'skipped', 'a PATH engine at another version is not linked');
   });
 });
