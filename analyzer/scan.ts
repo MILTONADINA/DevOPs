@@ -381,6 +381,7 @@ function detectWebhookIndicators(root: string): boolean {
   for (const rel of ['src', 'app', 'pages', 'api', 'routes', 'server']) {
     if (budget <= 0) return false;
     const dir = path.join(root, rel);
+    try { if (fs.lstatSync(dir).isSymbolicLink()) continue; } catch { continue; }
     const subdirs: string[] = [];
     if (scanDir(dir, () => true, full => subdirs.push(full))) return true;
     for (const sub of subdirs) {

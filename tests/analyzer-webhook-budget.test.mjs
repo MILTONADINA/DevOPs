@@ -101,3 +101,18 @@ test(`a symlinked folder is not followed (${SPEC}#ac-5)`, () => {
     }
   });
 });
+
+test(`a symlinked entry-point folder is not followed (${SPEC}#ac-5)`, () => {
+  withProject({}, dir => {
+    const outside = realpathSync(mkdtempSync(path.join(tmpdir(), 'analyzer-outside-')));
+    try {
+      writeFileSync(path.join(outside, 'h.ts'), "route('/webhook/x')");
+      symlinkSync(outside, path.join(dir, 'src'));
+      const { r, profile } = analyzeCounted(dir);
+      assert.equal(r.status, 0, r.stderr);
+      assert.ok(!profile.includes(MARKER), profile);
+    } finally {
+      rmSync(outside, { recursive: true, force: true });
+    }
+  });
+});
