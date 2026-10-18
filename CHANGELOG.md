@@ -59,6 +59,12 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- `devops init` installs a short consumer `CLAUDE.md` (from
+  `templates/claude-md/CLAUDE_TEMPLATE.md`) instead of this repository's own
+  development `CLAUDE.md`, which named files a project does not have (#284,
+  `specs/release/npm-package.md` REQ-11). The package no longer ships the
+  repository's `CLAUDE.md`. An existing `CLAUDE.md` is never replaced, and init
+  now says so.
 - `devops init` points the installed `AGENTS.md`, and the first steps it prints, at
   the constitution files where the package is installed, instead of at
   `constitution/` files a project does not have (#282,
