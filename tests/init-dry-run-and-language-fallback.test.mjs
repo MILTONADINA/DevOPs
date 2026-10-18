@@ -94,8 +94,9 @@ test(`the walk stops at the entry budget and still returns a result (${SPEC}#ac-
     assert.ok(!line.includes('rust'), line);
     assert.ok(line.startsWith('Languages:'), line);
     // Read one entry at a time and stop at the 2000-entry budget, not after listing all
-    // 2502; every directory opened is closed.
-    assert.equal(counts.reads, 2000, JSON.stringify(counts));
+    // 2502; every directory opened is closed. Webhook detection (REQ-5) runs its own
+    // 2000-entry walk of the same root, so the project total is two budgets.
+    assert.equal(counts.reads, 4000, JSON.stringify(counts));
     assert.equal(counts.closed, counts.opened, JSON.stringify(counts));
   });
 });

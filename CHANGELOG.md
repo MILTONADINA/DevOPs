@@ -59,6 +59,9 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- `devops analyze` reads at most 2,000 directory entries when it looks for webhook
+  handlers, stops at the first indicator and skips symbolic links, so a very large
+  repository no longer makes it slow or exhaust memory.
 - `devops init` installs a short consumer `CLAUDE.md` (from
   `templates/claude-md/CLAUDE_TEMPLATE.md`) instead of this repository's own
   development `CLAUDE.md`, which named files a project does not have (#284,
