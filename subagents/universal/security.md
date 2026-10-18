@@ -34,12 +34,13 @@ change was scanned.
 
 ## Offline mode
 
-Named semgrep rulesets come from the registry, and even `semgrep --version`
-makes a network call and writes `~/.semgrep/`, so Tier 2 fails exactly when
-the network is forbidden. When the network is not allowed:
+Named semgrep rulesets come from the registry, and semgrep itself (even
+`semgrep --version`) can attempt network access and write `~/.semgrep/`, so
+the semgrep part of Tier 2 can fail where the network is forbidden. When the
+network is not allowed:
 
 - use vendored or pinned local rules, not registry names
-- pass `--metrics=off` and disable the version check
+- pass `--metrics=off` and `--disable-version-check`
 - report every network or home-directory side effect of any scanner you run
 
 ## Code that calls language models
