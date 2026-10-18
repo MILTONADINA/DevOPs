@@ -43,6 +43,28 @@ the gate yet.
   exits 0. **Verified by:** the pull request's `runtime-test` job and its
   description.
 
+## REQ-4 — Bounded setup infrastructure retries
+
+WHEN local Compose startup reports a public registry rate limit, THE SYSTEM
+SHALL attempt startup at most seven times, waiting 2, 4, 8, 16, 32 and 64
+seconds between attempts (126 seconds total backoff). It SHALL stop immediately
+on success or a non-rate-limit error and preserve the final sanitized error on
+exhaustion. Normal local setup behavior SHALL otherwise remain unchanged.
+
+THE `setup-linux` job SHALL keep its required-check name and configure npm
+fetch-retries to 5, fetch-retry-mintimeout to 10000 and fetch-retry-maxtimeout
+to 60000 before setup. Its npm processes, including nested setup commands,
+SHALL inherit `NODE_OPTIONS=--dns-result-order=ipv4first`. These npm settings
+SHALL NOT change local setup or other CI jobs.
+
+IF Compose images are tag-only, THEN THE SYSTEM SHALL NOT switch registries.
+The current three images use tags on public.ecr.aws, so no mirror fallback
+is authorized. Image caching is excluded to retain the cold-checkout check.
+
+Acceptance: stubbed Docker exercises startup past the old three-attempt limit
+and exhaustion without real waits; helper tests cover immediate success and
+non-rate-limit errors; workflow tests verify job-scoped npm settings.
+
 ## Out of scope
 
 The `db:verify-*` Node integration scripts need a real or local model

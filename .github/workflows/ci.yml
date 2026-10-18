@@ -12,10 +12,17 @@ jobs:
   setup-linux:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    env:
+      NODE_OPTIONS: --dns-result-order=ipv4first
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444  # v5.0.0
         with: { node-version: 22 }
+      - name: Retry transient npm registry failures
+        run: |
+          npm config set fetch-retries 5
+          npm config set fetch-retry-mintimeout 10000
+          npm config set fetch-retry-maxtimeout 60000
       - name: Cold checkout to local proxy and database
         run: |
           test ! -d runtime/node_modules

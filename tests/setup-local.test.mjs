@@ -37,6 +37,14 @@ test("Stratum setup uses the same local workflow without a dotenv-writing legacy
   assert.equal(existsSync(new URL("../runtime/scripts/setup.ts", import.meta.url)), false);
 });
 
+test("root setup keeps delegating Compose startup and leaves npm network settings to CI", () => {
+  const source = readFileSync(new URL("../scripts/setup-local.mjs", import.meta.url), "utf8");
+  const runtimePackage = JSON.parse(readFileSync(new URL("../runtime/package.json", import.meta.url), "utf8"));
+  assert.match(source, /run\("npm", \["run", "db:start", "--prefix", "runtime"\]/);
+  assert.equal(runtimePackage.scripts["db:start"], "tsx scripts/local-compose.ts start");
+  assert.doesNotMatch(source, /NODE_OPTIONS|fetch-retr|npm config/);
+});
+
 // A fake git for configureGitHooks: records each call. `top` answers rev-parse --show-toplevel
 // (throwing, as git does, outside a checkout); `hooksPath` answers config --get core.hooksPath
 // (throwing, as git exits 1, when it is unset).
