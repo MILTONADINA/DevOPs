@@ -93,6 +93,7 @@
     "specs/security/stratum-local-network.md#REQ-3",
     "specs/security/stratum-local-network.md#REQ-4",
     "specs/security/stratum-local-network.md#REQ-5",
-    "specs/security/stratum-local-network.md#REQ-6"
+    "specs/security/stratum-local-network.md#REQ-6",
+    "specs/security/stratum-local-network.md#REQ-7"
   ]
 }
