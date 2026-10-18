@@ -214,3 +214,13 @@ test("specs/security/stratum-local-network.md#AC-9 runtime install ignores depen
 test("specs/security/stratum-local-network.md#AC-9 a failed install reports the setup message", () => {
   assert.throws(() => installRuntimeDependencies((_c, _a, failure) => { throw new Error(failure); }), /Runtime dependency installation failed/);
 });
+
+test("specs/security/stratum-local-network.md#AC-9 rebuilds only allowlisted packages, after the script-free install", () => {
+  const calls = [];
+  installRuntimeDependencies((command, args) => calls.push([command, ...args]), ["esbuild", "@scope/native"]);
+  assert.deepEqual(calls, [
+    ["npm", "ci", "--prefix", "runtime", "--ignore-scripts"],
+    ["npm", "rebuild", "--prefix", "runtime", "esbuild"],
+    ["npm", "rebuild", "--prefix", "runtime", "@scope/native"],
+  ]);
+});

@@ -107,14 +107,15 @@ export function configureGitHooks({
 }
 
 // Dependency install scripts do not run during setup (supply-chain risk). Packages listed here get
-// `npm rebuild` after the install. It is empty on purpose: the lockfile's install-script packages
-// (esbuild, workerd, fsevents, protobufjs, onnxruntime-node) ship their binaries through
-// optionalDependencies or in the tarball, and tsx, wrangler and onnxruntime-node load without them.
+// `npm rebuild` after the install. It is empty: the lockfile's install-script packages are esbuild,
+// fsevents, onnxruntime-node, protobufjs and workerd, and with their scripts skipped tsx,
+// `wrangler --version` and require("onnxruntime-node") still work. Add a package here only when
+// the runtime fails without its install script.
 export const RUNTIME_INSTALL_SCRIPT_ALLOWLIST = [];
 
-export function installRuntimeDependencies(runner = run) {
+export function installRuntimeDependencies(runner = run, allowlist = RUNTIME_INSTALL_SCRIPT_ALLOWLIST) {
   runner("npm", ["ci", "--prefix", "runtime", "--ignore-scripts"], "Runtime dependency installation failed. Check npm registry access, then rerun npm run setup.");
-  for (const pkg of RUNTIME_INSTALL_SCRIPT_ALLOWLIST) {
+  for (const pkg of allowlist) {
     runner("npm", ["rebuild", "--prefix", "runtime", pkg], `Rebuilding ${pkg} failed. Check your toolchain, then rerun npm run setup.`);
   }
 }
