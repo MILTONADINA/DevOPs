@@ -2,10 +2,10 @@ import { execFileSync } from "node:child_process";
 import { describe, expect, test, vi } from "vitest";
 import { assertLocalPorts, dockerFailureDetail, main, resolveLocalStackConfig, retryRateLimited, serviceJwt } from "../../scripts/local-compose";
 
-vi.mock("node:child_process", async (importOriginal) => ({
-  ...await importOriginal<typeof import("node:child_process")>(),
-  execFileSync: vi.fn(),
-}));
+vi.mock("node:child_process", async (importOriginal) => {
+  const actual = (await importOriginal()) as Record<string, unknown>;
+  return { ...actual, execFileSync: vi.fn() };
+});
 
 describe("project-local Compose boundary", () => {
   test("isolated verification instance has distinct names and loopback port", () => {
