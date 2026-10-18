@@ -45,3 +45,26 @@ test('setup-linux alone configures npm retries and inherited IPv4-first DNS befo
     assert.ok(!other.steps.some((step) => /npm config set fetch-retr/.test(step.run ?? '')));
   }
 });
+
+test('setup-linux caches the local stack images keyed on their exact references (specs/ops/ci-product-suites.md#req-4--bounded-setup-infrastructure-retries)', () => {
+  const steps = parse(ci).jobs['setup-linux'].steps;
+  const idx = (pred) => steps.findIndex(pred);
+  const resolve = idx((s) => s.id === 'images');
+  const restore = idx((s) => /^actions\/cache\/restore@[0-9a-f]{40}$/.test(s.uses ?? ''));
+  const load = idx((s) => s.run?.includes('docker load'));
+  const setup = idx((s) => s.run?.includes('npm run setup'));
+  const save = idx((s) => s.run?.includes('docker save'));
+  const store = idx((s) => /^actions\/cache\/save@[0-9a-f]{40}$/.test(s.uses ?? ''));
+  for (const i of [resolve, restore, load, setup, save, store]) assert.ok(i >= 0);
+  assert.ok(resolve < restore && restore < load && load < setup && setup < save && save < store);
+  assert.match(steps[resolve].run, /docker-compose\.local\.yml/);
+  assert.match(steps[resolve].run, /image:/);
+  assert.match(steps[resolve].run, /sha256sum/);
+  assert.match(steps[restore].with.key, /steps\.images\.outputs\.hash/);
+  assert.equal(steps[load].if, "steps.image-cache.outputs.cache-hit == 'true'");
+  assert.equal(steps[save].if, "steps.image-cache.outputs.cache-hit != 'true'");
+  assert.equal(steps[store].if, steps[save].if);
+  assert.equal(steps[store].with.path, steps[restore].with.path);
+  assert.match(steps[store].with.key, /cache-primary-key/);
+  assert.match(steps[setup].run, /-lt 300/);
+});

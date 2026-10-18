@@ -59,11 +59,26 @@ SHALL NOT change local setup or other CI jobs.
 
 IF Compose images are tag-only, THEN THE SYSTEM SHALL NOT switch registries.
 The current three images use tags on public.ecr.aws, so no mirror fallback
-is authorized. Image caching is excluded to retain the cold-checkout check.
+is authorized.
+
+THE `setup-linux` job SHALL restore an `actions/cache` entry (pinned by full
+commit SHA) keyed on the SHA-256 of the sorted, exact image references in
+`runtime/supabase/docker-compose.local.yml`, before setup. On a hit it SHALL
+`docker load` the cached tarball; on a miss it SHALL let setup pull as before
+and then `docker save` exactly those references and save them to the cache, so
+later runs skip the registry. Changing any image reference changes the key.
+
+"Cold" semantics: the cache holds only registry images. The cold-checkout
+checks (no `runtime/node_modules`, no project database volume) and the 300
+second assertion on `npm run setup` are unchanged. A cache-hit run measures
+setup without image pulls, so it is faster than a cache-miss run; only a
+cache-miss run exercises the full cold registry path.
 
 Acceptance: stubbed Docker exercises startup past the old three-attempt limit
 and exhaustion without real waits; helper tests cover immediate success and
-non-rate-limit errors; workflow tests verify job-scoped npm settings.
+non-rate-limit errors; workflow tests verify job-scoped npm settings and that the cache restore,
+load, save and store steps exist, are SHA-pinned and are keyed on the image
+references.
 
 ## Out of scope
 

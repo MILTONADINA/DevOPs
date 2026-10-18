@@ -23,6 +23,22 @@ jobs:
           npm config set fetch-retries 5
           npm config set fetch-retry-mintimeout 10000
           npm config set fetch-retry-maxtimeout 60000
+      - name: Resolve local stack image references
+        id: images
+        run: |
+          refs=$(sed -nE 's/^[[:space:]]+image:[[:space:]]*([^[:space:]#]+).*/\1/p' runtime/supabase/docker-compose.local.yml | sort -u)
+          test -n "$refs"
+          printf '%s\n' "$refs" > "$RUNNER_TEMP/stack-images.txt"
+          echo "hash=$(sha256sum "$RUNNER_TEMP/stack-images.txt" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+      - name: Restore local stack image cache
+        id: image-cache
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830  # v4.3.0
+        with:
+          path: ~/.cache/devops-stack-images
+          key: stack-images-${{ runner.os }}-${{ steps.images.outputs.hash }}
+      - name: Load cached local stack images
+        if: steps.image-cache.outputs.cache-hit == 'true'
+        run: docker load --input ~/.cache/devops-stack-images/images.tar
       - name: Cold checkout to local proxy and database
         run: |
           test ! -d runtime/node_modules
@@ -35,6 +51,18 @@ jobs:
           elapsed_seconds=$(( $(date +%s) - started_at ))
           echo "Linux cold setup completed in ${elapsed_seconds}s"
           test "$elapsed_seconds" -lt 300
+      - name: Save local stack images to cache
+        if: steps.image-cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p ~/.cache/devops-stack-images
+          mapfile -t refs < "$RUNNER_TEMP/stack-images.txt"
+          docker save --output ~/.cache/devops-stack-images/images.tar "${refs[@]}"
+      - name: Store local stack image cache
+        if: steps.image-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830  # v4.3.0
+        with:
+          path: ~/.cache/devops-stack-images
+          key: ${{ steps.image-cache.outputs.cache-primary-key }}
       - name: SQL integration tests (specs/ops/ci-product-suites.md REQ-2)
         run: |
           shopt -s nullglob
