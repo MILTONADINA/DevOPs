@@ -75,12 +75,17 @@ function tokenize(text) {
   const append = (value) => { word ??= { text: '', dynamic: false, substitutions: [] }; word.text += value; };
   const flush = () => { if (word) words.push(word); word = null; };
   const finish = (separator) => { flush(); if (words.length) commands.push({ words, separator }); words = []; };
+  const unsupported = (c) => ![' ', '\t', '\n'].includes(c) && /[\p{White_Space}\p{Cf}]/u.test(c);
   for (let i = 0; i < text.length; i++) {
-    const c = text[i];
+    const c = String.fromCodePoint(text.codePointAt(i));
+    i += c.length - 1;
     if (quote === "'") { if (c === "'") quote = null; else append(c); continue; }
+    if (!quote && unsupported(c)) throw new Error('unsupported whitespace or format character');
     if (c === '\\') {
       if (i + 1 === text.length) throw new Error('unfinished escape');
-      const next = text[++i];
+      const next = String.fromCodePoint(text.codePointAt(++i));
+      i += next.length - 1;
+      if (!quote && unsupported(next)) throw new Error('unsupported whitespace or format character');
       if (next === '\n') continue;
       if (quote === '"' && !['$', '`', '"', '\\'].includes(next)) append('\\');
       append(next);
@@ -96,14 +101,21 @@ function tokenize(text) {
     if (c === '"') { append(''); quote = quote === '"' ? null : '"'; continue; }
     if (quote === '"') { append(c); if (c === '$') word.dynamic = true; continue; }
     if (c === "'") { append(''); quote = "'"; continue; }
-    if (c === '#' && !word) { while (i + 1 < text.length && text[i + 1] !== '\n') i++; continue; }
+    if (c === '#' && !word) {
+      while (i + 1 < text.length && text[i + 1] !== '\n') {
+        const next = String.fromCodePoint(text.codePointAt(i + 1));
+        if (unsupported(next)) throw new Error('unsupported whitespace or format character');
+        i += next.length;
+      }
+      continue;
+    }
     if (';\n|&'.includes(c)) {
       let separator = c;
       if ((c === '|' || c === '&') && text[i + 1] === c) separator += text[++i];
       finish(separator);
       continue;
     }
-    if (/\s/.test(c)) { flush(); continue; }
+    if (c === ' ' || c === '\t') { flush(); continue; }
     if (c === '<' || c === '>') throw new Error('unsupported unquoted shell redirection');
     if ('(){}'.includes(c)) throw new Error('unsupported shell grouping or expansion');
     append(c);

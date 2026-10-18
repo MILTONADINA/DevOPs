@@ -74,3 +74,10 @@ test('setup-linux caches the local stack images keyed on their exact references 
   assert.match(steps[store].with.key, /cache-primary-key/);
   assert.match(steps[setup].run, /-lt 300/);
 });
+
+test('local stack images are pinned by digest (specs/ops/ci-product-suites.md#req-4--bounded-setup-infrastructure-retries)', () => {
+  const compose = readFileSync(new URL('../runtime/supabase/docker-compose.local.yml', import.meta.url), 'utf8');
+  const refs = [...compose.matchAll(/^\s+image:\s*(\S+)/gm)].map((m) => m[1]);
+  assert.equal(refs.length, 3);
+  for (const ref of refs) assert.match(ref, /^[a-z0-9.-]+\/[a-z0-9._/-]+:[\w.-]+@sha256:[0-9a-f]{64}$/, ref);
+});
