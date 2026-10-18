@@ -315,11 +315,11 @@ test(`every bin exists, starts with a shebang and is in the package (${SPEC}#ac-
 
 test(`the package ships the product and none of this repository's own records (${SPEC}#ac-4)`, () => {
   const files = pkg.files;
-  for (const needed of ['AGENTS.md', 'CLAUDE.md', 'analyzer/', 'skills/', 'hooks/', 'subagents/', 'verification/',
+  for (const needed of ['AGENTS.md', 'templates/', 'analyzer/', 'skills/', 'hooks/', 'subagents/', 'verification/',
     'governance/skill-manifest.yml', 'scripts/devops-paths.js', 'scripts/init-project.sh', 'LICENSE']) {
     assert.ok(files.includes(needed), `ships ${needed}`);
   }
-  for (const internal of ['docs/', 'governance/', 'scripts/', 'specs/', 'tests/', 'runtime/', '.workflow/',
+  for (const internal of ['CLAUDE.md', 'docs/', 'governance/', 'scripts/', 'specs/', 'tests/', 'runtime/', '.workflow/',
     'docs/handoff/', 'docs/LAUNCH_READINESS.md', 'governance/graph/', 'governance/test-floors.json']) {
     assert.ok(!files.includes(internal), `does not ship ${internal}`);
   }

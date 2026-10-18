@@ -34,7 +34,7 @@ function init(cwd, args = [], root) {
 function installPackage(dir, relative) {
   const root = path.join(dir, relative);
   mkdirSync(root, { recursive: true });
-  for (const name of ['package.json', 'AGENTS.md', 'CLAUDE.md', 'scripts', 'analyzer', 'constitution', 'cost-controls', 'governance/skill-manifest.yml']) {
+  for (const name of ['package.json', 'AGENTS.md', 'CLAUDE.md', 'templates/claude-md', 'scripts', 'analyzer', 'constitution', 'cost-controls', 'governance/skill-manifest.yml']) {
     cpSync(path.join(ROOT, name), path.join(root, name), { recursive: true });
   }
   symlinkSync(path.join(ROOT, 'node_modules'), path.join(root, 'node_modules'));
@@ -121,3 +121,56 @@ for (const before of [undefined, '# keep\r\nnode_modules/']) {
     });
   });
 }
+
+// Backticked repository paths: contain a slash or end in a file extension.
+function claudePaths(text) {
+  return [...text.matchAll(/`([^`\s]+)`/g)].map(m => m[1])
+    .filter(p => (p.includes('/') || /\.(md|sh|ts|js|yml)$/.test(p)) && p !== 'AGENTS.override.md');
+}
+
+test(`installed CLAUDE.md names only files that exist and no DevOPs-internal records (${SPEC}#ac-13)`, () => {
+  withProject(dir => {
+    const relative = 'node_modules/@miltonadina/devops';
+    installPackage(dir, relative);
+    init(dir);
+    const claude = readFileSync(path.join(dir, 'CLAUDE.md'), 'utf8');
+    const paths = claudePaths(claude);
+    for (const needed of ['AGENTS.md', `${relative}/constitution/LOOP.md`, '.workflow/state/budget.yml']) {
+      assert.ok(paths.includes(needed), `${needed} in ${paths}`);
+    }
+    for (const p of paths) assert.ok(existsSync(path.join(dir, p)), `${p} exists from the project`);
+    for (const banned of ['runtime/', 'blueprint.md', 'LAUNCH_READINESS', 'Stratum', 'graph-preflight', 'governance/graph', 'plan.md']) {
+      assert.ok(!claude.includes(banned), `${banned} absent`);
+    }
+    assert.ok(!claude.includes(dir) && !claude.includes('{{'), 'no absolute path or unfilled placeholder');
+  });
+});
+
+test(`external package CLAUDE.md is package-relative with no machine path (${SPEC}#ac-13)`, () => {
+  withProject(dir => {
+    const root = path.join(realpathSync(mkdtempSync(path.join(tmpdir(), 'init-284-pkg-'))), 'pkg');
+    try {
+      installPackage(root, '.');
+      init(dir, [], root);
+      const claude = readFileSync(path.join(dir, 'CLAUDE.md'), 'utf8');
+      assert.ok(claude.includes('`constitution/PRINCIPLES.md` in the `@miltonadina/devops` package'), claude);
+      assert.ok(!claude.includes(root) && !claude.includes('{{'));
+    } finally {
+      rmSync(path.dirname(root), { recursive: true, force: true });
+    }
+  });
+});
+
+test(`init keeps an existing CLAUDE.md and a dry run writes nothing (${SPEC}#ac-14)`, () => {
+  withProject(dir => {
+    installPackage(dir, 'node_modules/@miltonadina/devops');
+    const before = snapshot(dir);
+    const out = init(dir, ['--dry-run']);
+    assert.ok(out.includes('would install: CLAUDE.md'), out);
+    assert.deepEqual(snapshot(dir), before);
+    assert.ok(!existsSync(path.join(dir, 'CLAUDE.md')));
+    writeFileSync(path.join(dir, 'CLAUDE.md'), 'mine\n');
+    init(dir);
+    assert.equal(readFileSync(path.join(dir, 'CLAUDE.md'), 'utf8'), 'mine\n');
+  });
+});
