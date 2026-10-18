@@ -8,8 +8,15 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-10-18
+
 ### Security
 
+- The graph command classifier separates words only on space, tab and newline, as
+  the shell does, and refuses any other Unicode whitespace or format character
+  outside quotes. Before, a non-breaking space before `#` made the hook read the
+  rest of a command as a comment and allow it, while the shell ran it
+  (GHSA-c3g3-xw48-qrp3, `specs/graph/M-masterpiece-standard.md` AC-M16.9).
 - `npm run setup` installs runtime dependencies with `npm ci --ignore-scripts`, so dependency install scripts no longer run on first setup; an explicit `npm rebuild` allowlist (empty today) covers any package that needs one.
 
 ### Added — security policy
