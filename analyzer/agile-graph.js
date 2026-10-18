@@ -12,7 +12,7 @@ export const ENGINE = '@agile-graph/engine';
 // The engine versions whose cloud-default tools are exactly the ones PIN_SOURCE pins,
 // oldest first; CI checks every one against the real engine (REQ-1, REQ-7). Add a
 // version only after its `mcp-tools --client cloud --hashes` matches the pins.
-export const ENGINE_VERSIONS = ['0.1.0', '0.1.1'];
+export const ENGINE_VERSIONS = ['0.1.0', '0.1.1', '0.1.2', '0.2.0'];
 const NEWEST = ENGINE_VERSIONS[ENGINE_VERSIONS.length - 1];
 export const SERVER_KEY = 'agile-graph';
 export const PIN_SOURCE = 'mcp-configs/universal/agile-graph.tool-hashes.json';

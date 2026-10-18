@@ -43,8 +43,8 @@ separate, later work.
 `package.json` SHALL list `@agile-graph/engine` under `peerDependencies` with a range
 that never stops `npm install` (`>=0.1.0`), marked optional in `peerDependenciesMeta`.
 `ENGINE_VERSIONS` in `analyzer/agile-graph.js` SHALL list the engine versions whose
-cloud-default tools are exactly the ones the shipped pins describe (0.1.0 and 0.1.1 have
-identical definitions). A version SHALL be added only with pins that match it, and the
+cloud-default tools are exactly the ones the shipped pins describe (0.1.0, 0.1.1, 0.1.2 and 0.2.0
+have identical definitions). A version SHALL be added only with pins that match it, and the
 peer range SHALL include every listed version.
 
 **Enforced by:** test:tests/agile-graph-link.test.mjs
