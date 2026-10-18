@@ -8,6 +8,15 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- The reviewer subagent adds regression-across-specs and privacy-parity checks,
+  per-branch spec and test checks, a trace-primitive-neutral observability check,
+  unconsumed paid calls under cost, evidence for a Blocker and a per-check
+  "Not applicable" verdict. The security subagent adds an offline mode, a
+  language-model checklist, flag injection and host-project evidence
+  (`specs/security/subagent-definitions.md`, #269).
+
 ### Security
 
 - The dashboard pages (`/dashboard`, `/dashboard/graph`) allow their inline script

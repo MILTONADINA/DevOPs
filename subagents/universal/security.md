@@ -22,7 +22,7 @@ exploitable vs. false positives).
 - gitleaks (`skills/universal/security/gitleaks-scan`)
 
 ## Tier 2 (code, dependencies and UI)
-- semgrep with OWASP Top 10 + security-audit rulesets
+- semgrep with OWASP Top 10 + security-audit rulesets (see Offline mode)
 - npm audit / pnpm audit / pip-audit / cargo-audit / safety
 - WCAG scan (axe-core or Pa11y)
 
@@ -31,6 +31,26 @@ hook (`hooks/universal/post-tool/gitleaks-scan.sh`) and CI
 (`.github/workflows/security-scan.yml`) may also run some of these scanners,
 but whether they are wired varies by checkout, so neither is evidence that a
 change was scanned.
+
+## Offline mode
+
+Named semgrep rulesets come from the registry, and semgrep itself (even
+`semgrep --version`) can attempt network access and write `~/.semgrep/`, so
+the semgrep part of Tier 2 can fail where the network is forbidden. When the
+network is not allowed:
+
+- use vendored or pinned local rules, not registry names
+- pass `--metrics=off` and `--disable-version-check`
+- report every network or home-directory side effect of any scanner you run
+
+## Code that calls language models
+
+OWASP web rules miss the main risks here. Check:
+
+- what data reaches which provider kind (local, hosted, third party)
+- that export or consent policy is re-checked at each use, not only when
+  consent is given
+- model output persisted into future prompts (stored lessons, memory)
 
 ## Tier 3 (pre-release)
 - Full gitleaks history scan
@@ -48,6 +68,19 @@ For each finding, classify:
 - **TP-warning**: real but low-impact; document, allow merge
 - **FP**: false positive; document why, suppress in tool config
 - **needs-context**: cannot determine without human; ask
+
+## Injection checks
+
+Cover shell injection and flag injection: file names or values read as tool
+options (such as `--config=...`) when passed to a command without `--` or a
+leading `./`.
+
+## Host project evidence
+
+When the host project does not use DevOps, accept its own evidence format in
+place of the claim YAML below. There, the project owner, not this subagent,
+decides whether a finding blocks a merge; report the finding and your
+classification.
 
 ## Emit a proof artifact per scan
 
