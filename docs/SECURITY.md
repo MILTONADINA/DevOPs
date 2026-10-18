@@ -424,7 +424,8 @@ the adjacent Node classifier reads contained cycle/ref metadata and returns one
 validated decision. It never evaluates the proposed command or contacts a
 remote. [The installer](../analyzer/install.ts) copies the required companion
 beside either selected graph hook; installation does not establish tool wiring.
-See [CLAUDE.md](../CLAUDE.md) for actual registration.
+See the [DevOPs repository's CLAUDE.md](https://github.com/MILTONADINA/DevOPs/blob/main/CLAUDE.md) for that repository's registration;
+a consumer project registers hooks in its own Claude Code settings.
 
 **Status: implemented within the stated boundary.** The final 179 focused
 cases passed with no failures or skips, bound to the

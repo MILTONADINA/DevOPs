@@ -37,8 +37,8 @@ disabled by the agent.
 
 ## Graph Bash hooks
 
-Actual registration determines which hooks run; see [`CLAUDE.md`](../CLAUDE.md)
-for this checkout's wiring. The graph's `deploy-gate.sh` and
+Actual registration determines which hooks run; see the
+[DevOPs repository's `CLAUDE.md`](https://github.com/MILTONADINA/DevOPs/blob/main/CLAUDE.md) for that repository's own wiring. The graph's `deploy-gate.sh` and
 `block-sealed-refs.sh` implement the finite literal-command policy in
 [REQ-M16](../specs/graph/M-masterpiece-standard.md). The first checks scoped halt
 and deploy authority; the second protects the exact sealed tag/branch identities.

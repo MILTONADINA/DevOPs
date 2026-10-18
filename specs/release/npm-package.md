@@ -68,7 +68,7 @@ worktree's repository or to a submodule's git dir.
 
 ### REQ-4 — Package contents
 
-The package SHALL contain the contract (`AGENTS.md`, `CLAUDE.md`), the constitution,
+The package SHALL contain the contract (`AGENTS.md` and the consumer `templates/claude-md/CLAUDE_TEMPLATE.md`), the constitution,
 the skills with their signatures and manifest, the hooks and the companion they need,
 the subagents, the slash commands, the analyzer, the verification tools, the
 templates, the user documentation and the files those reference. It SHALL NOT contain
