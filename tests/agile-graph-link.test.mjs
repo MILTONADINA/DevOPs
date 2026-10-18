@@ -313,6 +313,20 @@ test(`comparing an engine's tool hashes with the pins names every changed, added
   assert.throws(() => comparePins([], pins), /JSON objects/);
 });
 
+test(`the pin comparison prints its result when run through a symlinked folder (${SPEC}#ac-7)`, { skip: process.platform === 'win32' && 'symlinks need privileges on Windows' }, () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'pin-diff-link-'));
+  try {
+    const linked = path.join(dir, 'scripts');
+    symlinkSync(path.join(ROOT, 'scripts'), linked, 'dir');
+    const pins = path.join(ROOT, PIN_SOURCE);
+    const run = spawnSync(process.execPath, [path.join(linked, 'agile-graph-pin-diff.mjs'), pins, pins], { encoding: 'utf8', timeout: 30_000 });
+    assert.equal(run.status, 0, run.stderr);
+    assert.deepEqual(JSON.parse(run.stdout), { match: true, changed: [], added: [], removed: [] });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test(`the weekly version check runs on a schedule, may only write issues, and never runs the new engine's install scripts (${SPEC}#ac-7)`, () => {
   const workflow = readFileSync(path.join(ROOT, '.github/workflows/agile-graph-versions.yml'), 'utf8');
   assert.match(workflow, /^\s+schedule:\n\s+# [^\n]*\n\s+- cron: '[^']+'$/m);
