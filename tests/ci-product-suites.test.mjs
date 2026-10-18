@@ -52,11 +52,17 @@ test('setup-linux caches the local stack images keyed on their exact references 
   const resolve = idx((s) => s.id === 'images');
   const restore = idx((s) => /^actions\/cache\/restore@[0-9a-f]{40}$/.test(s.uses ?? ''));
   const load = idx((s) => s.run?.includes('docker load'));
-  const setup = idx((s) => s.run?.includes('npm run setup'));
+  const pull = idx((s) => s.run?.includes('docker pull'));
   const save = idx((s) => s.run?.includes('docker save'));
   const store = idx((s) => /^actions\/cache\/save@[0-9a-f]{40}$/.test(s.uses ?? ''));
-  for (const i of [resolve, restore, load, setup, save, store]) assert.ok(i >= 0);
-  assert.ok(resolve < restore && restore < load && load < setup && setup < save && save < store);
+  const setup = idx((s) => s.run?.includes('npm run setup'));
+  for (const i of [resolve, restore, load, pull, save, store, setup]) assert.ok(i >= 0);
+  // The cache fills before setup, so a run that fails setup still leaves a hit for the next run.
+  assert.ok(resolve < restore && restore < load && load < pull && pull < save && save < store && store < setup);
+  assert.equal(steps[pull].if, "steps.image-cache.outputs.cache-hit != 'true'");
+  assert.match(steps[pull].run, /for ref in "\$\{refs\[@\]\}"/);
+  assert.match(steps[pull].run, /for delay in 5 10 20 40 0/);
+  assert.doesNotMatch(steps[pull].run, /mirror|docker\.io|gcr\.io/);
   assert.match(steps[resolve].run, /docker-compose\.local\.yml/);
   assert.match(steps[resolve].run, /image:/);
   assert.match(steps[resolve].run, /sha256sum/);

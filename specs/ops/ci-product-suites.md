@@ -64,9 +64,12 @@ is authorized.
 THE `setup-linux` job SHALL restore an `actions/cache` entry (pinned by full
 commit SHA) keyed on the SHA-256 of the sorted, exact image references in
 `runtime/supabase/docker-compose.local.yml`, before setup. On a hit it SHALL
-`docker load` the cached tarball; on a miss it SHALL let setup pull as before
-and then `docker save` exactly those references and save them to the cache, so
-later runs skip the registry. Changing any image reference changes the key.
+`docker load` the cached tarball. On a miss it SHALL, before setup, pull those
+references one at a time from their own registry, retrying each failed pull at
+most four times after waits of 5, 10, 20 and 40 seconds, then `docker save`
+exactly those references and save them to the cache. Because the cache is
+stored before setup runs, a run whose setup later fails still leaves a hit for
+the next run. Changing any image reference changes the key.
 
 "Cold" semantics: the cache holds only registry images. The cold-checkout
 checks (no `runtime/node_modules`, no project database volume) and the 300

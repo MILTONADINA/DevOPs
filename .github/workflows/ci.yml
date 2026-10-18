@@ -39,18 +39,18 @@ jobs:
       - name: Load cached local stack images
         if: steps.image-cache.outputs.cache-hit == 'true'
         run: docker load --input ~/.cache/devops-stack-images/images.tar
-      - name: Cold checkout to local proxy and database
+      - name: Pull local stack images one at a time
+        if: steps.image-cache.outputs.cache-hit != 'true'
         run: |
-          test ! -d runtime/node_modules
-          if docker volume inspect devops-stratum-compose_db-data >/dev/null 2>&1; then
-            echo "The project database volume already exists on this runner" >&2
-            exit 1
-          fi
-          started_at=$(date +%s)
-          npm run setup
-          elapsed_seconds=$(( $(date +%s) - started_at ))
-          echo "Linux cold setup completed in ${elapsed_seconds}s"
-          test "$elapsed_seconds" -lt 300
+          mapfile -t refs < "$RUNNER_TEMP/stack-images.txt"
+          for ref in "${refs[@]}"; do
+            for delay in 5 10 20 40 0; do
+              docker pull --quiet "$ref" && continue 2
+              test "$delay" -gt 0 || { echo "could not pull $ref" >&2; exit 1; }
+              echo "pull of $ref failed; retrying in ${delay}s"
+              sleep "$delay"
+            done
+          done
       - name: Save local stack images to cache
         if: steps.image-cache.outputs.cache-hit != 'true'
         run: |
@@ -63,6 +63,18 @@ jobs:
         with:
           path: ~/.cache/devops-stack-images
           key: ${{ steps.image-cache.outputs.cache-primary-key }}
+      - name: Cold checkout to local proxy and database
+        run: |
+          test ! -d runtime/node_modules
+          if docker volume inspect devops-stratum-compose_db-data >/dev/null 2>&1; then
+            echo "The project database volume already exists on this runner" >&2
+            exit 1
+          fi
+          started_at=$(date +%s)
+          npm run setup
+          elapsed_seconds=$(( $(date +%s) - started_at ))
+          echo "Linux cold setup completed in ${elapsed_seconds}s"
+          test "$elapsed_seconds" -lt 300
       - name: SQL integration tests (specs/ops/ci-product-suites.md REQ-2)
         run: |
           shopt -s nullglob
