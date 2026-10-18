@@ -57,9 +57,12 @@ to 60000 before setup. Its npm processes, including nested setup commands,
 SHALL inherit `NODE_OPTIONS=--dns-result-order=ipv4first`. These npm settings
 SHALL NOT change local setup or other CI jobs.
 
-IF Compose images are tag-only, THEN THE SYSTEM SHALL NOT switch registries.
-The current three images use tags on public.ecr.aws, so no mirror fallback
-is authorized.
+IF a Compose image is referenced by tag only, THEN THE SYSTEM SHALL NOT switch
+its registry. Each local stack image SHALL be referenced as
+`registry/name:tag@sha256:<digest>`, so the content is fixed whatever registry
+serves it. The three images are pulled from mirror.gcr.io (Google's Docker Hub
+cache) with the same index digests public.ecr.aws serves, because ECR Public's
+anonymous data quota is exhausted on shared CI runner addresses.
 
 THE `setup-linux` job SHALL restore an `actions/cache` entry (pinned by full
 commit SHA) keyed on the SHA-256 of the sorted, exact image references in

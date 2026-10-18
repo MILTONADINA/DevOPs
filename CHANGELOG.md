@@ -10,6 +10,12 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [0.5.0] — 2026-10-18
 
+### Changed
+
+- The local stack's three images are pinned by digest and pulled from
+  `mirror.gcr.io`, with the same content public.ecr.aws serves: ECR Public's
+  anonymous quota kept failing CI setup (`specs/ops/ci-product-suites.md` REQ-4).
+
 ### Security
 
 - The graph command classifier separates words only on space, tab and newline, as
