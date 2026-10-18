@@ -82,7 +82,7 @@ const HTML = `<!doctype html>
   <table id="waste"><thead><tr><th>Type</th><th>Severity</th><th>~Tokens</th><th>Detail</th></tr></thead><tbody></tbody></table>
   <h2>Sessions</h2>
   <table id="sessions"><thead><tr><th>Session</th><th>Started</th><th>Turns</th><th>Dropped</th><th>Input tok</th><th>Output tok</th></tr></thead><tbody></tbody></table>
-  <script>
+  <script nonce="__CSP_NONCE__">
     const fmt = (n) => Number(n).toLocaleString();
     const el = (tag, value, cls) => { const node = document.createElement(tag); if (value != null) node.textContent = String(value); if (cls) node.className = cls; return node; };
     const row = (values) => { const tr = document.createElement('tr'); values.forEach((v) => tr.appendChild(el('td', v))); return tr; };
@@ -181,6 +181,8 @@ const HTML = `<!doctype html>
   </script>
 </body></html>`;
 
+const CSP_NONCE_PLACEHOLDER = "__CSP_NONCE__";
+
 /**
  * Send a dashboard page whose single inline script is allowed by a fresh
  * per-response nonce (REQ-3), never by 'unsafe-inline' in script-src.
@@ -196,7 +198,8 @@ function sendHtml(reply: FastifyReply, html: string): FastifyReply {
   void reply.header("x-frame-options", "DENY");
   void reply.header("x-content-type-options", "nosniff");
   void reply.header("referrer-policy", "no-referrer");
-  return reply.send(html.replace("<script>", `<script nonce="${nonce}">`));
+  // The nonce is base64, so it cannot close the attribute it fills.
+  return reply.send(html.replaceAll(CSP_NONCE_PLACEHOLDER, nonce));
 }
 
 /**
