@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { ReportFailure, requireValue, object, integer, digest, equal, sha256, decode, parseJSON,
   containedDirectory, readContained, windowOf, parseNucleiReports, parseZapReport, ORIGIN, SEED } from './dast/report-inputs.mjs';
 import { assertIsolation } from './dast/isolation.mjs';
+import { isMain } from './lib/is-main.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const RECEIPT = 256 * 1024, REPORT = 10 * 1024 * 1024, LOG = 2 * 1024 * 1024;
@@ -126,7 +127,7 @@ export function evaluateRun(directory) {
   return summary;
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (isMain(import.meta.url)) {
   const summary = process.argv.length === 3 ? evaluateRun(process.argv[2]) : { ...emptySummary(), reason: 'usage' };
   process.stdout.write(JSON.stringify(summary) + '\n'); process.exitCode = summary.verdict === 'PASS' ? 0 : 1;
 }

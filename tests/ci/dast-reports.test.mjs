@@ -10,7 +10,7 @@ import path from 'node:path';
 
 const ROOT = path.resolve(import.meta.dirname, '..', '..');
 const COMPANIONS = ['scripts/assert-dast-reports.mjs', 'scripts/dast/report-inputs.mjs',
-  'scripts/dast/isolation.mjs', 'scripts/dast/policy.json', 'scripts/dast/zap-completion.py'];
+  'scripts/dast/isolation.mjs', 'scripts/dast/policy.json', 'scripts/lib/is-main.mjs', 'scripts/dast/zap-completion.py'];
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 const clone = value => structuredClone(value);
 const json = value => Buffer.from(JSON.stringify(value) + '\n');

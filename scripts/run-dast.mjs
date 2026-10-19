@@ -3,13 +3,13 @@ import assert from 'node:assert/strict';
 import { createHash, randomBytes } from 'node:crypto';
 import { chmodSync, closeSync, constants, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { pathToFileURL } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
 import { loadPrepared, sourceManifest, verifyImage } from './prepare-dast.mjs';
 import { cleanupOwned, dockerContext, finalizeSummary, successful, writeJson } from './dast/owned-run.mjs';
 import { assertDockerProjection, assertSnapshot } from './dast/isolation.mjs';
 import { ReportFailure, readContained } from './dast/report-inputs.mjs';
 import { evaluateRun } from './assert-dast-reports.mjs';
+import { isMain } from './lib/is-main.mjs';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 const ACTIVE = path.join(ROOT, '.workflow/state/dast-active-run.json');
@@ -358,7 +358,7 @@ export async function runDast(kind = 'application') {
   return summary;
 }
 
-if (process.argv[1] && pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url) {
+if (isMain(import.meta.url)) {
   const summary = process.argv.length !== 2 || process.env.DAST_TARGET !== SEED ? empty('usage') : await runDast();
   process.stdout.write(JSON.stringify(summary) + '\n'); process.exitCode = summary.verdict === 'PASS' ? 0 : 1;
 }

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
 import { evaluate, decide } from './jev.mjs';
+import { isMain } from './lib/is-main.mjs';
 
 const signatures = [
   ['environment', 'xcode.license', /You have not agreed to the Xcode license agreements/i],
@@ -75,7 +75,7 @@ export async function classifyFaultWithJev(error, { exitCode, agentClass, evalua
   return { class: decided, classified_by: 'jev', signature: null, confidence: answer.confidence, probabilities: answer.probabilities };
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+if (isMain(import.meta.url)) {
   const exitCodeAt = process.argv.indexOf('--exit-code');
   const agentClassAt = process.argv.indexOf('--agent-class');
   const exitCode = exitCodeAt < 0 ? undefined : Number(process.argv[exitCodeAt + 1]);

@@ -2,9 +2,8 @@
 import assert from 'node:assert/strict';
 import { createServer as httpServer } from 'node:http';
 import { createConnection, createServer } from 'node:net';
-import { appendFileSync, chmodSync, closeSync, fsyncSync, mkdirSync, openSync, readdirSync, writeFileSync } from 'node:fs';
-import { pathToFileURL } from 'node:url';
-import path from 'node:path';
+import { appendFileSync, chmodSync, closeSync, fsyncSync, mkdirSync, openSync, readdirSync, realpathSync, writeFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
 import { drainNuclei, readRunConfig, runNuclei, spawnOwned, WorkloadFailure } from './nuclei.mjs';
 
@@ -272,6 +271,12 @@ async function main() {
     process.removeListener('SIGTERM', stop); process.removeListener('SIGINT', stop);
   } finally { closeSync(events); }
 }
-if (process.argv[1] && pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url) {
+// Self-contained: this file is staged alone into /dast, so it cannot import scripts/lib/is-main.mjs.
+function startedDirectly() {
+  if (!process.argv[1]) return false;
+  try { return realpathSync(fileURLToPath(import.meta.url)) === realpathSync(process.argv[1]); }
+  catch { return false; }
+}
+if (startedDirectly()) {
   main().catch(() => { process.stderr.write('dast-control: unavailable\n'); process.exitCode = 1; });
 }
