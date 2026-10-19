@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -79,4 +79,10 @@ test('a real script runs when started through a symlinked scripts folder', { ski
     assert.equal(result.status, 1);
     assert.match(result.stderr, /command replay is disabled/);
   } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('the retained DAST runner identity includes the shared entry check (specs/ops/script-entrypoints.md REQ-2)', () => {
+  const source = readFileSync(join(ROOT, 'scripts/run-dast.mjs'), 'utf8');
+  const roster = source.slice(source.indexOf("'runner-sources.json'"));
+  assert.match(roster.slice(0, roster.indexOf(']')), /'scripts\/lib\/is-main\.mjs'/);
 });

@@ -212,7 +212,7 @@ export async function runDast(kind = 'application') {
       if (!successful(result)) fail('terminal'); return result;
     };
     writeJson(path.join(directory, 'runner-sources.json'), sourceManifest(ROOT, ['scripts/run-dast.mjs', 'scripts/prepare-dast.mjs',
-      'scripts/dast/owned-run.mjs', 'scripts/dast/isolation.mjs', 'scripts/dast/report-inputs.mjs', 'scripts/assert-dast-reports.mjs', 'scripts/dast/policy.json']));
+      'scripts/dast/owned-run.mjs', 'scripts/dast/isolation.mjs', 'scripts/dast/report-inputs.mjs', 'scripts/assert-dast-reports.mjs', 'scripts/lib/is-main.mjs', 'scripts/dast/policy.json']));
     for (const name of ['prepared.json', 'source-manifest.json', 'checkout-manifest.json']) {
       const bytes = readContained(path.join(stage, name), ROOT, name === 'prepared.json' ? 262144 : 10485760);
       if (name === 'source-manifest.json') assert.deepEqual(parse(bytes), manifest);
