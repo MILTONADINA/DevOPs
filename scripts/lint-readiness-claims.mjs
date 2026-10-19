@@ -6,6 +6,7 @@ import { createHash } from 'node:crypto';
 import { openValidatedPublication } from '../verification/committed-claims.ts';
 import { decodeInput } from '../verification/claim-input.ts';
 import { compute } from '../verification/reproducibility-check.ts';
+import { isMain } from './lib/is-main.mjs';
 
 const CAP = 262144, LINE_CAP = 32768;
 const ROADMAP = '## Masterpiece roadmap to v1.0.0 (Session 14 binding)';
@@ -220,12 +221,7 @@ function main() {
   process.stdout.write(`readiness: ${count ? 'references valid' : 'none selected'} documents=2 declarations=${count} process_rows=${processRows} history_tables=${history}\n`);
 }
 
-function isMain() {
-  if (!process.argv[1]) return false;
-  try { return fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url)); }
-  catch { return false; }
-}
-if (isMain()) {
+if (isMain(import.meta.url)) {
   try { main(); }
   catch (error) {
     process.stderr.write(`readiness: ${error instanceof ReadinessFailure ? error.message : 'structure'}\n`);

@@ -30,6 +30,8 @@ function withFixture(run) {
     const script = path.join(root, 'scripts/validate-dast-target.mjs');
     for (const dir of [path.dirname(script), cwd, path.join(root, 'tmp')]) mkdirSync(dir, { recursive: true });
     copyFileSync(CHECKER, script);
+    mkdirSync(path.join(root, 'scripts/lib'), { recursive: true });
+    copyFileSync(path.join(ROOT, 'scripts/lib/is-main.mjs'), path.join(root, 'scripts/lib/is-main.mjs'));
     run({ root, cwd, invoke(target = TARGET, args = [], launchCwd = root) {
       const env = { PATH: '', HOME: root, TMPDIR: path.join(root, 'tmp'), LANG: 'C' };
       if (target !== null) env.DAST_TARGET = target;
