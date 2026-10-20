@@ -8,11 +8,20 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- The npm release workflow attaches a CycloneDX SBOM of the runtime dependencies
+  (`npm sbom --omit dev`) to the GitHub release and the workflow run
+  (`docs/RELEASING.md`).
+
 ### Changed
 
 - `devops init` links `@agile-graph/engine` 0.1.2 and 0.2.0 as well as 0.1.0 and
   0.1.1: their cloud-default tool definitions match the shipped pins exactly
   (`specs/graph/agile-graph-link.md` REQ-1).
+- Dependabot configuration for npm and GitHub Actions, with weekly pull
+  requests to `dev`: GitHub Actions updates grouped, npm minor and patch updates
+  grouped for `/` and `/runtime`, npm majors separate.
 - The reviewer subagent adds regression-across-specs and privacy-parity checks,
   per-branch spec and test checks, a trace-primitive-neutral observability check,
   unconsumed paid calls under cost, evidence for a Blocker and a per-check
