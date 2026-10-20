@@ -2,38 +2,30 @@
 
 ## Upgrading from 0.4.0 to 0.5.0
 
-Install the latest package:
+Match the scope you installed with. The commands below use `npx` so they work for a global, a project or a one-shot install; with a global install you can drop the `npx @miltonadina/devops` prefix and type `devops`.
 
 ```sh
+# global install
 npm install -g @miltonadina/devops@latest
-```
 
-or run once without installing:
-
-```sh
-npx @miltonadina/devops@latest --help
-```
-
-or, in a project:
-
-```sh
-cd /path/to/project
+# project install (run in the project)
 npm install @miltonadina/devops@latest
 ```
 
-Then check the version and refresh the project's installed files (existing `CLAUDE.md` and `.mcp.json` entries are never overwritten):
+Then check the version and refresh the project's installed files. `init` needs `.workflow/profile.yml`, so run `analyze` first if the file is absent. `init` never overwrites an existing `AGENTS.md`, `CLAUDE.md` or `.mcp.json` entry.
 
 ```sh
-npm ls @miltonadina/devops        # or: npm ls -g @miltonadina/devops
-devops init --dry-run             # shows what init would change, writes nothing
-devops init
+npx @miltonadina/devops --version
+npx @miltonadina/devops analyze
+npx @miltonadina/devops init --dry-run     # shows what init would change, writes nothing
+npx @miltonadina/devops init
 ```
 
-To roll back, install the previous version: `npm install @miltonadina/devops@0.4.0`.
+To roll back, install `@miltonadina/devops@0.4.0` in the same scope and restore the project files `init` copied (hooks, skills, subagents) from version control. Do not stay on 0.4.0: it is affected by GHSA-c3g3-xw48-qrp3 below.
 
 ### Security: upgrade promptly (GHSA-c3g3-xw48-qrp3)
 
-**Severity: urgent.** A command classifier bypass allowed a non-breaking space (U+00A0) or other non-ASCII Unicode whitespace before a shell quote character, causing the hook to treat the rest of a command line as a comment while the shell would have executed it.
+**Severity: High (published advisory). Upgrade promptly.** A command classifier bypass allowed a non-breaking space (U+00A0) or other Unicode whitespace before `#`, causing the hook to treat the rest of a command line as a comment while the shell would have executed it.
 
 The fix changes the word separator to space, tab, and newline only — matching the shell exactly — and refuses any other Unicode whitespace or format character outside quotes.
 
@@ -41,15 +33,15 @@ The fix changes the word separator to space, tab, and newline only — matching 
 
 ### `npm run setup` now uses `--ignore-scripts`
 
-`npm run setup` installs runtime dependencies with `npm ci --ignore-scripts`. Dependency install scripts no longer run on first setup. An explicit `npm rebuild` allowlist (empty today) covers any package that needs one.
+`npm run setup` installs runtime dependencies with `npm ci --ignore-scripts`. Dependency install scripts no longer run on first setup. This applies to the `runtime/` dependencies of a DevOPs checkout. An explicit allowlist (empty today, `scripts/setup-local.mjs`) rebuilds named packages with `npm rebuild --prefix runtime <package>`.
 
-If you know a dependency requires a build step, run `npm rebuild` after setup.
+**Action:** if you work in a DevOPs checkout and a runtime dependency fails without its install script, rebuild only that package with the command above. Do not run an unrestricted `npm rebuild`.
 
 ### `AGENTS.md` paths point to installed location
 
 `devops init` now points `AGENTS.md` and the first steps it prints at the constitution files where the package is installed, instead of `constitution/` files a project does not have. The package stays a live dependency; nothing is copied.
 
-**Action:** no migration needed. Existing `AGENTS.md` references will still work.
+**Action:** an existing `AGENTS.md` is never rewritten, so one copied by 0.4.0 keeps its project-relative `constitution/PRINCIPLES.md`, `constitution/ANTIPATTERNS.md` and `constitution/LOOP.md` references. Edit them to point at the installed package (the paths a fresh `devops init` prints), or delete `AGENTS.md` and rerun `init`.
 
 ### `AGENTS.override.md` added to `.gitignore`
 
@@ -118,7 +110,9 @@ The dashboard pages (`/dashboard`, `/dashboard/graph`) now allow their inline sc
 
 `devops init` now links `@agile-graph/engine` 0.1.2 and 0.2.0 in addition to 0.1.0 and 0.1.1. Their cloud-default tool definitions match the shipped pins exactly.
 
-**Action:** no migration needed for existing links. New projects get all four versions.
+`ENGINE_VERSIONS` is an allowlist: `init` links one engine that is already installed, if its version is one of the four. It installs nothing.
+
+**Action:** none for existing links. To add the link, install a listed engine (for example `npm install -g @agile-graph/engine@0.2.0`) on Node 24 to 26, run `npx @miltonadina/devops init`, then follow the engine's own init and index steps (see the README's Agile Graph section). Pass `--no-agile-graph` to `init` to skip it.
 
 ### Subagent additions
 
