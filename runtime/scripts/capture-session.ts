@@ -318,6 +318,17 @@ const shutdown = () => {
 process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);
 
+// A stray rejection must not leave the capture proxy half-alive: save the session (shutdown path
+// below), log the kind only, and exit non-zero.
+const onFatal = (kind: string): void => {
+  console.error(`capture-session: fatal ${kind}`);
+  try { fastify.close(); } catch { /* already closed */ }
+  try { session.ended_at = new Date().toISOString(); fs.writeFileSync(OUTPUT_FILE, JSON.stringify(session, null, 2)); } catch { /* best effort */ }
+  process.exit(1);
+};
+process.on("unhandledRejection", () => onFatal("unhandledRejection"));
+process.on("uncaughtException", () => onFatal("uncaughtException"));
+
 fastify.listen({ port: CAPTURE_PORT, host: "127.0.0.1" }, (err) => {
   if (err) {
     console.error(err);

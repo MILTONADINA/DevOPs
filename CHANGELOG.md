@@ -13,6 +13,11 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - The npm release workflow attaches a CycloneDX SBOM of the runtime dependencies
   (`npm sbom --omit dev`) to the GitHub release and the workflow run
   (`docs/RELEASING.md`).
+### Fixed
+
+- Long-running scripts (DAST control server, graph dashboard, runtime proxy, capture
+  proxy) log one line, close their server and exit non-zero on an unhandled rejection or
+  exception instead of staying half-alive (`specs/ops/script-entrypoints.md` REQ-3).
 
 ### Changed
 

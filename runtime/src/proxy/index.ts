@@ -579,6 +579,18 @@ export async function start(): Promise<void> {
 
   process.on("SIGTERM", () => void shutdown("SIGTERM"));
   process.on("SIGINT", () => void shutdown("SIGINT"));
+  // A stray rejection must not leave the server half-alive: log the kind only (no message, which may
+  // carry secrets), drain through the same path as a signal, and exit non-zero.
+  let fatal = false;
+  const onFatal = (kind: string): void => {
+    if (fatal) return;
+    fatal = true;
+    logger.error({ kind }, "fatal process error; closing server and exiting");
+    setTimeout(() => process.exit(1), 5000).unref();
+    void (draining ? Promise.resolve() : app.close()).catch(() => undefined).finally(() => process.exit(1));
+  };
+  process.on("unhandledRejection", () => onFatal("unhandledRejection"));
+  process.on("uncaughtException", () => onFatal("uncaughtException"));
 
   await app.listen({ port, host });
   logger.info({ port, host, mode: commercialEnabled(env) ? "commercial (multi-tenant auth + APIs)" : "personal (Phase 1 measurement)" }, "CQ Proxy running");
