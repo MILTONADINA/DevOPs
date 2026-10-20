@@ -15,7 +15,7 @@ npm install @miltonadina/devops@latest
 Then check the version and refresh the project's installed files. `init` needs `.workflow/profile.yml`, so run `analyze` first if the file is absent. `init` never overwrites an existing `AGENTS.md`, `CLAUDE.md` or `.mcp.json` entry.
 
 ```sh
-npx @miltonadina/devops --version
+npx @miltonadina/devops version
 npx @miltonadina/devops analyze
 npx @miltonadina/devops init --dry-run     # shows what init would change, writes nothing
 npx @miltonadina/devops init
