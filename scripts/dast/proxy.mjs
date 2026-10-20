@@ -242,6 +242,19 @@ async function phaseClient(config, phase) {
       (reply.ok ? !reply.result || typeof reply.result !== 'object' || Array.isArray(reply.result) : !REASONS.includes(reply.reason))) throw new Error();
   process.stdout.write(text); process.exitCode = reply.ok ? 0 : 1;
 }
+// Long-running supervisor backstop (specs/security/local-dast.md REQ-9): a stray rejection or
+// exception logs the kind only (never its text), closes owned resources, and exits non-zero.
+export function installFatalHandlers(closeResources, exit = code => process.exit(code)) {
+  let fatal = false;
+  const onFatal = kind => {
+    if (fatal) return; fatal = true;
+    process.stderr.write(`dast-control: fatal ${kind}\n`);
+    setTimeout(() => exit(1), 3000).unref();
+    Promise.resolve().then(closeResources).catch(() => {}).finally(() => exit(1));
+  };
+  process.on('unhandledRejection', () => onFatal('unhandledRejection'));
+  process.on('uncaughtException', () => onFatal('uncaughtException'));
+}
 async function main() {
   const [mode, phase, ...extra] = process.argv.slice(2);
   if (extra.length || (mode !== 'serve' && mode !== 'phase') || (mode === 'serve' ? phase !== undefined : !known(phase))) throw new Error();
@@ -265,6 +278,9 @@ async function main() {
       const reply = await controller.handle(Buffer.from(JSON.stringify({ schema_version: 1, run_id: config.run_id, phase: 'drain' }) + '\n'));
       try { controller.record(reply); } finally { server.close(); }
     };
+    installFatalHandlers(async () => {
+      try { await app.drain(); } finally { server.close(); }
+    });
     const stop = () => { void close().catch(() => { process.exitCode = 1; server.close(); }); };
     process.once('SIGTERM', stop); process.once('SIGINT', stop);
     await new Promise(resolve => server.once('close', resolve));

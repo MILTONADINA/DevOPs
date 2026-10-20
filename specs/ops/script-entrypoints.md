@@ -38,6 +38,19 @@ WHEN a DAST run is retained, `runner-sources.json` SHALL include
 
 **Enforced by:** test:tests/is-main.test.mjs
 
+### REQ-3 — Long-running scripts close and exit on an unhandled failure
+
+WHEN a long-running script (a process that holds a listening server:
+`scripts/dast/proxy.mjs` serve mode, `scripts/graph-dashboard/server.mjs`,
+`runtime/src/proxy/index.ts`, `runtime/scripts/capture-session.ts`) receives an
+`unhandledRejection` or `uncaughtException`, it SHALL write one line naming only the
+failure kind (never the error message or stack), close its server and owned
+resources, and exit with a non-zero code, so the port is released. The test-only
+trigger SHALL be inert unless `NODE_ENV` is `test` and the flag is set. Short CLIs
+are unchanged.
+
+**Enforced by:** test:tests/long-running-fatal.test.mjs
+
 ## Acceptance criteria
 
 - AC-1: Started through a direct path, including one with a space, the check is true.
@@ -47,6 +60,9 @@ WHEN a DAST run is retained, `runner-sources.json` SHALL include
   not exist, the check is false.
 - AC-4: `scripts/run-dast.mjs` lists `scripts/lib/is-main.mjs` in the retained runner
   source roster.
+
+- AC-5: An unhandled rejection in a running dashboard or DAST control server ends the
+  process with a non-zero exit code and frees its port.
 
 ## Out of scope
 
