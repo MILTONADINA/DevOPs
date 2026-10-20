@@ -570,24 +570,25 @@ export async function start(): Promise<void> {
       // requests to finish, then runs onClose hooks (where capture flush lives).
       await app.close();
       logger.info("CQ Proxy shut down cleanly");
-      process.exit(0);
+      process.exit(fatal ? 1 : 0);
     } catch (err) {
       logger.error({ err: (err as Error).message }, "error during shutdown");
       process.exit(1);
     }
   };
 
+  let fatal = false; // Sticky: once set, every exit path below exits non-zero.
   process.on("SIGTERM", () => void shutdown("SIGTERM"));
   process.on("SIGINT", () => void shutdown("SIGINT"));
   // A stray rejection must not leave the server half-alive: log the kind only (no message, which may
   // carry secrets), drain through the same path as a signal, and exit non-zero.
-  let fatal = false;
   const onFatal = (kind: string): void => {
     if (fatal) return;
     fatal = true;
+    process.exitCode = 1;
     logger.error({ kind }, "fatal process error; closing server and exiting");
-    setTimeout(() => process.exit(1), 5000).unref();
-    void (draining ? Promise.resolve() : app.close()).catch(() => undefined).finally(() => process.exit(1));
+    setTimeout(() => process.exit(1), 5000);
+    void app.close().catch(() => undefined).finally(() => process.exit(1));
   };
   process.on("unhandledRejection", () => onFatal("unhandledRejection"));
   process.on("uncaughtException", () => onFatal("uncaughtException"));

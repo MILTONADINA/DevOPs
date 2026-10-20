@@ -1207,6 +1207,7 @@ let fatalExit = false;
 function failFatal(kind) {
   if (fatalExit) return;
   fatalExit = true;
+  process.exitCode = 1;
   console.error(`graph-dashboard: fatal ${kind}; closing server and exiting`);
   setTimeout(() => process.exit(1), 2000).unref();
   try { server.closeAllConnections(); } catch { /* already closed */ }

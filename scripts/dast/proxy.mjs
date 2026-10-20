@@ -247,9 +247,9 @@ async function phaseClient(config, phase) {
 export function installFatalHandlers(closeResources, exit = code => process.exit(code)) {
   let fatal = false;
   const onFatal = kind => {
-    if (fatal) return; fatal = true;
+    if (fatal) return; fatal = true; process.exitCode = 1;
     process.stderr.write(`dast-control: fatal ${kind}\n`);
-    setTimeout(() => exit(1), 3000).unref();
+    setTimeout(() => exit(1), 15000); // Outlasts the owned proxy's 10s kill grace; never unref'd, so a stalled drain cannot exit 0.
     Promise.resolve().then(closeResources).catch(() => {}).finally(() => exit(1));
   };
   process.on('unhandledRejection', () => onFatal('unhandledRejection'));
