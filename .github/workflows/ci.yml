@@ -8,6 +8,12 @@ on:
 permissions:
   contents: read
 
+# Registry/network hiccups are the main CI flake source: every npm call retries.
+env:
+  npm_config_fetch_retries: '5'
+  npm_config_fetch_retry_mintimeout: '10000'
+  npm_config_fetch_retry_maxtimeout: '60000'
+
 jobs:
   setup-linux:
     runs-on: ubuntu-24.04

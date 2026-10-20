@@ -21,6 +21,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- CI retries registry and network hiccups: every workflow that runs npm sets
+  `npm_config_fetch_retries`/`fetch_retry_mintimeout`/`fetch_retry_maxtimeout`, the Semgrep
+  image pull retries three times with backoff, and `tests/ci/workflow-install-retry.test.mjs`
+  holds both.
 - `devops init` links `@agile-graph/engine` 0.1.2 and 0.2.0 as well as 0.1.0 and
   0.1.1: their cloud-default tool definitions match the shipped pins exactly
   (`specs/graph/agile-graph-link.md` REQ-1).
