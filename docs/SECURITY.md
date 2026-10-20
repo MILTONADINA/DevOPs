@@ -467,9 +467,9 @@ advisory DeepTeam/Claude skip is not semantic-security evidence. Roadmap
 Decision 9 keeps both reviews visibly skipped while unfunded; funding remains
 the owner's decision, with no new paid red-team requirement for this slice.
 
-### Dependency update policy
+## Dependency update policy
 
-Dependabot (`.github/dependabot.yml`) opens weekly pull requests against `dev` for GitHub Actions (all updates grouped) and for npm in `/` and `/runtime` (minor and patch updates grouped, at most 5 open pull requests per ecosystem). Major versions arrive as separate pull requests. No lockfile here is hash-pinned by a script or workflow, so no ecosystem is set to a limit of 0. Merge each update only after CI passes; Dependabot never merges on its own.
+Dependabot (`.github/dependabot.yml`) opens weekly pull requests against `dev` for GitHub Actions (all updates grouped) and for npm in `/` and `/runtime` (minor and patch updates grouped, at most 5 open pull requests per ecosystem). Major versions arrive as separate pull requests. No script, test or workflow checks a lockfile against a committed digest, so no ecosystem is set to a limit of 0; the local erasure generation hashes the lockfiles when it is sealed, so reseal it after merging an update. Merge each update only after CI passes; Dependabot never merges on its own.
 
 ## Skills
 
