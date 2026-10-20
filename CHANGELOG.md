@@ -8,6 +8,12 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- The npm release workflow attaches a CycloneDX SBOM of the runtime dependencies
+  (`npm sbom --omit dev`) to the GitHub release and the workflow run
+  (`docs/RELEASING.md`).
+
 ### Changed
 
 - `devops init` links `@agile-graph/engine` 0.1.2 and 0.2.0 as well as 0.1.0 and
