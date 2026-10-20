@@ -1,0 +1,53 @@
+version: 2
+
+updates:
+  # ── GitHub Actions ──────────────────────────────────────────────
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    target-branch: dev
+    labels:
+      - "ci"
+      - "dependencies"
+    groups:
+      github-actions-all:
+        patterns:
+          - "*"
+
+  # ── Root npm package ───────────────────────────────────────────
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    target-branch: dev
+    labels:
+      - "dependencies"
+    versioning-strategy: increase-if-necessary
+    groups:
+      npm-root:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+
+  # ── Runtime npm package ────────────────────────────────────────
+  - package-ecosystem: npm
+    directory: /runtime
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    target-branch: dev
+    labels:
+      - "dependencies"
+    versioning-strategy: increase-if-necessary
+    groups:
+      npm-runtime:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
