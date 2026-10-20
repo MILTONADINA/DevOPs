@@ -588,7 +588,10 @@ export async function start(): Promise<void> {
     process.exitCode = 1;
     logger.error({ kind }, "fatal process error; closing server and exiting");
     setTimeout(() => process.exit(1), 5000);
-    void app.close().catch(() => undefined).finally(() => process.exit(1));
+    void app
+      .close()
+      .catch(() => undefined)
+      .finally(() => process.exit(1));
   };
   process.on("unhandledRejection", () => onFatal("unhandledRejection"));
   process.on("uncaughtException", () => onFatal("uncaughtException"));
