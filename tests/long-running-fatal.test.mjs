@@ -32,9 +32,13 @@ function run(args, env) {
   const out = { stdout: '', stderr: '' };
   child.stdout.on('data', d => { out.stdout += d; });
   child.stderr.on('data', d => { out.stderr += d; });
-  const closed = new Promise(resolve => child.on('close', (code, signal) => resolve({ code, signal, ...out })));
+  // Bounded: a handler that leaves the server alive fails the test instead of hanging it, and the child is always reaped.
+  const closed = new Promise((resolve, reject) => {
+    const guard = setTimeout(() => { child.kill('SIGKILL'); reject(new Error('child did not exit within 20s')); }, 20000);
+    child.on('close', (code, signal) => { clearTimeout(guard); resolve({ code, signal, ...out }); });
+  });
   const until = (pattern, ms = 10000) => new Promise((resolve, reject) => {
-    const t = setTimeout(() => reject(new Error('timeout waiting for ' + pattern)), ms);
+    const t = setTimeout(() => { clearInterval(timer); child.kill('SIGKILL'); reject(new Error('timeout waiting for ' + pattern)); }, ms);
     const timer = setInterval(() => { if (pattern.test(out.stdout)) { clearTimeout(t); clearInterval(timer); resolve(); } }, 20);
   });
   return { child, closed, until };
