@@ -18,6 +18,14 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - Long-running scripts (DAST control server, graph dashboard, runtime proxy, capture
   proxy) log one line, close their server and exit non-zero on an unhandled rejection or
   exception instead of staying half-alive (`specs/ops/script-entrypoints.md` REQ-3).
+### Fixed
+
+- Scripts started through a symlinked path no longer silently do nothing: every entry
+  check uses the shared `scripts/lib/is-main.mjs`, which compares real paths
+  (`specs/ops/script-entrypoints.md`, #293).
+- `docs/UPGRADING.md`: how to move from 0.4.0 to 0.5.0 and onto the unreleased
+  changes on `dev`, with the commands and what a consumer must change. The
+  README links to it.
 
 ### Changed
 
