@@ -58,6 +58,13 @@ How a version of `@miltonadina/devops` reaches npm. The rules are in
    - `npm view @miltonadina/devops version` prints X.Y.Z.
    - `npx @miltonadina/devops@X.Y.Z version` runs.
    - The npm page shows the provenance badge linking to the workflow run.
+   - The `sbom` job, which runs after `publish`, attaches `devops-vX.Y.Z.cdx.json`, a
+     CycloneDX SBOM of the runtime dependencies, to the GitHub release (it creates the
+     release if none exists) and to the workflow run as the `sbom` artifact. It comes
+     from `npm sbom --sbom-format cyclonedx --omit dev`; run that after `npm ci` to see
+     the same file. npm names the root component after the checkout directory; the
+     package identity is in its `bom-ref` and `purl`. The job holds `contents: write`;
+     the `publish` job's permissions and environment are unchanged.
 
 ## Before the first release: a local dry run
 
