@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Pack a package twice (separate temp dirs, same working tree) and compare the tarballs:
 // the sha256 of each and, per entry, the sorted file list and each file's sha256. Exits 1
-// and prints the differing entries when they differ (specs/release/npm-package.md REQ-12).
+// and prints the differing entries when they differ (specs/release/npm-package.md REQ-13).
 // Not shipped in the package.
 //
 //   node scripts/pack-twice.mjs [package-dir]     (default: the repository root)
