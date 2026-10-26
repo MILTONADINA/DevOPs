@@ -35,6 +35,18 @@ const SPLITS = [
     kept: [/priorRunIds/, /graph-resume-args\.mjs/, /graph-run-record\.mjs launch/], moved: [/`\/sprint` call `graph-run-record\.mjs launch`/] },
   { file: M, id: 'REQ-M7', twin: 'REQ-M31', tests: ['tests/graph-resilience/workflow-faults.test.mjs', 'tests/graph-resilience/req-contracts.test.mjs', 'tests/graph-resilience/run-record.test.mjs'],
     kept: [/AMBIGUITY_BLOCK:/, /`conflicts: \[\{higher, lower, clause\}\]`/, /owner decision > law\/safety/], moved: [/only from the owner's answer/, /`needs_human` blocked record/] },
+  // Second batch. A twin is PROCESS only where an orchestrator step is the whole clause; where the
+  // moved clause names behaviour no code implements yet, the twin stays UNENFORCED.
+  { file: M, id: 'REQ-M8', twin: 'REQ-M32', tier: 'UNENFORCED', tests: ['tests/graph/spec-status.test.mjs', 'tests/graph-resilience/split-req-mechanical.test.mjs'],
+    kept: [/`scripts\/lint-spec-status\.mjs` in `ci\.yml`/, /`draft\|approved\|implemented\|superseded`/, /traceability-baseline\.json/], moved: [/graph-run-record\.mjs launch/, /`tasks\[\]\.ac_ids`/, /`outcome_ref`/] },
+  { file: M, id: 'REQ-M9', twin: 'REQ-M33', tier: 'UNENFORCED', tests: ['tests/verification/claim-schema-loading.test.mjs', 'tests/verification/committed-claims.test.mjs', 'tests/graph-resilience/split-req-mechanical.test.mjs'],
+    kept: [/loads and enforces `verification\/claim-schema\.yml`/, /`spec_ref` file and anchor exist/, /PB-60/, /requires `proof\.red/], moved: [/temporary worktree/, /`claim_id`/] },
+  { file: M, id: 'REQ-M10', twin: 'REQ-M34', tier: 'UNENFORCED', tests: ['tests/verification/readiness-claims.test.mjs', 'tests/graph-resilience/split-req-mechanical.test.mjs'],
+    kept: [/`state: enum \[implemented, verified, code_converged, release_ready, fixed_not_live, production_complete\]`/, /lint-readiness-claims\.mjs/], moved: [/`code_converged` without a `graph-converge\.mjs status`/, /deploy proof/] },
+  { file: M, id: 'REQ-M14', twin: 'REQ-M35', tier: 'UNENFORCED', tests: ['tests/ci/assert-scan.test.mjs', 'tests/graph-resilience/split-req-mechanical.test.mjs'],
+    kept: [/pinned `semgrep scan --json --error`/, /scripts\/assert-scan\.mjs/, /`paths\.scanned`/], moved: [/run-redteam\.sh/, /SKIPPED\.md/] },
+  { file: M, id: 'REQ-M21', twin: 'REQ-M36', tier: 'UNENFORCED', tests: ['tests/verification/closure-references.test.mjs', 'tests/graph-resilience/split-req-mechanical.test.mjs'],
+    kept: [/scripts\/lint-closures\.mjs/, /committed copies/], moved: [/sync-lr-refined-date\.sh/] },
 ];
 
 for (const split of SPLITS) {
@@ -51,9 +63,9 @@ for (const split of SPLITS) {
     for (const pattern of split.moved) assert.doesNotMatch(body, pattern);
   });
 
-  test(`${split.twin}: the procedural half is PROCESS and carries the moved clauses`, () => {
+  test(`${split.twin}: the procedural half is PROCESS or UNENFORCED, never mechanical, and carries the moved clauses`, () => {
     const body = section(split.file, split.twin);
-    assert.equal(enforcedBy(body), 'PROCESS');
+    assert.equal(enforcedBy(body), split.tier ?? 'PROCESS');
     assert.match(body, new RegExp(`\\(${split.id}\\)`), `${split.twin} should name the REQ it was split from`);
     for (const pattern of split.moved) assert.match(body, pattern);
   });
@@ -64,11 +76,11 @@ test('split ids are appended after the last pre-existing id, so no REQ is renumb
   const rIds = ids(R);
   assert.deepEqual(rIds.slice(rIds.indexOf('REQ-R16')), ['REQ-R16', 'REQ-R17', 'REQ-R18', 'REQ-R19', 'REQ-R20']);
   const mIds = ids(M);
-  assert.deepEqual(mIds.slice(mIds.indexOf('REQ-M30')), ['REQ-M30', 'REQ-M31']);
+  assert.deepEqual(mIds.slice(mIds.indexOf('REQ-M30')), ['REQ-M30', 'REQ-M31', 'REQ-M32', 'REQ-M33', 'REQ-M34', 'REQ-M35', 'REQ-M36']);
 });
 
-test('the enforcement baseline lists exactly the five newly enforced REQs', () => {
+test('the enforcement baseline lists every split REQ and none of the twins', () => {
   const baseline = JSON.parse(read('governance/enforcement-baseline.json')).enforced;
   for (const split of SPLITS) assert.ok(baseline.includes(`${split.file}#${split.id}`), `${split.id} missing from baseline`);
-  for (const split of SPLITS) assert.ok(!baseline.includes(`${split.file}#${split.twin}`), `${split.twin} is PROCESS and must not be in the baseline`);
+  for (const split of SPLITS) assert.ok(!baseline.includes(`${split.file}#${split.twin}`), `${split.twin} is not mechanical and must not be in the baseline`);
 });

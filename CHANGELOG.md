@@ -16,6 +16,12 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Internal
 
+- REQ-M8, M9, M10, M14 and M21 are split into a mechanical half (same id, now cites its tests in
+  `Enforced by:`) and a twin for the rest (REQ-M32..M36, appended). The twins are `UNENFORCED`, not
+  `PROCESS`, because each moves behaviour no code implements yet (launch spec binding, RED replay,
+  evidence-backed completion states, red-team skip, freshness hook).
+  `scripts/check-enforcement.mjs` reports mechanical=112 (was 107) and unenforced=19 (unchanged);
+  `governance/enforcement-baseline.json` lists the five, and the root test floor rises to 1495.
 - `tests/graph-dashboard/events-sse.test.mjs` waits for the new run to be active under an explicit 6s
   deadline instead of asserting on the first frame that lists it, which could see the journal while
   it was still empty (#300).
