@@ -291,11 +291,11 @@ See `docs/PLAYBOOK.md` for the full operational guide.
 
 DevOps links to Agile Graph (MIT, https://github.com/MILTONADINA/agile-graph) when it
 is installed. Agile Graph indexes your project for an AI client and keeps engineering
-memory. Install an engine version whose tools DevOps pins (0.1.0 or 0.1.1 today) on
+memory. Install an engine version whose tools DevOps pins (0.1.0 to 0.2.0 today) on
 Node 24 to 26, then run `devops init`:
 
 ```bash
-npm install -g @agile-graph/engine@0.1.1      # or as a devDependency of the project
+npm install -g @agile-graph/engine@0.2.0      # or as a devDependency of the project
 devops init                                   # registers the MCP server in .mcp.json
 GRAPH_ENGINE_NO_FEEDBACK=1 agile-graph -C . init --cloud-mcp --export 'src/**'
 GRAPH_ENGINE_NO_FEEDBACK=1 agile-graph -C . index --lexical
@@ -362,12 +362,13 @@ The `.sh` hooks require a POSIX shell (bash/zsh) and can be invoked with
 | `docs/VERIFICATION.md` | The proof-of-work protocol |
 | `docs/MEMORY.md` | Two-tier memory: local database + file-based |
 | `docs/COST_OPTIMIZATION.md` | Model routing, batching, brakes |
-| `docs/OBSERVABILITY.md` | OTel + Langfuse + Laminar setup |
+| `docs/OBSERVABILITY.md` | OTel + Langfuse + Laminar setup, and the proxy's structured log levels, fields and redaction |
 | [`SECURITY.md`](SECURITY.md) | Supported versions and how to report a vulnerability privately |
 | `docs/SECURITY.md` | OWASP ASI 2026 threat model and defenses |
 | `docs/EARS_GUIDE.md` | Writing testable specs |
 | `docs/CLIENT_ONBOARDING.md` | Per-client setup checklist |
 | `docs/GAP_61_COVERAGE_MATRIX.md` | Where each of the 61 design gaps is addressed |
+| `docs/UPGRADING.md` | Upgrade paths and breaking changes for each release |
 
 ---
 

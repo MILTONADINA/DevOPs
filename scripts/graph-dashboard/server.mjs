@@ -1199,6 +1199,27 @@ server.listen(PORT, HOST, () => {
   console.log(`graph-dashboard: journal root = ${JOURNAL_ROOT}`);
 });
 
+// Process-level backstop: a stray rejected promise or uncaught exception must
+// not leave the server half-alive. Log one line (the error kind only -- never
+// its message or stack, which can carry paths or tokens), close the listener,
+// and exit non-zero. specs/ops/script-entrypoints.md REQ-5.
+let fatalExit = false;
+function failFatal(kind) {
+  if (fatalExit) return;
+  fatalExit = true;
+  process.exitCode = 1;
+  console.error(`graph-dashboard: fatal ${kind}; closing server and exiting`);
+  setTimeout(() => process.exit(1), 2000).unref();
+  try { server.closeAllConnections(); } catch { /* already closed */ }
+  try { server.close(() => process.exit(1)); } catch { process.exit(1); }
+}
+process.on('unhandledRejection', () => failFatal('unhandledRejection'));
+process.on('uncaughtException', () => failFatal('uncaughtException'));
+// Test-only hook, inert unless NODE_ENV is "test" AND the flag is set.
+if (process.env.NODE_ENV === 'test' && process.env.DEVOPS_TEST_UNHANDLED_REJECTION === '1') {
+  server.once('listening', () => { void Promise.reject(new Error('test-only rejection')); });
+}
+
 // GET /events (T6) live-update machinery: install the six fixed fs.watch
 // watchers immediately, then start the unconditional correctness-guarantee
 // poll (see the "SSE broadcast (T6)" section above for why both run

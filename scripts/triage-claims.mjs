@@ -2,6 +2,7 @@
 // Imported classification helpers remain available; they do not execute proofs.
 
 import { evaluate, decide, findSecret } from './jev.mjs';
+import { isMain } from './lib/is-main.mjs';
 
 export const CAUSES = [
   'missing_tool_or_environment',
@@ -110,6 +111,6 @@ async function main() {
   process.exit(1);
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isMain(import.meta.url)) {
   main().catch((err) => { console.error(err); process.exit(1); });
 }

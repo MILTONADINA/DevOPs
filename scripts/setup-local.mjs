@@ -4,6 +4,7 @@ import { existsSync, readdirSync, realpathSync, statSync } from "node:fs";
 import { platform, release } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { isMain } from './lib/is-main.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const runtime = join(root, "runtime");
@@ -141,7 +142,7 @@ export function main(argv = process.argv.slice(2)) {
   process.stdout.write("This machine check does not satisfy clean-machine, cross-platform, or real-data recovery release gates.\n");
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (isMain(import.meta.url)) {
   try {
     main();
   } catch (error) {

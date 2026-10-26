@@ -5,8 +5,8 @@ import { createHash, randomBytes } from 'node:crypto';
 import { chmodSync, closeSync, constants, copyFileSync, fstatSync, lstatSync, mkdirSync, openSync,
   readFileSync, readSync, readdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { pathToFileURL } from 'node:url';
 import { cleanupOwned, dockerContext, executable, runCommand, successful, writeJson } from './dast/owned-run.mjs';
+import { isMain } from './lib/is-main.mjs';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 const POLICY = JSON.parse(readFileSync(new URL('./dast/policy.json', import.meta.url), 'utf8'));
@@ -408,7 +408,7 @@ async function prepare() {
   return { schema_version: 1, run_id, verdict: 'PREPARED', platform };
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (isMain(import.meta.url)) {
   try { process.stdout.write(JSON.stringify(await prepare()) + '\n'); }
   catch { process.stdout.write('{"schema_version":1,"verdict":"INDETERMINATE","reason":"preparation"}\n'); process.exitCode = 1; }
 }

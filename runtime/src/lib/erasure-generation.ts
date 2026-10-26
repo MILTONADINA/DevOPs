@@ -33,6 +33,8 @@ const fixed = [
   "hooks/universal/session-start/load-baton.sh",
   "runtime/supabase/migrations/20261003060000_erasure_generation_binding.sql",
 ];
+// Covers the sealed runtime/node_modules tree; stops an absurdly large manifest from exhausting memory.
+const MAX_MANIFEST_FILES = 200_000;
 const digest = z.string().regex(/^[a-f0-9]{64}$/);
 const port = z.number().int().min(1024).max(65535);
 const schema = z
@@ -42,10 +44,16 @@ const schema = z
     api_port: port.refine((value) => value !== 54321),
     proxy_port: port,
     local_provider_url: z.string().url(),
-    activation_id: z.string().uuid(),
-    selectors: z.array(z.enum(["api-proof", "proxy"])).nonempty(),
+    activation_id: z.guid(),
+    selectors: z
+      .array(z.enum(["api-proof", "proxy"]))
+      .nonempty()
+      .max(2),
     stores: z.object({ capture: z.literal("runtime/data/sessions"), outbox: z.literal("runtime/data/usage-outbox"), tmp: z.literal("runtime/data/tmp") }).strict(),
-    files: z.array(z.object({ path: z.string(), sha256: digest, target: z.string().optional() }).strict()).nonempty(),
+    files: z
+      .array(z.object({ path: z.string(), sha256: digest, target: z.string().optional() }).strict())
+      .nonempty()
+      .max(MAX_MANIFEST_FILES),
   })
   .strict();
 export type ErasureManifest = z.infer<typeof schema>;

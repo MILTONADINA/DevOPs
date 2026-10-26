@@ -23,6 +23,12 @@ concurrency:
   group: npm-release
   cancel-in-progress: false
 
+# Registry/network hiccups are the main CI flake source: every npm call retries.
+env:
+  npm_config_fetch_retries: '5'
+  npm_config_fetch_retry_mintimeout: '10000'
+  npm_config_fetch_retry_maxtimeout: '60000'
+
 jobs:
   verify:
     runs-on: ubuntu-24.04
@@ -53,6 +59,9 @@ jobs:
 
       - name: Pack, install and run the package
         run: bash scripts/package-smoke.sh
+
+      - name: Packing twice gives the same tarball
+        run: node scripts/pack-twice.mjs
 
       - name: Install cosign (pinned, as in release-sign.yml)
         uses: sigstore/cosign-installer@f713795cb21599bc4e5c4b58cbad1da852d7eeb9  # v3
@@ -112,3 +121,44 @@ jobs:
       - name: On failure, show npm's trusted-publishing (OIDC) log lines
         if: failure()
         run: grep -h oidc "$HOME"/.npm/_logs/*-debug-*.log || echo "npm logged no OIDC lines."
+
+  # A CycloneDX SBOM of the runtime dependencies, attached to the release after the
+  # publish job succeeds. It is a separate job so the publish job keeps its
+  # permissions; only this job may write the GitHub release.
+  sbom:
+    needs: publish
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write   # create the GitHub release and upload the SBOM asset
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444  # v5.0.0
+        with: { node-version: 22 }
+
+      - name: Generate the CycloneDX SBOM (runtime dependencies only)
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          npm ci --ignore-scripts
+          npm sbom --sbom-format cyclonedx --omit dev > "$RUNNER_TEMP/devops-${TAG}.cdx.json"
+          node -e "const b=JSON.parse(require('fs').readFileSync(process.argv[1],'utf8')); if (b.bomFormat!=='CycloneDX') process.exit(1)" "$RUNNER_TEMP/devops-${TAG}.cdx.json"
+
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4  # v5.0.0
+        with:
+          name: sbom
+          path: ${{ runner.temp }}/devops-${{ github.ref_name }}.cdx.json
+          if-no-files-found: error
+
+      - name: Attach the SBOM to the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1 \
+            || gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --title "$TAG" --notes "Release $TAG. See CHANGELOG.md."
+          gh release upload "$TAG" "$RUNNER_TEMP/devops-${TAG}.cdx.json" --repo "$GITHUB_REPOSITORY" --clobber

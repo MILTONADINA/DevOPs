@@ -189,6 +189,14 @@ normal-PR audit/review observation. Required checks, exact-head approval and
 independent security review still govern delivery. Do not run a second registry
 audit solely to repeat an already passing required job.
 
+### AC-6 — Runtime dependencies pass the audit (REQ-1)
+
+WHEN `npm audit --audit-level=high` runs in `runtime/`, THE LOCKFILE SHALL resolve
+`zod` at 4.6.6 or later and `undici` at 7.30.1 or later (a dev-only `overrides`
+entry for the wrangler chain). WHEN an RPC response or an operator manifest feeds a
+zod array schema, THE SCHEMA SHALL cap its length. Verified by
+`runtime/test/memory/zod-4.test.ts`.
+
 ## Implementation and review limits
 
 The existing shell remains the integration entry; tests run its exact extracted

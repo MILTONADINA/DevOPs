@@ -8,6 +8,12 @@ on:
 permissions:
   contents: read
 
+# Registry/network hiccups are the main CI flake source: every npm call retries.
+env:
+  npm_config_fetch_retries: '5'
+  npm_config_fetch_retry_mintimeout: '10000'
+  npm_config_fetch_retry_maxtimeout: '60000'
+
 jobs:
   setup-linux:
     runs-on: ubuntu-24.04
@@ -356,6 +362,8 @@ jobs:
         with: { node-version: 22 }
       - name: Pack, install and run the package
         run: bash scripts/package-smoke.sh
+      - name: Packing twice gives the same tarball
+        run: node scripts/pack-twice.mjs
 
   agile-graph-link:
     # specs/graph/agile-graph-link.md REQ-7: install the packed package with the pinned

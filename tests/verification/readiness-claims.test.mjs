@@ -66,6 +66,7 @@ function withFixture(run) {
   try {
     file('package.json', '{"type":"module"}\n');
     copyFileSync(SCRIPT, file('scripts/lint-readiness-claims.mjs', ''));
+    copyFileSync(path.join(ROOT, 'scripts/lib/is-main.mjs'), file('scripts/lib/is-main.mjs', ''));
     for (const name of ['claim-input.ts', 'committed-claims.ts', 'committed-git.ts', 'claim-schema.yml', 'reproducibility-check.ts']) copyFileSync(path.join(ROOT, 'verification', name), file('verification/' + name, ''));
     symlinkSync(path.join(ROOT, 'node_modules'), path.join(root, 'node_modules'), 'dir');
     writeFileSync(path.join(bin, 'package.json'), '{"type":"commonjs"}\n');

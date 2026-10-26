@@ -48,6 +48,8 @@ function fixture() {
   mkdirSync(path.dirname(claim), { recursive: true });
   mkdirSync(path.join(cwd, '.workflow/state'));
   for (const name of ['triage-claims.mjs', 'jev.mjs']) copyFileSync(path.join(ROOT, 'scripts', name), path.join(scripts, name));
+  mkdirSync(path.join(scripts, 'lib'));
+  copyFileSync(path.join(ROOT, 'scripts/lib/is-main.mjs'), path.join(scripts, 'lib/is-main.mjs'));
   writeFileSync(path.join(bin, 'package.json'), '{"type":"commonjs"}\n');
   writeFileSync(claim, 'Owned synthetic placeholder; the fixed Python seam never reads this file.\n');
   writeFileSync(log, `✗ ${ID}\n`);
@@ -171,10 +173,8 @@ test('injected triage helper remains callable without CLI processes (regression 
   inert(result);
 }));
 
-test('symlink entry preserves the existing inert guard quirk (regression guard)', () => withFixture((f) => {
+test('symlink entry is still a direct start and refuses (#293)', () => withFixture((f) => {
   const alias = path.join(f.outer, 'triage-alias.mjs');
   symlinkSync(f.triage, alias);
-  const result = f.invoke(['--from-log', f.log, '--out', f.report], { entry: alias });
-  assert.equal(result.status, 0); assert.equal(result.stdout, ''); assert.equal(result.stderr, '');
-  inert(result);
+  refused(f.invoke(['--from-log', f.log, '--out', f.report], { entry: alias }));
 }));

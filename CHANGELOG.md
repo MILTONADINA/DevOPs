@@ -8,8 +8,67 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.5.1] — 2026-10-26
+
+### Documentation
+
+- `docs/OBSERVABILITY.md` lists the proxy's structured log levels, the fields each
+  line carries, what is redacted and by which function, and how to read the lines;
+  `tests/observability-log-fields-doc.test.mjs` checks each field against the source.
+
+### Added
+
+- The npm release workflow attaches a CycloneDX SBOM of the runtime dependencies
+  (`npm sbom --omit dev`) to the GitHub release and the workflow run
+  (`docs/RELEASING.md`).
+### Security
+
+- Lockfile updates (`npm audit fix`, no major bumps) clear the fast-uri advisories at the root
+  and the vite and vitest-tooling advisories in `runtime/`.
+- `runtime/` moves from zod 3 to zod ^4.6.7 (GHSA-mrhx-c7xc-m3w5), with length caps on the
+  erasure RPC reason arrays and the activation manifest, and pins the dev-only wrangler
+  chain's undici to ^7.30.1 through `overrides`. `npm audit --audit-level=high` now passes in
+  the root and `runtime/` (`specs/security/ci-dependency-audit.md` AC-6).
+### Documentation
+
+- `docs/RELEASING.md` has a Support and end-of-life section (latest minor supported,
+  previous minor security-only for 90 days, Node floor changes only in a minor with a
+  CHANGELOG note), linked from `SECURITY.md` (`specs/release/npm-package.md` REQ-12).
+### Internal
+
+- A test reads the README Quick start commands and checks each against `package.json` and
+  the CLI's `help`, so a renamed command or flag fails CI (`specs/release/npm-package.md` AC-15).
+- `scripts/pack-twice.mjs` packs the package twice into separate temp dirs and fails,
+  naming the differing entries, when the tarball sha256 or any file differs. CI's
+  `package-smoke` job and the release workflow's `verify` job run it
+  (`specs/release/npm-package.md` REQ-12).
+
+### Fixed
+
+- Long-running scripts (DAST control server, graph dashboard, runtime proxy, capture
+  proxy) log one line, close their server and exit non-zero on an unhandled rejection or
+  exception instead of staying half-alive (`specs/ops/script-entrypoints.md` REQ-3).
+### Fixed
+
+- Scripts started through a symlinked path no longer silently do nothing: every entry
+  check uses the shared `scripts/lib/is-main.mjs`, which compares real paths
+  (`specs/ops/script-entrypoints.md`, #293).
+- `docs/UPGRADING.md`: how to move from 0.4.0 to 0.5.0 and onto the unreleased
+  changes on `dev`, with the commands and what a consumer must change. The
+  README links to it.
+
 ### Changed
 
+- CI retries registry and network hiccups: every workflow that runs npm sets
+  `npm_config_fetch_retries`/`fetch_retry_mintimeout`/`fetch_retry_maxtimeout`, the Semgrep
+  image pull retries three times with backoff, and `tests/ci/workflow-install-retry.test.mjs`
+  holds both.
+- `devops init` links `@agile-graph/engine` 0.1.2 and 0.2.0 as well as 0.1.0 and
+  0.1.1: their cloud-default tool definitions match the shipped pins exactly
+  (`specs/graph/agile-graph-link.md` REQ-1).
+- Dependabot configuration for npm and GitHub Actions, with weekly pull
+  requests to `dev`: GitHub Actions updates grouped, npm minor and patch updates
+  grouped for `/` and `/runtime`, npm majors separate.
 - The reviewer subagent adds regression-across-specs and privacy-parity checks,
   per-branch spec and test checks, a trace-primitive-neutral observability check,
   unconsumed paid calls under cost, evidence for a Blocker and a per-check
@@ -109,7 +168,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
   existing content and line endings, and says to create `specs/`.
 - `devops-analyze --help` and `-h` print usage and exit without writing any file;
   an unknown flag exits 2 before any scan, also next to `--help` (#281,
-  `specs/release/npm-package.md` REQ-9).
+  `specs/release/npm-package.md` REQ-12).
 - `devops init --dry-run` ends by saying it wrote nothing, instead of saying the
   project was initialized (#271, `specs/ops/analyzer-detection.md` REQ-4).
 - `devops analyze` detects languages from file extensions when no manifest names

@@ -17,6 +17,12 @@ permissions:
 # pin time (B.10 sweep, session 6). When upgrading an action, look up the
 # new tag's SHA and replace; do NOT use a tag reference.
 
+# Registry/network hiccups are the main CI flake source: every npm call retries.
+env:
+  npm_config_fetch_retries: '5'
+  npm_config_fetch_retry_mintimeout: '10000'
+  npm_config_fetch_retry_maxtimeout: '60000'
+
 jobs:
   gitleaks:
     runs-on: ubuntu-24.04
@@ -70,6 +76,13 @@ jobs:
           set -euo pipefail
           scan_report_dir="$(mktemp -d "$RUNNER_TEMP/semgrep-report.XXXXXX")"
           rc=0
+          semgrep_image=semgrep/semgrep:1.167.0@sha256:06938c1f365d3f67b8cedd8bc117607ae64253f88a0e768e9da9408548927dd6
+          for delay in 5 10 0; do
+            docker pull --quiet "$semgrep_image" && break
+            test "$delay" -gt 0 || { echo "could not pull $semgrep_image" >&2; exit 1; }
+            echo "pull of $semgrep_image failed; retrying in ${delay}s"
+            sleep "$delay"
+          done
           docker run --rm \
             --workdir /src \
             --volume "$GITHUB_WORKSPACE:/src:ro" \
@@ -79,7 +92,7 @@ jobs:
             --env GIT_CONFIG_VALUE_0=/src \
             --env GIT_OPTIONAL_LOCKS=0 \
             --entrypoint semgrep \
-            semgrep/semgrep:1.167.0@sha256:06938c1f365d3f67b8cedd8bc117607ae64253f88a0e768e9da9408548927dd6 \
+            "$semgrep_image" \
             scan --config p/owasp-top-ten --config p/r2c-security-audit --config p/secrets \
             --metrics=off --error --json --output /report/semgrep.json . || rc=$?
           node scripts/assert-scan.mjs "$scan_report_dir/semgrep.json" governance/scan-floors.yml "$rc"

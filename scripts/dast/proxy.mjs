@@ -2,9 +2,8 @@
 import assert from 'node:assert/strict';
 import { createServer as httpServer } from 'node:http';
 import { createConnection, createServer } from 'node:net';
-import { appendFileSync, chmodSync, closeSync, fsyncSync, mkdirSync, openSync, readdirSync, writeFileSync } from 'node:fs';
-import { pathToFileURL } from 'node:url';
-import path from 'node:path';
+import { appendFileSync, chmodSync, closeSync, fsyncSync, mkdirSync, openSync, readdirSync, realpathSync, writeFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
 import { drainNuclei, readRunConfig, runNuclei, spawnOwned, WorkloadFailure } from './nuclei.mjs';
 
@@ -243,6 +242,19 @@ async function phaseClient(config, phase) {
       (reply.ok ? !reply.result || typeof reply.result !== 'object' || Array.isArray(reply.result) : !REASONS.includes(reply.reason))) throw new Error();
   process.stdout.write(text); process.exitCode = reply.ok ? 0 : 1;
 }
+// Long-running supervisor backstop (specs/security/local-dast.md REQ-9): a stray rejection or
+// exception logs the kind only (never its text), closes owned resources, and exits non-zero.
+export function installFatalHandlers(closeResources, exit = code => process.exit(code)) {
+  let fatal = false;
+  const onFatal = kind => {
+    if (fatal) return; fatal = true; process.exitCode = 1;
+    process.stderr.write(`dast-control: fatal ${kind}\n`);
+    setTimeout(() => exit(1), 15000); // Outlasts the owned proxy's 10s kill grace; never unref'd, so a stalled drain cannot exit 0.
+    Promise.resolve().then(closeResources).catch(() => {}).finally(() => exit(1));
+  };
+  process.on('unhandledRejection', () => onFatal('unhandledRejection'));
+  process.on('uncaughtException', () => onFatal('uncaughtException'));
+}
 async function main() {
   const [mode, phase, ...extra] = process.argv.slice(2);
   if (extra.length || (mode !== 'serve' && mode !== 'phase') || (mode === 'serve' ? phase !== undefined : !known(phase))) throw new Error();
@@ -266,12 +278,21 @@ async function main() {
       const reply = await controller.handle(Buffer.from(JSON.stringify({ schema_version: 1, run_id: config.run_id, phase: 'drain' }) + '\n'));
       try { controller.record(reply); } finally { server.close(); }
     };
+    installFatalHandlers(async () => {
+      try { await app.drain(); } finally { server.close(); }
+    });
     const stop = () => { void close().catch(() => { process.exitCode = 1; server.close(); }); };
     process.once('SIGTERM', stop); process.once('SIGINT', stop);
     await new Promise(resolve => server.once('close', resolve));
     process.removeListener('SIGTERM', stop); process.removeListener('SIGINT', stop);
   } finally { closeSync(events); }
 }
-if (process.argv[1] && pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url) {
+// Self-contained: this file is staged alone into /dast, so it cannot import scripts/lib/is-main.mjs.
+function startedDirectly() {
+  if (!process.argv[1]) return false;
+  try { return realpathSync(fileURLToPath(import.meta.url)) === realpathSync(process.argv[1]); }
+  catch { return false; }
+}
+if (startedDirectly()) {
   main().catch(() => { process.stderr.write('dast-control: unavailable\n'); process.exitCode = 1; });
 }

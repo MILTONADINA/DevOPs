@@ -2,13 +2,17 @@
 
 ## Supported versions
 
-DevOPs is pre-1.0. Only the latest 0.x minor line receives security fixes.
-Older minors are not patched; upgrade to the latest minor.
+DevOPs is pre-1.0. The latest 0.x minor receives fixes. The previous minor receives
+security fixes only, for 90 days after the latest minor is released. Earlier minors are
+not patched; upgrade to the latest minor. The full rules, including when the Node.js
+floor changes, are in
+[Support and end-of-life](https://github.com/MILTONADINA/DevOPs/blob/main/docs/RELEASING.md#support-and-end-of-life).
 
-| Version                 | Supported |
-|-------------------------|-----------|
-| Latest 0.x minor        | Yes       |
-| Any earlier 0.x minor   | No        |
+| Version                 | Supported                               |
+|-------------------------|-----------------------------------------|
+| Latest 0.x minor        | Yes                                     |
+| Previous 0.x minor      | Security fixes only, for 90 days        |
+| Any earlier 0.x minor   | No                                      |
 
 The latest minor at the time of writing is 0.4.
 

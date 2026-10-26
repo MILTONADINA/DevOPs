@@ -2,9 +2,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 
+// The reason enum has 11 members; the cap only stops an oversized RPC array from exhausting memory.
+const MAX_REASONS = 32;
 const count = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
 const scope = z.literal("managed_explicit_session_v1");
-const identity = { scope, org_id: z.string().uuid(), session_id: z.string().uuid() };
+const identity = { scope, org_id: z.guid(), session_id: z.guid() };
 const counts = z
   .object({
     sessions: z.literal(1),
@@ -43,21 +45,21 @@ const blocked = z
   .object({
     status: z.literal("blocked"),
     ...identity,
-    reasons: z.array(reason).nonempty(),
+    reasons: z.array(reason).nonempty().max(MAX_REASONS),
   })
   .strict();
 const prepared = z
   .object({
     status: z.literal("prepared"),
     ...identity,
-    request_id: z.string().uuid(),
+    request_id: z.guid(),
   })
   .strict();
 const complete = z
   .object({
     status: z.literal("complete"),
     ...identity,
-    request_id: z.string().uuid(),
+    request_id: z.guid(),
     completed_at: z.string().datetime({ offset: true }),
     deleted: counts,
     retained: z
@@ -82,12 +84,12 @@ const preparation = z.discriminatedUnion("status", [blocked, prepared, complete]
 const inspection = z
   .object({
     status: z.enum(["ready", "blocked"]),
-    reasons: z.array(reason),
+    reasons: z.array(reason).max(MAX_REASONS),
     inventory: z
       .object({
         scope: z.literal("local_database_only"),
-        org_id: z.string().uuid(),
-        session_id: z.string().uuid(),
+        org_id: z.guid(),
+        session_id: z.guid(),
         counts,
         graph_ownership: z.enum(["none", "exclusive", "shared", "ambiguous"]),
         unattributed_graph: z.literal("not_inventoried"),
@@ -130,7 +132,7 @@ export interface SessionErasureDeps {
 }
 
 function canonicalUuid(value: string): string {
-  if (!z.string().uuid().safeParse(value).success) throw new Error("invalid erasure identity");
+  if (!z.guid().safeParse(value).success) throw new Error("invalid erasure identity");
   return value.toLowerCase();
 }
 

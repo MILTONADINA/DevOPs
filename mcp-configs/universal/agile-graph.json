@@ -5,5 +5,5 @@
   "env": {
     "GRAPH_ENGINE_NO_FEEDBACK": "1"
   },
-  "description": "Agile Graph (MIT, https://github.com/MILTONADINA/agile-graph) project context for a cloud-backed client such as Claude Code: context_get, symbol_search, graph_neighbors and memory_propose, pinned by agile-graph.tool-hashes.json for @agile-graph/engine 0.1.0 and 0.1.1. No run tools. Start it from the project root after `GRAPH_ENGINE_NO_FEEDBACK=1 agile-graph -C . init --cloud-mcp --export '<glob>'` and `GRAPH_ENGINE_NO_FEEDBACK=1 agile-graph -C . index --lexical`. GRAPH_ENGINE_NO_FEEDBACK=1 turns the engine's automatic feedback off completely. devops init writes this entry for you (specs/graph/agile-graph-link.md)."
+  "description": "Agile Graph (MIT, https://github.com/MILTONADINA/agile-graph) project context for a cloud-backed client such as Claude Code: context_get, symbol_search, graph_neighbors and memory_propose, pinned by agile-graph.tool-hashes.json for @agile-graph/engine 0.1.0, 0.1.1, 0.1.2 and 0.2.0. No run tools. Start it from the project root after `GRAPH_ENGINE_NO_FEEDBACK=1 agile-graph -C . init --cloud-mcp --export '<glob>'` and `GRAPH_ENGINE_NO_FEEDBACK=1 agile-graph -C . index --lexical`. GRAPH_ENGINE_NO_FEEDBACK=1 turns the engine's automatic feedback off completely. devops init writes this entry for you (specs/graph/agile-graph-link.md)."
 }

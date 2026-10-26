@@ -1,6 +1,6 @@
 {
   "name": "@miltonadina/devops",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "A self-configuring, verification-first DevOps workflow for AI coding agents. Built for Claude Code; its AGENTS.md contract is tool-agnostic (Codex reads it natively), and no adapters for other tools ship yet.",
   "type": "module",
   "bin": {
@@ -130,6 +130,7 @@
     "docs/PLUGIN_DISTRIBUTION.md",
     "docs/SECURITY.md",
     "docs/SKILL_SIGNING.md",
+    "docs/UPGRADING.md",
     "docs/VERIFICATION.md"
   ]
 }

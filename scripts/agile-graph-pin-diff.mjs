@@ -8,7 +8,7 @@
 // Prints {"match":bool,"changed":[...],"added":[...],"removed":[...]} and exits 0.
 
 import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { isMain } from './lib/is-main.mjs';
 
 const plainObject = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 
@@ -21,7 +21,10 @@ export function comparePins(engine, pins) {
   return { match: changed.length + added.length + removed.length === 0, changed, added, removed };
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+// Node resolves symlinks in the main module's path, so compare real paths: run through a
+// symlinked folder (macOS /var/folders, for one), the plain comparison never matched and
+// the script printed nothing.
+if (isMain(import.meta.url)) {
   const [engineFile, pinsFile] = process.argv.slice(2);
   const read = file => JSON.parse(readFileSync(file, 'utf8'));
   process.stdout.write(`${JSON.stringify(comparePins(read(engineFile), read(pinsFile)))}\n`);
