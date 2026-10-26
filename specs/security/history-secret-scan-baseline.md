@@ -25,7 +25,7 @@ A job that is always red cannot show a real leak: a real finding would be an eig
 
 ### REQ-HSB-1 (Ubiquitous) — Exact-fingerprint baseline
 **Enforced by:** test:tests/ci/gitleaksignore-baseline.test.mjs
-**Enforcement note:** `tests/ci/lint-detector-prompts.test.mjs` covers fingerprint grammar and `.github/workflows/security-scan.yml#gitleaks` supplies scanner wiring. These do not establish the whole historical-review requirement.
+**Enforcement note:** `tests/ci/gitleaksignore-baseline.test.mjs` checks that every active `.gitleaksignore` line matches the exact `commit:file:rule:line` grammar and that broader forms (globs, missing fields, line 0) are refused. `tests/ci/lint-detector-prompts.test.mjs` covers the detector-side grammar; scanner wiring is REQ-HSB-2 and REQ-HSB-3.
 THE SYSTEM SHALL keep a root `.gitleaksignore` that lists each reviewed historical fixture finding by its exact git-mode fingerprint (`commit:file:rule:line`) and nothing broader.
 
 ### REQ-HSB-2 (Ubiquitous) — Pinned scanner version
