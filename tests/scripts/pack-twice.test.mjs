@@ -1,5 +1,5 @@
 // scripts/pack-twice.mjs packs a package twice into separate temp dirs and compares the
-// tarballs (specs/release/npm-package.md REQ-12). Packages here are synthetic toys.
+// tarballs (specs/release/npm-package.md REQ-13). Packages here are synthetic toys.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';

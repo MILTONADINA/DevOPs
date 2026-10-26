@@ -1,4 +1,4 @@
-// README Quick start stays tied to the package (specs/release/npm-package.md AC-15).
+// README Quick start stays tied to the package (specs/release/npm-package.md AC-16).
 // Reads the fenced shell commands under "## Quick start" and checks that each npx, npm
 // and node command names something that exists in package.json (name, bin, scripts) or
 // the CLI's own `help` text. Nothing here calls npm, npx or git, installs, or uses the
