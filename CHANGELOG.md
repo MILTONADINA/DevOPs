@@ -8,6 +8,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.5.1] — 2026-10-26
+
 ### Documentation
 
 - `docs/OBSERVABILITY.md` lists the proxy's structured log levels, the fields each
