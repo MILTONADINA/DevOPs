@@ -13,6 +13,13 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - The npm release workflow attaches a CycloneDX SBOM of the runtime dependencies
   (`npm sbom --omit dev`) to the GitHub release and the workflow run
   (`docs/RELEASING.md`).
+### Security
+
+- Lockfile updates (`npm audit fix`, no major bumps) clear the fast-uri advisories at the root
+  and the vite and vitest-tooling advisories in `runtime/`. `npm audit --audit-level=high` in
+  `runtime/` still reports zod (needs a 3.x to 4.x major bump) and undici (pinned exactly by
+  miniflare via wrangler, dev-only).
+
 ### Fixed
 
 - Long-running scripts (DAST control server, graph dashboard, runtime proxy, capture
