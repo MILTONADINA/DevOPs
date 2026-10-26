@@ -131,7 +131,7 @@ export function createKnowledgeGraph(client: SupabaseClient): KnowledgeGraph {
       // Only explicit unknown coverage authorizes the guarded legacy path. A
       // covered writer keeps reuse reads and provenance writes inside SQL.
       if (data === null) return null;
-      return z.string().uuid().parse(data);
+      return z.guid().parse(data);
     } catch {
       throw new Error("managed graph write unavailable");
     }

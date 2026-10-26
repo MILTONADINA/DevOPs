@@ -16,9 +16,11 @@ Versions follow [Semantic Versioning](https://semver.org/).
 ### Security
 
 - Lockfile updates (`npm audit fix`, no major bumps) clear the fast-uri advisories at the root
-  and the vite and vitest-tooling advisories in `runtime/`. `npm audit --audit-level=high` in
-  `runtime/` still reports zod (needs a 3.x to 4.x major bump) and undici (pinned exactly by
-  miniflare via wrangler, dev-only).
+  and the vite and vitest-tooling advisories in `runtime/`.
+- `runtime/` moves from zod 3 to zod ^4.6.7 (GHSA-mrhx-c7xc-m3w5), with length caps on the
+  erasure RPC reason arrays and the activation manifest, and pins the dev-only wrangler
+  chain's undici to ^7.30.1 through `overrides`. `npm audit --audit-level=high` now passes in
+  the root and `runtime/` (`specs/security/ci-dependency-audit.md` AC-6).
 
 ### Fixed
 
