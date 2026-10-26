@@ -86,6 +86,23 @@ non-rate-limit errors; workflow tests verify job-scoped npm settings and that th
 load, save and store steps exist, are SHA-pinned and are keyed on the image
 references.
 
+## REQ-5 — Runtime line coverage floor
+
+WHEN CI runs the required `runtime-test` job, THE PIPELINE SHALL run `npm run
+test:coverage` in `runtime/` (V8 coverage, `json-summary` reporter) and then
+`scripts/check-coverage-floor.mjs`, which SHALL fail the job IF the report's
+total line coverage is below `governance/coverage-floor.json`'s `runtime`
+value, OR IF the report or the floor file is missing, not JSON, or lacks a
+finite percentage in 0..100, OR IF the report measured no lines. The floor
+SHALL be the measured line percentage rounded down, and SHALL only be raised.
+`@vitest/coverage-v8` SHALL be pinned to exactly the version of `vitest`.
+
+- **AC-5.1** Below the floor exits 1; at or above it exits 0; a malformed
+  summary or floor file exits 1. **Verified by:**
+  `tests/scripts/check-coverage-floor.test.mjs`.
+- **AC-5.2** The `test:coverage` script, the exact coverage-v8 pin and the
+  `runtime-test` step are present. **Verified by:** the same test file.
+
 ## Out of scope
 
 The `db:verify-*` Node integration scripts need a real or local model
