@@ -8,6 +8,12 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Documentation
+
+- `docs/OBSERVABILITY.md` lists the proxy's structured log levels, the fields each
+  line carries, what is redacted and by which function, and how to read the lines;
+  `tests/observability-log-fields-doc.test.mjs` checks each field against the source.
+
 ### Added
 
 - The npm release workflow attaches a CycloneDX SBOM of the runtime dependencies
