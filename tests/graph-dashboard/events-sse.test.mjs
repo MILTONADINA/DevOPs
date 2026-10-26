@@ -349,9 +349,19 @@ test('GET /events -- a brand-new run directory created after boot (not present i
     await client.nextFrame(); // drain initial (2 runs)
     const newRunDir = path.join(journalRoot, 'sessNew', 'subagents', 'workflows', 'wfNew');
     await mkdir(newRunDir, { recursive: true });
-    await writeFile(path.join(newRunDir, 'journal.jsonl'), '{"type":"started","key":"kN","agentId":"agentN","label":"planner","phase":"Plan"}\n');
+    // writeFile truncates before it writes, so a broadcast can observe the
+    // journal while it is still empty (run present but not yet active). Write
+    // the empty file first on purpose, then wait for the ACTIVE state under an
+    // explicit deadline instead of asserting on the first frame that lists it.
+    const newJournal = path.join(newRunDir, 'journal.jsonl');
+    await writeFile(newJournal, '');
+    await writeFile(newJournal, '{"type":"started","key":"kN","agentId":"agentN","label":"planner","phase":"Plan"}\n');
 
-    const frame = await client.waitForFrameMatching((snap) => snap.runs.some((r) => r.sessionId === 'sessNew'), 3500);
+    const NEW_RUN_DEADLINE_MS = 6000; // > 2 poll intervals; fs.watch is only a fast path
+    const frame = await client.waitForFrameMatching(
+      (snap) => snap.runs.some((r) => r.sessionId === 'sessNew' && r.active),
+      NEW_RUN_DEADLINE_MS
+    );
     const newRun = frame.json.runs.find((r) => r.sessionId === 'sessNew');
     assert.ok(newRun.active, 'the newly-appeared run should be active (started, no result yet)');
     assert.strictEqual(frame.json.runs.length, 3, 'run count should now include the new run alongside the 2 fixture runs');

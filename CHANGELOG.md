@@ -16,6 +16,9 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Internal
 
+- `tests/graph-dashboard/events-sse.test.mjs` waits for the new run to be active under an explicit 6s
+  deadline instead of asserting on the first frame that lists it, which could see the journal while
+  it was still empty (#300).
 - REQ-HSB-1 moves from UNENFORCED to mechanically enforced via
   `tests/ci/gitleaksignore-baseline.test.mjs`; `scripts/check-enforcement.mjs` reports
   unenforced=24 (was 25) and `governance/enforcement-baseline.json` ratchets it. Added
