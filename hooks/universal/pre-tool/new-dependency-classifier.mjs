@@ -31,6 +31,7 @@ export function segments(text) {
     if (c === '\\' && i + 1 < text.length) { word = (word ?? '') + text[++i]; continue; }
     if (c === ';' || c === '&' || c === '|' || c === '\n' || c === '(' || c === ')' || c === '`') { endSegment(); continue; }
     if (c === ' ' || c === '\t' || c === '\r') { endWord(); continue; }
+    if (c === '#' && word === null) { while (i + 1 < text.length && text[i + 1] !== '\n') i++; continue; }
     word = (word ?? '') + c;
   }
   endSegment();
@@ -38,6 +39,10 @@ export function segments(text) {
 }
 
 const WRAPPERS = new Set(['sudo', 'env', 'command', 'exec', 'time', 'nohup', 'nice', 'doas']);
+const WRAPPER_VALUE_FLAGS = {
+  sudo: ['-u', '-g', '-C', '-h', '-p', '-U', '-r', '-t', '-T', '--user', '--group'],
+  doas: ['-u', '-C'], env: ['-u', '-C', '-S', '--unset', '--chdir'], nice: ['-n'],
+};
 const SHELLS = new Set(['bash', 'sh', 'zsh', 'dash']);
 
 // Flags that take a separate value, per tool family. `--flag=value` is self-contained.
@@ -126,6 +131,18 @@ function declaredNpm(dir) {
   return names;
 }
 
+// Drop a `#` comment that is outside a quoted string.
+function stripTomlComment(line) {
+  let quote = null;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (quote) { if (c === '\\' && quote === '"') i++; else if (c === quote) quote = null; continue; }
+    if (c === '"' || c === "'") quote = c;
+    else if (c === '#') return line.slice(0, i);
+  }
+  return line;
+}
+
 // ---- python family ----
 const pyNorm = (s) => s.toLowerCase().replace(/[-_.]+/g, '-');
 function pyName(operand) {
@@ -151,7 +168,7 @@ function declaredPython(dir) {
     let section = '';
     let inArray = false;
     for (const raw of toml.split('\n')) {
-      const line = raw.trim();
+      const line = stripTomlComment(raw).trim();
       const head = /^\[+\s*([^\]]+?)\s*\]+$/.exec(line);
       if (head && !inArray) { section = head[1]; continue; }
       const poetry = /^tool\.poetry(\.group\.[^.]+)?\.(dev-)?dependencies$/.test(section);
@@ -183,7 +200,7 @@ function declaredCargo(dir) {
   if (toml === null) return names;
   let inDeps = false;
   for (const raw of toml.split('\n')) {
-    const line = raw.trim();
+    const line = stripTomlComment(raw).trim();
     const head = /^\[\s*([^\]]+?)\s*\]$/.exec(line);
     if (head) {
       const h = head[1];
@@ -205,7 +222,16 @@ const cargoName = (operand) => operand.replace(/@.*$/, '');
 // Return the list of undeclared operands for one command segment (may be empty).
 function checkSegment(words, dir, depth) {
   let i = 0;
-  while (i < words.length && (/^[A-Za-z_][A-Za-z0-9_]*=/.test(words[i]) || WRAPPERS.has(path.basename(words[i])))) i++;
+  while (i < words.length) {
+    if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(words[i])) { i++; continue; }
+    if (!WRAPPERS.has(path.basename(words[i]))) break;
+    const wrapper = path.basename(words[i++]);
+    // Skip the wrapper's own options, and the values of the ones that take one.
+    while (i < words.length && words[i].startsWith('-') && words[i].length > 1) {
+      if (!words[i].includes('=') && (WRAPPER_VALUE_FLAGS[wrapper] ?? []).includes(words[i])) i++;
+      i++;
+    }
+  }
   words = words.slice(i);
   if (!words.length) return [];
   const head = path.basename(words[0]);

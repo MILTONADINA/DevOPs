@@ -187,3 +187,21 @@ test('the installer copies the classifier next to the hook when the hook is sele
     assert.equal(run('npm install toy-new').status, 2);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('wrapper options, shell comments and TOML comments are parsed, not guessed', () => {
+  withProject({
+    'package.json': PKG,
+    'pyproject.toml': '[project] # metadata\nname = "demo"\ndependencies = [\n  # "toy-removed" was dropped\n  "toy-dep", # keep\n]\n',
+    'Cargo.toml': '[dependencies] # runtime\ntoy-crate = "1" # pinned\n',
+  }, (dir) => {
+    blocked(dir, 'env -i npm install toy-new', 'toy-new');
+    blocked(dir, 'doas -u nobody npm install toy-new', 'toy-new');
+    blocked(dir, 'env -u HOME FOO=1 pip install toy-new', 'toy-new');
+    allowed(dir, 'npm install left-pad-toy # reinstall');
+    allowed(dir, 'npm install # sync dependencies');
+    blocked(dir, 'npm install "toy-new#x"', 'toy-new#x');
+    blocked(dir, 'pip install toy-removed', 'toy-removed');
+    allowed(dir, 'pip install toy-dep');
+    allowed(dir, 'cargo add toy-crate');
+  });
+});
