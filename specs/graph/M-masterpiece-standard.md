@@ -406,7 +406,7 @@ THE SYSTEM SHALL correct, at the latest in the cycle that implements the matchin
 
 ### REQ-M30 (Event-driven): Agent-run installs of undeclared packages need owner approval
 WHEN a Bash command runs `npm`, `pnpm`, `yarn` or `bun` with `add` or `install` and a package-name operand, `pip`, `uv pip` or `python -m pip` with `install` and a name, `uv add` or `poetry add` with a name, or `cargo add` with a name, AND that name is not declared in the project directory's `package.json` (dependencies, devDependencies, optionalDependencies, peerDependencies), `requirements*.txt`, `pyproject.toml` or `Cargo.toml`, THE `block-new-dependency.sh` PRE-TOOL HOOK SHALL exit 2 with a message that names the package and asks for owner approval. Plain `npm install`, `npm ci`, and installs from a requirements file with no name operand SHALL stay allowed. THE HOOK SHALL make no network call and SHALL fail closed when its classifier fails.
-**Enforced by:** `tests/hooks/block-new-dependency.test.mjs`; wired as a Bash PreToolUse hook in `.claude/settings.json`
+**Enforced by:** test:tests/hooks/block-new-dependency.test.mjs; hook:PreToolUse:Bash:hooks/universal/pre-tool/block-new-dependency.sh
 **Falsified by:** an undeclared name that installs through a recognised command without a block, a declared name or a plain install that is blocked, or any network access by the hook.
 
 ---
