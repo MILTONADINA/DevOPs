@@ -86,7 +86,7 @@
     "deploy": "wrangler deploy"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.99.0",
+    "@anthropic-ai/sdk": "^0.135.0",
     "@fastify/cors": "^10.1.0",
     "@fastify/rate-limit": "^10.3.0",
     "@huggingface/transformers": "^4.3.0",
@@ -110,9 +110,9 @@
     "@cloudflare/workers-types": "^5.20260923.1",
     "@types/node": "^22.20.4",
     "@types/uuid": "^11.0.0",
-    "@typescript-eslint/eslint-plugin": "~8.55.0",
-    "@typescript-eslint/parser": "~8.55.0",
-    "@vitest/coverage-v8": "5.0.1",
+    "@typescript-eslint/eslint-plugin": "~8.71.2",
+    "@typescript-eslint/parser": "~8.71.2",
+    "@vitest/coverage-v8": "5.0.5",
     "eslint": "^8.57.0",
     "prettier": "^3.2.5",
     "supabase": "^2.117.0",
