@@ -404,6 +404,11 @@ THE SYSTEM SHALL correct, at the latest in the cycle that implements the matchin
 **Enforcement note:** Forward SECURITY reference integrity is separate from semantic readiness lint and the remaining procedural corrections.
 **Falsified by:** any listed sentence still present once its REQ is verified.
 
+### REQ-M30 (Event-driven): Agent-run installs of undeclared packages need owner approval
+WHEN a Bash command runs `npm`, `pnpm`, `yarn` or `bun` with `add` or `install` and a package-name operand, `pip`, `uv pip` or `python -m pip` with `install` and a name, `uv add` or `poetry add` with a name, or `cargo add` with a name, AND that name is not declared in the project directory's `package.json` (dependencies, devDependencies, optionalDependencies, peerDependencies), `requirements*.txt`, `pyproject.toml` or `Cargo.toml`, THE `block-new-dependency.sh` PRE-TOOL HOOK SHALL exit 2 with a message that names the package and asks for owner approval. Plain `npm install`, `npm ci`, and installs from a requirements file with no name operand SHALL stay allowed. THE HOOK SHALL make no network call and SHALL fail closed when its classifier fails.
+**Enforced by:** `tests/hooks/block-new-dependency.test.mjs` (hook not wired in `.claude/settings.json`; the test proves the decision, not the wiring)
+**Falsified by:** an undeclared name that installs through a recognised command without a block, a declared name or a plain install that is blocked, or any network access by the hook.
+
 ---
 
 ## Acceptance criteria
@@ -539,6 +544,9 @@ The regression suite SHALL retain all twelve original deploy-test instances and 
 
 ### AC-M29.1 (REQ-M29)
 **Given** each REQ at state `verified` **When** its listed document lines are grepped **Then** the false sentence is gone or rewritten to name the actual mechanism.
+
+### AC-M30.1 (REQ-M30)
+**Given** a project whose manifest declares `toy-a` **When** the hook receives `npm install toy-new`, `pnpm add toy-new`, `yarn add toy-new`, `bun add toy-new`, `pip install toy-new`, `uv add toy-new`, `poetry add toy-new` or `cargo add toy-new` **Then** it exits 2 and its stderr names `toy-new` and asks for owner approval; **and** `npm install toy-a`, `npm ci`, `npm install` and `pip install -r requirements.txt` exit 0 with no output, and a scoped name such as `@toy/scoped` is compared whole.
 
 ---
 
