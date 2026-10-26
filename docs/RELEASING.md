@@ -66,6 +66,16 @@ How a version of `@miltonadina/devops` reaches npm. The rules are in
      package identity is in its `bom-ref` and `purl`. The job holds `contents: write`;
      the `publish` job's permissions and environment are unchanged.
 
+## Support and end-of-life
+
+- The latest minor is supported and receives fixes.
+- The previous minor is security-only for 90 days after the latest minor is released,
+  then it is end-of-life. Earlier minors are end-of-life.
+- The Node.js floor changes only in a minor release, and that release carries a
+  CHANGELOG note. The floor is `>=22.12.0`, the `engines.node` field in `package.json`.
+
+`SECURITY.md` points here for the supported versions.
+
 ## Before the first release: a local dry run
 
 ```bash

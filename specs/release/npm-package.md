@@ -163,6 +163,14 @@ for per-project rules. IF `CLAUDE.md` already exists, IT SHALL NOT overwrite it.
 `--dry-run` is given, IT SHALL write nothing. The published package SHALL NOT ship this
 repository's own `CLAUDE.md`.
 
+### REQ-12 — The support and end-of-life policy is published
+
+`docs/RELEASING.md` SHALL have a "Support and end-of-life" section stating that the
+latest minor is supported, that the previous minor receives security fixes only for 90
+days after the latest minor is released, and that the Node.js floor changes only in a
+minor release with a CHANGELOG note. The Node.js floor it states SHALL equal
+`engines.node` in `package.json`, and `SECURITY.md` SHALL link to the section.
+
 ## Acceptance criteria
 
 ### AC-1
@@ -291,6 +299,14 @@ project the constitution references are package-relative with no absolute path.
 package file list does not include the repository's `CLAUDE.md`.
 
 **Verified by:** `tests/init-agent-bootstrap.test.mjs` (`#ac-14`), `tests/npm-package.test.mjs`.
+
+### AC-15
+
+**Given** the repository **When** the support-policy test runs **Then** `docs/RELEASING.md`
+has the section with the 90-day and minor-only Node floor rules, its stated Node floor
+equals `engines.node`, and `SECURITY.md` links to it.
+
+**Verified by:** `tests/support-policy.test.mjs`.
 
 ## Out of scope
 
