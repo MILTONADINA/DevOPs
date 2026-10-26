@@ -152,7 +152,7 @@ IF the planner returns a non-empty `ambiguities[]` or `conflicts[]`, THEN `sprin
 - The planner schema SHALL add `conflicts: [{higher, lower, clause}]`.
 - `AGENTS.md` SHALL carry one precedence line: owner decision > law/safety > approved spec > ADR/AC > plan > code.
 
-**Enforced by:** UNENFORCED
+**Enforced by:** test:tests/graph-resilience/workflow-faults.test.mjs; test:tests/graph-resilience/run-record.test.mjs; test:tests/graph-resilience/req-contracts.test.mjs
 **Enforcement note (pre-MR17 annotation):** code in `sprint-cycle.js` (replacing the log-only `:139`); the `graph-run-record.mjs` acknowledgement field; tests.
 **Enforcement note:** Code gates and acknowledgement fixtures exist; authentic owner-answer provenance and required orchestrator writes remain outside those fixtures.
 **Falsified by:** a fake planner returning one ambiguity and the coder stage running without a matching acknowledgement.
