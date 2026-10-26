@@ -8,6 +8,12 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Documentation
+
+- `docs/STATE.md` lists every persisted file with its owner, `schema_version`, readers and
+  compatibility rule, plus a backup and restore drill. `tests/docs/state-doc.test.mjs` fails
+  when a file with a `schema_version` field is not named there.
+
 ### Internal
 
 - REQ-HSB-1 moves from UNENFORCED to mechanically enforced via
