@@ -115,6 +115,10 @@ jobs:
         run: |
           npm test 2>&1 | tee "$RUNNER_TEMP/runtime-tests.log"
           node ../scripts/check-test-floor.mjs runtime "$RUNNER_TEMP/runtime-tests.log"
+      - name: Runtime line coverage, held to its floor (specs/ops/ci-product-suites.md REQ-5)
+        run: |
+          npm run test:coverage
+          node ../scripts/check-coverage-floor.mjs coverage/coverage-summary.json ../governance/coverage-floor.json
 
   validate:
     runs-on: ubuntu-24.04
