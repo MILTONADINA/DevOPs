@@ -60,6 +60,9 @@ jobs:
       - name: Pack, install and run the package
         run: bash scripts/package-smoke.sh
 
+      - name: Packing twice gives the same tarball
+        run: node scripts/pack-twice.mjs
+
       - name: Install cosign (pinned, as in release-sign.yml)
         uses: sigstore/cosign-installer@f713795cb21599bc4e5c4b58cbad1da852d7eeb9  # v3
         with:
