@@ -205,3 +205,19 @@ test('wrapper options, shell comments and TOML comments are parsed, not guessed'
     allowed(dir, 'cargo add toy-crate');
   });
 });
+
+test('cargo toolchain selectors, redirections and retargeted installs are handled', () => {
+  withProject({ 'package.json': PKG, 'Cargo.toml': '[dependencies]\ntoy-crate = "1"\n' }, (dir) => {
+    blocked(dir, 'cargo +stable add toy-new', 'toy-new');
+    allowed(dir, 'cargo +nightly add toy-crate');
+    allowed(dir, 'npm install > install.log');
+    allowed(dir, 'npm install left-pad-toy 2> err.log');
+    blocked(dir, 'npm install toy-new > install.log', 'toy-new');
+    // A different install directory has its own manifest, so even a name declared here is not verified.
+    blocked(dir, 'npm --prefix child install left-pad-toy', 'left-pad-toy');
+    blocked(dir, 'cd child && npm install left-pad-toy', 'left-pad-toy');
+    blocked(dir, 'cargo add --manifest-path child/Cargo.toml toy-crate', 'toy-crate');
+    allowed(dir, 'cd . && npm install left-pad-toy');
+    allowed(dir, 'cd child && npm ci');
+  });
+});

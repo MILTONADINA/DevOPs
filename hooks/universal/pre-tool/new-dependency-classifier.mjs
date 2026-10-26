@@ -43,6 +43,7 @@ const WRAPPER_VALUE_FLAGS = {
   sudo: ['-u', '-g', '-C', '-h', '-p', '-U', '-r', '-t', '-T', '--user', '--group'],
   doas: ['-u', '-C'], env: ['-u', '-C', '-S', '--unset', '--chdir'], nice: ['-n'],
 };
+const DIR_FLAGS = ['--prefix', '-C', '--cwd', '--dir', '--directory', '--project', '--manifest-path'];
 const SHELLS = new Set(['bash', 'sh', 'zsh', 'dash']);
 
 // Flags that take a separate value, per tool family. `--flag=value` is self-contained.
@@ -81,7 +82,7 @@ function operands(args, family, skipEditable) {
     const a = args[i];
     if (a === '--') { out.push(...args.slice(i + 1)); break; }
     if (a.startsWith('-') && a.length > 1) { if (!a.includes('=') && valued.has(a)) i++; continue; }
-    if (a.startsWith('>') || /^\d>/.test(a)) continue;
+    if (/^\d*[<>]/.test(a)) { if (/^\d*[<>]+&?$/.test(a)) i++; continue; }
     out.push(a);
   }
   return out;
@@ -220,7 +221,7 @@ function declaredCargo(dir) {
 const cargoName = (operand) => operand.replace(/@.*$/, '');
 
 // Return the list of undeclared operands for one command segment (may be empty).
-function checkSegment(words, dir, depth) {
+function checkSegment(words, dir, depth, moved) {
   let i = 0;
   while (i < words.length) {
     if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(words[i])) { i++; continue; }
@@ -236,9 +237,18 @@ function checkSegment(words, dir, depth) {
   if (!words.length) return [];
   const head = path.basename(words[0]);
   const rest = words.slice(1);
+  // A command aimed at another directory cannot be checked against this project's manifest:
+  // treat every name as undeclared so the owner decides, rather than read the wrong manifest.
+  rest.forEach((a, k) => {
+    const flag = DIR_FLAGS.find((f) => a === f || a.startsWith(f + '='));
+    if (!flag) return;
+    const value = a.includes('=') ? a.slice(a.indexOf('=') + 1) : rest[k + 1];
+    if (value !== '.' && value !== './') moved = true;
+  });
+  const declaredIn = (read) => (moved ? new Set() : read(dir));
   if (SHELLS.has(head)) {
     const c = rest.findIndex((a) => /^-[a-zA-Z]*c[a-zA-Z]*$/.test(a));
-    if (c >= 0 && rest[c + 1] !== undefined && depth < MAX_DEPTH) return classify(rest[c + 1], dir, depth + 1);
+    if (c >= 0 && rest[c + 1] !== undefined && depth < MAX_DEPTH) return classify(rest[c + 1], dir, depth + 1, moved);
     return [];
   }
   if (['npm', 'pnpm', 'yarn', 'bun'].includes(head)) {
@@ -248,7 +258,7 @@ function checkSegment(words, dir, depth) {
       : head === 'yarn' ? ['add'] : ['add', 'install', 'i'];
     if (!adds.includes(sub)) return [];
     const ops = operands(rest.slice(at + 1), 'node');
-    const declared = ops.length ? declaredNpm(dir) : null;
+    const declared = ops.length ? declaredIn(declaredNpm) : null;
     return ops.filter((o) => !isLocalPath(o) && (isRemote(o) || !declared.has(npmName(o))))
       .map((o) => ({ name: isRemote(o) ? o : npmName(o), manifest: 'package.json' }));
   }
@@ -265,22 +275,28 @@ function checkSegment(words, dir, depth) {
   } else if (head === 'poetry') { const [c, r] = sub(rest); if (c === 'add') { pipArgs = r; skipEditable = true; } }
   if (pipArgs) {
     const ops = operands(pipArgs, 'pip', skipEditable);
-    const declared = ops.length ? declaredPython(dir) : null;
+    const declared = ops.length ? declaredIn(declaredPython) : null;
     return ops.filter((o) => !isLocalPath(o) && o !== '.' && !/\.(whl|tar\.gz|zip)$/.test(o)
       && (isRemote(o) || !declared.has(pyNorm(pyName(o)))))
       .map((o) => ({ name: isRemote(o) ? o : pyName(o), manifest: 'requirements*.txt or pyproject.toml' }));
   }
-  if (head === 'cargo' && rest[0] === 'add') {
-    const ops = operands(rest.slice(1), 'cargo');
-    const declared = ops.length ? declaredCargo(dir) : null;
+  if (head === 'cargo') {
+    const k = rest.findIndex((a) => !a.startsWith('+'));
+    if (rest[k] !== 'add') return [];
+    const ops = operands(rest.slice(k + 1), 'cargo');
+    const declared = ops.length ? declaredIn(declaredCargo) : null;
     return ops.filter((o) => !declared.has(cargoName(o))).map((o) => ({ name: cargoName(o), manifest: 'Cargo.toml' }));
   }
   return [];
 }
 
-export function classify(command, dir = process.cwd(), depth = 0) {
+export function classify(command, dir = process.cwd(), depth = 0, moved = false) {
   const found = [];
-  for (const words of segments(String(command))) found.push(...checkSegment(words, dir, depth));
+  for (const words of segments(String(command))) {
+    const head = path.basename(words[0] ?? '');
+    if ((head === 'cd' || head === 'pushd') && words.length > 1 && words[1] !== '.') moved = true;
+    found.push(...checkSegment(words, dir, depth, moved));
+  }
   return found;
 }
 
