@@ -76,7 +76,7 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
   // The database mints identity and coverage together; generic inserts stay unknown.
   const { data, error } = await client.rpc("create_managed_organization", { p_name: args.name, p_plan: args.plan });
   if (error) throw new Error(`organization constructor failed: ${error.message}`);
-  const identity = z.string().uuid().safeParse(((data ?? [])[0] as { id?: unknown } | undefined)?.id);
+  const identity = z.guid().safeParse(((data ?? [])[0] as { id?: unknown } | undefined)?.id);
   if (!identity.success) throw new Error("organization constructor returned no valid identity");
   const orgId = identity.data;
 
