@@ -3,7 +3,9 @@
 ## Supported versions
 
 DevOPs is pre-1.0. Only the latest 0.x minor line receives security fixes.
-Older minors are not patched; upgrade to the latest minor.
+Older minors are not patched; upgrade to the latest minor. The end-of-life rules,
+including the 90-day security-only window and when the Node.js floor changes, are in
+[Support and end-of-life](docs/RELEASING.md#support-and-end-of-life).
 
 | Version                 | Supported |
 |-------------------------|-----------|

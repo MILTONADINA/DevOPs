@@ -21,6 +21,11 @@ Versions follow [Semantic Versioning](https://semver.org/).
   erasure RPC reason arrays and the activation manifest, and pins the dev-only wrangler
   chain's undici to ^7.30.1 through `overrides`. `npm audit --audit-level=high` now passes in
   the root and `runtime/` (`specs/security/ci-dependency-audit.md` AC-6).
+### Documentation
+
+- `docs/RELEASING.md` has a Support and end-of-life section (latest minor supported,
+  previous minor security-only for 90 days, Node floor changes only in a minor with a
+  CHANGELOG note), linked from `SECURITY.md` (`specs/release/npm-package.md` REQ-12).
 
 ### Fixed
 
