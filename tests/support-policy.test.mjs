@@ -25,5 +25,5 @@ test('the Node floor in the policy equals package.json engines.node (specs/relea
 });
 
 test('SECURITY.md links to the policy section (specs/release/npm-package.md#ac-15)', () => {
-  assert.match(read('SECURITY.md'), /\]\(docs\/RELEASING\.md#support-and-end-of-life\)/);
+  assert.match(read('SECURITY.md'), /\]\(https:\/\/github\.com\/MILTONADINA\/DevOPs\/blob\/main\/docs\/RELEASING\.md#support-and-end-of-life\)/);
 });
