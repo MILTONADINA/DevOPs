@@ -74,7 +74,7 @@
     "@opentelemetry/core": "^2.0.0",
     "@opentelemetry/sdk-trace-base": "^2.0.0",
     "acorn": "8.18.0",
-    "typescript": "5.9.3"
+    "typescript": "7.0.2"
   },
   "files": [
     "AGENTS.md",
