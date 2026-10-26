@@ -87,7 +87,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.99.0",
-    "@fastify/cors": "^10.1.0",
+    "@fastify/cors": "^11.3.1",
     "@fastify/rate-limit": "^10.3.0",
     "@huggingface/transformers": "^4.3.0",
     "@pinecone-database/pinecone": "^3.0.0",
