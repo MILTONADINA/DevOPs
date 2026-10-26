@@ -308,6 +308,15 @@ equals `engines.node`, and `SECURITY.md` links to it.
 
 **Verified by:** `tests/support-policy.test.mjs`.
 
+### AC-16
+
+**Given** the README's Quick start section **When** the tests run **Then** every `npx`, `npm`,
+`node` and `devops` command in its fenced blocks names this package, a `package.json` bin or
+script, an existing script file, or a subcommand and flag that `devops help` lists, and a
+command that does not is reported. The check makes no network call and installs nothing.
+
+**Verified by:** `tests/docs/readme-quickstart.test.mjs`.
+
 ## Out of scope
 
 - Publishing `runtime/` (`@miltonadina/devops-runtime` stays `private`).

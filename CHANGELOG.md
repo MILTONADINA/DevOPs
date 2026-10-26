@@ -26,6 +26,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - `docs/RELEASING.md` has a Support and end-of-life section (latest minor supported,
   previous minor security-only for 90 days, Node floor changes only in a minor with a
   CHANGELOG note), linked from `SECURITY.md` (`specs/release/npm-package.md` REQ-12).
+### Internal
+
+- A test reads the README Quick start commands and checks each against `package.json` and
+  the CLI's `help`, so a renamed command or flag fails CI (`specs/release/npm-package.md` AC-15).
 
 ### Fixed
 
