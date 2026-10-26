@@ -16,6 +16,12 @@ Versions follow [Semantic Versioning](https://semver.org/).
   line carries, what is redacted and by which function, and how to read the lines;
   `tests/observability-log-fields-doc.test.mjs` checks each field against the source.
 
+### Fixed
+
+- `scripts/pack-twice.mjs` stops its running `npm pack` step, removes its temporary
+  directory and exits 130 (SIGINT) or 143 (SIGTERM) when interrupted
+  (`specs/ops/script-entrypoints.md` REQ-4).
+
 ### Added
 
 - The required `runtime-test` job measures V8 line coverage of `runtime/` (`npm run test:coverage`)
