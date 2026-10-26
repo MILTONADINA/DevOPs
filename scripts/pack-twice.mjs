@@ -16,7 +16,7 @@ const fail = (msg) => { console.error(`pack-twice: ${msg}`); process.exitCode = 
 
 // Children run in their own process group so a signal can stop npm and its lifecycle scripts.
 let current = null;
-const stopChild = (sig) => { if (current?.pid) { try { process.kill(process.platform === 'win32' ? current.pid : -current.pid, sig); } catch { /* already gone */ } } };
+const stopGroup = (pid, sig) => { try { process.kill(process.platform === 'win32' ? pid : -pid, sig); } catch { /* already gone */ } };
 
 function sh(cmd, args) {
   return new Promise((resolve, reject) => {
@@ -58,14 +58,17 @@ if (!existsSync(path.join(pkgDir, 'package.json')) || !statSync(pkgDir).isDirect
   fail(`no package.json in ${pkgDir}`);
 } else {
   const work = realpathSync(mkdtempSync(path.join(tmpdir(), 'pack-twice-')));
-  // SIGINT/SIGTERM: stop the running child (SIGKILL after 2s), remove the temp dir, exit 130/143.
+  // SIGINT/SIGTERM: stop the running child (SIGKILL for what is left), remove the temp dir, exit 130/143.
   let stopping = false;
   const onSignal = (sig, code) => {
     if (stopping) return; stopping = true;
-    stopChild('SIGTERM');
-    const done = () => { rmSync(work, { recursive: true, force: true }); process.exit(code); };
-    const timer = setTimeout(() => { stopChild('SIGKILL'); done(); }, 2000);
-    if (current) current.once('close', () => { clearTimeout(timer); done(); }); else { clearTimeout(timer); done(); }
+    const child = current;
+    // SIGKILL the whole group even after npm closes: a lifecycle script may have left a worker behind.
+    const done = () => { if (child?.pid) stopGroup(child.pid, 'SIGKILL'); rmSync(work, { recursive: true, force: true }); process.exit(code); };
+    if (!child?.pid) return done();
+    stopGroup(child.pid, 'SIGTERM');
+    const timer = setTimeout(done, 2000);
+    child.once('close', () => { clearTimeout(timer); done(); });
   };
   process.on('SIGINT', () => onSignal('SIGINT', 130));
   process.on('SIGTERM', () => onSignal('SIGTERM', 143));
