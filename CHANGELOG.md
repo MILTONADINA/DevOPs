@@ -32,7 +32,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 - New pre-tool hook `hooks/universal/pre-tool/block-new-dependency.sh` blocks agent-run installs of
   packages the project has not declared (npm/pnpm/yarn/bun, pip/uv/poetry, `cargo add`) and asks for owner
-  approval, with no network call. Plain `npm install` and `npm ci` stay allowed. It is not wired in
+  approval, with no network call. Plain `npm install` and `npm ci` stay allowed. It runs as a Bash pre-tool hook in
   `.claude/settings.json` (REQ-M30).
 
 ## [0.5.1] — 2026-10-26
