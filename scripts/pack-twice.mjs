@@ -5,7 +5,7 @@
 // Not shipped in the package.
 //
 //   node scripts/pack-twice.mjs [package-dir]     (default: the repository root)
-import { spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -14,10 +14,24 @@ import path from 'node:path';
 const sha256 = (buf) => createHash('sha256').update(buf).digest('hex');
 const fail = (msg) => { console.error(`pack-twice: ${msg}`); process.exitCode = 1; };
 
-function sh(cmd, args, opts = {}) {
-  const r = spawnSync(cmd, args, { encoding: 'utf8', shell: process.platform === 'win32', ...opts });
-  if (r.status !== 0) throw new Error(`${cmd} ${args[0]} failed: ${(r.stderr || r.error?.message || '').trim()}`);
-  return r.stdout;
+// Children run in their own process group so a signal can stop npm and its lifecycle scripts.
+let current = null;
+const stopChild = (sig) => { if (current?.pid) { try { process.kill(process.platform === 'win32' ? current.pid : -current.pid, sig); } catch { /* already gone */ } } };
+
+function sh(cmd, args) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(cmd, args, { shell: process.platform === 'win32', detached: process.platform !== 'win32', stdio: ['ignore', 'pipe', 'pipe'] });
+    current = child;
+    let stdout = '', stderr = '';
+    child.stdout.on('data', (d) => { stdout += d; });
+    child.stderr.on('data', (d) => { stderr += d; });
+    child.once('error', (e) => { current = null; reject(new Error(`${cmd} ${args[0]} failed: ${e.message}`)); });
+    child.once('close', (status) => {
+      current = null;
+      if (status !== 0) reject(new Error(`${cmd} ${args[0]} failed: ${stderr.trim()}`));
+      else resolve(stdout);
+    });
+  });
 }
 
 function walk(dir, base = dir) {
@@ -28,13 +42,13 @@ function walk(dir, base = dir) {
 }
 
 // Pack into its own temp dir; return the tarball's hash and a path -> sha256 map of its entries.
-function packOnce(pkgDir, work, label) {
+async function packOnce(pkgDir, work, label) {
   const dest = path.join(work, label);
   const out = path.join(dest, 'unpacked');
   mkdirSync(out, { recursive: true });
-  const name = sh('npm', ['pack', pkgDir, '--pack-destination', dest, '--silent']).trim().split('\n').pop();
+  const name = (await sh('npm', ['pack', pkgDir, '--pack-destination', dest, '--silent'])).trim().split('\n').pop();
   const tarball = path.join(dest, name);
-  sh('tar', ['-xzf', tarball, '-C', out]);
+  await sh('tar', ['-xzf', tarball, '-C', out]);
   const entries = new Map(walk(out).sort().map((f) => [f.replace(/^package\//, ''), sha256(readFileSync(path.join(out, f)))]));
   return { sha: sha256(readFileSync(tarball)), entries };
 }
@@ -44,9 +58,20 @@ if (!existsSync(path.join(pkgDir, 'package.json')) || !statSync(pkgDir).isDirect
   fail(`no package.json in ${pkgDir}`);
 } else {
   const work = realpathSync(mkdtempSync(path.join(tmpdir(), 'pack-twice-')));
+  // SIGINT/SIGTERM: stop the running child (SIGKILL after 2s), remove the temp dir, exit 130/143.
+  let stopping = false;
+  const onSignal = (sig, code) => {
+    if (stopping) return; stopping = true;
+    stopChild('SIGTERM');
+    const done = () => { rmSync(work, { recursive: true, force: true }); process.exit(code); };
+    const timer = setTimeout(() => { stopChild('SIGKILL'); done(); }, 2000);
+    if (current) current.once('close', () => { clearTimeout(timer); done(); }); else { clearTimeout(timer); done(); }
+  };
+  process.on('SIGINT', () => onSignal('SIGINT', 130));
+  process.on('SIGTERM', () => onSignal('SIGTERM', 143));
   try {
-    const a = packOnce(pkgDir, work, 'first');
-    const b = packOnce(pkgDir, work, 'second');
+    const a = await packOnce(pkgDir, work, 'first');
+    const b = await packOnce(pkgDir, work, 'second');
     if (a.sha === b.sha) {
       console.log(`pack-twice: reproducible, ${a.entries.size} files, sha256 ${a.sha}`);
     } else {
