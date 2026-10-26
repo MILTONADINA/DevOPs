@@ -362,6 +362,8 @@ jobs:
         with: { node-version: 22 }
       - name: Pack, install and run the package
         run: bash scripts/package-smoke.sh
+      - name: Packing twice gives the same tarball
+        run: node scripts/pack-twice.mjs
 
   agile-graph-link:
     # specs/graph/agile-graph-link.md REQ-7: install the packed package with the pinned

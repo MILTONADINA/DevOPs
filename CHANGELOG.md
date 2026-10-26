@@ -30,6 +30,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 - A test reads the README Quick start commands and checks each against `package.json` and
   the CLI's `help`, so a renamed command or flag fails CI (`specs/release/npm-package.md` AC-15).
+- `scripts/pack-twice.mjs` packs the package twice into separate temp dirs and fails,
+  naming the differing entries, when the tarball sha256 or any file differs. CI's
+  `package-smoke` job and the release workflow's `verify` job run it
+  (`specs/release/npm-package.md` REQ-12).
 
 ### Fixed
 
@@ -156,7 +160,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
   existing content and line endings, and says to create `specs/`.
 - `devops-analyze --help` and `-h` print usage and exit without writing any file;
   an unknown flag exits 2 before any scan, also next to `--help` (#281,
-  `specs/release/npm-package.md` REQ-9).
+  `specs/release/npm-package.md` REQ-12).
 - `devops init --dry-run` ends by saying it wrote nothing, instead of saying the
   project was initialized (#271, `specs/ops/analyzer-detection.md` REQ-4).
 - `devops analyze` detects languages from file extensions when no manifest names

@@ -51,7 +51,9 @@ How a version of `@miltonadina/devops` reaches npm. The rules are in
    `git push origin vX.Y.Z`. This repository's deploy gate asks for your approval
    marker before it lets the tag push through.
 6. **Approve.** The `Release to npm` workflow verifies the tag, the changelog, the
-   tests, the installed package and every skill signature. It then waits for your
+   tests, the installed package, that packing twice gives byte-identical tarballs
+   (`node scripts/pack-twice.mjs`; run it locally to see which entries differ) and every
+   skill signature. It then waits for your
    approval of the `npm-release` environment, and publishes with a provenance
    attestation. `release-sign.yml` also verifies the signatures on the same tag.
 7. **Check.**

@@ -171,6 +171,13 @@ days after the latest minor is released, and that the Node.js floor changes only
 minor release with a CHANGELOG note. The Node.js floor it states SHALL equal
 `engines.node` in `package.json`, and `SECURITY.md` SHALL link to the section.
 
+### REQ-13 — The tarball is reproducible
+
+WHEN CI's `package-smoke` job or the release workflow's `verify` job runs, THE
+PIPELINE SHALL pack the package twice from the same commit into separate temporary
+directories and compare the tarball sha256 and each entry's path and sha256. IF they
+differ, THEN it SHALL fail and print the differing entries.
+
 ## Acceptance criteria
 
 ### AC-1
@@ -316,6 +323,14 @@ script, an existing script file, or a subcommand and flag that `devops help` lis
 command that does not is reported. The check makes no network call and installs nothing.
 
 **Verified by:** `tests/docs/readme-quickstart.test.mjs`.
+
+### AC-17
+
+**Given** a package that packs the same way twice **When** `scripts/pack-twice.mjs` runs
+**Then** it exits 0. **Given** a package that embeds a timestamp **Then** it exits 1 and
+names the differing entry. Both workflows call it.
+
+**Verified by:** `tests/scripts/pack-twice.test.mjs`.
 
 ## Out of scope
 
