@@ -8,7 +8,6 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [0.5.1] — 2026-10-26
 ### Internal
 
 - REQ-HSB-1 moves from UNENFORCED to mechanically enforced via
@@ -16,12 +15,6 @@ Versions follow [Semantic Versioning](https://semver.org/).
   unenforced=24 (was 25) and `governance/enforcement-baseline.json` ratchets it. Added
   `tests/graph-resilience/req-contracts.test.mjs` for the checkable clauses of REQ-R4, R7, R9,
   R10 and M7, which stay UNENFORCED because each also has procedural clauses.
-
-### Documentation
-
-- `docs/OBSERVABILITY.md` lists the proxy's structured log levels, the fields each
-  line carries, what is redacted and by which function, and how to read the lines;
-  `tests/observability-log-fields-doc.test.mjs` checks each field against the source.
 
 ### Fixed
 
@@ -34,15 +27,28 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - The required `runtime-test` job measures V8 line coverage of `runtime/` (`npm run test:coverage`)
   and fails below the floor in `governance/coverage-floor.json`, checked by
   `scripts/check-coverage-floor.mjs` (`specs/ops/ci-product-suites.md` REQ-5).
-- The npm release workflow attaches a CycloneDX SBOM of the runtime dependencies
-  (`npm sbom --omit dev`) to the GitHub release and the workflow run
-  (`docs/RELEASING.md`).
+
 ### Security
 
 - New pre-tool hook `hooks/universal/pre-tool/block-new-dependency.sh` blocks agent-run installs of
   packages the project has not declared (npm/pnpm/yarn/bun, pip/uv/poetry, `cargo add`) and asks for owner
   approval, with no network call. Plain `npm install` and `npm ci` stay allowed. It is not wired in
   `.claude/settings.json` (REQ-M30).
+
+## [0.5.1] — 2026-10-26
+### Documentation
+
+- `docs/OBSERVABILITY.md` lists the proxy's structured log levels, the fields each
+  line carries, what is redacted and by which function, and how to read the lines;
+  `tests/observability-log-fields-doc.test.mjs` checks each field against the source.
+
+### Added
+
+- The npm release workflow attaches a CycloneDX SBOM of the runtime dependencies
+  (`npm sbom --omit dev`) to the GitHub release and the workflow run
+  (`docs/RELEASING.md`).
+### Security
+
 - Lockfile updates (`npm audit fix`, no major bumps) clear the fast-uri advisories at the root
   and the vite and vitest-tooling advisories in `runtime/`.
 - `runtime/` moves from zod 3 to zod ^4.6.7 (GHSA-mrhx-c7xc-m3w5), with length caps on the
