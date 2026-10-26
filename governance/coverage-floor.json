@@ -1,4 +1,4 @@
 {
-  "_comment": "Minimum total line coverage (percent) of runtime/ (specs/ops/ci-product-suites.md REQ-5). Checked by scripts/check-coverage-floor.mjs after `npm run test:coverage`. Set to the measured value rounded down: 87.5% (1505 of 1720 lines) on a worktree at 2ae321e, vitest 5.0.1 with coverage-v8 5.0.1. The floor may only be raised; say in this comment where a new number came from, as governance/test-floors.json does.",
+  "_comment": "Minimum total line coverage (percent) of runtime/ (specs/ops/ci-product-suites.md REQ-5). Checked by scripts/check-coverage-floor.mjs after `npm run test:coverage`. Set to the measured value rounded down: 87.5% (1505 of 1720 lines) on a worktree at 2ae321e, vitest 5.0.1 with coverage-v8 5.0.1. The floor should only be raised (review convention; no CI ratchet yet); say in this comment where a new number came from, as governance/test-floors.json does.",
   "runtime": 87
 }

@@ -94,7 +94,8 @@ test:coverage` in `runtime/` (V8 coverage, `json-summary` reporter) and then
 total line coverage is below `governance/coverage-floor.json`'s `runtime`
 value, OR IF the report or the floor file is missing, not JSON, or lacks a
 finite percentage in 0..100, OR IF the report measured no lines. The floor
-SHALL be the measured line percentage rounded down, and SHALL only be raised.
+SHALL be the measured line percentage rounded down. Raising it is a review
+convention; no CI ratchet compares it with the base branch yet (follow-up).
 `@vitest/coverage-v8` SHALL be pinned to exactly the version of `vitest`.
 
 - **AC-5.1** Below the floor exits 1; at or above it exits 0; a malformed
