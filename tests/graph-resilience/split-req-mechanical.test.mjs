@@ -86,9 +86,16 @@ test('REQ-M9: the schema enforces description maxLength 280 and requires proof.r
   assert.match(text, /if:[\s\S]*?type:[\s\S]*?enum: \[implementation, test\][\s\S]*?then:[\s\S]*?required: \[red\]/);
 });
 
+// A bare-minimum repository written directly, so the test runs no toolchain
+// subprocess (tests/hermeticity.test.mjs).
+function emptyGitRepository(dir) {
+  for (const sub of ['objects', 'refs/heads', 'refs/tags']) mkdirSync(path.join(dir, '.git', sub), { recursive: true });
+  writeFileSync(path.join(dir, '.git', 'HEAD'), 'ref: refs/heads/main\n');
+}
+
 test('REQ-M9: --claim for a missing claim and --all over an empty set both exit non-zero', () => {
   scratch((cwd) => {
-    assert.equal(spawnSync('git', ['init', '-q', cwd]).status, 0);
+    emptyGitRepository(cwd);
     const validator = path.join(ROOT, 'verification/claim-validator.ts');
     for (const args of [['--claim', 'claim-2026-01-01-001', '--no-rerun'], ['--all', '--no-rerun']]) {
       const result = node([TSX, validator, ...args], cwd);
