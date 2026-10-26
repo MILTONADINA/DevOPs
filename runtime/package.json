@@ -108,7 +108,7 @@
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260923.1",
-    "@types/node": "^22.20.4",
+    "@types/node": "^26.6.5",
     "@types/uuid": "^11.0.0",
     "@typescript-eslint/eslint-plugin": "~8.55.0",
     "@typescript-eslint/parser": "~8.55.0",
