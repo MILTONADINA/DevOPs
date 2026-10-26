@@ -23,6 +23,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
   (`docs/RELEASING.md`).
 ### Security
 
+- New pre-tool hook `hooks/universal/pre-tool/block-new-dependency.sh` blocks agent-run installs of
+  packages the project has not declared (npm/pnpm/yarn/bun, pip/uv/poetry, `cargo add`) and asks for owner
+  approval, with no network call. Plain `npm install` and `npm ci` stay allowed. It is not wired in
+  `.claude/settings.json` (REQ-M30).
 - Lockfile updates (`npm audit fix`, no major bumps) clear the fast-uri advisories at the root
   and the vite and vitest-tooling advisories in `runtime/`.
 - `runtime/` moves from zod 3 to zod ^4.6.7 (GHSA-mrhx-c7xc-m3w5), with length caps on the

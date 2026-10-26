@@ -70,7 +70,7 @@ tracked in this repo and wires these hooks:
 
 These `hooks/universal/` scripts are not wired here and do not run:
 `budget-brake.sh`, `loop-detection.sh`, `block-secrets.sh`,
-`block-prod-write.sh`, `block-rm-rf.sh`, `client-boundary.sh`,
+`block-prod-write.sh`, `block-rm-rf.sh`, `block-new-dependency.sh`, `client-boundary.sh`,
 `external-content-boundary.sh`, `gitleaks-scan.sh`, `auto-format.sh`, and the
 session-end `write-baton.sh` and `rotate-session-key.sh`; no hook enforces the
 network whitelist. AGENTS.md → Mandatory checkpoints therefore binds you as

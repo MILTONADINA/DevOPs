@@ -15,6 +15,7 @@ disabled by the agent.
 | `block-prod-write.sh` | Production write blocker | git push main, kubectl prod, terraform apply without approval |
 | `block-rm-rf.sh` | Destructive command blocker | rm -rf outside whitelisted paths |
 | `client-boundary.sh` | Cross-project access blocker | Paths outside project root |
+| `block-new-dependency.sh` | New-dependency gate | npm/pnpm/yarn/bun, pip/uv/poetry or `cargo add` of a name not declared in the project manifest |
 
 ### Post-tool (fire after every file write)
 
