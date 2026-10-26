@@ -362,7 +362,7 @@ The `.sh` hooks require a POSIX shell (bash/zsh) and can be invoked with
 | `docs/VERIFICATION.md` | The proof-of-work protocol |
 | `docs/MEMORY.md` | Two-tier memory: local database + file-based |
 | `docs/COST_OPTIMIZATION.md` | Model routing, batching, brakes |
-| `docs/OBSERVABILITY.md` | OTel + Langfuse + Laminar setup |
+| `docs/OBSERVABILITY.md` | OTel + Langfuse + Laminar setup, and the proxy's structured log levels, fields and redaction |
 | [`SECURITY.md`](SECURITY.md) | Supported versions and how to report a vulnerability privately |
 | `docs/SECURITY.md` | OWASP ASI 2026 threat model and defenses |
 | `docs/EARS_GUIDE.md` | Writing testable specs |
