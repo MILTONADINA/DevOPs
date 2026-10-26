@@ -24,6 +24,11 @@ Versions follow [Semantic Versioning](https://semver.org/).
   unenforced=24 (was 25) and `governance/enforcement-baseline.json` ratchets it. Added
   `tests/graph-resilience/req-contracts.test.mjs` for the checkable clauses of REQ-R4, R7, R9,
   R10 and M7, which stay UNENFORCED because each also has procedural clauses.
+- REQ-R4, R7, R9, R10 and M7 are split into a mechanical half (same id, now cites its tests in
+  `Enforced by:`) and a procedural half (REQ-R17, R18, R19, R20 and M31, `PROCESS`).
+  `scripts/check-enforcement.mjs` reports mechanical=107 (was 102) and unenforced=19 (was 24);
+  `governance/enforcement-baseline.json` lists the five, and the root test floor rises to 1471.
+  `tests/graph-resilience/split-req-enforcement.test.mjs` pins the split.
 
 ### Fixed
 

@@ -1,5 +1,6 @@
 // Mechanical checks for specs/graph/R-resilience.md REQ-R4, REQ-R7, REQ-R9, REQ-R10 (launch record) and
-// specs/graph/M-masterpiece-standard.md REQ-M7's static clauses. Synthetic fixtures only.
+// specs/graph/M-masterpiece-standard.md REQ-M7's static clauses. Synthetic fixtures only. The two
+// REQ-R17/REQ-R19 tests read sprint.md wording; those REQs are PROCESS, so they are not enforcement.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync, readFileSync, rmSync, existsSync, statSync } from 'node:fs';
@@ -43,7 +44,7 @@ for (const status of ['needs_human', 'error']) {
   });
 }
 
-test('REQ-R4: /sprint runs the preflight first and refuses launch on exit 20 or 2, printing the block path', () => {
+test('REQ-R17 (PROCESS, wording only; split from REQ-R4): /sprint runs the preflight first and refuses launch on exit 20 or 2, printing the block path', () => {
   const before = sprintCommand.indexOf('## Before running');
   assert.ok(before >= 0);
   const step = sprintCommand.slice(before, sprintCommand.indexOf('2. Check', before));
@@ -94,7 +95,7 @@ test('REQ-R9: the blocked record keeps the first 20 evidence lines, names the AP
   assert.ok(!ignore.some((line) => line.startsWith('!') && line.includes('blocked.md')));
 });
 
-test('REQ-R9: /sprint writes the block record after catching BLOCKED_BY_ENVIRONMENT, even when agent() returned null', () => {
+test('REQ-R19 (PROCESS, wording only; split from REQ-R9): /sprint writes the block record after catching BLOCKED_BY_ENVIRONMENT, even when agent() returned null', () => {
   assert.match(sprintCommand, /throws `BLOCKED_BY_ENVIRONMENT:`[\s\S]*run `bash scripts\/graph-blocked\.sh`/);
   assert.match(sprintCommand, /even when `agent\(\)` returned null, so the block record exists before\s+the session reports the fault/);
 });

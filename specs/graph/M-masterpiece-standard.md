@@ -148,13 +148,12 @@ It SHALL refuse a caller-supplied status that disagrees with the derived one. It
 
 ### REQ-M7 (Unwanted behaviour): Material ambiguity and source conflicts stop the cycle
 IF the planner returns a non-empty `ambiguities[]` or `conflicts[]`, THEN `sprint-cycle.js` SHALL throw `AMBIGUITY_BLOCK:` followed by the items as JSON, before Build. The only exception: every item is either matched by an entry's `item` field in `args.acknowledgements` (an array of `{item, answer}` objects), or appears verbatim in `args.acknowledgedAmbiguities`.
-- `/sprint` SHALL populate whichever of `args.acknowledgements` or `args.acknowledgedAmbiguities` it uses only from the owner's answer, recorded verbatim in `run.json` (`acknowledgements: [{item, answer, at}]`): `args.acknowledgements` receives those entries unchanged, and `args.acknowledgedAmbiguities` receives each entry's bare `item` value, extracted from it. It SHALL write a `needs_human` blocked record on the throw.
+- `graph-run-record.mjs update --ack` SHALL append `{item, answer, at}` entries to `run.json` `acknowledgements` and reject malformed input without touching the record.
 - The planner schema SHALL add `conflicts: [{higher, lower, clause}]`.
 - `AGENTS.md` SHALL carry one precedence line: owner decision > law/safety > approved spec > ADR/AC > plan > code.
 
-**Enforced by:** UNENFORCED
-**Enforcement note (pre-MR17 annotation):** code in `sprint-cycle.js` (replacing the log-only `:139`); the `graph-run-record.mjs` acknowledgement field; tests.
-**Enforcement note:** Code gates and acknowledgement fixtures exist; authentic owner-answer provenance and required orchestrator writes remain outside those fixtures.
+**Enforced by:** test:tests/graph-resilience/workflow-faults.test.mjs; test:tests/graph-resilience/req-contracts.test.mjs; test:tests/graph-resilience/run-record.test.mjs
+**Enforcement note:** Code in `sprint-cycle.js`, the `graph-run-record.mjs` acknowledgement field and the planner schema are tested. Where the acknowledgements come from and the blocked record written on the throw are REQ-M31 (PROCESS).
 **Falsified by:** a fake planner returning one ambiguity and the coder stage running without a matching acknowledgement.
 
 ### REQ-M8 (Event-driven): Every cycle is bound to an approved, falsifiable spec (all 8 chain links, link 1 included)
@@ -408,6 +407,11 @@ THE SYSTEM SHALL correct, at the latest in the cycle that implements the matchin
 WHEN a Bash command runs `npm`, `pnpm`, `yarn` or `bun` with `add` or `install` and a package-name operand, `pip`, `uv pip` or `python -m pip` with `install` and a name, `uv add` or `poetry add` with a name, or `cargo add` with a name, AND that name is not declared in the project directory's `package.json` (dependencies, devDependencies, optionalDependencies, peerDependencies), `requirements*.txt`, `pyproject.toml` or `Cargo.toml`, THE `block-new-dependency.sh` PRE-TOOL HOOK SHALL exit 2 with a message that names the package and asks for owner approval. Plain `npm install`, `npm ci`, and installs from a requirements file with no name operand SHALL stay allowed. THE HOOK SHALL make no network call and SHALL fail closed when its classifier fails.
 **Enforced by:** test:tests/hooks/block-new-dependency.test.mjs; hook:PreToolUse:Bash:hooks/universal/pre-tool/block-new-dependency.sh
 **Falsified by:** an undeclared name that installs through a recognised command without a block, a declared name or a plain install that is blocked, or any network access by the hook.
+
+### REQ-M31 (Event-driven): /sprint takes acknowledgements only from the owner
+**Enforced by:** PROCESS
+**Enforcement note:** Split from REQ-M7; authentic owner-answer provenance and the orchestrator's writes cannot be observed by a test.
+WHEN `sprint-cycle.js` throws `AMBIGUITY_BLOCK:` (REQ-M7), THE SYSTEM SHALL have `/sprint` write a `needs_human` blocked record and populate whichever of `args.acknowledgements` or `args.acknowledgedAmbiguities` it uses only from the owner's answer, recorded verbatim in `run.json` (`acknowledgements: [{item, answer, at}]`): `args.acknowledgements` receives those entries unchanged, and `args.acknowledgedAmbiguities` receives each entry's bare `item` value, extracted from it.
 
 ---
 
