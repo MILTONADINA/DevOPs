@@ -51,7 +51,7 @@ const VALUE_FLAGS = {
   node: ['--prefix', '-C', '--workspace', '-w', '--registry', '--tag', '--cache', '--userconfig', '--loglevel',
     '--omit', '--include', '--install-strategy', '--otp', '--scope', '--filter', '-F', '--dir', '--cwd', '--config',
     '-c', '--cache-dir', '--modules-folder', '--store-dir'],
-  pip: ['-r', '--requirement', '-c', '--constraint', '-e', '--editable', '-i', '--index-url', '--extra-index-url',
+  pip: ['-r', '--requirement', '-c', '--constraint', '-i', '--index-url', '--extra-index-url',
     '-f', '--find-links', '-t', '--target', '--prefix', '--root', '--python', '--python-version', '--platform',
     '--implementation', '--abi', '--only-binary', '--no-binary', '--src', '--cache-dir', '--log', '--proxy',
     '--retries', '--timeout', '--trusted-host', '--report', '--upgrade-strategy', '-C', '--config-settings',
@@ -74,9 +74,8 @@ function subcommandIndex(args, family) {
   return -1;
 }
 
-function operands(args, family, skipEditable) {
+function operands(args, family) {
   const valued = new Set(VALUE_FLAGS[family]);
-  if (skipEditable) valued.delete('-e');
   const out = [];
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
@@ -227,6 +226,7 @@ function checkSegment(words, dir, depth, moved) {
     if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(words[i])) { i++; continue; }
     if (!WRAPPERS.has(path.basename(words[i]))) break;
     const wrapper = path.basename(words[i++]);
+    if (wrapper === 'env' && words.slice(i).some((a, k, all) => (a === '-C' || a === '--chdir') && all[k + 1] !== '.' || /^--chdir=(?!\.$)/.test(a))) moved = true;
     // Skip the wrapper's own options, and the values of the ones that take one.
     while (i < words.length && words[i].startsWith('-') && words[i].length > 1) {
       if (!words[i].includes('=') && (WRAPPER_VALUE_FLAGS[wrapper] ?? []).includes(words[i])) i++;
@@ -264,24 +264,24 @@ function checkSegment(words, dir, depth, moved) {
   }
   // pipArgs: the words after the install/add subcommand.
   let pipArgs = null;
-  let skipEditable = false;
   const sub = (args) => { const k = subcommandIndex(args, 'pip'); return k < 0 ? [null, []] : [args[k], args.slice(k + 1)]; };
   if (/^pip[\d.]*$/.test(head)) { const [c, r] = sub(rest); if (c === 'install') pipArgs = r; }
   else if (/^python[\d.]*$/.test(head) && rest[0] === '-m' && /^pip[\d.]*$/.test(rest[1] ?? '')) { const [c, r] = sub(rest.slice(2)); if (c === 'install') pipArgs = r; }
   else if (head === 'uv') {
     const [c, r] = sub(rest);
     if (c === 'pip') { const [c2, r2] = sub(r); if (c2 === 'install') pipArgs = r2; }
-    else if (c === 'add') { pipArgs = r; skipEditable = true; }
-  } else if (head === 'poetry') { const [c, r] = sub(rest); if (c === 'add') { pipArgs = r; skipEditable = true; } }
+    else if (c === 'add') { pipArgs = r; }
+  } else if (head === 'poetry') { const [c, r] = sub(rest); if (c === 'add') { pipArgs = r; } }
   if (pipArgs) {
-    const ops = operands(pipArgs, 'pip', skipEditable);
+    const ops = operands(pipArgs, 'pip');
     const declared = ops.length ? declaredIn(declaredPython) : null;
     return ops.filter((o) => !isLocalPath(o) && o !== '.' && !/\.(whl|tar\.gz|zip)$/.test(o)
       && (isRemote(o) || !declared.has(pyNorm(pyName(o)))))
       .map((o) => ({ name: isRemote(o) ? o : pyName(o), manifest: 'requirements*.txt or pyproject.toml' }));
   }
   if (head === 'cargo') {
-    const k = rest.findIndex((a) => !a.startsWith('+'));
+    const k = subcommandIndex(rest.filter((a) => !a.startsWith('+')), 'cargo');
+    rest.splice(0, rest.length, ...rest.filter((a) => !a.startsWith('+')));
     if (rest[k] !== 'add') return [];
     const ops = operands(rest.slice(k + 1), 'cargo');
     const declared = ops.length ? declaredIn(declaredCargo) : null;

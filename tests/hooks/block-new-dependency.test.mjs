@@ -221,3 +221,12 @@ test('cargo toolchain selectors, redirections and retargeted installs are handle
     allowed(dir, 'cd child && npm ci');
   });
 });
+
+test('editable remote targets, env -C and cargo global options are classified', () => {
+  withProject({ 'package.json': PKG, 'requirements.txt': 'toy-known\n' }, (dir) => {
+    blocked(dir, 'pip install -e git+https://example.invalid/toy-new.git#egg=toy-new', 'git+https://example.invalid/toy-new.git#egg=toy-new');
+    allowed(dir, 'pip install -e .');
+    blocked(dir, 'env -C child npm install left-pad-toy', 'left-pad-toy');
+    blocked(dir, 'cargo --quiet add toy-new', 'toy-new');
+  });
+});
