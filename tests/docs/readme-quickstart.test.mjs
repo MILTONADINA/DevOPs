@@ -48,7 +48,7 @@ function checkCliArgs(args, help, cmd) {
   if (!new RegExp(`^\\s+devops ${sub}\\b`, 'm').test(help)) problems.push(`${cmd}: unknown devops subcommand "${sub}"`);
   for (const f of flags.filter((a) => a.startsWith('--'))) {
     const name = f.split('=')[0];
-    if (!help.includes(name)) problems.push(`${cmd}: flag ${name} is not in \`devops help\``);
+    if (!new RegExp(`(^|[\\s,])${name}(?![\\w-])`, 'm').test(help)) problems.push(`${cmd}: flag ${name} is not in \`devops help\``);
   }
   return problems;
 }
@@ -70,7 +70,7 @@ export function checkCommand(cmd, help) {
     if (!NPM_BUILTINS.has(sub)) return [`${cmd}: npm ${sub} is not a known npm command or package.json script`];
     // A named package must be this one or one package.json declares (peer and optional included).
     const known = new Set([pkg.name, ...['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies'].flatMap((k) => Object.keys(pkg[k] ?? {}))]);
-    const named = args.filter((a) => a.startsWith('@')).map((a) => a.replace(/(?<=.)@[^@/]*$/, ''));
+    const named = args.filter((a) => !a.startsWith('-') && !/^[./~]/.test(a)).map((a) => a.replace(/(?<=.)@[^@/]*$/, ''));
     return named.filter((a) => !known.has(a)).map((a) => `${cmd}: ${a} is not this package or a declared dependency`);
   }
   if (tool === 'node') {
@@ -113,17 +113,21 @@ test('a doctored Quick start with an unknown command or flag is reported', () =>
     'node scripts/no-such-script.js analyze',
     'npm run no-such-script',
     'npx @someone-else/devops init',
+    'devops init --dry',
+    'npm install -g devops-typo',
     '```', '', '## Next', '', '```bash', 'devops ignored-outside-section', '```', '',
   ].join('\n');
   const commands = quickStartCommands(doctored);
-  assert.equal(commands.length, 7);
+  assert.equal(commands.length, 9);
   const problems = commands.flatMap((c) => checkCommand(c, help));
-  assert.equal(problems.length, 5, problems.join('\n'));
+  assert.equal(problems.length, 7, problems.join('\n'));
   assert.match(problems.join('\n'), /unknown devops subcommand "frobnicate"/);
   assert.match(problems.join('\n'), /flag --dry-runn/);
   assert.match(problems.join('\n'), /no-such-script\.js does not exist/);
   assert.match(problems.join('\n'), /no package\.json script "no-such-script"/);
   assert.match(problems.join('\n'), /@someone-else\/devops/);
+  assert.match(problems.join('\n'), /flag --dry is not/);
+  assert.match(problems.join('\n'), /devops-typo is not/);
 });
 
 test('a README without a Quick start heading is refused', () => {
