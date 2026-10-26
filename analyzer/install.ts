@@ -384,6 +384,16 @@ function main() {
     }
     if (!flags.dryRun) copy(src, path.join(PROJECT_ROOT, '.claude/hooks', companion));
   }
+  // REQ-M30: the new-dependency hook also invokes a fixed sibling companion.
+  if (hooks.includes('universal/pre-tool/block-new-dependency.sh')) {
+    const companion = 'new-dependency-classifier.mjs';
+    const src = path.join(DEVOPS_ROOT, 'hooks/universal/pre-tool', companion);
+    if (!fs.existsSync(src) || !fs.statSync(src).isFile()) {
+      console.error(`required hook companion missing: ${companion}`);
+      process.exit(1);
+    }
+    if (!flags.dryRun) copy(src, path.join(PROJECT_ROOT, '.claude/hooks', companion));
+  }
   let hooksInstalled = 0;
   for (const h of hooks) {
     const src = path.join(DEVOPS_ROOT, 'hooks', h);

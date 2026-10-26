@@ -3,7 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, realpathSync, rmSync, writeFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, copyFileSync, realpathSync, rmSync, writeFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -139,4 +139,51 @@ test('cargo add blocks undeclared crates and reads every dependency table', () =
     for (const n of ['toy-crate', 'toy_other', 'toy-dev', 'toy-build', 'toy-unix@1.2']) allowed(dir, `cargo add ${n}`);
   });
   withProject({}, (dir) => blocked(dir, 'cargo add toy-new', 'toy-new'));
+});
+
+test('global options before the subcommand and combined shell flags do not bypass the gate', () => {
+  withProject({ 'package.json': PKG, 'requirements.txt': 'toy-known==1.0\n' }, (dir) => {
+    blocked(dir, 'npm --prefix . install toy-new', 'toy-new');
+    blocked(dir, 'npm --registry https://example.invalid install toy-new', 'toy-new');
+    blocked(dir, 'pnpm --filter toy-ws add toy-new', 'toy-new');
+    blocked(dir, 'bash -lc "npm install toy-new"', 'toy-new');
+    blocked(dir, 'sh -ec "pip install toy-new"', 'toy-new');
+    blocked(dir, 'pip --disable-pip-version-check install toy-new', 'toy-new');
+    blocked(dir, 'uv --quiet add toy-new', 'toy-new');
+    allowed(dir, 'npm --prefix . install left-pad-toy');
+    allowed(dir, 'pip -q install toy-known');
+    allowed(dir, 'python -m pip -q install toy-known');
+  });
+});
+
+test('only dependency fields in pyproject.toml count as declared', () => {
+  withProject({
+    'pyproject.toml': '[project]\nname = "demo"\nkeywords = ["toy-keyword"]\nclassifiers = [\n  "toy-class",\n]\ndependencies = ["toy-dep"]\n',
+  }, (dir) => {
+    blocked(dir, 'pip install toy-keyword', 'toy-keyword');
+    blocked(dir, 'pip install toy-class', 'toy-class');
+    allowed(dir, 'pip install toy-dep');
+  });
+});
+
+test('the installer copies the classifier next to the hook when the hook is selected', () => {
+  const dir = realpathSync(mkdtempSync(path.join(tmpdir(), 'new-dep-install-')));
+  try {
+    const source = path.join(dir, 'source'); const target = path.join(dir, 'target');
+    const hooks = path.join(source, 'hooks/universal/pre-tool');
+    mkdirSync(hooks, { recursive: true }); mkdirSync(path.join(target, '.workflow'), { recursive: true });
+    for (const f of ['block-new-dependency.sh', 'new-dependency-classifier.mjs']) copyFileSync(path.join(ROOT, 'hooks/universal/pre-tool', f), path.join(hooks, f));
+    for (const f of ['AGENTS.md', 'CLAUDE.md']) copyFileSync(path.join(ROOT, f), path.join(source, f));
+    const manifest = path.join(source, 'empty-manifest.yml'); writeFileSync(manifest, 'skills:\n');
+    writeFileSync(path.join(target, '.workflow/profile.yml'), 'skills:\nhooks:\n  - universal/pre-tool/block-new-dependency.sh\nsubagents:\n');
+    const r = spawnSync(process.execPath, [path.join(ROOT, 'node_modules/tsx/dist/cli.mjs'), path.join(ROOT, 'analyzer/install.ts'), '--target', target, '--manifest', manifest],
+      { cwd: target, env: { ...ENV, DEVOPS_ROOT: source }, encoding: 'utf8', timeout: 30_000 });
+    assert.equal(r.status, 0, r.stderr);
+    const installed = path.join(target, '.claude/hooks');
+    assert.ok(existsSync(path.join(installed, 'new-dependency-classifier.mjs')));
+    writeFileSync(path.join(target, 'package.json'), PKG);
+    const run = (c) => spawnSync('bash', [path.join(installed, 'block-new-dependency.sh'), c], { cwd: target, env: ENV, encoding: 'utf8' });
+    assert.equal(run('npm ci').status, 0);
+    assert.equal(run('npm install toy-new').status, 2);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });

@@ -57,6 +57,17 @@ const VALUE_FLAGS = {
     '--branch', '--tag', '--rev', '--target', '--config', '-Z'],
 };
 
+// Index of the first non-flag word, skipping the values of value-taking flags.
+function subcommandIndex(args, family) {
+  const valued = new Set(VALUE_FLAGS[family]);
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (a.startsWith('-') && a.length > 1) { if (!a.includes('=') && valued.has(a)) i++; continue; }
+    return i;
+  }
+  return -1;
+}
+
 function operands(args, family, skipEditable) {
   const valued = new Set(VALUE_FLAGS[family]);
   if (skipEditable) valued.delete('-e');
@@ -150,7 +161,8 @@ function declaredPython(dir) {
         continue;
       }
       if (section === 'project' || section === 'project.optional-dependencies' || section === 'dependency-groups') {
-        if (!inArray && /^[\w.-]+\s*=\s*\[/.test(line)) inArray = true;
+        const field = /^([\w.-]+)\s*=\s*\[/.exec(line);
+        if (!inArray && field && (section !== 'project' || field[1] === 'dependencies')) inArray = true;
         if (inArray) {
           for (const m of line.matchAll(/"([^"]+)"|'([^']+)'/g)) {
             const v = m[1] ?? m[2];
@@ -199,28 +211,34 @@ function checkSegment(words, dir, depth) {
   const head = path.basename(words[0]);
   const rest = words.slice(1);
   if (SHELLS.has(head)) {
-    const c = rest.indexOf('-c');
+    const c = rest.findIndex((a) => /^-[a-zA-Z]*c[a-zA-Z]*$/.test(a));
     if (c >= 0 && rest[c + 1] !== undefined && depth < MAX_DEPTH) return classify(rest[c + 1], dir, depth + 1);
     return [];
   }
   if (['npm', 'pnpm', 'yarn', 'bun'].includes(head)) {
-    const sub = rest.find((a) => !a.startsWith('-'));
+    const at = subcommandIndex(rest, 'node');
+    const sub = rest[at];
     const adds = head === 'npm' ? ['install', 'i', 'add', 'install-test', 'it', 'isntall']
       : head === 'yarn' ? ['add'] : ['add', 'install', 'i'];
     if (!adds.includes(sub)) return [];
-    const ops = operands(rest.slice(rest.indexOf(sub) + 1), 'node');
+    const ops = operands(rest.slice(at + 1), 'node');
     const declared = ops.length ? declaredNpm(dir) : null;
     return ops.filter((o) => !isLocalPath(o) && (isRemote(o) || !declared.has(npmName(o))))
       .map((o) => ({ name: isRemote(o) ? o : npmName(o), manifest: 'package.json' }));
   }
+  // pipArgs: the words after the install/add subcommand.
   let pipArgs = null;
-  if (/^pip[\d.]*$/.test(head) && rest.find((a) => !a.startsWith('-')) === 'install') pipArgs = rest;
-  else if (/^python[\d.]*$/.test(head) && rest[0] === '-m' && /^pip[\d.]*$/.test(rest[1] ?? '') && rest[2] === 'install') pipArgs = rest.slice(2);
-  else if (head === 'uv' && rest[0] === 'pip' && rest[1] === 'install') pipArgs = rest.slice(1);
-  else if ((head === 'uv' || head === 'poetry') && rest[0] === 'add') pipArgs = rest;
+  let skipEditable = false;
+  const sub = (args) => { const k = subcommandIndex(args, 'pip'); return k < 0 ? [null, []] : [args[k], args.slice(k + 1)]; };
+  if (/^pip[\d.]*$/.test(head)) { const [c, r] = sub(rest); if (c === 'install') pipArgs = r; }
+  else if (/^python[\d.]*$/.test(head) && rest[0] === '-m' && /^pip[\d.]*$/.test(rest[1] ?? '')) { const [c, r] = sub(rest.slice(2)); if (c === 'install') pipArgs = r; }
+  else if (head === 'uv') {
+    const [c, r] = sub(rest);
+    if (c === 'pip') { const [c2, r2] = sub(r); if (c2 === 'install') pipArgs = r2; }
+    else if (c === 'add') { pipArgs = r; skipEditable = true; }
+  } else if (head === 'poetry') { const [c, r] = sub(rest); if (c === 'add') { pipArgs = r; skipEditable = true; } }
   if (pipArgs) {
-    const skipEditable = head === 'uv' && rest[0] === 'add' || head === 'poetry';
-    const ops = operands(pipArgs.slice(1), 'pip', skipEditable);
+    const ops = operands(pipArgs, 'pip', skipEditable);
     const declared = ops.length ? declaredPython(dir) : null;
     return ops.filter((o) => !isLocalPath(o) && o !== '.' && !/\.(whl|tar\.gz|zip)$/.test(o)
       && (isRemote(o) || !declared.has(pyNorm(pyName(o)))))
