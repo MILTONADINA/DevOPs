@@ -11,11 +11,11 @@ Versions follow [Semantic Versioning](https://semver.org/).
 ## [0.5.1] — 2026-10-26
 ### Internal
 
-- Six requirements move from UNENFORCED to mechanically enforced (REQ-R4, R7, R9, R10, M7 and
-  HSB-1): new tests `tests/graph-resilience/req-contracts.test.mjs` and
-  `tests/ci/gitleaksignore-baseline.test.mjs`, cited from each spec's `Enforced by:` line.
-  `scripts/check-enforcement.mjs` now reports unenforced=19 (was 25) and
-  `governance/enforcement-baseline.json` ratchets the six.
+- REQ-HSB-1 moves from UNENFORCED to mechanically enforced via
+  `tests/ci/gitleaksignore-baseline.test.mjs`; `scripts/check-enforcement.mjs` reports
+  unenforced=24 (was 25) and `governance/enforcement-baseline.json` ratchets it. Added
+  `tests/graph-resilience/req-contracts.test.mjs` for the checkable clauses of REQ-R4, R7, R9,
+  R10 and M7, which stay UNENFORCED because each also has procedural clauses.
 
 ### Documentation
 
