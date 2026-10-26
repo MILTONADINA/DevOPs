@@ -18,6 +18,9 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- The required `runtime-test` job measures V8 line coverage of `runtime/` (`npm run test:coverage`)
+  and fails below the floor in `governance/coverage-floor.json`, checked by
+  `scripts/check-coverage-floor.mjs` (`specs/ops/ci-product-suites.md` REQ-5).
 - The npm release workflow attaches a CycloneDX SBOM of the runtime dependencies
   (`npm sbom --omit dev`) to the GitHub release and the workflow run
   (`docs/RELEASING.md`).
