@@ -369,6 +369,7 @@ The `.sh` hooks require a POSIX shell (bash/zsh) and can be invoked with
 | `docs/CLIENT_ONBOARDING.md` | Per-client setup checklist |
 | `docs/GAP_61_COVERAGE_MATRIX.md` | Where each of the 61 design gaps is addressed |
 | `docs/UPGRADING.md` | Upgrade paths and breaking changes for each release |
+| `docs/STATE.md` | Every persisted file, its `schema_version` and compatibility rule, and the backup and restore drill |
 
 ---
 
