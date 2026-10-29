@@ -82,6 +82,11 @@ function headerLines(text) {
 // HTML comments) means the spec is not ready to plan. Returns [{line, text}], 1-based lines.
 export const CLARIFICATION = /\[NEEDS CLARIFICATION[^\]]*\]/;
 
+// Inline code spans are documentation, not placeholders: blank them before comment and marker
+// scanning, so `[NEEDS CLARIFICATION]` quoted in a span is not a marker and a quoted `<!--` does
+// not open a comment that hides the real markers after it. An unmatched backtick stays as text.
+const CODE_SPAN = /(`+)(?!`)(.+?)(?<!`)\1(?!`)/g;
+
 export function clarificationMarkers(text) {
   const found = [];
   let fence = null;
@@ -97,7 +102,7 @@ export function clarificationMarkers(text) {
       const opener = openFence(raw);
       if (opener) { fence = opener; return; }
     }
-    const stripped = stripComments(raw, comment);
+    const stripped = stripComments(raw.replace(CODE_SPAN, ' '), comment);
     comment = stripped.open;
     if (CLARIFICATION.test(stripped.line)) found.push({ line: index + 1, text: raw.trim() });
   });

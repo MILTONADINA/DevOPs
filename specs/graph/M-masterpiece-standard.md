@@ -154,7 +154,7 @@ IF the planner returns a non-empty `ambiguities[]` or `conflicts[]`, THEN `sprin
 - `AGENTS.md` SHALL carry one precedence line: owner decision > law/safety > approved spec > ADR/AC > plan > code.
 
 **Enforced by:** test:tests/graph-resilience/workflow-faults.test.mjs; test:tests/graph-resilience/req-contracts.test.mjs; test:tests/graph-resilience/run-record.test.mjs; test:tests/graph-resilience/plan-covers-gate.test.mjs; test:tests/graph/spec-clarification.test.mjs
-**Enforcement note:** Code in `sprint-cycle.js`, the `graph-run-record.mjs` acknowledgement field and the planner schema are tested. Where the acknowledgements come from and the blocked record written on the throw are REQ-M31 (PROCESS).
+**Enforcement note:** Code in `sprint-cycle.js`, the `graph-run-record.mjs` acknowledgement field and the planner schema are tested. Where the acknowledgements come from and the blocked record written on the throw are REQ-M31 (PROCESS). Running `node scripts/lint-spec-status.mjs --item <spec>` before launch, and passing its markers to the planner, is the orchestrator's PROCESS half of the spec gate; `sprint-cycle.js` has no filesystem access and only checks the planner's report.
 **Falsified by:** a fake planner returning one ambiguity and the coder stage running without a matching acknowledgement.
 
 ### REQ-M8 (Ubiquitous): Every spec declares one Status from a closed vocabulary
@@ -470,7 +470,7 @@ WHEN `hooks/universal/post-tool/sync-lr-refined-date.sh` runs, THE SYSTEM SHALL 
 **Given** a planner result with `ambiguities: ['X']` and no acknowledgement **When** the workflow runs **Then** it throws `AMBIGUITY_BLOCK:` before any `coder:` label is invoked. **Given** `args.acknowledgedAmbiguities: ['X']` **Then** Build runs. **Given** `args.acknowledgements: [{item: "X", answer: "..."}]` and no `acknowledgedAmbiguities` **Then** Build runs. The same holds for a non-empty `conflicts[]`.
 
 ### AC-M7.2 (REQ-M7)
-**Given** a backlog item's spec holding `[NEEDS CLARIFICATION]`, or a planner result whose `criteria` include `AC2` that no task's `covers` lists **When** the workflow runs **Then** it throws `SPEC_GATE_BLOCK:` before any `coder:` label is invoked, and neither `acknowledgedAmbiguities` nor `acknowledgements` lifts it. `node scripts/lint-spec-status.mjs --item <spec>` exits 1 for a spec holding the marker.
+**Given** a planner result with a non-empty `clarification_markers` (copied from `lint-spec-status.mjs --item`), or one whose `criteria` include `AC2` that no task's `covers` lists **When** the workflow runs **Then** it throws `SPEC_GATE_BLOCK:` before any `coder:` label is invoked, and neither `acknowledgedAmbiguities` nor `acknowledgements` lifts it. `node scripts/lint-spec-status.mjs --item <spec>` exits 1 for a spec holding the marker.
 EARS: If a backlog item's spec holds `[NEEDS CLARIFICATION]`, or any acceptance criterion is covered by no planned task, then the cycle shall stop before the build phase.
 
 ### AC-M8.1 (REQ-M32)

@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { clarificationMarkers } from '../../scripts/lint-spec-status.mjs';
@@ -43,4 +43,20 @@ test('the CLI --item exits 1 naming file:line for a marked spec and 0 for a clea
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test('a marker quoted in an inline code span is documentation, not a placeholder', () => {
+  assert.deepEqual(clarificationMarkers('# S\nThe gate stops on `[NEEDS CLARIFICATION]` text.\n'), []);
+  assert.deepEqual(clarificationMarkers('# S\nUse ``[NEEDS CLARIFICATION: x]`` here.\n'), []);
+});
+
+test('a comment opener quoted in an inline code span does not hide a later marker', () => {
+  const found = clarificationMarkers('# S\nComments start with `<!--` in HTML.\nThe widget shall [NEEDS CLARIFICATION: how many?] spin.\n');
+  assert.equal(found.length, 1);
+  assert.equal(found[0].line, 3);
+});
+
+test('the masterpiece standard spec, which documents the marker, passes its own gate', () => {
+  const text = readFileSync(new URL('../../specs/graph/M-masterpiece-standard.md', import.meta.url), 'utf8');
+  assert.deepEqual(clarificationMarkers(text), []);
 });

@@ -25,6 +25,9 @@ the current phase and gate configuration.
    0 hasn't graduated yet (see `phase_2_entry_criteria`).
 3. Identify the next backlog item: `SHIP_BLOCKERS.md` during Phase 0, then
    `plan.md` / `blueprint.md` afterward.
+4. Run `node scripts/lint-spec-status.mjs --item <spec>` on that item's spec.
+   Exit 1 lists its `[NEEDS CLARIFICATION]` markers: do not launch; pass the
+   markers to the planner as `clarification_markers`, or resolve them first.
 
 ## With Agile Graph
 
@@ -215,7 +218,7 @@ each task a `covers` list, and copies any `[NEEDS CLARIFICATION]` line into
 `sprint-cycle.js` throw `SPEC_GATE_BLOCK:` with `{clarification, uncovered}`
 before Build. Unlike `AMBIGUITY_BLOCK`, no acknowledgement lifts it: fix the
 spec or the plan and relaunch. `node scripts/lint-spec-status.mjs --item <spec>`
-runs the marker check by hand; run it before launch as the deterministic check.
+runs the marker check by hand (step 4 of "Before running").
 `criteria` and `covers` ids are compared as exact strings.
 
 ## After running
