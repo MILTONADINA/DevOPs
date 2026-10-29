@@ -31,7 +31,7 @@ range), THE JOB SHALL fail unless a reviewed baseline entry names that finding.
 **Enforced by:** job:.github/workflows/security-scan.yml#agent-config; test:tests/ci/agent-config-scan.test.mjs
 WHEN a command hook in `.claude/settings.json` runs no file under `hooks/`, names a
 `hooks/` file that does not exist, or fetches or pipes into a shell, THE JOB SHALL fail
-unless a reviewed baseline entry names that finding. IF an input file is malformed THEN
+unless a reviewed baseline entry names that finding. IF an input file, or the baseline file, is missing or malformed THEN
 the checker SHALL exit 2 rather than pass. A finding is named in
 `governance/agent-config-baseline.json` as `rule:file:detail`; adding a key is a reviewed
 change (CODEOWNERS), and fixing the finding is preferred.

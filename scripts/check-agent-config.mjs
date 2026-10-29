@@ -122,7 +122,7 @@ if (isMain(import.meta.url)) {
     const option = name => { const i = argv.indexOf(name); return i === -1 ? undefined : argv[i + 1]; };
     const root = path.resolve(option('--root') ?? process.cwd());
     const baselineFile = option('--baseline') ?? path.join(root, 'governance', 'agent-config-baseline.json');
-    const reviewed = existsSync(baselineFile) || option('--baseline') ? loadBaseline(baselineFile) : new Set();
+    const reviewed = loadBaseline(baselineFile);
     const fresh = scan(root).filter(item => !reviewed.has(item.key));
     for (const item of fresh) process.stdout.write(`FINDING ${item.key} ${item.message}\n`);
     process.stdout.write(`${fresh.length} new finding(s)\n`);

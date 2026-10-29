@@ -18,7 +18,7 @@ const cleanSettings = () => ({
 });
 const cleanMcp = () => ({ name: 'example', command: 'npx', args: ['-y', '@example/mcp-server@1.2.3'] });
 
-function fixture({ settings = cleanSettings(), mcp = { 'example.json': cleanMcp() }, baseline } = {}) {
+function fixture({ settings = cleanSettings(), mcp = { 'example.json': cleanMcp() }, baseline, noBaseline = false } = {}) {
   assert.ok(existsSync(CHECKER), 'FEATURE_ABSENT: scripts/check-agent-config.mjs must exist');
   const dir = mkdtempSync(path.join(tmpdir(), 'agent-config-'));
   mkdirSync(path.join(dir, '.claude'));
@@ -30,6 +30,10 @@ function fixture({ settings = cleanSettings(), mcp = { 'example.json': cleanMcp(
     writeFileSync(path.join(dir, 'mcp-configs', 'universal', name), JSON.stringify(body));
   }
   const args = [CHECKER, '--root', dir];
+  if (!baseline && !noBaseline) {
+    mkdirSync(path.join(dir, 'governance'));
+    writeFileSync(path.join(dir, 'governance', 'agent-config-baseline.json'), JSON.stringify({ schema_version: 1, reviewed: [] }));
+  }
   if (baseline) {
     writeFileSync(path.join(dir, 'baseline.json'), JSON.stringify(baseline));
     args.push('--baseline', path.join(dir, 'baseline.json'));
@@ -115,6 +119,12 @@ test('malformed inputs fail closed with exit 2', () => {
   }
   const run = fixture({ baseline: { schema_version: 1, reviewed: 'x' } });
   assert.equal(run.status, 2);
+});
+
+test('a missing default baseline fails closed instead of passing', () => {
+  const run = fixture({ noBaseline: true });
+  assert.equal(run.status, 2, run.stdout + run.stderr);
+  assert.match(run.stderr, /cannot read JSON/);
 });
 
 test('the repository itself passes with its committed baseline', () => {
