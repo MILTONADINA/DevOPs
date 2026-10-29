@@ -4,7 +4,7 @@
 # main Claude Code session running sprint-cycle.js, which the user selects
 # via /model); all graph-engineering subagents route to Sonnet at MAX
 # reasoning effort for workflow runs (`model: 'sonnet', effort: 'max'` per
-# agent() call; the preflight agent runs at effort low). See
+# agent() call; the preflight and changed-files agents run at effort low). See
 # governance/graph/role-mapping.md for the role spec.
 #
 # Mechanical note: this file is NOT self-enforcing. The main session's model
@@ -28,7 +28,7 @@ models:
     cost_per_mtok_output_usd: 10.00
     context_window: 1000000
     use_for:
-      - all graph-engineering subagent roles (planner/coder/tester/reviewer/security/validator) in workflow runs, at effort max
+      - all graph-engineering subagent roles (planner/coder/tester/reviewer/security/validator) in workflow runs, at effort max (the changed-files lister runs at low)
 
   opus:
     id: claude-opus-5

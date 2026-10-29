@@ -423,7 +423,8 @@ try {
   } else {
     const seen = new Set(reviewResult.filesSeen.map(normalizeFile))
     const missing = changedFiles.filter(f => !seen.has(f))
-    const unknown = [...seen].filter(f => !changedFiles.includes(f))
+    const changedSet = new Set(changedFiles)
+    const unknown = [...seen].filter(f => !changedSet.has(f))
     if (missing.length > 0 || unknown.length > 0) {
       reviewerFilesProblem = `${missing.length > 0 ? `missing ${missing.join(', ')}` : ''}${missing.length > 0 && unknown.length > 0 ? '; ' : ''}${unknown.length > 0 ? `unknown ${unknown.join(', ')}` : ''}`
     }
@@ -544,9 +545,11 @@ const cycleOutcome = {
   // the validator's own signed_off.
   outcome: anyIndeterminate ? 'INDETERMINATE' : (readyForPR ? 'PASS' : 'FAIL'),
   readyForPR,
+  // Why the outcome is INDETERMINATE, readable without the log (empty otherwise).
+  indeterminateReasons: anyIndeterminate ? indeterminateReasons : [],
 }
 
-log(`Cycle "${cycleId}" outcome: ${readyForPR ? 'READY for PR (pending human review)' : anyIndeterminate ? `INDETERMINATE (not ready -- ${indeterminateReasons.join(', ')} disagreed with its own outcome or reported none)` : 'NOT ready'}`)
+log(`Cycle "${cycleId}" outcome: ${readyForPR ? 'READY for PR (pending human review)' : anyIndeterminate ? `INDETERMINATE (not ready -- ${indeterminateReasons.join(', ')})` : 'NOT ready'}`)
 if (!readyForPR) {
   log(`Validator reason: ${validatorResult ? validatorResult.reason : 'validator did not return a result'}`)
 }

@@ -1096,6 +1096,30 @@ test('filesSeen: the lister and the reviewer both run quotepath-off git for untr
   }
 });
 
+test('filesSeen: cycleOutcome.indeterminateReasons names the filesSeen mismatch; empty when clean', async () => {
+  const bad = await run(async (p, o) => (o.label === 'reviewer' ? { approved: true, filesSeen: ['src/x.js'] } : ALL_PASS[o.label]), { plan: PLAN, changedFiles: ['src/b.js'], strictReviewer: true });
+  assert.equal(bad.cycleOutcome.outcome, 'INDETERMINATE');
+  assert.match(bad.cycleOutcome.indeterminateReasons.join(' '), /reviewer filesSeen \(missing src\/b\.js; unknown src\/x\.js\)/);
+  const ok = await run(async (p, o) => (o.label === 'reviewer' ? { approved: true, filesSeen: ['src/b.js'] } : ALL_PASS[o.label]), { plan: PLAN, changedFiles: ['src/b.js'], strictReviewer: true });
+  assert.deepEqual(ok.cycleOutcome.indeterminateReasons, []);
+});
+
+test('filesSeen: a changed-files lister that returns null halts the cycle as BLOCKED_BY_ENVIRONMENT', async () => {
+  const execute = new AsyncFunction('args', 'agent', 'log', 'phase', source);
+  await assert.rejects(
+    execute({ backlogItem: 'x', cycleId: 'c7', plan: PLAN }, async (p, o) => {
+      if (o.label === 'changed-files') return null;
+      return o.label === 'reviewer' ? { approved: true, filesSeen: [] } : ALL_PASS[o.label];
+    }, () => {}, () => {}),
+    err => {
+      const m = /^BLOCKED_BY_ENVIRONMENT:(.*)$/s.exec(String(err.message));
+      assert.ok(m, err.message);
+      assert.equal(JSON.parse(m[1]).stage, 'changed-files');
+      return true;
+    },
+  );
+});
+
 test('changed-files lister runs at low effort on sonnet', async () => {
   let opts;
   const execute = new AsyncFunction('args', 'agent', 'log', 'phase', source);
