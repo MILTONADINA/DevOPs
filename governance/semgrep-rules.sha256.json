@@ -3,7 +3,7 @@
     {
       "name": "owasp-top-ten",
       "url": "https://semgrep.dev/c/p/owasp-top-ten",
-      "sha256": "a5534d393958bc10d063263529d20986a85451e732138dafabfc7c183b4ab17e"
+      "sha256": "1aec304638e4a7ba506d5717a115c9d535a125375e00f5a8df3c982aa4dca1f7"
     },
     {
       "name": "r2c-security-audit",
