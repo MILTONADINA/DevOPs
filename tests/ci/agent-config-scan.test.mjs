@@ -60,7 +60,7 @@ test('a broad permission fails', () => {
 
 test('a bare tool name and bypassPermissions fail, a bare MCP tool name does not', () => {
   const ok = cleanSettings();
-  ok.permissions.allow.push('mcp__server__tool');
+  ok.permissions.allow.push('mcp__server__tool', 'mcp__plugin_github_github__get_me');
   assert.equal(fixture({ settings: ok }).status, 0);
   const settings = cleanSettings();
   settings.permissions.allow.push('WebFetch');

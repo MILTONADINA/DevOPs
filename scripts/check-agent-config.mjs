@@ -25,6 +25,9 @@ const finding = (rule, file, detail, message) => ({ key: `${rule}:${file}:${safe
 const VERSION = /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/;
 const RUNNERS = new Set(['npx', 'bunx', 'pnpx', 'uvx']);
 
+// A bare mcp__server__tool name is one tool; server names may contain single underscores.
+const isBareMcpTool = rule => { const parts = rule.split('__'); return parts.length >= 3 && parts[0] === 'mcp' && parts.every(part => part !== ''); };
+
 function permissionFindings(settings, file) {
   const found = [];
   if (settings.permissions === undefined) return found;
@@ -32,7 +35,7 @@ function permissionFindings(settings, file) {
   const { allow = [], defaultMode } = settings.permissions;
   if (!Array.isArray(allow) || allow.some(rule => typeof rule !== 'string')) throw new InputError(`${file}: permissions.allow must be a list of strings`);
   for (const rule of allow) {
-    const broad = rule.trim() === '*' || (!rule.includes('(') && !/^mcp__[^_]+__/.test(rule.trim())) || /\(\s*\*{1,2}\s*\)$/.test(rule.trim());
+    const broad = rule.trim() === '*' || (!rule.includes('(') && !isBareMcpTool(rule.trim())) || /\(\s*\*{1,2}\s*\)$/.test(rule.trim());
     if (broad) found.push(finding('broad-permission', file, rule, `allow rule ${JSON.stringify(rule)} covers every use of the tool`));
   }
   if (defaultMode === 'bypassPermissions') found.push(finding('broad-permission', file, 'defaultMode=bypassPermissions', 'defaultMode bypassPermissions skips every permission prompt'));
