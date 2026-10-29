@@ -116,13 +116,13 @@ function stageOutcome(result, boolKey) {
 // runs git and returns the list; it is a separate call from the reviewer, so
 // the reviewer's filesSeen is never checked against the reviewer's own report.
 async function changedFilesFromGit() {
-  const r = await agent(
-    `You are the changed-files lister in the DevOPs graph-engineering pipeline. Do not review or edit anything. Run git -c core.quotepath=off diff --name-only HEAD (staged and unstaged tracked changes) and git ls-files --others --exclude-standard (new, untracked files) in the project root, and return the union as files: repo-relative paths, one per entry, exactly as git prints them.`,
+  const r = await workflowAgent(
+    `You are the changed-files lister in the DevOPs graph-engineering pipeline. Do not review or edit anything. Run git -c core.quotepath=off diff --name-only HEAD (staged and unstaged tracked changes) and git ls-files --others --exclude-standard (new, untracked files) in the project root, and return the union as files: repo-relative paths, one per entry, exactly as git prints them.\n\n${ENVIRONMENT_RULES}`,
     {
       label: 'changed-files',
       phase: 'Verify',
       model: 'sonnet',
-      schema: { type: 'object', properties: { files: { type: 'array', items: { type: 'string' } } }, required: ['files'] },
+      schema: { type: 'object', properties: { files: { type: 'array', items: { type: 'string' } }, blocked_by_environment: BLOCKED_SCHEMA }, required: ['files'] },
     }
   )
   if (!r || !Array.isArray(r.files)) throw new Error('lister returned no files array')
@@ -486,6 +486,7 @@ try {
     }
   }
 } catch (err) {
+  if (String(err && err.message).startsWith('BLOCKED_BY_ENVIRONMENT')) throw err
   reviewerFilesProblem = `changed-file list unavailable (${err && err.message ? err.message : err})`
 }
 

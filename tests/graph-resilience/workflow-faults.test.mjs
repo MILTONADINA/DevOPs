@@ -15,7 +15,7 @@ const source = readFileSync(path.join(ROOT, '.claude', 'workflows', 'sprint-cycl
 async function run(agent, args = {}, log = () => {}) {
   const { strictReviewer, changedFiles = [], ...rest } = args;
   const wrapped = async (prompt, options) => {
-    if (options.label === 'changed-files') return changedFiles instanceof Error ? null : { files: changedFiles };
+    if (options.label === 'changed-files') return changedFiles instanceof Error ? {} : { files: changedFiles };
     const r = await agent(prompt, options);
     if (strictReviewer) return r;
     return options.label === 'reviewer' && r && !('filesSeen' in r) ? { ...r, filesSeen: [] } : r;
