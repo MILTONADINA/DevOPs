@@ -64,7 +64,7 @@ switch a running session's own model, so the user selects it via `/model`.
 | `integrations-curator` | — | **Parked, out of loop** | Built but not yet exercised — not part of the sprint cycle. |
 | `librarian` | — | **Parked, out of loop** | Confirmed placeholder (not active until Phase 3 ships) per its own file. |
 
-The reviewer must also return `filesSeen`, the repo-relative path of every changed file whose diff it read. `sprint-cycle.js` computes the changed-file list itself from `git diff --name-only HEAD` plus untracked files and compares: a changed file missing from `filesSeen`, a file in `filesSeen` that did not change, a missing `filesSeen`, or a changed-file list that cannot be computed makes the cycle outcome INDETERMINATE and `readyForPR` false (REQ-M1).
+The reviewer must also return `filesSeen`, the repo-relative path of every changed file whose diff it read. `sprint-cycle.js` computes the changed-file list itself, through a separate `changed-files` agent call (Workflow scripts have no Node APIs) that runs `git diff --name-only HEAD` plus untracked files, never from the reviewer's report, and compares: a changed file missing from `filesSeen`, a file in `filesSeen` that did not change, a missing `filesSeen`, or a changed-file list that cannot be computed makes the cycle outcome INDETERMINATE and `readyForPR` false (REQ-M1).
 
 ## What "full autonomy in the inner loop" means
 

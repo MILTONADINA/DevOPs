@@ -9,17 +9,19 @@ const ROOT = path.resolve(import.meta.dirname, '..', '..');
 const source = readFileSync(path.join(ROOT, '.claude', 'workflows', 'sprint-cycle.js'), 'utf8')
   .replace('export const meta =', 'const meta =');
 
-// Default harness: an empty changed-file list and a reviewer that lists no
+// Default harness: the 'changed-files' lister returns an empty list and a reviewer that lists no
 // files, so the pre-existing cases stay about their own subject. The
 // filesSeen cases below pass strictReviewer to see the raw reviewer result.
 async function run(agent, args = {}, log = () => {}) {
-  const { strictReviewer, ...rest } = args;
-  const wrapped = strictReviewer ? agent : async (prompt, options) => {
+  const { strictReviewer, changedFiles = [], ...rest } = args;
+  const wrapped = async (prompt, options) => {
+    if (options.label === 'changed-files') return changedFiles instanceof Error ? null : { files: changedFiles };
     const r = await agent(prompt, options);
+    if (strictReviewer) return r;
     return options.label === 'reviewer' && r && !('filesSeen' in r) ? { ...r, filesSeen: [] } : r;
   };
   const execute = new AsyncFunction('args', 'agent', 'log', 'phase', source);
-  return execute({ backlogItem: 'specs/graph/R-resilience.md', cycleId: 'c7', changedFilesFn: () => [], ...rest }, wrapped, log, () => {});
+  return execute({ backlogItem: 'specs/graph/R-resilience.md', cycleId: 'c7', ...rest }, wrapped, log, () => {});
 }
 
 test('preflight needs_human stops before planner', async () => {
@@ -1006,7 +1008,7 @@ const PLAN = { tasks: [{ id: 'T1', description: 'one task' }] };
 
 async function runFilesSeen(reviewer, changed) {
   return run(async (_, o) => (o.label === 'reviewer' ? reviewer : ALL_PASS[o.label]),
-    { plan: PLAN, strictReviewer: true, changedFilesFn: () => changed });
+    { plan: PLAN, strictReviewer: true, changedFiles: changed });
 }
 
 test('filesSeen: a reviewer that omits a changed file is INDETERMINATE and not ready', async () => {
@@ -1035,7 +1037,7 @@ test('filesSeen (positive control): a reviewer returning exactly the changed fil
 
 test('filesSeen: an uncomputable changed-file list is INDETERMINATE, not ready', async () => {
   const r = await run(async (_, o) => (o.label === 'reviewer' ? { approved: true, filesSeen: [] } : ALL_PASS[o.label]),
-    { plan: PLAN, changedFilesFn: () => { throw new Error('git unavailable'); } });
+    { plan: PLAN, changedFiles: new Error('git unavailable') });
   assert.equal(r.cycleOutcome.readyForPR, false);
   assert.equal(r.cycleOutcome.outcome, 'INDETERMINATE');
 });
