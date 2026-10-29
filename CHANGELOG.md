@@ -58,6 +58,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- The sprint cycle stops before Build (`SPEC_GATE_BLOCK:`) when the backlog item's spec holds
+  `[NEEDS CLARIFICATION]` or an acceptance criterion is covered by no planned task; the planner
+  schema gains `covers`, `criteria` and `clarification_markers`, and
+  `scripts/lint-spec-status.mjs --item <spec>` checks the marker.
 - The required `runtime-test` job measures V8 line coverage of `runtime/` (`npm run test:coverage`)
   and fails below the floor in `governance/coverage-floor.json`, checked by
   `scripts/check-coverage-floor.mjs` (`specs/ops/ci-product-suites.md` REQ-5).

@@ -469,6 +469,10 @@ WHEN `hooks/universal/post-tool/sync-lr-refined-date.sh` runs, THE SYSTEM SHALL 
 ### AC-M7.1 (REQ-M7)
 **Given** a planner result with `ambiguities: ['X']` and no acknowledgement **When** the workflow runs **Then** it throws `AMBIGUITY_BLOCK:` before any `coder:` label is invoked. **Given** `args.acknowledgedAmbiguities: ['X']` **Then** Build runs. **Given** `args.acknowledgements: [{item: "X", answer: "..."}]` and no `acknowledgedAmbiguities` **Then** Build runs. The same holds for a non-empty `conflicts[]`.
 
+### AC-M7.2 (REQ-M7)
+**Given** a backlog item's spec holding `[NEEDS CLARIFICATION]`, or a planner result whose `criteria` include `AC2` that no task's `covers` lists **When** the workflow runs **Then** it throws `SPEC_GATE_BLOCK:` before any `coder:` label is invoked, and neither `acknowledgedAmbiguities` nor `acknowledgements` lifts it. `node scripts/lint-spec-status.mjs --item <spec>` exits 1 for a spec holding the marker.
+EARS: If a backlog item's spec holds `[NEEDS CLARIFICATION]`, or any acceptance criterion is covered by no planned task, then the cycle shall stop before the build phase.
+
 ### AC-M8.1 (REQ-M32)
 **Given** a spec whose Status is `draft` **When** `launch --spec-ref specs/x.md#REQ-X1` runs **Then** it throws. **Given** Status `approved` and a REQ with no AC **Then** it throws. **Given** approved, fully AC-covered and with Falsified-by lines **Then** it succeeds. **Given** a planner task with an empty `ac_ids` **Then** the schema rejects it.
 

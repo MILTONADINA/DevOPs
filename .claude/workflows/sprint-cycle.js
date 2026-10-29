@@ -182,7 +182,7 @@ Decompose it into a small ordered list of atomic, independently-verifiable tasks
 
 The same applies to source conflicts: precedence order for the sources you read is owner decision > law/safety > approved spec > ADR/AC > plan > code (AGENTS.md's own rule). If a higher-precedence source contradicts a lower-precedence one on some point -- for example, an approved spec disagreeing with plan.md, or plan.md disagreeing with the code -- do not silently pick a side: report it in the \`conflicts\` field as {higher, lower, clause}, naming which source is higher, which is lower, and the contradicting clause.
 
-HARD CONSTRAINT: do not include any task whose job is to stage, commit, or push a git change, open a pull request, or run any deploy/publish command. This pipeline's scope ends at implementation + verification (coder/tester/reviewer/security/validator) -- committing and pushing are a separate, explicitly human-reviewed step outside this Workflow, never an autonomous task in your plan.`,
+List every acceptance criterion id of the item's spec in \`criteria\`, and give each task a \`covers\` list of the criterion ids it verifies; every criterion must be covered by some task. Copy every line of the spec containing [NEEDS CLARIFICATION] into \`clarification_markers\` (as \"path:line text\").\n\nHARD CONSTRAINT: do not include any task whose job is to stage, commit, or push a git change, open a pull request, or run any deploy/publish command. This pipeline's scope ends at implementation + verification (coder/tester/reviewer/security/validator) -- committing and pushing are a separate, explicitly human-reviewed step outside this Workflow, never an autonomous task in your plan.`,
   {
     label: 'planner',
     phase: 'Plan',
@@ -199,11 +199,17 @@ HARD CONSTRAINT: do not include any task whose job is to stage, commit, or push 
               id: { type: 'string' },
               description: { type: 'string' },
               files_likely_touched: { type: 'array', items: { type: 'string' } },
+              // Ids of the spec's acceptance criteria this task verifies.
+              covers: { type: 'array', items: { type: 'string' } },
             },
             required: ['id', 'description'],
           },
         },
         ambiguities: { type: 'array', items: { type: 'string' } },
+        // Every acceptance criterion id the backlog item's spec lists (e.g. AC1, AC2).
+        criteria: { type: 'array', items: { type: 'string' } },
+        // Each `[NEEDS CLARIFICATION]` line found in the spec, as "path:line text".
+        clarification_markers: { type: 'array', items: { type: 'string' } },
         // REQ-M7: source conflicts the planner notices (e.g. a spec/ADR
         // clause disagreeing with plan.md) get this typed shape alongside
         // free-text ambiguities, so the block below -- replacing the old
@@ -259,6 +265,18 @@ log(`Planner produced ${plan.tasks.length} task(s)` + (plan.ambiguities && plan.
 // with no `item` field never matches (JSON.stringify(undefined) would
 // otherwise equal itself). This is additive: acknowledgedAmbiguities keeps
 // working exactly as it does today, and either channel alone is enough.
+// Story dv-covers: a spec marked [NEEDS CLARIFICATION], or an acceptance criterion
+// that no task `covers`, stops the cycle before Build. Not acknowledgeable: the spec
+// or the plan has to be fixed. Runs for a precomputed args.plan as well. When the
+// planner returns no `criteria`, there is nothing to compare and coverage is not checked.
+const clarification = (plan.clarification_markers || [])
+const coveredCriteria = new Set(plan.tasks.flatMap((task) => (Array.isArray(task.covers) ? task.covers : [])))
+const uncovered = (plan.criteria || []).filter((id) => !coveredCriteria.has(id))
+if (clarification.length > 0 || uncovered.length > 0) {
+  log(`Cycle blocked before Build: ${clarification.length} clarification marker(s), ${uncovered.length} uncovered criterion(s)`)
+  throw new Error(`SPEC_GATE_BLOCK:${JSON.stringify({ clarification, uncovered })}`)
+}
+
 const acknowledgedAmbiguities = (args && Array.isArray(args.acknowledgedAmbiguities)) ? args.acknowledgedAmbiguities : []
 const acknowledgements = (args && Array.isArray(args.acknowledgements)) ? args.acknowledgements : []
 const isAcknowledged = (item) =>

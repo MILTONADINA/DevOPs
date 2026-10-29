@@ -209,6 +209,14 @@ what approval is missing. Use `/sprint-approve` to grant it. Approval is
 the human's action; nothing yet stops an agent's file tools from writing a
 marker (signed markers, MR-5, are the planned fix).
 
+Spec gate: the planner lists the spec's acceptance criteria (`criteria`), gives
+each task a `covers` list, and copies any `[NEEDS CLARIFICATION]` line into
+`clarification_markers`. A marker, or a criterion no task covers, makes
+`sprint-cycle.js` throw `SPEC_GATE_BLOCK:` with `{clarification, uncovered}`
+before Build. Unlike `AMBIGUITY_BLOCK`, no acknowledgement lifts it: fix the
+spec or the plan and relaunch. `node scripts/lint-spec-status.mjs --item <spec>`
+runs the marker check by hand.
+
 ## After running
 
 1. Update `governance/graph/stability-dashboard.md` with the cycle's

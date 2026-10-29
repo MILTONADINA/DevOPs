@@ -4,6 +4,7 @@
 // this check was introduced; that list may only shrink.
 //
 //   node scripts/lint-spec-status.mjs [--root <dir>]                         check every spec against the baseline
+//   node scripts/lint-spec-status.mjs --item <spec.md>                      exit 1 if the backlog item's spec holds [NEEDS CLARIFICATION]
 //   node scripts/lint-spec-status.mjs [--root <dir>] --ratchet <base.json>   refuse a baseline that grew against main's
 //
 // A spec's header is its text before the first `## ` heading, ignoring HTML comments and fenced
@@ -77,6 +78,32 @@ function headerLines(text) {
   return lines;
 }
 
+// Backlog-item check: `[NEEDS CLARIFICATION]` anywhere in a spec's text (outside fenced code and
+// HTML comments) means the spec is not ready to plan. Returns [{line, text}], 1-based lines.
+export const CLARIFICATION = /\[NEEDS CLARIFICATION[^\]]*\]/;
+
+export function clarificationMarkers(text) {
+  const found = [];
+  let fence = null;
+  let comment = false;
+  const lines = text.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n').split('\n');
+  lines.forEach((raw, index) => {
+    if (fence) {
+      const close = raw.match(CLOSE_FENCE);
+      if (close && close[1][0] === fence[0] && close[1].length >= fence.length) fence = null;
+      return;
+    }
+    if (!comment) {
+      const opener = openFence(raw);
+      if (opener) { fence = opener; return; }
+    }
+    const stripped = stripComments(raw, comment);
+    comment = stripped.open;
+    if (CLARIFICATION.test(stripped.line)) found.push({ line: index + 1, text: raw.trim() });
+  });
+  return found;
+}
+
 export function specStatus(text) {
   const found = headerLines(text).map((line) => line.match(STATUS_LINE)).filter(Boolean);
   if (!found.length) return { error: 'no **Status** line before the first ## heading' };
@@ -129,6 +156,12 @@ export function main(argv) {
   let root = path.join(import.meta.dirname, '..');
   const rootAt = args.indexOf('--root');
   if (rootAt !== -1) root = path.resolve(args.splice(rootAt, 2)[1]);
+  if (args[0] === '--item') {
+    let text;
+    try { text = readFileSync(args[1], 'utf8'); } catch (error) { return { problems: [`cannot read ${args[1]}: ${error.code ?? error.message}`] }; }
+    const markers = clarificationMarkers(text);
+    return { problems: markers.map((m) => `${args[1]}:${m.line}: ${m.text}`), summary: `spec item: ${args[1]} holds no [NEEDS CLARIFICATION]` };
+  }
   const baseline = JSON.parse(readFileSync(path.join(root, 'governance', 'traceability-baseline.json'), 'utf8'));
   if (args[0] === '--ratchet') {
     const problem = checkRatchet(JSON.parse(readFileSync(args[1], 'utf8')), baseline);
