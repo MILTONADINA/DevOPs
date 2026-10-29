@@ -15,7 +15,7 @@ const source = readFileSync(path.join(ROOT, '.claude', 'workflows', 'sprint-cycl
 async function run(agent, args = {}, log = () => {}) {
   const { strictReviewer, changedFiles = [], ...rest } = args;
   const wrapped = async (prompt, options) => {
-    if (options.label === 'changed-files') return changedFiles instanceof Error ? {} : { files: changedFiles };
+    if (options.label === 'changed-files') return changedFiles instanceof Error ? {} : { files: typeof changedFiles === 'function' ? changedFiles() : changedFiles };
     const r = await agent(prompt, options);
     if (strictReviewer) return r;
     return options.label === 'reviewer' && r && !('filesSeen' in r) ? { ...r, filesSeen: [] } : r;
@@ -1056,4 +1056,29 @@ test('filesSeen: paths differing only by trailing whitespace stay distinct', asy
   const r = await runFilesSeen({ approved: true, filesSeen: ['src/a.js'] }, ['src/a.js', 'src/a.js ']);
   assert.equal(r.cycleOutcome.readyForPR, false);
   assert.equal(r.cycleOutcome.outcome, 'INDETERMINATE');
+});
+
+test('filesSeen: the changed-file list is computed right after the reviewer, before security writes claim files', async () => {
+  const order = [];
+  const r = await run(async (_, o) => {
+    order.push(o.label);
+    return o.label === 'reviewer' ? { approved: true, filesSeen: ['src/a.js'] } : ALL_PASS[o.label];
+  }, { plan: PLAN, strictReviewer: true, changedFiles: () => {
+    order.push('changed-files');
+    return order.includes('security')
+      ? ['src/a.js', '.workflow/proofs/committed/claims/claim-2026-01-01-001.yml']
+      : ['src/a.js'];
+  } });
+  assert.ok(order.indexOf('changed-files') > order.indexOf('reviewer'));
+  assert.ok(order.indexOf('changed-files') < order.indexOf('security'));
+  assert.equal(r.cycleOutcome.readyForPR, true);
+});
+
+test('filesSeen: the reviewer is told the same quotepath-off git command the lister runs', async () => {
+  let prompt;
+  await run(async (p, o) => {
+    if (o.label === 'reviewer') prompt = p;
+    return o.label === 'reviewer' ? { approved: true, filesSeen: [] } : ALL_PASS[o.label];
+  }, { plan: PLAN });
+  assert.match(prompt, /git -c core\.quotepath=off diff --name-only HEAD/);
 });

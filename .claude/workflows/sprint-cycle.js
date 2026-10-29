@@ -390,7 +390,7 @@ Backlog item: "${backlogItem}"
 Tasks: ${JSON.stringify(plan.tasks)}
 Build results: ${JSON.stringify(buildResults.map(r => ({ task: r.task.id, coder: r.coderResult, tester: r.testerResult })))}
 
-Check spec-anchoring (does every changed line trace to one of the tasks above, or to the backlog item itself?) and general diff quality. List every issue you find in violations, including low-severity ones and ones you are unsure about. Start each with BLOCKER: or CONCERN: and end it with your confidence. The validator and the human reviewer filter the list, so at this stage coverage matters more than precision. A BLOCKER is an untraceable line (drive-by refactoring included), a missing or misleading proof, or a defect that could cause incorrect behavior or a test failure. State each one plainly, and set approved to false if any BLOCKER remains. Run git diff --name-only HEAD (plus git ls-files --others --exclude-standard for new files) yourself and return filesSeen: the repo-relative path of every changed file whose diff you actually read. Do not list a file you did not read; the workflow compares your list with its own git diff and treats any mismatch as INDETERMINATE.
+Check spec-anchoring (does every changed line trace to one of the tasks above, or to the backlog item itself?) and general diff quality. List every issue you find in violations, including low-severity ones and ones you are unsure about. Start each with BLOCKER: or CONCERN: and end it with your confidence. The validator and the human reviewer filter the list, so at this stage coverage matters more than precision. A BLOCKER is an untraceable line (drive-by refactoring included), a missing or misleading proof, or a defect that could cause incorrect behavior or a test failure. State each one plainly, and set approved to false if any BLOCKER remains. Run git -c core.quotepath=off diff --name-only HEAD (plus git ls-files --others --exclude-standard for new files) yourself and return filesSeen: the repo-relative path of every changed file whose diff you actually read. Do not list a file you did not read; the workflow compares your list with its own git diff and treats any mismatch as INDETERMINATE.
 
 ${ENVIRONMENT_RULES}${ownerDecisionsBlock}`,
   {
@@ -410,6 +410,27 @@ ${ENVIRONMENT_RULES}${ownerDecisionsBlock}`,
     },
   }
 )
+
+// Reviewer coverage: the workflow computes the changed-file list itself and
+// compares it with the reviewer's filesSeen. A missing file, an unknown file,
+// a non-array filesSeen or an uncomputable list is INDETERMINATE, never clean.
+let reviewerFilesProblem = null
+try {
+  const changedFiles = (await changedFilesFromGit()).map(normalizeFile)
+  if (!Array.isArray(reviewResult?.filesSeen)) {
+    reviewerFilesProblem = 'filesSeen not returned'
+  } else {
+    const seen = new Set(reviewResult.filesSeen.map(normalizeFile))
+    const missing = changedFiles.filter(f => !seen.has(f))
+    const unknown = [...seen].filter(f => !changedFiles.includes(f))
+    if (missing.length > 0 || unknown.length > 0) {
+      reviewerFilesProblem = `${missing.length > 0 ? `missing ${missing.join(', ')}` : ''}${missing.length > 0 && unknown.length > 0 ? '; ' : ''}${unknown.length > 0 ? `unknown ${unknown.join(', ')}` : ''}`
+    }
+  }
+} catch (err) {
+  if (String(err && err.message).startsWith('BLOCKED_BY_ENVIRONMENT')) throw err
+  reviewerFilesProblem = `changed-file list unavailable (${err && err.message ? err.message : err})`
+}
 
 const securityResult = await workflowAgent(
   `You are acting as the 'security' role in the DevOPs graph-engineering pipeline, per subagents/universal/security.md's scoping at the repo root -- you are the only role in this pipeline permitted to invoke the pentest MCP tools, and only if this task's nature genuinely requires it; do not exceed your declared scope. Run the tiered security scan stack (gitleaks, semgrep, dependency check as applicable) on this cycle's changes.
@@ -468,27 +489,6 @@ Decide whether this cycle is ready for a PR. Do NOT sign off if any task's test 
     },
   }
 )
-
-// Reviewer coverage: the workflow computes the changed-file list itself and
-// compares it with the reviewer's filesSeen. A missing file, an unknown file,
-// a non-array filesSeen or an uncomputable list is INDETERMINATE, never clean.
-let reviewerFilesProblem = null
-try {
-  const changedFiles = (await changedFilesFromGit()).map(normalizeFile)
-  if (!Array.isArray(reviewResult?.filesSeen)) {
-    reviewerFilesProblem = 'filesSeen not returned'
-  } else {
-    const seen = new Set(reviewResult.filesSeen.map(normalizeFile))
-    const missing = changedFiles.filter(f => !seen.has(f))
-    const unknown = [...seen].filter(f => !changedFiles.includes(f))
-    if (missing.length > 0 || unknown.length > 0) {
-      reviewerFilesProblem = `${missing.length > 0 ? `missing ${missing.join(', ')}` : ''}${missing.length > 0 && unknown.length > 0 ? '; ' : ''}${unknown.length > 0 ? `unknown ${unknown.join(', ')}` : ''}`
-    }
-  }
-} catch (err) {
-  if (String(err && err.message).startsWith('BLOCKED_BY_ENVIRONMENT')) throw err
-  reviewerFilesProblem = `changed-file list unavailable (${err && err.message ? err.message : err})`
-}
 
 phase('Release')
 // REQ-M3: INDETERMINATE is first-class and never counts as clean -- any
