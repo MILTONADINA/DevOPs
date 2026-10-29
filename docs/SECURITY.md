@@ -13,7 +13,7 @@ enforced until it moves left.
 | Tier | When | Runs today | Gate today | Planned, not wired | Enforced by: |
 |------|------|------------|------------|--------------------|--------------|
 | 1 | every file write | nothing automatic: `hooks/universal/post-tool/gitleaks-scan.sh` exists but is not wired in `.claude/settings.json` | none | wire the post-tool hook (masterpiece roadmap MR-19 adds a staged-diff pre-commit gitleaks) | Enforced by: UNENFORCED |
-| 2 | every PR | gitleaks (diff) and Semgrep (`p/owasp-top-ten`, `p/r2c-security-audit`, `p/secrets`) in `security-scan.yml` | both are required status checks on `main` and fail on any finding (Semgrep since #178) | npm/pip/cargo audit, axe-core | Enforced by: job:.github/workflows/security-scan.yml#gitleaks; job:.github/workflows/security-scan.yml#semgrep |
+| 2 | every PR | gitleaks (diff) and Semgrep (the owasp-top-ten, r2c-security-audit and secrets packs, downloaded and sha256-verified) in `security-scan.yml` | both are required status checks on `main` and fail on any finding (Semgrep since #178) | npm/pip/cargo audit, axe-core | Enforced by: job:.github/workflows/security-scan.yml#gitleaks; job:.github/workflows/security-scan.yml#semgrep |
 | 3 | daily and pre-release | gitleaks full-history scan (scheduled, `.gitleaksignore` baseline); DeepTeam red-team, which skips when no provider key is set | the history scan fails its run on a leak; DeepTeam gates nothing while it skips | Trivy | Enforced by: UNENFORCED |
 
 The `agent-config` job in the same workflow runs `node scripts/check-agent-config.mjs` on every
@@ -126,7 +126,7 @@ a missing file or an unpinned extra file fails the job. The scan then runs the p
 scanning needs no network (the image pull and the rule download stay online). The
 rule files are not committed, because the registry packs are under the Semgrep Rules
 License; a person refreshes the digests with `node scripts/semgrep-rules.mjs refresh`
-and reviews the diff. Repository-authored rules may live in `governance/semgrep-rules/`.
+and reviews the diff.
 This narrows the scan boundary;
 it does not establish safety of arbitrary container code or every scan target.
 

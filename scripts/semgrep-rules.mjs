@@ -12,6 +12,14 @@ const DEFAULT_PINS = path.join(import.meta.dirname, '..', 'governance', 'semgrep
 const MAX_BYTES = 20 * 1024 * 1024;
 const sha256 = (bytes) => createHash('sha256').update(bytes).digest('hex');
 
+function assertPackUrl(value) {
+  let url;
+  try { url = new URL(value); } catch { throw new Error(`pins: invalid pack url ${JSON.stringify(value)}`); }
+  if (url.protocol !== 'https:' || url.hostname !== 'semgrep.dev' || url.username || url.password) {
+    throw new Error(`pins: invalid pack url ${JSON.stringify(value)}`);
+  }
+}
+
 export function readPins(file) {
   const { packs } = JSON.parse(readFileSync(file, 'utf8'));
   if (!Array.isArray(packs) || packs.length === 0) throw new Error('pins: packs must be a nonempty array');
@@ -22,6 +30,7 @@ export function readPins(file) {
     }
     if (seen.has(pack.name)) throw new Error(`pins: duplicate pack ${pack.name}`);
     seen.add(pack.name);
+    assertPackUrl(pack.url);
   }
   return packs;
 }
@@ -47,8 +56,9 @@ export function verifyRules(dir, packs) {
 }
 
 async function download(url) {
-  if (!url.startsWith('https://')) throw new Error(`refusing non-https url ${url}`);
-  const response = await fetch(url, { headers: { accept: 'application/yaml' } });
+  assertPackUrl(url);
+  const response = await fetch(url, { headers: { accept: 'application/yaml' }, signal: AbortSignal.timeout(60_000) });
+  if (new URL(response.url).hostname !== 'semgrep.dev') throw new Error(`download of ${url} redirected off semgrep.dev`);
   if (!response.ok) throw new Error(`download failed for ${url}: HTTP ${response.status}`);
   const bytes = Buffer.from(await response.arrayBuffer());
   if (bytes.length === 0 || bytes.length > MAX_BYTES) throw new Error(`download of ${url} has unusable size ${bytes.length}`);

@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -36,10 +36,10 @@ function verify(dir, pins) {
 }
 
 const BODY = 'rules:\n- id: toy.rule\n  pattern: toy($X)\n  message: toy\n  languages: [python]\n  severity: INFO\n';
-const pin = (name, digest) => ({ name, url: `https://example.invalid/${name}`, sha256: digest });
+const pin = (name, digest, url = `https://semgrep.dev/c/p/${name}`) => ({ name, url, sha256: digest });
 const place = (dir, name, text) => {
   const rules = path.join(dir, 'rules');
-  spawnSync('mkdir', ['-p', rules]);
+  mkdirSync(rules, { recursive: true });
   writeFileSync(path.join(rules, `${name}.yml`), text);
 };
 
@@ -111,4 +111,21 @@ test('AC-5 rules are fetched and verified in a step before the scan; the pull st
   assert.ok(verifyAt > 0 && verifyAt < runAt, 'fetch+verify precedes docker run');
   assert.ok(pullAt > 0 && pullAt < runAt, 'image pull precedes the offline run');
   assert.match(job, /\/rules:ro/, 'rules are mounted read-only');
+});
+
+test('AC-6 pack urls must be https on semgrep.dev without credentials', () => withDir((dir) => {
+  place(dir, 'toy', BODY);
+  for (const url of ['http://semgrep.dev/c/p/toy', 'https://evil.invalid/c/p/toy', 'https://u:p@semgrep.dev/c/p/toy', 'not a url']) {
+    const r = verify(dir, { packs: [pin('toy', sha(BODY), url)] });
+    assert.notEqual(r.status, 0, `${url} must be refused`);
+    assert.match(r.stderr, /invalid pack url/);
+  }
+}));
+
+test('REQ-7 CI never runs refresh; the tool documents it as person-run', () => {
+  assert.doesNotMatch(semgrepJob(), /semgrep-rules\.mjs refresh/);
+  assert.ok(existsSync(TOOL), 'FEATURE_ABSENT: scripts/semgrep-rules.mjs must exist');
+  const r = spawnSync(process.execPath, [TOOL], { encoding: 'utf8', timeout: 10_000 });
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /usage:.*refresh/);
 });

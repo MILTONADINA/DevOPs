@@ -12,8 +12,8 @@ green without a scan.
 
 **Enforced by:** job:.github/workflows/security-scan.yml#semgrep; test:tests/ci/assert-scan.test.mjs
 THE PIPELINE SHALL run Semgrep from the official `semgrep/semgrep` container
-image pinned by digest, with the `p/owasp-top-ten`, `p/r2c-security-audit` and
-`p/secrets` registry packs, metrics off.
+image pinned by digest, with the owasp-top-ten, r2c-security-audit and secrets packs,
+downloaded and sha256-verified per REQ-6, metrics off.
 
 ## REQ-2 — Fail on findings and on errors
 

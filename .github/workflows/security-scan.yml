@@ -64,7 +64,7 @@ jobs:
 
   semgrep:
     # Pinned scanner plus strict host checker: any finding/error, lost test tree,
-    # malformed report or below-floor count fails (ci-semgrep-scan.md REQ-1..5).
+    # malformed report or below-floor count fails (ci-semgrep-scan.md REQ-1..7).
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
