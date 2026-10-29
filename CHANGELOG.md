@@ -16,6 +16,12 @@ Versions follow [Semantic Versioning](https://semver.org/).
   `governance/agent-config-baseline.json` names the finding (`specs/security/ci-agent-config-scan.md`).
   `scripts/check-enforcement.mjs` now reports mechanical=115 (was 112 above) for its three REQs.
 
+### Changed
+
+- The sprint-cycle reviewer must return `filesSeen`; the workflow compares it with its own
+  `git diff --name-only` list and sets the outcome INDETERMINATE (not ready) on any missing,
+  unknown or absent file (REQ-M1, AC-M1.3).
+
 ### Documentation
 
 - `docs/STATE.md` lists every persisted file with its owner, `schema_version`, readers and

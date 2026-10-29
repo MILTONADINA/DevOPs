@@ -111,6 +111,17 @@ function stageOutcome(result, boolKey) {
   return outcome
 }
 
+// Changed-file list for the reviewer coverage check, computed here from git
+// (never from an agent's report). Tracked changes against HEAD (staged and
+// unstaged) plus untracked, non-ignored files, since a cycle leaves new files
+// uncommitted. args.changedFilesFn is a test seam only; real runs pass JSON.
+async function changedFilesFromGit() {
+  const { execFileSync } = await import('node:child_process')
+  const git = a => execFileSync('git', ['-c', 'core.quotepath=off', ...a], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 }).split('\n').filter(Boolean)
+  return [...new Set([...git(['diff', '--name-only', 'HEAD']), ...git(['ls-files', '--others', '--exclude-standard'])])]
+}
+const normalizeFile = f => String(f).trim().replace(/^\.\//, '')
+
 async function workflowAgent(prompt, options) {
   const result = await agent(prompt, options)
   const [stage, taskId] = options.label.split(':')
@@ -371,7 +382,7 @@ Backlog item: "${backlogItem}"
 Tasks: ${JSON.stringify(plan.tasks)}
 Build results: ${JSON.stringify(buildResults.map(r => ({ task: r.task.id, coder: r.coderResult, tester: r.testerResult })))}
 
-Check spec-anchoring (does every changed line trace to one of the tasks above, or to the backlog item itself?) and general diff quality. List every issue you find in violations, including low-severity ones and ones you are unsure about. Start each with BLOCKER: or CONCERN: and end it with your confidence. The validator and the human reviewer filter the list, so at this stage coverage matters more than precision. A BLOCKER is an untraceable line (drive-by refactoring included), a missing or misleading proof, or a defect that could cause incorrect behavior or a test failure. State each one plainly, and set approved to false if any BLOCKER remains.
+Check spec-anchoring (does every changed line trace to one of the tasks above, or to the backlog item itself?) and general diff quality. List every issue you find in violations, including low-severity ones and ones you are unsure about. Start each with BLOCKER: or CONCERN: and end it with your confidence. The validator and the human reviewer filter the list, so at this stage coverage matters more than precision. A BLOCKER is an untraceable line (drive-by refactoring included), a missing or misleading proof, or a defect that could cause incorrect behavior or a test failure. State each one plainly, and set approved to false if any BLOCKER remains. Run git diff --name-only (plus git ls-files --others --exclude-standard for new files) yourself and return filesSeen: the repo-relative path of every changed file whose diff you actually read. Do not list a file you did not read; the workflow compares your list with its own git diff and treats any mismatch as INDETERMINATE.
 
 ${ENVIRONMENT_RULES}${ownerDecisionsBlock}`,
   {
@@ -384,9 +395,10 @@ ${ENVIRONMENT_RULES}${ownerDecisionsBlock}`,
       properties: {
         approved: { type: 'boolean' },
         violations: { type: 'array', items: { type: 'string' } },
+        filesSeen: { type: 'array', items: { type: 'string' } },
         blocked_by_environment: BLOCKED_SCHEMA,
       },
-      required: ['approved'],
+      required: ['approved', 'filesSeen'],
     },
   }
 )
@@ -449,6 +461,26 @@ Decide whether this cycle is ready for a PR. Do NOT sign off if any task's test 
   }
 )
 
+// Reviewer coverage: the workflow computes the changed-file list itself and
+// compares it with the reviewer's filesSeen. A missing file, an unknown file,
+// a non-array filesSeen or an uncomputable list is INDETERMINATE, never clean.
+let reviewerFilesProblem = null
+try {
+  const changedFiles = (await ((args && args.changedFilesFn) || changedFilesFromGit)()).map(normalizeFile)
+  if (!Array.isArray(reviewResult?.filesSeen)) {
+    reviewerFilesProblem = 'filesSeen not returned'
+  } else {
+    const seen = new Set(reviewResult.filesSeen.map(normalizeFile))
+    const missing = changedFiles.filter(f => !seen.has(f))
+    const unknown = [...seen].filter(f => !changedFiles.includes(f))
+    if (missing.length > 0 || unknown.length > 0) {
+      reviewerFilesProblem = `${missing.length > 0 ? `missing ${missing.join(', ')}` : ''}${missing.length > 0 && unknown.length > 0 ? '; ' : ''}${unknown.length > 0 ? `unknown ${unknown.join(', ')}` : ''}`
+    }
+  }
+} catch (err) {
+  reviewerFilesProblem = `changed-file list unavailable (${err && err.message ? err.message : err})`
+}
+
 phase('Release')
 // REQ-M3: INDETERMINATE is first-class and never counts as clean -- any
 // tester (per task), security or validator result whose boolean disagrees
@@ -460,7 +492,7 @@ const indeterminateTesterTasks = buildResults
   .map(r => r.task.id)
 const securityOutcome = stageOutcome(securityResult, 'passed')
 const validatorOutcome = stageOutcome(validatorResult, 'signed_off')
-const anyIndeterminate = indeterminateTesterTasks.length > 0 || securityOutcome === 'INDETERMINATE' || validatorOutcome === 'INDETERMINATE'
+const anyIndeterminate = indeterminateTesterTasks.length > 0 || securityOutcome === 'INDETERMINATE' || validatorOutcome === 'INDETERMINATE' || reviewerFilesProblem !== null
 
 // REQ-M1: readyForPR is the structural AND of every verdict, computed here
 // in code -- no verdict counts only because a prompt tells another agent to
@@ -484,6 +516,7 @@ const indeterminateReasons = [
   indeterminateTesterTasks.length > 0 ? `tester (${indeterminateTesterTasks.join(', ')})` : null,
   securityOutcome === 'INDETERMINATE' ? 'security' : null,
   validatorOutcome === 'INDETERMINATE' ? 'validator' : null,
+  reviewerFilesProblem !== null ? `reviewer filesSeen (${reviewerFilesProblem})` : null,
 ].filter(Boolean)
 
 const cycleOutcome = {

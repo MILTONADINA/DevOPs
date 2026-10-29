@@ -96,6 +96,7 @@ THE SYSTEM SHALL compute `readyForPR` in `sprint-cycle.js` as the conjunction of
 - no stage INDETERMINATE (REQ-M3)
 
 No verdict may count only because a prompt tells another agent to weigh it.
+WHEN the reviewer returns, THE SYSTEM SHALL compute the changed-file list from `git diff --name-only` itself (against `HEAD`, plus untracked files), require the reviewer to return a `filesSeen` list, and set outcome INDETERMINATE (not ready) when any changed file is missing from `filesSeen`, when `filesSeen` names a file that is not in the changed list, or when the changed-file list cannot be computed.
 **Enforced by:** test:tests/graph-resilience/workflow-faults.test.mjs
 **Enforcement note (pre-MR17 annotation):** code in `sprint-cycle.js` (replacing `:317`); tests in `tests/graph-resilience/workflow-faults.test.mjs`.
 **Falsified by:** a fake-agent run with the reviewer returning `approved:false` (or security `FAIL`) and the validator `PASS` that yields `readyForPR: true`.
@@ -446,6 +447,9 @@ WHEN `hooks/universal/post-tool/sync-lr-refined-date.sh` runs, THE SYSTEM SHALL 
 
 ### AC-M1.2 (REQ-M1)
 **Given** all stages PASS and reviewer `approved: true` with an empty BLOCKER list **When** the workflow runs **Then** `readyForPR` is true (a positive control, so the gate is not vacuous).
+
+### AC-M1.3 (REQ-M1)
+**Given** all other stages PASS and a reviewer `approved: true` **When** its `filesSeen` omits a changed file, or names a file that is not changed, or is absent **Then** `readyForPR` is false and the cycle outcome is INDETERMINATE. **Given** a `filesSeen` equal to the changed-file set **Then** `readyForPR` is true.
 
 ### AC-M2.1 (REQ-M2)
 **Given** a journal fixture whose tester proof is `{command: "exit 1", exit_code: 0}` **When** `node scripts/graph-rerun-proofs.mjs --journal <fixture>` runs **Then** it exits non-zero and names the task. **Given** the security scan reports `scanned_files: 0` **Then** it also exits non-zero. **Given** matching exit codes and scanned counts at or above the floor **Then** it exits 0.

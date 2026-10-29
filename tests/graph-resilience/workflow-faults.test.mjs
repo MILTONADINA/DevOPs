@@ -9,9 +9,17 @@ const ROOT = path.resolve(import.meta.dirname, '..', '..');
 const source = readFileSync(path.join(ROOT, '.claude', 'workflows', 'sprint-cycle.js'), 'utf8')
   .replace('export const meta =', 'const meta =');
 
+// Default harness: an empty changed-file list and a reviewer that lists no
+// files, so the pre-existing cases stay about their own subject. The
+// filesSeen cases below pass strictReviewer to see the raw reviewer result.
 async function run(agent, args = {}, log = () => {}) {
+  const { strictReviewer, ...rest } = args;
+  const wrapped = strictReviewer ? agent : async (prompt, options) => {
+    const r = await agent(prompt, options);
+    return options.label === 'reviewer' && r && !('filesSeen' in r) ? { ...r, filesSeen: [] } : r;
+  };
   const execute = new AsyncFunction('args', 'agent', 'log', 'phase', source);
-  return execute({ backlogItem: 'specs/graph/R-resilience.md', cycleId: 'c7', ...args }, agent, log, () => {});
+  return execute({ backlogItem: 'specs/graph/R-resilience.md', cycleId: 'c7', changedFilesFn: () => [], ...rest }, wrapped, log, () => {});
 }
 
 test('preflight needs_human stops before planner', async () => {
@@ -983,4 +991,61 @@ test("T5 (D3): the planner prompt names the `conflicts` field and AGENTS.md's pr
     prompts.planner.includes('owner decision > law/safety > approved spec > ADR/AC > plan > code'),
     "planner prompt should state AGENTS.md's precedence order verbatim"
   );
+});
+
+// --- Reviewer filesSeen coverage (REQ-M1 extension) -------------------------
+
+const ALL_PASS = {
+  preflight: { status: 'ready', check_ids: [] },
+  'coder:T1': { task_id: 'T1', summary: 'done' },
+  'tester:T1': { task_id: 'T1', passed: true, outcome: 'PASS' },
+  security: { passed: true, outcome: 'PASS' },
+  validator: { signed_off: true, outcome: 'PASS', reason: 'verified' },
+};
+const PLAN = { tasks: [{ id: 'T1', description: 'one task' }] };
+
+async function runFilesSeen(reviewer, changed) {
+  return run(async (_, o) => (o.label === 'reviewer' ? reviewer : ALL_PASS[o.label]),
+    { plan: PLAN, strictReviewer: true, changedFilesFn: () => changed });
+}
+
+test('filesSeen: a reviewer that omits a changed file is INDETERMINATE and not ready', async () => {
+  const r = await runFilesSeen({ approved: true, filesSeen: ['src/a.js'] }, ['src/a.js', 'src/b.js']);
+  assert.equal(r.cycleOutcome.readyForPR, false);
+  assert.equal(r.cycleOutcome.outcome, 'INDETERMINATE');
+});
+
+test('filesSeen: a reviewer that adds an unknown file is INDETERMINATE and not ready', async () => {
+  const r = await runFilesSeen({ approved: true, filesSeen: ['src/a.js', 'src/ghost.js'] }, ['src/a.js']);
+  assert.equal(r.cycleOutcome.readyForPR, false);
+  assert.equal(r.cycleOutcome.outcome, 'INDETERMINATE');
+});
+
+test('filesSeen: a reviewer that omits filesSeen entirely is INDETERMINATE and not ready', async () => {
+  const r = await runFilesSeen({ approved: true }, []);
+  assert.equal(r.cycleOutcome.readyForPR, false);
+  assert.equal(r.cycleOutcome.outcome, 'INDETERMINATE');
+});
+
+test('filesSeen (positive control): a reviewer returning exactly the changed files is ready', async () => {
+  const r = await runFilesSeen({ approved: true, filesSeen: ['./src/b.js', 'src/a.js'] }, ['src/a.js', 'src/b.js']);
+  assert.equal(r.cycleOutcome.readyForPR, true);
+  assert.equal(r.cycleOutcome.outcome, 'PASS');
+});
+
+test('filesSeen: an uncomputable changed-file list is INDETERMINATE, not ready', async () => {
+  const r = await run(async (_, o) => (o.label === 'reviewer' ? { approved: true, filesSeen: [] } : ALL_PASS[o.label]),
+    { plan: PLAN, changedFilesFn: () => { throw new Error('git unavailable'); } });
+  assert.equal(r.cycleOutcome.readyForPR, false);
+  assert.equal(r.cycleOutcome.outcome, 'INDETERMINATE');
+});
+
+test('filesSeen: the reviewer schema requires filesSeen and the prompt asks for it', async () => {
+  let seen;
+  await run(async (prompt, o) => {
+    if (o.label === 'reviewer') seen = { prompt, schema: o.schema };
+    return o.label === 'reviewer' ? { approved: true, filesSeen: [] } : ALL_PASS[o.label];
+  }, { plan: PLAN });
+  assert.ok(seen.schema.required.includes('filesSeen'));
+  assert.match(seen.prompt, /filesSeen/);
 });
