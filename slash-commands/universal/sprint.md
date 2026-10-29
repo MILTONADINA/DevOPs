@@ -215,7 +215,8 @@ each task a `covers` list, and copies any `[NEEDS CLARIFICATION]` line into
 `sprint-cycle.js` throw `SPEC_GATE_BLOCK:` with `{clarification, uncovered}`
 before Build. Unlike `AMBIGUITY_BLOCK`, no acknowledgement lifts it: fix the
 spec or the plan and relaunch. `node scripts/lint-spec-status.mjs --item <spec>`
-runs the marker check by hand.
+runs the marker check by hand; run it before launch as the deterministic check.
+`criteria` and `covers` ids are compared as exact strings.
 
 ## After running
 

@@ -157,6 +157,7 @@ export function main(argv) {
   const rootAt = args.indexOf('--root');
   if (rootAt !== -1) root = path.resolve(args.splice(rootAt, 2)[1]);
   if (args[0] === '--item') {
+    if (!args[1]) return { problems: ['--item needs a spec path'] };
     let text;
     try { text = readFileSync(args[1], 'utf8'); } catch (error) { return { problems: [`cannot read ${args[1]}: ${error.code ?? error.message}`] }; }
     const markers = clarificationMarkers(text);

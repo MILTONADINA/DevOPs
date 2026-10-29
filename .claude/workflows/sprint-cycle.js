@@ -182,7 +182,9 @@ Decompose it into a small ordered list of atomic, independently-verifiable tasks
 
 The same applies to source conflicts: precedence order for the sources you read is owner decision > law/safety > approved spec > ADR/AC > plan > code (AGENTS.md's own rule). If a higher-precedence source contradicts a lower-precedence one on some point -- for example, an approved spec disagreeing with plan.md, or plan.md disagreeing with the code -- do not silently pick a side: report it in the \`conflicts\` field as {higher, lower, clause}, naming which source is higher, which is lower, and the contradicting clause.
 
-List every acceptance criterion id of the item's spec in \`criteria\`, and give each task a \`covers\` list of the criterion ids it verifies; every criterion must be covered by some task. Copy every line of the spec containing [NEEDS CLARIFICATION] into \`clarification_markers\` (as \"path:line text\").\n\nHARD CONSTRAINT: do not include any task whose job is to stage, commit, or push a git change, open a pull request, or run any deploy/publish command. This pipeline's scope ends at implementation + verification (coder/tester/reviewer/security/validator) -- committing and pushing are a separate, explicitly human-reviewed step outside this Workflow, never an autonomous task in your plan.`,
+List every acceptance criterion id of the item's spec in \`criteria\` (the exact \`### AC-...\` heading ids), and give each task a \`covers\` list of the criterion ids it verifies; every criterion must be covered by some task. Run \`node scripts/lint-spec-status.mjs --item <spec path>\` for the item's spec and copy its \`file:line\` lines into \`clarification_markers\` (it exits 1 when any exist).
+
+HARD CONSTRAINT: do not include any task whose job is to stage, commit, or push a git change, open a pull request, or run any deploy/publish command. This pipeline's scope ends at implementation + verification (coder/tester/reviewer/security/validator) -- committing and pushing are a separate, explicitly human-reviewed step outside this Workflow, never an autonomous task in your plan.`,
   {
     label: 'planner',
     phase: 'Plan',
@@ -199,7 +201,9 @@ List every acceptance criterion id of the item's spec in \`criteria\`, and give 
               id: { type: 'string' },
               description: { type: 'string' },
               files_likely_touched: { type: 'array', items: { type: 'string' } },
-              // Ids of the spec's acceptance criteria this task verifies.
+              // Ids of the spec's acceptance criteria this task verifies. Optional first-landed form
+              // of REQ-M32's `tasks[].ac_ids` (specs/graph/M-masterpiece-standard.md); its
+              // non-empty/each-present rule is deliberately not enforced here.
               covers: { type: 'array', items: { type: 'string' } },
             },
             required: ['id', 'description'],
@@ -235,6 +239,22 @@ if (!plan || !plan.tasks || plan.tasks.length === 0) {
 
 log(`Planner produced ${plan.tasks.length} task(s)` + (plan.ambiguities && plan.ambiguities.length ? `, ${plan.ambiguities.length} ambiguity(ies) flagged` : '') + (plan.conflicts && plan.conflicts.length ? `, ${plan.conflicts.length} conflict(s) flagged` : ''))
 
+// Story dv-covers: a spec marked [NEEDS CLARIFICATION], or an acceptance criterion
+// that no task `covers`, stops the cycle before Build. Not acknowledgeable: the spec
+// or the plan has to be fixed, so this runs before AMBIGUITY_BLOCK (the owner is never
+// asked to answer ambiguities on a plan that must be redone). Runs for a precomputed
+// args.plan as well. `covers` is the optional, first-landed form of REQ-M32's
+// `tasks[].ac_ids` (specs/graph/M-masterpiece-standard.md); REQ-M32's non-empty,
+// each-present rule is deliberately not enforced here. Ids compare as exact strings.
+const clarification = (plan.clarification_markers || [])
+const coveredCriteria = new Set(plan.tasks.flatMap((task) => (Array.isArray(task.covers) ? task.covers : [])))
+if (!plan.criteria || plan.criteria.length === 0) log('Spec gate: planner listed no criteria; coverage not checked')
+const uncovered = (plan.criteria || []).filter((id) => !coveredCriteria.has(id))
+if (clarification.length > 0 || uncovered.length > 0) {
+  log(`Cycle blocked before Build: ${clarification.length} clarification marker(s), ${uncovered.length} uncovered criterion(s)`)
+  throw new Error(`SPEC_GATE_BLOCK:${JSON.stringify({ clarification, uncovered })}`)
+}
+
 // REQ-M7: material ambiguity and source conflicts stop the cycle before
 // Build starts (replaces the old log-only line above). This sits after
 // `plan` is finalized either way, so it runs whether `plan` was just
@@ -265,18 +285,6 @@ log(`Planner produced ${plan.tasks.length} task(s)` + (plan.ambiguities && plan.
 // with no `item` field never matches (JSON.stringify(undefined) would
 // otherwise equal itself). This is additive: acknowledgedAmbiguities keeps
 // working exactly as it does today, and either channel alone is enough.
-// Story dv-covers: a spec marked [NEEDS CLARIFICATION], or an acceptance criterion
-// that no task `covers`, stops the cycle before Build. Not acknowledgeable: the spec
-// or the plan has to be fixed. Runs for a precomputed args.plan as well. When the
-// planner returns no `criteria`, there is nothing to compare and coverage is not checked.
-const clarification = (plan.clarification_markers || [])
-const coveredCriteria = new Set(plan.tasks.flatMap((task) => (Array.isArray(task.covers) ? task.covers : [])))
-const uncovered = (plan.criteria || []).filter((id) => !coveredCriteria.has(id))
-if (clarification.length > 0 || uncovered.length > 0) {
-  log(`Cycle blocked before Build: ${clarification.length} clarification marker(s), ${uncovered.length} uncovered criterion(s)`)
-  throw new Error(`SPEC_GATE_BLOCK:${JSON.stringify({ clarification, uncovered })}`)
-}
-
 const acknowledgedAmbiguities = (args && Array.isArray(args.acknowledgedAmbiguities)) ? args.acknowledgedAmbiguities : []
 const acknowledgements = (args && Array.isArray(args.acknowledgements)) ? args.acknowledgements : []
 const isAcknowledged = (item) =>
