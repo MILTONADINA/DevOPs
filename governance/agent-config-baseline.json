@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "note": "Reviewed findings of scripts/check-agent-config.mjs. Add a key only after a human has reviewed the finding; the fix is preferred.",
+  "reviewed": [
+    "unreviewed-hook:.claude/settings.json:008b5e4abcc5",
+    "unpinned-mcp:mcp-configs/universal/lyrie.json:@miltonadina/lyrie-mcp",
+    "unpinned-mcp:mcp-configs/universal/memory-stratum.json:@miltonadina/stratum-mcp",
+    "unpinned-mcp:mcp-configs/universal/pentagi.json:@miltonadina/pentagi-mcp",
+    "unpinned-mcp:mcp-configs/universal/pentest-ai.json:@miltonadina/pentest-ai-mcp",
+    "unpinned-mcp:mcp-configs/universal/playwright.json:@playwright/mcp@latest",
+    "unpinned-mcp:mcp-configs/universal/shannon.json:@miltonadina/shannon-mcp"
+  ]
+}

@@ -8,6 +8,14 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Security
+
+- A new `agent-config` job in `security-scan.yml` runs `scripts/check-agent-config.mjs` on every pull
+  request. It fails on a broad permission or `bypassPermissions` in `.claude/settings.json`, an
+  unpinned MCP server under `mcp-configs/`, or a hook that does not run a file under `hooks/`, unless
+  `governance/agent-config-baseline.json` names the finding (`specs/security/ci-agent-config-scan.md`).
+  `scripts/check-enforcement.mjs` now reports mechanical=115 (was 112 above) for its three REQs.
+
 ### Documentation
 
 - `docs/STATE.md` lists every persisted file with its owner, `schema_version`, readers and

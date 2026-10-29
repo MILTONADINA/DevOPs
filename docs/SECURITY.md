@@ -16,6 +16,15 @@ enforced until it moves left.
 | 2 | every PR | gitleaks (diff) and Semgrep (`p/owasp-top-ten`, `p/r2c-security-audit`, `p/secrets`) in `security-scan.yml` | both are required status checks on `main` and fail on any finding (Semgrep since #178) | npm/pip/cargo audit, axe-core | Enforced by: job:.github/workflows/security-scan.yml#gitleaks; job:.github/workflows/security-scan.yml#semgrep |
 | 3 | daily and pre-release | gitleaks full-history scan (scheduled, `.gitleaksignore` baseline); DeepTeam red-team, which skips when no provider key is set | the history scan fails its run on a leak; DeepTeam gates nothing while it skips | Trivy | Enforced by: UNENFORCED |
 
+The `agent-config` job in the same workflow runs `node scripts/check-agent-config.mjs` on every
+PR. It fails on a broad permission (`Bash(*)`, a bare tool name, `bypassPermissions`) in
+`.claude/settings.json`, an MCP server under `mcp-configs/` that is not pinned to an exact version,
+and a hook that runs no file under `hooks/`. Findings already present when the check was added are
+listed in `governance/agent-config-baseline.json`; run the script locally to see a key to review.
+It is dependency-free and local to this repository, so it is separate from the Agile Graph engine
+pin. Spec: [ci-agent-config-scan](../specs/security/ci-agent-config-scan.md). Enforced by:
+job:.github/workflows/security-scan.yml#agent-config
+
 The Enforced by column describes current reference integrity, not new scan evidence.
 Tier2 names only the gitleaks and Semgrep jobs; it excludes the Planned column.
 The dated snapshot above is preserved. Tier1 and the whole mixed tier3 row remain

@@ -97,6 +97,19 @@ jobs:
             --metrics=off --error --json --output /report/semgrep.json . || rc=$?
           node scripts/assert-scan.mjs "$scan_report_dir/semgrep.json" governance/scan-floors.yml "$rc"
 
+  agent-config:
+    # Broad permissions, unpinned MCP servers and unreviewed hooks fail unless named in
+    # governance/agent-config-baseline.json (specs/security/ci-agent-config-scan.md REQ-1..3).
+    # No dependencies: the checker is a plain Node script, so the root lockfile is untouched.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444  # v5.0.0
+        with: { node-version: 22 }
+      - name: Agent config scan
+        run: node scripts/check-agent-config.mjs
+
   dependency-audit:
     # specs/security/ci-dependency-audit.md (masterpiece REQ-M22). Reads the lockfiles;
     # fails on a high or critical advisory and when a lockfile resolves no dependencies.
