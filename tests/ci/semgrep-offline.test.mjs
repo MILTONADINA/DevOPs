@@ -129,3 +129,22 @@ test('REQ-7 CI never runs refresh; the tool documents it as person-run', () => {
   assert.notEqual(r.status, 0);
   assert.match(r.stderr, /usage:.*refresh/);
 });
+
+test('REQ-7 refresh rewrites every pinned digest from the downloaded bytes (fetch stubbed, no network)', () => withDir((dir) => {
+  const stub = path.join(dir, 'stub-fetch.mjs');
+  writeFileSync(stub, [
+    'globalThis.fetch = async (url) => {',
+    '  const response = new Response(`rules: []\\n# ${url}\\n`);',
+    '  Object.defineProperty(response, "url", { value: String(url) });',
+    '  return response;',
+    '};',
+  ].join('\n'));
+  const pinFile = path.join(dir, 'pins.json');
+  const stale = '0'.repeat(64);
+  writeFileSync(pinFile, JSON.stringify({ packs: [pin('toy', stale), pin('other', stale)] }));
+  const r = spawnSync(process.execPath, ['--import', stub, TOOL, 'refresh', pinFile], { encoding: 'utf8', timeout: 10_000 });
+  assert.equal(r.status, 0, r.stderr);
+  const { packs } = JSON.parse(readFileSync(pinFile, 'utf8'));
+  for (const p of packs) assert.equal(p.sha256, sha(`rules: []\n# ${p.url}\n`), `${p.name} digest refreshed`);
+  assert.deepEqual(packs.map((p) => p.name), ['toy', 'other'], 'names and order are kept');
+}));
