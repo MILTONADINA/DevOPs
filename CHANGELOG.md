@@ -19,6 +19,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
   packages the project has not declared (npm/pnpm/yarn/bun, pip/uv/poetry, `cargo add`) and asks for owner
   approval, with no network call. Plain `npm install` and `npm ci` stay allowed. It runs as a Bash pre-tool hook in
   `.claude/settings.json` (REQ-M30).
+- The Semgrep job downloads its rule packs in a separate step, checks each file's sha256 against
+  `governance/semgrep-rules.sha256.json` (fails on a mismatch or a missing digest), then scans with
+  `--network none` against those local files. Rule files are not committed (Semgrep Rules License).
+  `node scripts/semgrep-rules.mjs refresh` updates the digests by hand.
 
 ### Changed
 

@@ -1,0 +1,19 @@
+{
+  "packs": [
+    {
+      "name": "owasp-top-ten",
+      "url": "https://semgrep.dev/c/p/owasp-top-ten",
+      "sha256": "a5534d393958bc10d063263529d20986a85451e732138dafabfc7c183b4ab17e"
+    },
+    {
+      "name": "r2c-security-audit",
+      "url": "https://semgrep.dev/c/p/r2c-security-audit",
+      "sha256": "4beb1363e382e666b380f7ec27372fd02253e7099fed74749ebc1760f7551d23"
+    },
+    {
+      "name": "secrets",
+      "url": "https://semgrep.dev/c/p/secrets",
+      "sha256": "f680ede6ba7af3e63a046c2f2c4d117181630b5308be16b22a48a82636d61b6b"
+    }
+  ]
+}

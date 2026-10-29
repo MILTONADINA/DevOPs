@@ -86,7 +86,30 @@ operator home or Docker socket. No host-global Git configuration or user home
 setting SHALL be changed. The report basename remains `semgrep.json`; moving
 its output outside the checkout SHALL NOT alter the scanned source target.
 
+## REQ-6 — Offline scan against digest-pinned rules
+
+**Enforced by:** job:.github/workflows/security-scan.yml#semgrep; test:tests/ci/semgrep-offline.test.mjs
+WHILE the Semgrep job scans, THE SYSTEM SHALL run the pinned image with `--network none`
+against rule files downloaded in an earlier step and verified against the sha256 digests in
+`governance/semgrep-rules.sha256.json`, with no `p/` registry configuration, and SHALL fail
+the job when a rule file's digest differs from its pin, when a pin has no valid digest, when a
+pinned file is absent or when an unpinned file is present. Registry rule files SHALL NOT be
+committed (Semgrep Rules License). Pulling the image and downloading the rules stay online.
+
+## REQ-7 — Digest refresh by a person
+
+**Enforced by:** test:tests/ci/semgrep-offline.test.mjs
+THE REPOSITORY SHALL provide `node scripts/semgrep-rules.mjs refresh`, run by a person, which
+downloads each pinned pack over https and rewrites the digests; CI SHALL NOT run it.
+
 ## Acceptance criteria
+
+### AC-5 (REQ-6)
+**Given** the semgrep job **Then** it contains `--network none` and `--config /rules/` and no `p/` registry reference.
+
+### AC-6 (REQ-6, REQ-7)
+**Given** synthetic rule files and pins **Then** a matching digest passes; a mismatch, a missing or
+malformed digest, an absent pinned file, an unpinned file and a path-escaping pack name each fail.
 
 ### AC-1 (REQ-1..3)
 **Given** the host job's step script and pinned scanner container **When** they run on the

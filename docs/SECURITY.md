@@ -118,8 +118,16 @@ through the checkout mount. Container-only Git trust names `/src` exactly;
 no host-global Git settings, operator home or Docker socket is mounted or
 changed. Host Node avoids assuming a Node executable in the musl scanner
 image. Docker launch and scanner failures reach the checker as nonzero status;
-missing output fails closed. Registry packs are still remotely resolved, so
-pinning the image does not freeze rule content. This narrows the scan boundary;
+missing output fails closed. A separate step downloads the three registry packs
+into the runner temp directory and checks each file's sha256 against
+`governance/semgrep-rules.sha256.json`; a mismatch, a malformed or missing digest,
+a missing file or an unpinned extra file fails the job. The scan then runs the pinned image with
+`--network none` against those local files, so rule content is frozen by digest and
+scanning needs no network (the image pull and the rule download stay online). The
+rule files are not committed, because the registry packs are under the Semgrep Rules
+License; a person refreshes the digests with `node scripts/semgrep-rules.mjs refresh`
+and reviews the diff. Repository-authored rules may live in `governance/semgrep-rules/`.
+This narrows the scan boundary;
 it does not establish safety of arbitrary container code or every scan target.
 
 DeepTeam/Claude's visible unfunded skips and the rest of MR-7 remain separate
