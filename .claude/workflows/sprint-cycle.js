@@ -128,7 +128,7 @@ async function changedFilesFromGit() {
   if (!r || !Array.isArray(r.files)) throw new Error('lister returned no files array')
   return r.files
 }
-const normalizeFile = f => String(f).trim().replace(/^\.\//, '')
+const normalizeFile = f => String(f).replace(/^\.\//, '')
 
 async function workflowAgent(prompt, options) {
   const result = await agent(prompt, options)

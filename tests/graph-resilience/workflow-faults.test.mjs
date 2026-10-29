@@ -1051,3 +1051,9 @@ test('filesSeen: the reviewer schema requires filesSeen and the prompt asks for 
   assert.ok(seen.schema.required.includes('filesSeen'));
   assert.match(seen.prompt, /filesSeen/);
 });
+
+test('filesSeen: paths differing only by trailing whitespace stay distinct', async () => {
+  const r = await runFilesSeen({ approved: true, filesSeen: ['src/a.js'] }, ['src/a.js', 'src/a.js ']);
+  assert.equal(r.cycleOutcome.readyForPR, false);
+  assert.equal(r.cycleOutcome.outcome, 'INDETERMINATE');
+});
