@@ -117,11 +117,12 @@ function stageOutcome(result, boolKey) {
 // the reviewer's filesSeen is never checked against the reviewer's own report.
 async function changedFilesFromGit() {
   const r = await workflowAgent(
-    `You are the changed-files lister in the DevOPs graph-engineering pipeline. Do not review or edit anything. Run git -c core.quotepath=off diff --name-only HEAD (staged and unstaged tracked changes) and git ls-files --others --exclude-standard (new, untracked files) in the project root, and return the union as files: repo-relative paths, one per entry, exactly as git prints them.\n\n${ENVIRONMENT_RULES}`,
+    `You are the changed-files lister in the DevOPs graph-engineering pipeline. Do not review or edit anything. Run git -c core.quotepath=off diff --name-only HEAD (staged and unstaged tracked changes) and git -c core.quotepath=off ls-files --others --exclude-standard (new, untracked files) in the project root, and return the union as files: repo-relative paths, one per entry, exactly as git prints them.\n\n${ENVIRONMENT_RULES}`,
     {
       label: 'changed-files',
       phase: 'Verify',
       model: 'sonnet',
+      effort: 'low', // a git lister needs no reasoning (cost-controls/model-routing.yml)
       schema: { type: 'object', properties: { files: { type: 'array', items: { type: 'string' } }, blocked_by_environment: BLOCKED_SCHEMA }, required: ['files'] },
     }
   )
@@ -390,7 +391,7 @@ Backlog item: "${backlogItem}"
 Tasks: ${JSON.stringify(plan.tasks)}
 Build results: ${JSON.stringify(buildResults.map(r => ({ task: r.task.id, coder: r.coderResult, tester: r.testerResult })))}
 
-Check spec-anchoring (does every changed line trace to one of the tasks above, or to the backlog item itself?) and general diff quality. List every issue you find in violations, including low-severity ones and ones you are unsure about. Start each with BLOCKER: or CONCERN: and end it with your confidence. The validator and the human reviewer filter the list, so at this stage coverage matters more than precision. A BLOCKER is an untraceable line (drive-by refactoring included), a missing or misleading proof, or a defect that could cause incorrect behavior or a test failure. State each one plainly, and set approved to false if any BLOCKER remains. Run git -c core.quotepath=off diff --name-only HEAD (plus git ls-files --others --exclude-standard for new files) yourself and return filesSeen: the repo-relative path of every changed file whose diff you actually read. Do not list a file you did not read; the workflow compares your list with its own git diff and treats any mismatch as INDETERMINATE.
+Check spec-anchoring (does every changed line trace to one of the tasks above, or to the backlog item itself?) and general diff quality. List every issue you find in violations, including low-severity ones and ones you are unsure about. Start each with BLOCKER: or CONCERN: and end it with your confidence. The validator and the human reviewer filter the list, so at this stage coverage matters more than precision. A BLOCKER is an untraceable line (drive-by refactoring included), a missing or misleading proof, or a defect that could cause incorrect behavior or a test failure. State each one plainly, and set approved to false if any BLOCKER remains. Run git -c core.quotepath=off diff --name-only HEAD (plus git -c core.quotepath=off ls-files --others --exclude-standard for new files) yourself and return filesSeen: the repo-relative path of every changed file whose diff you actually read. Do not list a file you did not read; the workflow compares your list with its own git diff and treats any mismatch as INDETERMINATE.
 
 ${ENVIRONMENT_RULES}${ownerDecisionsBlock}`,
   {

@@ -1082,3 +1082,27 @@ test('filesSeen: the reviewer is told the same quotepath-off git command the lis
   }, { plan: PLAN });
   assert.match(prompt, /git -c core\.quotepath=off diff --name-only HEAD/);
 });
+
+test('filesSeen: the lister and the reviewer both run quotepath-off git for untracked files too', async () => {
+  const prompts = {};
+  const execute = new AsyncFunction('args', 'agent', 'log', 'phase', source);
+  await execute({ backlogItem: 'x', cycleId: 'c7', plan: PLAN }, async (p, o) => {
+    prompts[o.label] = p;
+    if (o.label === 'changed-files') return { files: [] };
+    return o.label === 'reviewer' ? { approved: true, filesSeen: [] } : ALL_PASS[o.label];
+  }, () => {}, () => {});
+  for (const label of ['changed-files', 'reviewer']) {
+    assert.match(prompts[label], /git -c core\.quotepath=off ls-files --others --exclude-standard/, label);
+  }
+});
+
+test('changed-files lister runs at low effort on sonnet', async () => {
+  let opts;
+  const execute = new AsyncFunction('args', 'agent', 'log', 'phase', source);
+  await execute({ backlogItem: 'x', cycleId: 'c7', plan: PLAN }, async (p, o) => {
+    if (o.label === 'changed-files') { opts = o; return { files: [] }; }
+    return o.label === 'reviewer' ? { approved: true, filesSeen: [] } : ALL_PASS[o.label];
+  }, () => {}, () => {});
+  assert.equal(opts.model, 'sonnet');
+  assert.equal(opts.effort, 'low');
+});

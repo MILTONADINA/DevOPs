@@ -60,6 +60,7 @@ subagents:
   reviewer: sonnet
   security: sonnet
   validator: sonnet
+  changed-files: sonnet   # git lister; runs at effort low
 
 orchestrator: opus-5-5   # the main session; see mechanical note above -- documentation, not enforcement
 
