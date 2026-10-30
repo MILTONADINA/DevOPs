@@ -19,10 +19,16 @@ Versions follow [Semantic Versioning](https://semver.org/).
   packages the project has not declared (npm/pnpm/yarn/bun, pip/uv/poetry, `cargo add`) and asks for owner
   approval, with no network call. Plain `npm install` and `npm ci` stay allowed. It runs as a Bash pre-tool hook in
   `.claude/settings.json` (REQ-M30).
-- The Semgrep job downloads its rule packs in a separate step, checks each file's sha256 against
-  `governance/semgrep-rules.sha256.json` (fails on a mismatch or a missing digest), then scans with
-  `--network none` against those local files. Rule files are not committed (Semgrep Rules License).
-  `node scripts/semgrep-rules.mjs refresh` updates the digests by hand.
+- The Semgrep job downloads its rules in a separate step from the `semgrep/semgrep-rules` repository at
+  one pinned full commit SHA (704 files, 718 rules, covering the former owasp-top-ten,
+  r2c-security-audit and secrets packs), checks each file's sha256 against
+  `governance/semgrep-rules.sha256.json` (fails on a mismatch, a missing digest, a missing file or an
+  unpinned file), then scans with `--network none` against those local files. The registry packs it
+  used before were regenerated upstream, so their digest drifted and the required check went red; a
+  commit does not change. Rule files are not committed (Semgrep Rules License).
+  `node scripts/semgrep-rules.mjs refresh [PINS [COMMIT]]` updates the digests, or moves the pin to
+  another commit, by hand. Three `nosemgrep` annotations now name the rule ids as the repository
+  builds them (`direct-response-write`, `unknown-value-with-script-tag`).
   `scripts/check-enforcement.mjs` now reports mechanical=117 (was 115 above) for REQ-6 and REQ-7.
 
 ### Changed

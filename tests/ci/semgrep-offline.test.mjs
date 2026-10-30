@@ -37,61 +37,105 @@ function verify(dir, pins) {
   return spawnSync(process.execPath, [TOOL, 'verify', rules, pinFile], { encoding: 'utf8', timeout: 10_000 });
 }
 
+// Stubbed fetch: serves `${commit}/${path}` from a table, records nothing on the network.
+function runWithStub(dir, args, table, { redirectTo } = {}) {
+  const stub = path.join(dir, 'stub-fetch.mjs');
+  writeFileSync(stub, [
+    `const table = ${JSON.stringify(table)};`,
+    'globalThis.fetch = async (url) => {',
+    '  const key = String(url);',
+    '  const body = table[key];',
+    '  const response = body === undefined ? new Response("not found", { status: 404 }) : new Response(body);',
+    `  Object.defineProperty(response, "url", { value: ${redirectTo ? JSON.stringify(redirectTo) : 'key'} });`,
+    '  return response;',
+    '};',
+  ].join('\n'));
+  return spawnSync(process.execPath, ['--import', stub, TOOL, ...args], { encoding: 'utf8', timeout: 10_000 });
+}
+
+
+const COMMIT = 'a'.repeat(40);
+const rawUrl = (file, commit = COMMIT) => `https://raw.githubusercontent.com/semgrep/semgrep-rules/${commit}/${file}`;
+const pins = (files, commit = COMMIT) => ({ source: { repository: 'semgrep/semgrep-rules', commit }, files });
+const entry = (file, text = BODY) => ({ path: file, sha256: sha(text) });
 const BODY = 'rules:\n- id: toy.rule\n  pattern: toy($X)\n  message: toy\n  languages: [python]\n  severity: INFO\n';
-const pin = (name, digest, url = `https://semgrep.dev/c/p/${name}`) => ({ name, url, sha256: digest });
-const place = (dir, name, text) => {
-  const rules = path.join(dir, 'rules');
-  mkdirSync(rules, { recursive: true });
-  writeFileSync(path.join(rules, `${name}.yml`), text);
+const place = (dir, file, text) => {
+  const target = path.join(dir, 'rules', file);
+  mkdirSync(path.dirname(target), { recursive: true });
+  writeFileSync(target, text);
 };
 
-test('AC-6 a matching digest passes', () => withDir((dir) => {
-  place(dir, 'toy', BODY);
-  const r = verify(dir, { packs: [pin('toy', sha(BODY))] });
+test('AC-6 a matching digest passes, including a nested rule path', () => withDir((dir) => {
+  place(dir, 'generic/secrets/toy.yaml', BODY);
+  place(dir, 'python/lang/other.yml', BODY);
+  const r = verify(dir, pins([entry('generic/secrets/toy.yaml'), entry('python/lang/other.yml')]));
   assert.equal(r.status, 0, r.stderr);
 }));
 
-test('AC-6 a digest mismatch fails and names the pack', () => withDir((dir) => {
-  place(dir, 'toy', `${BODY}# tampered\n`);
-  const r = verify(dir, { packs: [pin('toy', sha(BODY))] });
+test('AC-6 a digest mismatch fails and names the file', () => withDir((dir) => {
+  place(dir, 'generic/secrets/toy.yaml', `${BODY}# tampered\n`);
+  const r = verify(dir, pins([entry('generic/secrets/toy.yaml')]));
   assert.notEqual(r.status, 0);
-  assert.match(r.stderr, /digest mismatch.*toy/);
+  assert.match(r.stderr, /digest mismatch.*generic\/secrets\/toy\.yaml/);
 }));
 
 test('AC-6 a missing or malformed pin digest fails', () => withDir((dir) => {
-  place(dir, 'toy', BODY);
+  place(dir, 'toy.yaml', BODY);
   for (const digest of [undefined, '', 'ABC', sha(BODY).toUpperCase()]) {
-    const r = verify(dir, { packs: [pin('toy', digest)] });
+    const r = verify(dir, pins([{ path: 'toy.yaml', sha256: digest }]));
     assert.notEqual(r.status, 0, `digest ${String(digest)} must be refused`);
     assert.match(r.stderr, /missing or malformed sha256/);
   }
 }));
 
 test('AC-6 a pinned file that is absent, or an unpinned extra file, fails', () => withDir((dir) => {
-  place(dir, 'extra', BODY);
-  const r = verify(dir, { packs: [pin('toy', sha(BODY))] });
+  place(dir, 'nested/extra.yaml', BODY);
+  const r = verify(dir, pins([entry('toy.yaml')]));
   assert.notEqual(r.status, 0);
-  assert.match(r.stderr, /missing rule file.*toy/);
-  place(dir, 'toy', BODY);
-  const r2 = verify(dir, { packs: [pin('toy', sha(BODY))] });
+  assert.match(r.stderr, /missing rule file.*toy\.yaml/);
+  place(dir, 'toy.yaml', BODY);
+  const r2 = verify(dir, pins([entry('toy.yaml')]));
   assert.notEqual(r2.status, 0);
-  assert.match(r2.stderr, /unpinned rule file.*extra/);
+  assert.match(r2.stderr, /unpinned rule file.*nested\/extra\.yaml/);
 }));
 
-test('AC-6 pack names that could escape the directory are refused', () => withDir((dir) => {
-  place(dir, 'toy', BODY);
-  const r = verify(dir, { packs: [pin('../toy', sha(BODY))] });
-  assert.notEqual(r.status, 0);
-  assert.match(r.stderr, /invalid pack name/);
+test('AC-6 rule paths that could escape the directory or are not yaml are refused', () => withDir((dir) => {
+  place(dir, 'toy.yaml', BODY);
+  for (const bad of ['../toy.yaml', '/toy.yaml', 'a/../toy.yaml', 'a\\toy.yaml', 'a//toy.yaml', './toy.yaml', 'toy.txt', 'a b/toy.yaml', '']) {
+    const r = verify(dir, pins([{ path: bad, sha256: sha(BODY) }]));
+    assert.notEqual(r.status, 0, `${JSON.stringify(bad)} must be refused`);
+    assert.match(r.stderr, /invalid rule path/);
+  }
+  const dup = verify(dir, pins([entry('toy.yaml'), entry('toy.yaml')]));
+  assert.notEqual(dup.status, 0);
+  assert.match(dup.stderr, /duplicate rule path/);
 }));
 
-test('AC-6 the committed pins cover the three configured packs with sha256 digests', () => {
+test('AC-6 the source commit must be a full lowercase 40-hex SHA of semgrep/semgrep-rules', () => withDir((dir) => {
+  place(dir, 'toy.yaml', BODY);
+  for (const commit of ['main', 'HEAD', 'a'.repeat(7), 'a'.repeat(39), 'a'.repeat(41), 'A'.repeat(40), `${'a'.repeat(39)}g`, null, 7]) {
+    const r = verify(dir, pins([entry('toy.yaml')], commit));
+    assert.notEqual(r.status, 0, `${String(commit)} must be refused`);
+    assert.match(r.stderr, /invalid source commit/);
+  }
+  const other = verify(dir, { source: { repository: 'evil/semgrep-rules', commit: COMMIT }, files: [entry('toy.yaml')] });
+  assert.notEqual(other.status, 0);
+  assert.match(other.stderr, /invalid source repository/);
+}));
+
+test('AC-6 the committed pins name a fixed commit and a pinned file set covering the three former packs', () => {
   assert.ok(existsSync(PINS), 'FEATURE_ABSENT: governance/semgrep-rules.sha256.json');
-  const { packs } = JSON.parse(readFileSync(PINS, 'utf8'));
-  assert.deepEqual(packs.map((p) => p.name).sort(), ['owasp-top-ten', 'r2c-security-audit', 'secrets']);
-  for (const p of packs) {
-    assert.match(p.sha256, /^[0-9a-f]{64}$/);
-    assert.match(p.url, /^https:\/\/semgrep\.dev\/c\/p\//);
+  const { source, files } = JSON.parse(readFileSync(PINS, 'utf8'));
+  assert.equal(source.repository, 'semgrep/semgrep-rules');
+  assert.match(source.commit, /^[0-9a-f]{40}$/);
+  assert.ok(files.length >= 600, `expected at least 600 pinned rule files, got ${files.length}`);
+  assert.equal(new Set(files.map((f) => f.path)).size, files.length, 'no duplicate paths');
+  for (const f of files) {
+    assert.match(f.sha256, /^[0-9a-f]{64}$/);
+    assert.match(f.path, /^[A-Za-z0-9_-]+(\/[A-Za-z0-9._-]+)*\.ya?ml$/);
+  }
+  for (const prefix of ['generic/secrets/', 'javascript/', 'typescript/', 'python/']) {
+    assert.ok(files.some((f) => f.path.startsWith(prefix)), `a pinned file under ${prefix}`);
   }
 });
 
@@ -100,7 +144,7 @@ test('AC-5 the scan runs with --network none against local rule files, no regist
   assert.match(job, /--network none/);
   assert.doesNotMatch(job, /--config\s+p\//, 'no registry pack config');
   assert.doesNotMatch(job, /(^|[\s=])p\/[a-z0-9-]+/, 'no p/ registry reference');
-  assert.match(job, /--config \/rules\//);
+  assert.match(job, /--config \/rules\/(\s|\\|$)/, 'the whole rules directory is the config');
   assert.match(job, /--disable-version-check/);
   assert.match(job, /semgrep\/semgrep:\d+\.\d+\.\d+@sha256:[0-9a-f]{64}/);
 });
@@ -115,13 +159,43 @@ test('AC-5 rules are fetched and verified in a step before the scan; the pull st
   assert.match(job, /\/rules:ro/, 'rules are mounted read-only');
 });
 
-test('AC-6 pack urls must be https on semgrep.dev without credentials', () => withDir((dir) => {
-  place(dir, 'toy', BODY);
-  for (const url of ['http://semgrep.dev/c/p/toy', 'https://evil.invalid/c/p/toy', 'https://u:p@semgrep.dev/c/p/toy', 'not a url']) {
-    const r = verify(dir, { packs: [pin('toy', sha(BODY), url)] });
-    assert.notEqual(r.status, 0, `${url} must be refused`);
-    assert.match(r.stderr, /invalid pack url/);
-  }
+
+test('AC-6 pins are fetched from the immutable commit url and verified (fetch stubbed, no network)', () => withDir((dir) => {
+  const pinFile = path.join(dir, 'pins.json');
+  const files = ['generic/secrets/a.yaml', 'javascript/lang/b.yml'];
+  writeFileSync(pinFile, JSON.stringify(pins(files.map((f) => entry(f)))));
+  const table = Object.fromEntries(files.map((f) => [rawUrl(f), BODY]));
+  const out = path.join(dir, 'fetched');
+  const r = runWithStub(dir, ['fetch', out, pinFile], table);
+  assert.equal(r.status, 0, r.stderr);
+  for (const f of files) assert.equal(readFileSync(path.join(out, f), 'utf8'), BODY);
+}));
+
+test('AC-6 fetch fails closed when the served bytes differ from the pin (fetch stubbed)', () => withDir((dir) => {
+  const pinFile = path.join(dir, 'pins.json');
+  writeFileSync(pinFile, JSON.stringify(pins([entry('generic/secrets/a.yaml')])));
+  const r = runWithStub(dir, ['fetch', path.join(dir, 'fetched'), pinFile], { [rawUrl('generic/secrets/a.yaml')]: `${BODY}# drifted\n` });
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /digest mismatch.*generic\/secrets\/a\.yaml/);
+}));
+
+test('AC-6 fetch fails on an HTTP error and never fetches a branch url (fetch stubbed)', () => withDir((dir) => {
+  const pinFile = path.join(dir, 'pins.json');
+  writeFileSync(pinFile, JSON.stringify(pins([entry('a.yaml')])));
+  const r = runWithStub(dir, ['fetch', path.join(dir, 'fetched'), pinFile], { 'https://raw.githubusercontent.com/semgrep/semgrep-rules/main/a.yaml': BODY });
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /HTTP 404/);
+}));
+
+test('AC-6 a pre-existing unpinned file in the fetch directory fails the verification (fetch stubbed)', () => withDir((dir) => {
+  const pinFile = path.join(dir, 'pins.json');
+  writeFileSync(pinFile, JSON.stringify(pins([entry('a.yaml')])));
+  const out = path.join(dir, 'fetched');
+  mkdirSync(out);
+  writeFileSync(path.join(out, 'planted.yaml'), BODY);
+  const r = runWithStub(dir, ['fetch', out, pinFile], { [rawUrl('a.yaml')]: BODY });
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /unpinned rule file.*planted\.yaml/);
 }));
 
 test('REQ-7 CI never runs refresh; the tool documents it as person-run', () => {
@@ -132,39 +206,41 @@ test('REQ-7 CI never runs refresh; the tool documents it as person-run', () => {
   assert.match(r.stderr, /usage:.*refresh/);
 });
 
-test('REQ-7 refresh rewrites every pinned digest from the downloaded bytes (fetch stubbed, no network)', () => withDir((dir) => {
-  const stub = path.join(dir, 'stub-fetch.mjs');
-  writeFileSync(stub, [
-    'globalThis.fetch = async (url) => {',
-    '  const response = new Response(`rules: []\\n# ${url}\\n`);',
-    '  Object.defineProperty(response, "url", { value: String(url) });',
-    '  return response;',
-    '};',
-  ].join('\n'));
+test('REQ-7 refresh rewrites every pinned digest from the bytes at the pinned commit (fetch stubbed, no network)', () => withDir((dir) => {
   const pinFile = path.join(dir, 'pins.json');
   const stale = '0'.repeat(64);
-  writeFileSync(pinFile, JSON.stringify({ packs: [pin('toy', stale), pin('other', stale)] }));
-  const r = spawnSync(process.execPath, ['--import', stub, TOOL, 'refresh', pinFile], { encoding: 'utf8', timeout: 10_000 });
+  const files = ['generic/secrets/a.yaml', 'b.yaml'];
+  writeFileSync(pinFile, JSON.stringify(pins(files.map((f) => ({ path: f, sha256: stale })))));
+  const table = Object.fromEntries(files.map((f) => [rawUrl(f), `rules: []\n# ${f}\n`]));
+  const r = runWithStub(dir, ['refresh', pinFile], table);
   assert.equal(r.status, 0, r.stderr);
-  const { packs } = JSON.parse(readFileSync(pinFile, 'utf8'));
-  for (const p of packs) assert.equal(p.sha256, sha(`rules: []\n# ${p.url}\n`), `${p.name} digest refreshed`);
-  assert.deepEqual(packs.map((p) => p.name), ['toy', 'other'], 'names and order are kept');
+  const after = JSON.parse(readFileSync(pinFile, 'utf8'));
+  assert.equal(after.source.commit, COMMIT);
+  for (const f of after.files) assert.equal(f.sha256, sha(`rules: []\n# ${f.path}\n`), `${f.path} digest refreshed`);
+  assert.deepEqual(after.files.map((f) => f.path), files, 'paths and order are kept');
+}));
+
+test('REQ-7 refresh with a commit argument moves the pin to that commit; a non-SHA is refused (fetch stubbed)', () => withDir((dir) => {
+  const pinFile = path.join(dir, 'pins.json');
+  const next = 'b'.repeat(40);
+  writeFileSync(pinFile, JSON.stringify(pins([entry('a.yaml')])));
+  const bad = runWithStub(dir, ['refresh', pinFile, 'main'], {});
+  assert.notEqual(bad.status, 0);
+  assert.match(bad.stderr, /invalid source commit/);
+  assert.equal(JSON.parse(readFileSync(pinFile, 'utf8')).source.commit, COMMIT, 'file untouched on refusal');
+  const r = runWithStub(dir, ['refresh', pinFile, next], { [rawUrl('a.yaml', next)]: 'rules: []\n' });
+  assert.equal(r.status, 0, r.stderr);
+  const after = JSON.parse(readFileSync(pinFile, 'utf8'));
+  assert.equal(after.source.commit, next);
+  assert.equal(after.files[0].sha256, sha('rules: []\n'));
 }));
 
 test('AC-6 a redirect to http, or to a credentialed or other host, is refused (fetch stubbed, no network)', () => withDir((dir) => {
   const pinFile = path.join(dir, 'pins.json');
-  writeFileSync(pinFile, JSON.stringify({ packs: [pin('toy', '0'.repeat(64))] }));
-  for (const target of ['http://semgrep.dev/c/p/toy', 'https://u:p@semgrep.dev/c/p/toy', 'https://evil.invalid/c/p/toy']) {
-    const stub = path.join(dir, 'stub-redirect.mjs');
-    writeFileSync(stub, [
-      'globalThis.fetch = async () => {',
-      '  const response = new Response("rules: []\\n");',
-      `  Object.defineProperty(response, "url", { value: ${JSON.stringify(target)} });`,
-      '  return response;',
-      '};',
-    ].join('\n'));
-    const r = spawnSync(process.execPath, ['--import', stub, TOOL, 'refresh', pinFile], { encoding: 'utf8', timeout: 10_000 });
+  writeFileSync(pinFile, JSON.stringify(pins([entry('a.yaml')])));
+  for (const target of ['http://raw.githubusercontent.com/x/a.yaml', 'https://u:p@raw.githubusercontent.com/x/a.yaml', 'https://evil.invalid/x/a.yaml']) {
+    const r = runWithStub(dir, ['refresh', pinFile], { [rawUrl('a.yaml')]: 'rules: []\n' }, { redirectTo: target });
     assert.notEqual(r.status, 0, `${target} must be refused`);
-    assert.match(r.stderr, /invalid pack url/);
+    assert.match(r.stderr, /invalid download url/);
   }
 }));
