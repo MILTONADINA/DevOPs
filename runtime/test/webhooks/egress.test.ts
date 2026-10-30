@@ -40,8 +40,20 @@ describe("deliverWebhook: resolve once, vet every address, pin", () => {
   });
   test.each([
     ["169.254.169.254", [{ address: "169.254.169.254", family: 4 }]],
-    ["public then private", [{ address: "93.184.216.34", family: 4 }, { address: "10.0.0.5", family: 4 }]],
-    ["private then public", [{ address: "127.0.0.1", family: 4 }, { address: "93.184.216.34", family: 4 }]],
+    [
+      "public then private",
+      [
+        { address: "93.184.216.34", family: 4 },
+        { address: "10.0.0.5", family: 4 },
+      ],
+    ],
+    [
+      "private then public",
+      [
+        { address: "127.0.0.1", family: 4 },
+        { address: "93.184.216.34", family: 4 },
+      ],
+    ],
     ["mapped string", [{ address: "::ffff:127.0.0.1", family: 6 }]],
     ["mapped hex", [{ address: "::ffff:a9fe:a9fe", family: 6 }]],
     ["nat64", [{ address: "64:ff9b::7f00:1", family: 6 }]],
@@ -97,10 +109,32 @@ describe("deliverWebhook: resolve once, vet every address, pin", () => {
     expect(h.requests).toHaveLength(0);
   });
   test.each([
-    "http://hook.example:0/", "http://127.0.0.1/x", "http://10.1.2.3/x", "http://172.16.0.1/x", "http://192.168.0.1/x", "http://169.254.169.254/x", "http://[::1]/x", "http://[fc00::1]/x",
-    "http://[::ffff:127.0.0.1]/x", "http://[::ffff:7f00:1]/x", "http://[::127.0.0.1]/x", "http://[64:ff9b::7f00:1]/x", "http://[2002:0a00:0001::]/x", "http://100.64.0.1/x",
-    "http://0.0.0.0/x", "http://255.255.255.255/x", "http://[ff02::1]/x", "http://LOCALHOST/x", "http://localhost./x", "http://a.localhost/x", "http://2130706433/x",
-    "ftp://hook.example/x", "file:///etc/passwd", "data:text/plain,hi", "https://user:pw@hook.example/x", "not a url",
+    "http://hook.example:0/",
+    "http://127.0.0.1/x",
+    "http://10.1.2.3/x",
+    "http://172.16.0.1/x",
+    "http://192.168.0.1/x",
+    "http://169.254.169.254/x",
+    "http://[::1]/x",
+    "http://[fc00::1]/x",
+    "http://[::ffff:127.0.0.1]/x",
+    "http://[::ffff:7f00:1]/x",
+    "http://[::127.0.0.1]/x",
+    "http://[64:ff9b::7f00:1]/x",
+    "http://[2002:0a00:0001::]/x",
+    "http://100.64.0.1/x",
+    "http://0.0.0.0/x",
+    "http://255.255.255.255/x",
+    "http://[ff02::1]/x",
+    "http://LOCALHOST/x",
+    "http://localhost./x",
+    "http://a.localhost/x",
+    "http://2130706433/x",
+    "ftp://hook.example/x",
+    "file:///etc/passwd",
+    "data:text/plain,hi",
+    "https://user:pw@hook.example/x",
+    "not a url",
   ])("literal or odd URL %s is refused with no lookup and no connect", async (url) => {
     const h = harness(PUB);
     const r = await deliverWebhook(url, "{}", SECRET, h.deps);
@@ -160,7 +194,10 @@ describe("deliverWebhook: IPv6 literal URL", () => {
 });
 
 describe("deliverWebhook: failover across vetted addresses", () => {
-  const V6A = "2606:4700::1", V6B = "2606:4700::2", V4A = "93.184.216.34", V4B = "93.184.216.35";
+  const V6A = "2606:4700::1",
+    V6B = "2606:4700::2",
+    V4A = "93.184.216.34",
+    V4B = "93.184.216.35";
   const a = (address: string) => ({ address, family: address.includes(":") ? 6 : 4 });
   const connectErr = (code: string, connectStage = true) => Object.assign(new Error(code), { code, connectStage });
   function multi(answer: string[], respond: (req: TransportRequest, i: number) => Promise<{ status: number }>) {
@@ -246,8 +283,19 @@ describe("real transport: connect-stage tagging", () => {
     const port = (s.address() as { port: number }).port;
     await new Promise<void>((res) => s.close(() => res()));
     const err = await createHttpTransport()({
-      hostname: "hook.test", address: "127.0.0.1", family: 4, port, path: "/", secure: false, headers: {}, body: "{}", signal: new AbortController().signal,
-    }).then(() => null, (e: unknown) => e as NodeJS.ErrnoException & { connectStage?: boolean });
+      hostname: "hook.test",
+      address: "127.0.0.1",
+      family: 4,
+      port,
+      path: "/",
+      secure: false,
+      headers: {},
+      body: "{}",
+      signal: new AbortController().signal,
+    }).then(
+      () => null,
+      (e: unknown) => e as NodeJS.ErrnoException & { connectStage?: boolean },
+    );
     expect(err?.code).toBe("ECONNREFUSED");
     expect(err?.connectStage).toBe(true);
   });
@@ -257,9 +305,15 @@ describe("POST /v1/webhooks/test failover", () => {
   test("delivers when the first address refuses the connection", async () => {
     const { createSupabaseWebhookDeps } = await import("../../src/proxy/routes/webhooks");
     const tried: string[] = [];
-    const client = { from: () => ({ select: () => ({ eq: () => ({ limit: () => Promise.resolve({ data: [{ webhook_url: "https://api.customer.com/cq", webhook_secret: "whsec_s" }], error: null }) }) }) }) };
+    const client = {
+      from: () => ({ select: () => ({ eq: () => ({ limit: () => Promise.resolve({ data: [{ webhook_url: "https://api.customer.com/cq", webhook_secret: "whsec_s" }], error: null }) }) }) }),
+    };
     const deps = createSupabaseWebhookDeps(client as never, {
-      lookup: () => Promise.resolve([{ address: "2606:4700::1", family: 6 }, { address: "93.184.216.34", family: 4 }]),
+      lookup: () =>
+        Promise.resolve([
+          { address: "2606:4700::1", family: 6 },
+          { address: "93.184.216.34", family: 4 },
+        ]),
       transport: (req) => {
         tried.push(req.address);
         return tried.length === 1 ? Promise.reject(Object.assign(new Error("x"), { code: "ECONNREFUSED", connectStage: true })) : Promise.resolve({ status: 200 });
@@ -298,8 +352,15 @@ describe("real transport (loopback fixture, no OS DNS)", () => {
     return { port: addr.port, seen };
   }
   const base = (port: number): TransportRequest => ({
-    hostname: "hook.test", address: "127.0.0.1", family: 4, port, path: "/cq?a=b", secure: false,
-    headers: { "content-type": "application/json", [SIGNATURE_HEADER]: "sha256=abc" }, body: '{"k":1}', signal: new AbortController().signal,
+    hostname: "hook.test",
+    address: "127.0.0.1",
+    family: 4,
+    port,
+    path: "/cq?a=b",
+    secure: false,
+    headers: { "content-type": "application/json", [SIGNATURE_HEADER]: "sha256=abc" },
+    body: '{"k":1}',
+    signal: new AbortController().signal,
   });
 
   test("connects to the pinned address while Host stays the hostname", async () => {
@@ -323,13 +384,7 @@ describe("real transport (loopback fixture, no OS DNS)", () => {
     await new Promise<void>((resolve) => server!.listen(0, "127.0.0.1", resolve));
     const addr = server.address();
     if (!addr || typeof addr === "string") throw new Error("no port");
-    const r = await deliverWebhook(
-      `http://hook.test:${addr.port}/cq`,
-      "{}",
-      SECRET,
-      { lookup: async () => PUB, transport: (q) => createHttpTransport()({ ...q, address: "127.0.0.1" }) },
-      500,
-    );
+    const r = await deliverWebhook(`http://hook.test:${addr.port}/cq`, "{}", SECRET, { lookup: async () => PUB, transport: (q) => createHttpTransport()({ ...q, address: "127.0.0.1" }) }, 500);
     // A timeout would give delivered:false with reasonClass "timeout", so this
     // proves the body was not awaited without a wall-clock bound.
     expect(r).toMatchObject({ delivered: true, status: 200 });
