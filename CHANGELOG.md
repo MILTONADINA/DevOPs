@@ -8,6 +8,13 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- The `sprint-cycle.js` reviewer gate no longer passes when Build produced no change: an empty
+  changed-file list (or one with only blank entries) is INDETERMINATE and not ready, because there was
+  nothing to review. No plan field can declare a no-change task. A resumed cycle on a clean tree now
+  reads INDETERMINATE by design (REQ-M1, AC-M1.3).
+
 ### Security
 
 - A new `agent-config` job in `security-scan.yml` runs `scripts/check-agent-config.mjs` on every pull

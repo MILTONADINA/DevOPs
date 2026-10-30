@@ -441,11 +441,17 @@ ${ENVIRONMENT_RULES}${ownerDecisionsBlock}`,
 // Reviewer coverage: the workflow computes the changed-file list itself and
 // compares it with the reviewer's filesSeen. A missing file, an unknown file,
 // a non-array filesSeen or an uncomputable list is INDETERMINATE, never clean.
+// An empty set (no non-blank changed file) is INDETERMINATE too: Build produced
+// no change, so there was nothing to review and an empty filesSeen must not
+// match it vacuously. No plan or agent field can declare a no-change task.
 let reviewerFilesProblem = null
 try {
-  const changedFiles = (await changedFilesFromGit()).map(normalizeFile)
+  const changedFiles = (await changedFilesFromGit()).map(normalizeFile).filter(f => f.trim() !== '')
   if (!Array.isArray(reviewResult?.filesSeen)) {
     reviewerFilesProblem = 'filesSeen not returned'
+  } else if (changedFiles.length === 0) {
+    reviewerFilesProblem = 'no changed files: Build produced no change, so there was nothing to review'
+    log(reviewerFilesProblem)
   } else {
     const seen = new Set(reviewResult.filesSeen.map(normalizeFile))
     const missing = changedFiles.filter(f => !seen.has(f))
