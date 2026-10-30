@@ -149,6 +149,16 @@ describe("deliverWebhook: resolve once, vet every address, pin", () => {
   });
 });
 
+describe("deliverWebhook: IPv6 literal URL", () => {
+  test("https://[2600::1]/x reaches the transport with the unbracketed address", async () => {
+    const h = harness(PUB);
+    await deliverWebhook("https://[2600::1]/x", "{}", SECRET, h.deps);
+    expect(h.requests).toHaveLength(1);
+    expect(h.requests[0]!.hostname).toBe("2600::1");
+    expect(h.requests[0]!.address).toBe("2600::1");
+  });
+});
+
 describe("real transport (loopback fixture, no OS DNS)", () => {
   let server: Server | undefined;
   afterEach(() => {
@@ -195,6 +205,43 @@ describe("real transport (loopback fixture, no OS DNS)", () => {
     const r = await createHttpTransport()(base(f.port));
     expect(r.status).toBe(code);
     expect(f.seen).toHaveLength(1);
+  });
+  test("an https request to an IP-literal host does not set a TLS server name (no ERR_INVALID_ARG_VALUE)", async () => {
+    const f = await start(() => ({ status: 200 }));
+    server!.removeAllListeners("connection");
+    server!.on("connection", (sock) => sock.destroy());
+    const err = await createHttpTransport()({ ...base(f.port), hostname: "127.0.0.1", secure: true }).then(
+      () => null,
+      (e: unknown) => e as NodeJS.ErrnoException,
+    );
+    expect(err).not.toBeNull();
+    expect(err!.code).not.toBe("ERR_INVALID_ARG_VALUE");
+  });
+  test("an IPv6-literal host keeps its brackets in the Host header", async () => {
+    let host = "";
+    const v6 = createServer((req, res) => {
+      host = req.headers.host ?? "";
+      res.writeHead(204).end();
+    });
+    await new Promise<void>((resolve, reject) => {
+      v6.once("error", reject);
+      v6.listen(0, "::1", resolve);
+    });
+    try {
+      const port = (v6.address() as { port: number }).port;
+      await createHttpTransport()({ ...base(port), hostname: "::1", address: "::1", family: 6 });
+      expect(host).toBe(`[::1]:${port}`);
+    } finally {
+      v6.close();
+    }
+  });
+  test("each attempt opens its own connection (no keep-alive reuse of an earlier socket)", async () => {
+    const f = await start(() => ({ status: 204 }));
+    let conns = 0;
+    server!.on("connection", () => conns++);
+    await createHttpTransport()(base(f.port));
+    await createHttpTransport()(base(f.port));
+    expect(conns).toBe(2);
   });
   test("returns the Retry-After header and aborts on the signal", async () => {
     const f = await start(() => ({ status: 429, headers: { "retry-after": "7" } }));

@@ -79,6 +79,16 @@ describe("dead-letter store", () => {
     expect("port" in rec).toBe(false);
     expect(JSON.stringify(rec)).not.toContain("not a url");
   });
+  test("a symlinked parent that escapes the root creates nothing outside it", () => {
+    const outside = mkdtempSync(join(tmpdir(), "dlq-outside-"));
+    try {
+      symlinkSync(outside, join(root, "esc"));
+      expect(() => createDeadLetterStore({ dir: join(root, "esc", "dl"), projectRoot: root })).toThrow(/inside project root/);
+      expect(readdirSync(outside)).toEqual([]);
+    } finally {
+      rmSync(outside, { recursive: true, force: true });
+    }
+  });
   test("an explicit projectRoot reached through a symlink is accepted", () => {
     mkdirSync(join(root, "phys"));
     symlinkSync(join(root, "phys"), join(root, "viaLink"));

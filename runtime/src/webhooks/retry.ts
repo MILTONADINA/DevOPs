@@ -87,16 +87,20 @@ export function createWebhookRetrier(deps: RetrierDeps): WebhookRetrier {
     const ra = last.retryAfterMs;
     const delay = ra !== undefined && Number.isFinite(ra) && ra >= 0 ? Math.min(ra, maxDelayMs) : (RETRY_DELAYS_MS[attemptIdx] as number) * (0.8 + 0.4 * random());
     if (now() - firstAt + delay > maxTotalMs) return giveUp(url, eventId, attempts, last, "budget_exhausted", firstAt);
-    deps.schedule(async () => {
-      try {
-        // Recheck the cap at fire time: a busy event loop can delay the timer past the budget.
-        if (now() - firstAt > maxTotalMs) return giveUp(url, eventId, attempts, last, "budget_exhausted", firstAt);
-        const r = await deps.deliver(url, payload, secret);
-        if (!r.delivered) afterFailure(url, payload, secret, eventId, r, attemptIdx + 1, firstAt);
-      } catch (err) {
-        reportError(err);
-      }
-    }, delay);
+    try {
+      deps.schedule(async () => {
+        try {
+          // Recheck the cap at fire time: a busy event loop can delay the timer past the budget.
+          if (now() - firstAt > maxTotalMs) return giveUp(url, eventId, attempts, last, "budget_exhausted", firstAt);
+          const r = await deps.deliver(url, payload, secret);
+          if (!r.delivered) afterFailure(url, payload, secret, eventId, r, attemptIdx + 1, firstAt);
+        } catch (err) {
+          reportError(err);
+        }
+      }, delay);
+    } catch (err) {
+      reportError(err); // a throwing scheduler must not reject send() after the attempt ran
+    }
   };
 
   return {

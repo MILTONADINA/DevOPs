@@ -6,6 +6,7 @@
 
 import { request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
+import { isIP } from "node:net";
 import type { Transport } from "./deliver";
 
 /** Build the transport; the response body is drained and discarded, only status + Retry-After are read. */
@@ -13,13 +14,17 @@ export function createHttpTransport(): Transport {
   return (req) =>
     new Promise((resolve, reject) => {
       const pinned = req.address;
-      const hostHeader = req.secure ? (req.port === 443 ? req.hostname : `${req.hostname}:${req.port}`) : req.port === 80 ? req.hostname : `${req.hostname}:${req.port}`;
+      const hostPart = isIP(req.hostname) === 6 ? `[${req.hostname}]` : req.hostname;
+      const hostHeader = req.port === (req.secure ? 443 : 80) ? hostPart : `${hostPart}:${req.port}`;
       const send = req.secure ? httpsRequest : httpRequest;
       const r = send(
         {
           // Only names the connect target; `lookup` below pins the real address. The sent Host header is `hostHeader`.
           host: req.hostname,
-          ...(req.secure ? { servername: req.hostname } : {}),
+          // Node rejects an IP literal as a TLS server name; certificate checks then use `host` (the IP).
+          ...(req.secure && isIP(req.hostname) === 0 ? { servername: req.hostname } : {}),
+          // One connection per attempt: never reuse a keep-alive socket opened for an earlier attempt.
+          agent: false,
           port: req.port,
           path: req.path,
           method: "POST",

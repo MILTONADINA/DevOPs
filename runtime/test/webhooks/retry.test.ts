@@ -167,3 +167,21 @@ describe("retry policy", () => {
     expect(errors).toHaveLength(1);
   });
 });
+
+describe("a throwing scheduler", () => {
+  test("is reported through onError and send() still resolves with the first attempt", async () => {
+    const errors: unknown[] = [];
+    const retrier = createWebhookRetrier({
+      deliver: () => Promise.resolve({ delivered: false, status: 500, retryable: true, reasonClass: "http_5xx" }),
+      random: () => 0.5,
+      now: () => 0,
+      schedule: () => {
+        throw new Error("boom");
+      },
+      onError: (e) => errors.push(e),
+    });
+    const r = await retrier.send("https://x", "{}", "s", EVT);
+    expect(r.delivered).toBe(false);
+    expect(errors).toHaveLength(1);
+  });
+});

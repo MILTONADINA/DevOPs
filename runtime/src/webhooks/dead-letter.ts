@@ -44,14 +44,14 @@ export function createDeadLetterStore(opts: { dir: string; projectRoot?: string 
     const rel = relative(root, p);
     return !(rel === "" || rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel));
   };
-  // Lexical check against the requested path, or against the real root when the root was given via a symlink.
-  const rootLexical = resolve(opts.projectRoot ?? process.cwd());
-  const relLexical = relative(rootLexical, dir);
-  const lexicallyInside = !(relLexical === "" || relLexical === ".." || relLexical.startsWith(`..${sep}`) || isAbsolute(relLexical));
-  if (!inside(dir) && !lexicallyInside) throw new Error("dead-letter store must be inside project root");
+  // Before creating anything, the deepest existing ancestor of `dir` must really live inside the root.
+  let probe = dir;
+  while (!existsSync(probe)) probe = dirname(probe);
+  if (!inside(join(realpathSync(probe), relative(probe, dir)))) throw new Error("dead-letter store must be inside project root");
   mkdirSync(dir, { recursive: true, mode: 0o700 });
   if (!inside(realpathSync(dir))) throw new Error("dead-letter store must be inside project root");
-  if (lstatSync(dir).isSymbolicLink() || !lstatSync(dir).isDirectory() || realpathSync(dir) !== resolve(realpathSync(dirname(dir)), basename(dir))) throw new Error("dead-letter store must be a real directory");
+  if (lstatSync(dir).isSymbolicLink() || !lstatSync(dir).isDirectory() || realpathSync(dir) !== resolve(realpathSync(dirname(dir)), basename(dir)))
+    throw new Error("dead-letter store must be a real directory");
   chmodSync(dir, 0o700);
 
   return {
