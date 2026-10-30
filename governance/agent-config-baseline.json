@@ -7,7 +7,6 @@
     "unpinned-mcp:mcp-configs/universal/memory-stratum.json:@miltonadina/stratum-mcp",
     "unpinned-mcp:mcp-configs/universal/pentagi.json:@miltonadina/pentagi-mcp",
     "unpinned-mcp:mcp-configs/universal/pentest-ai.json:@miltonadina/pentest-ai-mcp",
-    "unpinned-mcp:mcp-configs/universal/playwright.json:@playwright/mcp@latest",
     "unpinned-mcp:mcp-configs/universal/shannon.json:@miltonadina/shannon-mcp"
   ]
 }

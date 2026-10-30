@@ -25,6 +25,7 @@ unless a reviewed baseline entry names that finding.
 WHEN a server under `mcp-configs/` starts a package through `npx`, `bunx`, `pnpx` or
 `uvx` without an exact `name@x.y.z` version (no version, a tag such as `latest`, or a
 range), THE JOB SHALL fail unless a reviewed baseline entry names that finding.
+THE SYSTEM SHALL ship every npx server under `mcp-configs/` pinned to an exact version except a server whose package is not yet published and whose finding the baseline names; the baseline SHALL name no unpinned-mcp finding the scan does not raise.
 
 ## REQ-3 — Hooks must run reviewed files, and the baseline is the only exception
 

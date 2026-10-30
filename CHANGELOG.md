@@ -10,6 +10,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Security
 
+- `mcp-configs/universal/playwright.json` now pins `@playwright/mcp@0.0.83` and its baseline entry is removed. `@miltonadina/lyrie-mcp`, `stratum-mcp`, `pentagi-mcp`, `pentest-ai-mcp` and `shannon-mcp` are not published on npm (E404), so they stay baselined until published or removed (quality plan O-10). A test now locks the baseline to the scan's unpinned findings. Closes #322.
 - A new `agent-config` job in `security-scan.yml` runs `scripts/check-agent-config.mjs` on every pull
   request. It fails on a broad permission or `bypassPermissions` in `.claude/settings.json`, an
   unpinned MCP server under `mcp-configs/`, or a hook that does not run a file under `hooks/`, unless
