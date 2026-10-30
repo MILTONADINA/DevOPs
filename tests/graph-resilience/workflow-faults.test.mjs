@@ -1199,6 +1199,11 @@ test('empty diff: a validator reason of "nothing to change" does not unlock read
 test('empty diff: a non-array lister result stays INDETERMINATE and a null lister stays BLOCKED_BY_ENVIRONMENT', async () => {
   assertNotReady(await run(async (_, o) => (o.label === 'reviewer' ? { approved: true, filesSeen: [] } : ALL_PASS[o.label]),
     { plan: PLAN, strictReviewer: true, changedFiles: new Error('git unavailable') }), null);
+  // The harness maps an Error to a lister result with no files field; also pass real non-array values.
+  for (const bad of [null, 'foo', { 0: 'src/a.js' }, 42]) {
+    assertNotReady(await run(async (_, o) => (o.label === 'reviewer' ? { approved: true, filesSeen: ['src/a.js'] } : ALL_PASS[o.label]),
+      { plan: PLAN, strictReviewer: true, changedFiles: () => bad }), null);
+  }
   const execute = new AsyncFunction('args', 'agent', 'log', 'phase', source);
   await assert.rejects(execute({ backlogItem: 'x', cycleId: 'c7', plan: PLAN }, async (_, o) => {
     if (o.label === 'changed-files') return null;

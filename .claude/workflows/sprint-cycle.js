@@ -453,6 +453,8 @@ try {
     reviewerFilesProblem = 'no changed files: Build produced no change, so there was nothing to review'
     log(reviewerFilesProblem)
   } else {
+    // Blank filesSeen entries are deliberately kept: a blank is never a changed file, so it
+    // lands in `unknown` and fails closed (INDETERMINATE) rather than being silently dropped.
     const seen = new Set(reviewResult.filesSeen.map(normalizeFile))
     const missing = changedFiles.filter(f => !seen.has(f))
     const changedSet = new Set(changedFiles)
