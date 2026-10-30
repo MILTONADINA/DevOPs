@@ -228,7 +228,7 @@ HARD CONSTRAINT: do not include any task whose job is to stage, commit, or push 
         },
         blocked_by_environment: BLOCKED_SCHEMA,
       },
-      required: ['tasks'],
+      required: ['tasks', 'criteria'],
     },
   }
 )

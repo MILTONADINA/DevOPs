@@ -151,6 +151,7 @@ It SHALL refuse a caller-supplied status that disagrees with the derived one. It
 IF the planner returns a non-empty `ambiguities[]` or `conflicts[]`, THEN `sprint-cycle.js` SHALL throw `AMBIGUITY_BLOCK:` followed by the items as JSON, before Build. The only exception: every item is either matched by an entry's `item` field in `args.acknowledgements` (an array of `{item, answer}` objects), or appears verbatim in `args.acknowledgedAmbiguities`.
 - `graph-run-record.mjs update --ack` SHALL append `{item, answer, at}` entries to `run.json` `acknowledgements` and reject malformed input without touching the record.
 - The planner schema SHALL add `conflicts: [{higher, lower, clause}]`.
+- IF a backlog item's spec holds `[NEEDS CLARIFICATION]`, or any acceptance criterion is covered by no planned task, THEN the cycle SHALL stop before the build phase (`SPEC_GATE_BLOCK:`, AC-M7.2).
 - `AGENTS.md` SHALL carry one precedence line: owner decision > law/safety > approved spec > ADR/AC > plan > code.
 
 **Enforced by:** test:tests/graph-resilience/workflow-faults.test.mjs; test:tests/graph-resilience/req-contracts.test.mjs; test:tests/graph-resilience/run-record.test.mjs; test:tests/graph-resilience/plan-covers-gate.test.mjs; test:tests/graph/spec-clarification.test.mjs
@@ -471,8 +472,6 @@ WHEN `hooks/universal/post-tool/sync-lr-refined-date.sh` runs, THE SYSTEM SHALL 
 
 ### AC-M7.2 (REQ-M7)
 **Given** a planner result with a non-empty `clarification_markers` (copied from `lint-spec-status.mjs --item`), or one whose `criteria` include `AC2` that no task's `covers` lists **When** the workflow runs **Then** it throws `SPEC_GATE_BLOCK:` before any `coder:` label is invoked, and neither `acknowledgedAmbiguities` nor `acknowledgements` lifts it. `node scripts/lint-spec-status.mjs --item <spec>` exits 1 for a spec holding the marker.
-EARS: If a backlog item's spec holds `[NEEDS CLARIFICATION]`, or any acceptance criterion is covered by no planned task, then the cycle shall stop before the build phase.
-
 ### AC-M8.1 (REQ-M32)
 **Given** a spec whose Status is `draft` **When** `launch --spec-ref specs/x.md#REQ-X1` runs **Then** it throws. **Given** Status `approved` and a REQ with no AC **Then** it throws. **Given** approved, fully AC-covered and with Falsified-by lines **Then** it succeeds. **Given** a planner task with an empty `ac_ids` **Then** the schema rejects it.
 

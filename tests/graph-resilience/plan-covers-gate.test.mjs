@@ -10,14 +10,15 @@ const ROOT = path.resolve(import.meta.dirname, '..', '..');
 const source = readFileSync(path.join(ROOT, '.claude', 'workflows', 'sprint-cycle.js'), 'utf8')
   .replace('export const meta =', 'const meta =');
 
-async function run(agent, args = {}) {
+async function run(agent, args = {}, logs = []) {
   const execute = new AsyncFunction('args', 'agent', 'log', 'phase', source);
-  return execute({ backlogItem: 'specs/toy.md', cycleId: 'c1', ...args }, agent, () => {}, () => {});
+  return execute({ backlogItem: 'specs/toy.md', cycleId: 'c1', ...args }, agent, (message) => logs.push(String(message)), () => {});
 }
 
-function stub(plan, labels, schemas = []) {
+function stub(plan, labels, schemas = [], plannerThrows = false) {
   return async (_, options) => {
     labels.push(options.label);
+    if (plannerThrows && options.label === 'planner') throw new Error('planner must not run on resume');
     if (options.label === 'preflight') return { status: 'ready', check_ids: [] };
     if (options.label === 'planner') { schemas.push(options.schema); return plan; }
     if (options.label.startsWith('coder:')) return { task_id: 'T1', summary: 'done' };
@@ -67,7 +68,9 @@ test('planner-reported clarification markers stop the cycle, and an ambiguity ac
 
 test('the gate also applies to a precomputed args.plan on resume', async () => {
   const plan = { criteria: ['AC1'], tasks: [{ id: 'T1', description: 'a', covers: [] }] };
-  await assert.rejects(run(stub(plan, []), { plan }), /^Error: SPEC_GATE_BLOCK:/);
+  const labels = [];
+  await assert.rejects(run(stub(plan, labels, [], true), { plan }), /^Error: SPEC_GATE_BLOCK:/);
+  assert.ok(!labels.includes('planner'));
 });
 
 test('the planner schema declares covers, criteria and clarification_markers', async () => {
@@ -78,4 +81,17 @@ test('the planner schema declares covers, criteria and clarification_markers', a
   assert.equal(props.tasks.items.properties.covers.type, 'array');
   assert.equal(props.criteria.type, 'array');
   assert.equal(props.clarification_markers.type, 'array');
+  assert.deepEqual(schemas[0].required, ['tasks', 'criteria']);
+});
+
+test('a plan with no criteria logs that coverage was not checked and Build runs', async () => {
+  for (const criteria of [undefined, []]) {
+    const labels = [];
+    const logs = [];
+    const plan = { tasks: [{ id: 'T1', description: 'a' }], ...(criteria ? { criteria } : {}) };
+    const result = await run(stub(plan, labels), {}, logs);
+    assert.ok(logs.some((l) => l.includes('coverage not checked')));
+    assert.ok(labels.includes('coder:T1'));
+    assert.equal(result.cycleOutcome.readyForPR, true);
+  }
 });

@@ -27,7 +27,7 @@ the current phase and gate configuration.
    `plan.md` / `blueprint.md` afterward.
 4. Run `node scripts/lint-spec-status.mjs --item <spec>` on that item's spec.
    Exit 1 lists its `[NEEDS CLARIFICATION]` markers: do not launch; pass the
-   markers to the planner as `clarification_markers`, or resolve them first.
+   markers: the planner runs the same command and copies its lines, or resolve them first.
 
 ## With Agile Graph
 
