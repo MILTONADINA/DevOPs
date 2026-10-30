@@ -15,6 +15,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
   unpinned MCP server under `mcp-configs/`, or a hook that does not run a file under `hooks/`, unless
   `governance/agent-config-baseline.json` names the finding (`specs/security/ci-agent-config-scan.md`).
   `scripts/check-enforcement.mjs` now reports mechanical=115 (was 112 above) for its three REQs.
+- New pre-tool hook `hooks/universal/pre-tool/block-new-dependency.sh` blocks agent-run installs of
+  packages the project has not declared (npm/pnpm/yarn/bun, pip/uv/poetry, `cargo add`) and asks for owner
+  approval, with no network call. Plain `npm install` and `npm ci` stay allowed. It runs as a Bash pre-tool hook in
+  `.claude/settings.json` (REQ-M30).
 
 ### Changed
 
@@ -65,13 +69,6 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - The required `runtime-test` job measures V8 line coverage of `runtime/` (`npm run test:coverage`)
   and fails below the floor in `governance/coverage-floor.json`, checked by
   `scripts/check-coverage-floor.mjs` (`specs/ops/ci-product-suites.md` REQ-5).
-
-### Security
-
-- New pre-tool hook `hooks/universal/pre-tool/block-new-dependency.sh` blocks agent-run installs of
-  packages the project has not declared (npm/pnpm/yarn/bun, pip/uv/poetry, `cargo add`) and asks for owner
-  approval, with no network call. Plain `npm install` and `npm ci` stay allowed. It runs as a Bash pre-tool hook in
-  `.claude/settings.json` (REQ-M30).
 
 ## [0.5.1] — 2026-10-26
 ### Documentation
