@@ -185,9 +185,11 @@ Sample session-end payload. `estimated_savings_usd` is an estimated USD cost dif
 
 ## Delivery and Retries
 
-- Webhook delivery timeout: 10 seconds
-- If your endpoint returns a non-2xx status or times out, CQ retries with exponential backoff: 5s, 30s, 5min, 30min, 2hr
-- After 5 failed attempts, the event is marked as undelivered and logged
+- Webhook delivery timeout: 10 seconds per attempt (covers name resolution, connect and response)
+- CQ retries a network error, a timeout, a 5xx or a 429 with exponential backoff: 5s, 30s, 5min, 30min, 2hr. Each delay is jittered by up to 20% either way, and a valid `Retry-After` header on a 429 or 5xx replaces it (capped at 2hr). Retries stop after 3 hours in total.
+- Other 4xx answers (400, 401, 403, 404, 410, ...) and redirects are not retried. Redirects are never followed.
+- Before connecting, CQ resolves your hostname and refuses to deliver if any address is private, loopback, link-local or otherwise non-public; it then connects to the address it checked. Use a public HTTPS endpoint.
+- After the last failed attempt, or a failure that is not retried, the event is recorded in a local dead-letter file (`<event id>.json`: event id, your host and port, attempts, last status, failure class, times; never the body, URL path or secret). The hosted dashboard list below is not populated from this file.
 - Undelivered events are visible in the dashboard under Settings → Webhooks
 
 ## Testing Webhooks

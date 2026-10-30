@@ -28,6 +28,7 @@ We call this architecture **ZK-Context** — not Zero-Knowledge in the formal cr
 | Client device compromise | Local key extraction | Separate concern — client OS security |
 | Fake enclave attack | Spoofed TEE endpoint | Attestation document verification required |
 | Usage corruption | Alter token counts or replay an event with different inputs | C2 keeps exact counts, trusted org/project and event-ID uniqueness; the writer verifies replay inputs. Rows are unsigned and mutable, with no cryptographic tamper-evidence claim. |
+| Customer-controlled webhook URL | SSRF via DNS rebinding, or a redirect, to metadata or private hosts | Resolve once, vet every address numerically, pin the connect to the vetted address, follow no redirects, retry only network/5xx/429, dead-letter without body or secret (`specs/security/webhook-egress.md`) |
 
 ---
 

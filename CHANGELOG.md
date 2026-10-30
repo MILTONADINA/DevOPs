@@ -18,6 +18,11 @@ Versions follow [Semantic Versioning](https://semver.org/).
 ### Security
 
 - `mcp-configs/universal/playwright.json` now pins `@playwright/mcp@0.0.83` and its baseline entry is removed. `@miltonadina/lyrie-mcp`, `stratum-mcp`, `pentagi-mcp`, `pentest-ai-mcp` and `shannon-mcp` are not published on npm (E404), so they stay baselined until published or removed (quality plan O-10). A test now locks the baseline to the scan's unpinned findings. Closes #322.
+- Webhook delivery now resolves the customer hostname once, refuses it if any returned address is not public (numeric
+  check, including IPv4-mapped, NAT64, 6to4, Teredo and CGNAT), and connects to the vetted address with Host and TLS name
+  unchanged, closing the documented DNS-rebinding gap. Redirects are never followed. Retries are bounded and jittered,
+  honour a clamped `Retry-After`, and skip 4xx; an undelivered event leaves a body-free local dead-letter record
+  (`specs/security/webhook-egress.md`). `scripts/check-enforcement.mjs` now reports mechanical=122 (was 117 above) for its five REQs.
 - A new `agent-config` job in `security-scan.yml` runs `scripts/check-agent-config.mjs` on every pull
   request. It fails on a broad permission or `bypassPermissions` in `.claude/settings.json`, an
   unpinned MCP server under `mcp-configs/`, or a hook that does not run a file under `hooks/`, unless

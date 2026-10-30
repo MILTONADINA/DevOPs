@@ -117,6 +117,11 @@
     "specs/security/subagent-definitions.md#REQ-3",
     "specs/security/subagent-definitions.md#REQ-4",
     "specs/security/subagent-definitions.md#REQ-5",
-    "specs/security/subagent-definitions.md#REQ-6"
+    "specs/security/subagent-definitions.md#REQ-6",
+    "specs/security/webhook-egress.md#REQ-1",
+    "specs/security/webhook-egress.md#REQ-2",
+    "specs/security/webhook-egress.md#REQ-3",
+    "specs/security/webhook-egress.md#REQ-4",
+    "specs/security/webhook-egress.md#REQ-5"
   ]
 }
