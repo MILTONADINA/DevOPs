@@ -20,7 +20,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
   approval, with no network call. Plain `npm install` and `npm ci` stay allowed. It runs as a Bash pre-tool hook in
   `.claude/settings.json` (REQ-M30).
 - The Semgrep job downloads its rules in a separate step from the `semgrep/semgrep-rules` repository at
-  one pinned full commit SHA (704 files, 718 rules, covering the former owasp-top-ten,
+  one pinned full commit SHA (711 files, 725 rules, covering the former owasp-top-ten,
   r2c-security-audit and secrets packs), checks each file's sha256 against
   `governance/semgrep-rules.sha256.json` (fails on a mismatch, a missing digest, a missing file or an
   unpinned file), then scans with `--network none` against those local files. The registry packs it

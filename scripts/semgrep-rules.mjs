@@ -4,6 +4,9 @@
 //        node scripts/semgrep-rules.mjs fetch   DIR [PINS]           download each pinned rule file into DIR, then verify
 //        node scripts/semgrep-rules.mjs refresh [PINS [COMMIT]]      person-run: download and rewrite the digests
 //                                                                    (COMMIT moves the pin to another full commit SHA)
+// refresh re-downloads only the paths already listed. Moving the pin to a new commit therefore never picks up
+// rules added upstream, and fails (HTTP 404 is final) on any file removed or renamed there: reconcile the file
+// list by hand against the new commit's tree first.
 // The rules come from the semgrep/semgrep-rules repository at one fixed commit (immutable, unlike the
 // registry packs on semgrep.dev, which are regenerated upstream). They are never committed here (Semgrep
 // Rules License); only the commit SHA and a sha256 per file are.
@@ -16,7 +19,7 @@ const REPOSITORY = 'semgrep/semgrep-rules';
 const HOST = 'raw.githubusercontent.com';
 const MAX_BYTES = 20 * 1024 * 1024;
 const CONCURRENCY = 8;
-const ATTEMPTS = 3;
+const ATTEMPTS = 5;
 const sha256 = (bytes) => createHash('sha256').update(bytes).digest('hex');
 const COMMIT_PATTERN = /^[0-9a-f]{40}$/;
 const RULE_PATH_PATTERN = /^[A-Za-z0-9_-]+(\/[A-Za-z0-9._-]+)*\.ya?ml$/;
@@ -105,7 +108,7 @@ async function download(commit, file) {
     } catch (error) {
       lastError = error;
       if (error.final || /invalid download url/.test(error.message)) break;
-      await new Promise((resolve) => setTimeout(resolve, attempt * 500));
+      await new Promise((resolve) => setTimeout(resolve, attempt * 1000));
     }
   }
   throw lastError;

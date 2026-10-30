@@ -139,6 +139,20 @@ test('AC-6 the committed pins name a fixed commit and a pinned file set covering
   }
 });
 
+test('AC-6 the pins include the mixed-case and late-listed rule files of the former packs', () => {
+  const { files } = JSON.parse(readFileSync(PINS, 'utf8'));
+  const pinned = new Set(files.map((f) => f.path));
+  for (const required of [
+    'csharp/lang/security/cryptography/X509-subject-name-validation.yaml',
+    'javascript/lang/security/detect-pseudoRandomBytes.yaml',
+    'generic/visualforce/security/ncino/html/UseSRIForCDNs.yaml',
+    'generic/visualforce/security/ncino/vf/XSSFromUnescapedURLParam.yaml',
+    'generic/visualforce/security/ncino/xml/CSPHeaderAttribute.yaml',
+    'generic/visualforce/security/ncino/xml/VisualForceAPIVersion.yaml',
+    'terraform/aws/security/aws-provisioner-exec.yaml',
+  ]) assert.ok(pinned.has(required), `${required} must be pinned`);
+});
+
 test('AC-5 the scan runs with --network none against local rule files, no registry config', () => {
   const job = semgrepJob();
   assert.match(job, /--network none/);

@@ -101,6 +101,10 @@
       "sha256": "9b7022feb79da84b72e5318d2eeeae1c5501298b13f6128a311d80a6d149c936"
     },
     {
+      "path": "csharp/lang/security/cryptography/X509-subject-name-validation.yaml",
+      "sha256": "30563c94853721ecc6414e26184d222220d922b9dabea27f2ba854e5b3f2d079"
+    },
+    {
       "path": "csharp/lang/security/cryptography/unsigned-security-token.yaml",
       "sha256": "1545cdf93673a81b6a085031ab1c473fb2024759116e413a2aa36242ccd1a660"
     },
@@ -387,6 +391,22 @@
     {
       "path": "generic/secrets/security/google-maps-apikeyleak.yaml",
       "sha256": "982364cf6bbf156bf20d03e3496039a0a5c15ee39b587086559874103f9b92b9"
+    },
+    {
+      "path": "generic/visualforce/security/ncino/html/UseSRIForCDNs.yaml",
+      "sha256": "18f3181e0cac490aef78a4499a5e40c9e6a283b928d37f41663edf40c3938f90"
+    },
+    {
+      "path": "generic/visualforce/security/ncino/vf/XSSFromUnescapedURLParam.yaml",
+      "sha256": "c01d2983414ac4657fd8e8261dcace3563d97af52e823f25cd2259fb2c272864"
+    },
+    {
+      "path": "generic/visualforce/security/ncino/xml/CSPHeaderAttribute.yaml",
+      "sha256": "88b40c34ed65fdcb0993c2afe9cbb92205c16ae5afc0d86720fffe240b616a13"
+    },
+    {
+      "path": "generic/visualforce/security/ncino/xml/VisualForceAPIVersion.yaml",
+      "sha256": "d0ee5887d31b81dae462324b62f7326702efcd9945b7ec4615f988668c08704a"
     },
     {
       "path": "go/aws-lambda/security/database-sqli.yaml",
@@ -1175,6 +1195,10 @@
     {
       "path": "javascript/lang/security/detect-no-csrf-before-method-override.yaml",
       "sha256": "d361537a89c773a4940f107a2e787c6309d121e965a88f471b55d0db15ccb859"
+    },
+    {
+      "path": "javascript/lang/security/detect-pseudoRandomBytes.yaml",
+      "sha256": "d3c2b2168e6b1efdfc305a783387634e3ead8e0db6d4bdd3417381e177da4058"
     },
     {
       "path": "javascript/lang/security/spawn-git-clone.yaml",
@@ -2555,6 +2579,10 @@
     {
       "path": "terraform/aws/security/aws-provider-static-credentials.yaml",
       "sha256": "9cb49dedf61baeaa4cb70e61a42e53a5b8997fca402adbafb27eb12fcbafa217"
+    },
+    {
+      "path": "terraform/aws/security/aws-provisioner-exec.yaml",
+      "sha256": "2aa510e7a0c5684ca79e5cb979d813a2075ba054645101d30a478c66df4a1bb5"
     },
     {
       "path": "terraform/aws/security/aws-rds-backup-no-retention.yaml",
