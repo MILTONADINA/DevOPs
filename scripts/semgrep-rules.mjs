@@ -58,7 +58,7 @@ export function verifyRules(dir, packs) {
 async function download(url) {
   assertPackUrl(url);
   const response = await fetch(url, { headers: { accept: 'application/yaml' }, signal: AbortSignal.timeout(60_000) });
-  if (new URL(response.url).hostname !== 'semgrep.dev') throw new Error(`download of ${url} redirected off semgrep.dev`);
+  assertPackUrl(response.url);
   if (!response.ok) throw new Error(`download failed for ${url}: HTTP ${response.status}`);
   const bytes = Buffer.from(await response.arrayBuffer());
   if (bytes.length === 0 || bytes.length > MAX_BYTES) throw new Error(`download of ${url} has unusable size ${bytes.length}`);

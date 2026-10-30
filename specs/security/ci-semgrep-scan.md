@@ -104,13 +104,6 @@ downloads each pinned pack over https and rewrites the digests; CI SHALL NOT run
 
 ## Acceptance criteria
 
-### AC-5 (REQ-6)
-**Given** the semgrep job **Then** it contains `--network none` and `--config /rules/` and no `p/` registry reference.
-
-### AC-6 (REQ-6, REQ-7)
-**Given** synthetic rule files and pins **Then** a matching digest passes; a mismatch, a missing or
-malformed digest, an absent pinned file, an unpinned file and a path-escaping pack name each fail.
-
 ### AC-1 (REQ-1..3)
 **Given** the host job's step script and pinned scanner container **When** they run on the
 repository, on a directory holding planted findings (`subprocess` with
@@ -144,3 +137,11 @@ findings/errors, both test trees and a count at or above 1046. The scanner's
 status reaches the checker. The supported host Node runtime is explicit; no
 Node executable inside the musl scanner image is assumed. Existing ignore
 scope and all scanner packs remain unchanged.
+
+### AC-5 (REQ-6)
+**Given** the semgrep job **Then** it contains `--network none` and `--config /rules/` and no `p/` registry reference.
+
+### AC-6 (REQ-6, REQ-7)
+**Given** synthetic rule files and pins **Then** a matching digest passes; a mismatch, a missing or
+malformed digest, an absent pinned file, an unpinned file and a path-escaping pack name each fail; a pack url or a download redirect that
+is not https on semgrep.dev without credentials is refused.

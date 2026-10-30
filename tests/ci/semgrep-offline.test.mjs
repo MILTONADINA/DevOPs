@@ -17,8 +17,10 @@ const sha = (text) => createHash('sha256').update(text).digest('hex');
 function semgrepJob() {
   const text = readFileSync(WORKFLOW, 'utf8');
   const start = text.indexOf('\n  semgrep:');
-  const end = text.indexOf('\n  dependency-audit:');
-  assert.ok(start > 0 && end > start, 'semgrep job must exist');
+  assert.ok(start > 0, 'semgrep job must exist');
+  const next = text.slice(start + 1).search(/\n  [a-z-]+:\n/);
+  assert.ok(next > 0, 'a job header must follow the semgrep job');
+  const end = start + 1 + next;
   return text.slice(start, end);
 }
 
@@ -147,4 +149,22 @@ test('REQ-7 refresh rewrites every pinned digest from the downloaded bytes (fetc
   const { packs } = JSON.parse(readFileSync(pinFile, 'utf8'));
   for (const p of packs) assert.equal(p.sha256, sha(`rules: []\n# ${p.url}\n`), `${p.name} digest refreshed`);
   assert.deepEqual(packs.map((p) => p.name), ['toy', 'other'], 'names and order are kept');
+}));
+
+test('AC-6 a redirect to http, or to a credentialed or other host, is refused (fetch stubbed, no network)', () => withDir((dir) => {
+  const pinFile = path.join(dir, 'pins.json');
+  writeFileSync(pinFile, JSON.stringify({ packs: [pin('toy', '0'.repeat(64))] }));
+  for (const target of ['http://semgrep.dev/c/p/toy', 'https://u:p@semgrep.dev/c/p/toy', 'https://evil.invalid/c/p/toy']) {
+    const stub = path.join(dir, 'stub-redirect.mjs');
+    writeFileSync(stub, [
+      'globalThis.fetch = async () => {',
+      '  const response = new Response("rules: []\\n");',
+      `  Object.defineProperty(response, "url", { value: ${JSON.stringify(target)} });`,
+      '  return response;',
+      '};',
+    ].join('\n'));
+    const r = spawnSync(process.execPath, ['--import', stub, TOOL, 'refresh', pinFile], { encoding: 'utf8', timeout: 10_000 });
+    assert.notEqual(r.status, 0, `${target} must be refused`);
+    assert.match(r.stderr, /invalid pack url/);
+  }
 }));

@@ -23,6 +23,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
   `governance/semgrep-rules.sha256.json` (fails on a mismatch or a missing digest), then scans with
   `--network none` against those local files. Rule files are not committed (Semgrep Rules License).
   `node scripts/semgrep-rules.mjs refresh` updates the digests by hand.
+  `scripts/check-enforcement.mjs` now reports mechanical=117 (was 115 above) for REQ-6 and REQ-7.
 
 ### Changed
 
