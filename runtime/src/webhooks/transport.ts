@@ -17,6 +17,7 @@ export function createHttpTransport(): Transport {
       const send = req.secure ? httpsRequest : httpRequest;
       const r = send(
         {
+          // Only names the connect target; `lookup` below pins the real address. The sent Host header is `hostHeader`.
           host: req.hostname,
           ...(req.secure ? { servername: req.hostname } : {}),
           port: req.port,

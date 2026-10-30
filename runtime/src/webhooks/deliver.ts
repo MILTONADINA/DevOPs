@@ -121,7 +121,7 @@ function raceAbort<T>(p: Promise<T>, signal: AbortSignal): Promise<T> {
  * @param payload - the raw JSON body to send (and sign).
  * @param secret - the org's webhook secret.
  * @param deps - resolver + transport (production: productionLookup + createHttpTransport()).
- * @param timeoutMs - per-attempt timeout covering resolve + connect + response (default 10s).
+ * @param timeoutMs - ONE budget per attempt shared by resolve, connect and response (default 10s); slow DNS shortens the rest by design, and a timeout is retryable.
  */
 export async function deliverWebhook(url: string, payload: string, secret: string, deps: DeliveryDeps, timeoutMs = 10_000): Promise<DeliveryResult> {
   const safe = isSafeWebhookUrl(url);

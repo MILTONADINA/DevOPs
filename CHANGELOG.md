@@ -22,7 +22,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
   check, including IPv4-mapped, NAT64, 6to4, Teredo and CGNAT), and connects to the vetted address with Host and TLS name
   unchanged, closing the documented DNS-rebinding gap. Redirects are never followed. Retries are bounded and jittered,
   honour a clamped `Retry-After`, and skip 4xx; an undelivered event leaves a body-free local dead-letter record
-  (`specs/security/webhook-egress.md`). `scripts/check-enforcement.mjs` now reports mechanical=122 (was 117 above) for its five REQs.
+  (`specs/security/webhook-egress.md`). BREAKING (runtime-internal): `createDefaultWebhookRetrier` now takes `(transport?, onUndelivered?, lookup?)` instead of `(doFetch?, onUndelivered?)`, and `DeliveryFetch` is removed; the package is private and nothing else called it. `scripts/check-enforcement.mjs` now reports mechanical=122 (was 117 above) for its five REQs.
 - A new `agent-config` job in `security-scan.yml` runs `scripts/check-agent-config.mjs` on every pull
   request. It fails on a broad permission or `bypassPermissions` in `.claude/settings.json`, an
   unpinned MCP server under `mcp-configs/`, or a hook that does not run a file under `hooks/`, unless

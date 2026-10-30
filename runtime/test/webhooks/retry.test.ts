@@ -125,6 +125,15 @@ describe("retry policy", () => {
     expect(h.scheduled).toHaveLength(2);
     expect(h.getUndelivered()).toMatchObject({ attempts: 3, reasonClass: "budget_exhausted", lastStatus: 500 });
   });
+  test("cap is rechecked when the timer fires: a late timer gives up without another attempt", async () => {
+    const clock = { t: 0 };
+    const h = harness([false, true], { maxTotalMs: 40_000, clock });
+    await h.retrier.send("https://x", "{}", "s", EVT); // schedules 5s
+    clock.t = 100_000; // event loop was busy; timer fires far past the cap
+    await h.scheduled[0]!.fn();
+    expect(h.calls).toHaveLength(1);
+    expect(h.getUndelivered()).toMatchObject({ attempts: 1, reasonClass: "budget_exhausted", lastStatus: 500 });
+  });
   test.each(["../../x", "x", "evt_../../x", ""])("eventId %j is rejected before any delivery", async (bad) => {
     const h = harness([true]);
     await expect(h.retrier.send("https://x", "{}", "s", bad)).rejects.toThrow(/event id/);
