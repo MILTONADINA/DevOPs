@@ -23,8 +23,8 @@ function stub(plan, labels, schemas = [], plannerThrows = false) {
     if (options.label === 'planner') { schemas.push(options.schema); return plan; }
     if (options.label.startsWith('coder:')) return { task_id: 'T1', summary: 'done' };
     if (options.label.startsWith('tester:')) return { task_id: 'T1', passed: true, outcome: 'PASS' };
-    if (options.label === 'reviewer') return { approved: true, filesSeen: [] };
-    if (options.label === 'changed-files') return { files: [] };
+    if (options.label === 'reviewer') return { approved: true, filesSeen: ['src/a.js'] };
+    if (options.label === 'changed-files') return { files: ['src/a.js'] };
     if (options.label === 'security') return { passed: true, outcome: 'PASS' };
     if (options.label === 'validator') return { signed_off: true, outcome: 'PASS', reason: 'verified' };
     throw new Error(`unexpected agent: ${options.label}`);

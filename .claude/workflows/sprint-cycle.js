@@ -127,8 +127,11 @@ async function changedFilesFromGit() {
     }
   )
   if (!r || !Array.isArray(r.files)) throw new Error('lister returned no files array')
+  if (!r.files.every(f => typeof f === 'string')) throw new Error('lister returned non-string entries')
   return r.files
 }
+// Blank path: only whitespace, Unicode format characters (Cf), dots and slashes. Never a changed file.
+const isBlankPath = f => /^[\s\p{Cf}./]*$/u.test(f)
 const normalizeFile = f => String(f).replace(/^\.\//, '')
 
 async function workflowAgent(prompt, options) {
@@ -441,18 +444,26 @@ ${ENVIRONMENT_RULES}${ownerDecisionsBlock}`,
 // Reviewer coverage: the workflow computes the changed-file list itself and
 // compares it with the reviewer's filesSeen. A missing file, an unknown file,
 // a non-array filesSeen or an uncomputable list is INDETERMINATE, never clean.
+// An empty set (no non-blank changed file) is INDETERMINATE too: Build produced
+// no change, so there was nothing to review and an empty filesSeen must not
+// match it vacuously. No plan or agent field can declare a no-change task.
 let reviewerFilesProblem = null
 try {
-  const changedFiles = (await changedFilesFromGit()).map(normalizeFile)
+  const changedFiles = (await changedFilesFromGit()).map(normalizeFile).filter(f => !isBlankPath(f))
   if (!Array.isArray(reviewResult?.filesSeen)) {
     reviewerFilesProblem = 'filesSeen not returned'
+  } else if (changedFiles.length === 0) {
+    reviewerFilesProblem = 'no changed files: Build produced no change, so there was nothing to review'
+    log(reviewerFilesProblem)
   } else {
+    // Blank filesSeen entries are deliberately kept: a blank is never a changed file, so it
+    // lands in `unknown` and fails closed (INDETERMINATE) rather than being silently dropped.
     const seen = new Set(reviewResult.filesSeen.map(normalizeFile))
     const missing = changedFiles.filter(f => !seen.has(f))
     const changedSet = new Set(changedFiles)
     const unknown = [...seen].filter(f => !changedSet.has(f))
     if (missing.length > 0 || unknown.length > 0) {
-      reviewerFilesProblem = `${missing.length > 0 ? `missing ${missing.join(', ')}` : ''}${missing.length > 0 && unknown.length > 0 ? '; ' : ''}${unknown.length > 0 ? `unknown ${unknown.join(', ')}` : ''}`
+      reviewerFilesProblem = `${missing.length > 0 ? `missing ${missing.map(f => `'${f}'`).join(', ')}` : ''}${missing.length > 0 && unknown.length > 0 ? '; ' : ''}${unknown.length > 0 ? `unknown ${unknown.map(f => `'${f}'`).join(', ')}` : ''}`
     }
   }
 } catch (err) {
