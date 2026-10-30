@@ -1,6 +1,6 @@
 # Webhook egress
 
-**Status**: proposed (story dv-webhook; awaiting owner approval)
+**Status**: draft (story dv-webhook; awaiting owner approval)
 **Spec ID**: security/webhook-egress
 **Decision context**: DevOPs is open source and local-first. The webhook URL is chosen by the operator of the proxy (or, in team mode, by an org admin), so delivering to it is an outbound request to a configurable target. `specs/security/stratum-local-network.md` covers inbound traffic and provider base URLs; nothing covered webhook delivery in `runtime/src/webhooks/`.
 
@@ -56,3 +56,5 @@ Test titles name the cases below.
 - The inbound proxy listener (`specs/security/stratum-local-network.md`) and webhook signing and idempotency (`specs/phase-2/G-webhook-idempotency.md`).
 - A durable queue: retries are in-memory, so a restart drops pending retries. The dead-letter directory holds only events that exhausted their retries or failed permanently while the process ran; it is a local file, not the dashboard list that `runtime/docs/WEBHOOKS.md` describes for the hosted product.
 - Replaying dead-lettered events.
+- A repeated event id keeps the first dead-letter record; a later different outcome for the same id is not recorded. A failed dead-letter write is reported through the retrier's `onError` hook and never rejects `send`.
+- RFC 8215 local-use NAT64 `64:ff9b:1::/48` is refused outright rather than decoded.

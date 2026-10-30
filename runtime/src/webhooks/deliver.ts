@@ -29,6 +29,7 @@ export function isSafeWebhookUrl(raw: string): { ok: true } | { ok: false; reaso
     return { ok: false, reason: "unparseable URL" };
   }
   if (u.protocol !== "https:" && u.protocol !== "http:") return { ok: false, reason: "URL must be http(s)" };
+  if (u.port === "0") return { ok: false, reason: "port 0 is not a valid webhook target" };
   if (u.username !== "" || u.password !== "") return { ok: false, reason: "URL credentials are not allowed" };
   const host = u.hostname
     .toLowerCase()

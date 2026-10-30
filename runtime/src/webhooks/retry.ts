@@ -32,6 +32,8 @@ export interface RetrierDeps {
   schedule: (fn: () => Promise<void>, delayMs: number) => void;
   /** Called after delivery is given up on (log/persist the undelivered event). */
   onUndelivered?: (info: UndeliveredInfo) => void;
+  /** Called with any error from `onUndelivered` or a scheduled retry, so none is lost silently. */
+  onError?: (err: unknown) => void;
   /** Uniform [0,1) source for jitter (Math.random in prod). */
   random?: () => number;
   /** Clock in ms (Date.now in prod). */
@@ -52,16 +54,29 @@ export function createWebhookRetrier(deps: RetrierDeps): WebhookRetrier {
   const maxTotalMs = deps.maxTotalMs ?? DEFAULT_MAX_TOTAL_MS;
   const maxDelayMs = RETRY_DELAYS_MS[RETRY_DELAYS_MS.length - 1] as number;
 
+  const reportError = (err: unknown): void => {
+    try {
+      deps.onError?.(err);
+    } catch {
+      // the error hook itself must not throw into the delivery path
+    }
+  };
+
   const giveUp = (url: string, eventId: string, attempts: number, last: DeliveryResult, reasonClass: ReasonClass, firstAt: number): void => {
-    deps.onUndelivered?.({
-      eventId,
-      url,
-      attempts,
-      ...(last.status !== undefined ? { lastStatus: last.status } : {}),
-      reasonClass,
-      firstAttemptAt: new Date(firstAt).toISOString(),
-      lastAttemptAt: new Date(now()).toISOString(),
-    });
+    try {
+      deps.onUndelivered?.({
+        eventId,
+        url,
+        attempts,
+        ...(last.status !== undefined ? { lastStatus: last.status } : {}),
+        reasonClass,
+        firstAttemptAt: new Date(firstAt).toISOString(),
+        lastAttemptAt: new Date(now()).toISOString(),
+      });
+    } catch (err) {
+      // A failed dead-letter write must never reject send() or crash a timer; report it instead.
+      reportError(err);
+    }
   };
 
   const afterFailure = (url: string, payload: string, secret: string, eventId: string, last: DeliveryResult, attemptIdx: number, firstAt: number): void => {
@@ -73,10 +88,14 @@ export function createWebhookRetrier(deps: RetrierDeps): WebhookRetrier {
     const delay = ra !== undefined && Number.isFinite(ra) && ra >= 0 ? Math.min(ra, maxDelayMs) : (RETRY_DELAYS_MS[attemptIdx] as number) * (0.8 + 0.4 * random());
     if (now() - firstAt + delay > maxTotalMs) return giveUp(url, eventId, attempts, last, "budget_exhausted", firstAt);
     deps.schedule(async () => {
-      // Recheck the cap at fire time: a busy event loop can delay the timer past the budget.
-      if (now() - firstAt > maxTotalMs) return giveUp(url, eventId, attempts, last, "budget_exhausted", firstAt);
-      const r = await deps.deliver(url, payload, secret);
-      if (!r.delivered) afterFailure(url, payload, secret, eventId, r, attemptIdx + 1, firstAt);
+      try {
+        // Recheck the cap at fire time: a busy event loop can delay the timer past the budget.
+        if (now() - firstAt > maxTotalMs) return giveUp(url, eventId, attempts, last, "budget_exhausted", firstAt);
+        const r = await deps.deliver(url, payload, secret);
+        if (!r.delivered) afterFailure(url, payload, secret, eventId, r, attemptIdx + 1, firstAt);
+      } catch (err) {
+        reportError(err);
+      }
     }, delay);
   };
 
@@ -96,12 +115,16 @@ export function createDefaultWebhookRetrier(
   transport: Transport = createHttpTransport(),
   onUndelivered?: (info: UndeliveredInfo) => void,
   lookup: DeliveryDeps["lookup"] = productionLookup,
+  onError: (err: unknown) => void = (err) => {
+    console.error("webhook retry error", err instanceof Error ? err.message : "unknown");
+  },
 ): WebhookRetrier {
   return createWebhookRetrier({
     deliver: (url, payload, secret) => deliverWebhook(url, payload, secret, { lookup, transport }),
     schedule: (fn, delayMs) => {
-      setTimeout(() => void fn().catch(() => undefined), delayMs).unref();
+      setTimeout(() => void fn().catch(onError), delayMs).unref();
     },
+    onError,
     ...(onUndelivered !== undefined ? { onUndelivered } : {}),
   });
 }

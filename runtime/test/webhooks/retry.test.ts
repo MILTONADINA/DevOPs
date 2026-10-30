@@ -139,4 +139,31 @@ describe("retry policy", () => {
     await expect(h.retrier.send("https://x", "{}", "s", bad)).rejects.toThrow(/event id/);
     expect(h.calls).toHaveLength(0);
   });
+  test("onUndelivered throwing does not reject send", async () => {
+    const errors: unknown[] = [];
+    const retrier = createWebhookRetrier({
+      deliver: () => Promise.resolve({ delivered: false, status: 403, retryable: false, reasonClass: "http_4xx" }),
+      schedule: () => undefined,
+      onUndelivered: () => {
+        throw new Error("disk full");
+      },
+      onError: (e) => errors.push(e),
+    });
+    const r = await retrier.send("https://x", "{}", "s", EVT);
+    expect(r.delivered).toBe(false);
+    expect(errors).toHaveLength(1);
+  });
+  test("a scheduled retry that throws reports through onError instead of being swallowed", async () => {
+    const errors: unknown[] = [];
+    const scheduled: Array<() => Promise<void>> = [];
+    let n = 0;
+    const retrier = createWebhookRetrier({
+      deliver: () => (n++ === 0 ? Promise.resolve({ delivered: false, status: 500, retryable: true, reasonClass: "http_5xx" as const }) : Promise.reject(new Error("boom"))),
+      schedule: (fn) => void scheduled.push(fn),
+      onError: (e) => errors.push(e),
+    });
+    await retrier.send("https://x", "{}", "s", EVT);
+    await scheduled[0]!();
+    expect(errors).toHaveLength(1);
+  });
 });

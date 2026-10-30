@@ -60,6 +60,22 @@ describe("deliverWebhook: resolve once, vet every address, pin", () => {
     expect(r).toMatchObject({ delivered: false, retryable: false, reasonClass: "ssrf_blocked" });
     expect(h.requests).toHaveLength(0);
   });
+  test("DNS rebinding: a second answer is never consulted; transport gets the first (public) answer", async () => {
+    const answers = [[{ address: "93.184.216.34", family: 4 }], [{ address: "127.0.0.1", family: 4 }]];
+    let calls = 0;
+    const requests: TransportRequest[] = [];
+    const deps: DeliveryDeps = {
+      lookup: () => Promise.resolve(answers[Math.min(calls++, 1)]!),
+      transport: (req) => {
+        requests.push(req);
+        return Promise.resolve({ status: 200 });
+      },
+    };
+    await deliverWebhook("https://rebind.example/h", "{}", SECRET, deps);
+    expect(calls).toBe(1);
+    expect(requests).toHaveLength(1);
+    expect(requests[0]!.address).toBe("93.184.216.34");
+  });
   test("lookup returns [] -> refused, transport never called", async () => {
     const h = harness([]);
     const r = await deliverWebhook("https://hook.example/x", "{}", SECRET, h.deps);
@@ -81,7 +97,7 @@ describe("deliverWebhook: resolve once, vet every address, pin", () => {
     expect(h.requests).toHaveLength(0);
   });
   test.each([
-    "http://127.0.0.1/x", "http://10.1.2.3/x", "http://172.16.0.1/x", "http://192.168.0.1/x", "http://169.254.169.254/x", "http://[::1]/x", "http://[fc00::1]/x",
+    "http://hook.example:0/", "http://127.0.0.1/x", "http://10.1.2.3/x", "http://172.16.0.1/x", "http://192.168.0.1/x", "http://169.254.169.254/x", "http://[::1]/x", "http://[fc00::1]/x",
     "http://[::ffff:127.0.0.1]/x", "http://[::ffff:7f00:1]/x", "http://[::127.0.0.1]/x", "http://[64:ff9b::7f00:1]/x", "http://[2002:0a00:0001::]/x", "http://100.64.0.1/x",
     "http://0.0.0.0/x", "http://255.255.255.255/x", "http://[ff02::1]/x", "http://LOCALHOST/x", "http://localhost./x", "http://a.localhost/x", "http://2130706433/x",
     "ftp://hook.example/x", "file:///etc/passwd", "data:text/plain,hi", "https://user:pw@hook.example/x", "not a url",

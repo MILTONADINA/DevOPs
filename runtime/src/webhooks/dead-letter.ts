@@ -6,8 +6,8 @@
  * secret or the signature.
  */
 
-import { closeSync, chmodSync, existsSync, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync, realpathSync, renameSync, writeFileSync } from "node:fs";
-import { isAbsolute, join, relative, resolve, sep } from "node:path";
+import { closeSync, chmodSync, existsSync, fsyncSync, lstatSync, mkdirSync, openSync, realpathSync, renameSync, writeFileSync } from "node:fs";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { randomUUID } from "node:crypto";
 import type { ReasonClass } from "./deliver";
 
@@ -40,20 +40,33 @@ function syncDir(dir: string): void {
 export function createDeadLetterStore(opts: { dir: string; projectRoot?: string }): DeadLetterStore {
   const root = realpathSync(opts.projectRoot ?? process.cwd());
   const dir = resolve(opts.dir);
-  const rel = relative(root, dir);
-  if (rel === "" || rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel)) throw new Error("dead-letter store must be inside project root");
+  const inside = (p: string): boolean => {
+    const rel = relative(root, p);
+    return !(rel === "" || rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel));
+  };
+  // Lexical check against the requested path, or against the real root when the root was given via a symlink.
+  const rootLexical = resolve(opts.projectRoot ?? process.cwd());
+  const relLexical = relative(rootLexical, dir);
+  const lexicallyInside = !(relLexical === "" || relLexical === ".." || relLexical.startsWith(`..${sep}`) || isAbsolute(relLexical));
+  if (!inside(dir) && !lexicallyInside) throw new Error("dead-letter store must be inside project root");
   mkdirSync(dir, { recursive: true, mode: 0o700 });
-  if (lstatSync(dir).isSymbolicLink() || realpathSync(dir) !== dir || !lstatSync(dir).isDirectory()) throw new Error("dead-letter store must be a real directory");
+  if (!inside(realpathSync(dir))) throw new Error("dead-letter store must be inside project root");
+  if (lstatSync(dir).isSymbolicLink() || !lstatSync(dir).isDirectory() || realpathSync(dir) !== resolve(realpathSync(dirname(dir)), basename(dir))) throw new Error("dead-letter store must be a real directory");
   chmodSync(dir, 0o700);
 
   return {
     record(info): void {
       if (!EVENT_ID_PATTERN.test(info.eventId)) throw new Error("invalid webhook event id");
-      const u = new URL(info.url);
+      let u: URL | null = null;
+      try {
+        u = new URL(info.url);
+      } catch {
+        u = null; // deliverWebhook refused an unparseable URL; record the failure without a host
+      }
       const body = JSON.stringify({
         eventId: info.eventId,
-        host: u.hostname,
-        port: u.port !== "" ? Number(u.port) : u.protocol === "https:" ? 443 : 80,
+        host: u !== null ? u.hostname : null,
+        ...(u !== null ? { port: u.port !== "" ? Number(u.port) : u.protocol === "https:" ? 443 : 80 } : {}),
         attempts: info.attempts,
         ...(info.lastStatus !== undefined ? { lastStatus: info.lastStatus } : {}),
         reasonClass: info.reasonClass,
@@ -61,10 +74,8 @@ export function createDeadLetterStore(opts: { dir: string; projectRoot?: string 
         lastAttemptAt: info.lastAttemptAt,
       });
       const file = join(dir, `${info.eventId}.json`);
-      if (existsSync(file)) {
-        if (readFileSync(file, "utf8") !== body) throw new Error("dead-letter record already exists with different content");
-        return;
-      }
+      // An earlier record for the same event id (e.g. a replay after a restart) is kept: first failure wins.
+      if (existsSync(file)) return;
       const temp = join(dir, `.${info.eventId}.${process.pid}.${randomUUID()}.tmp`);
       const fd = openSync(temp, "wx", 0o600);
       try {

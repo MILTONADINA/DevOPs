@@ -63,11 +63,27 @@ describe("dead-letter store", () => {
     symlinkSync(join(root, "real"), join(root, "link"));
     expect(() => createDeadLetterStore({ dir: join(root, "link"), projectRoot: root })).toThrow(/real directory/);
   });
-  test("a second record for the same event id is idempotent for identical content and refused otherwise", () => {
-    const store = createDeadLetterStore({ dir: join(root, "d3"), projectRoot: root });
+  test("a second record for the same event id keeps the first and never throws", () => {
+    const dir = join(root, "d3");
+    const store = createDeadLetterStore({ dir, projectRoot: root });
     store.record(info());
     store.record(info());
-    expect(() => store.record(info({ attempts: 2 }))).toThrow(/already/);
+    expect(() => store.record(info({ attempts: 2 }))).not.toThrow();
+    expect(JSON.parse(readFileSync(join(dir, `${EVT}.json`), "utf8")).attempts).toBe(6);
+  });
+  test("record tolerates an unparseable URL (host null, no port)", () => {
+    const dir = join(root, "d5");
+    createDeadLetterStore({ dir, projectRoot: root }).record(info({ url: "not a url" }));
+    const rec = JSON.parse(readFileSync(join(dir, `${EVT}.json`), "utf8"));
+    expect(rec.host).toBeNull();
+    expect("port" in rec).toBe(false);
+    expect(JSON.stringify(rec)).not.toContain("not a url");
+  });
+  test("an explicit projectRoot reached through a symlink is accepted", () => {
+    mkdirSync(join(root, "phys"));
+    symlinkSync(join(root, "phys"), join(root, "viaLink"));
+    expect(() => createDeadLetterStore({ dir: join(root, "viaLink", "dlq"), projectRoot: join(root, "viaLink") })).not.toThrow();
+    expect(readdirSync(join(root, "phys"))).toEqual(["dlq"]);
   });
   test("wired as the retrier's onUndelivered: a 403 dead-letters after one attempt with no body or secret", async () => {
     const store = createDeadLetterStore({ dir: join(root, "d4"), projectRoot: root });

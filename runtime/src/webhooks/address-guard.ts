@@ -28,6 +28,7 @@ const V6_BLOCKED: readonly Cidr[] = [
   [[0xfe, 0x80], 10], // link-local
   [[0xff], 8], // multicast
   [[0x20, 0x01, 0x00, 0x00], 32], // Teredo 2001::/32
+  [[0x00, 0x64, 0xff, 0x9b, 0x00, 0x01], 48], // 64:ff9b:1::/48 RFC 8215 local-use NAT64: never public
 ];
 
 function inCidr(bytes: readonly number[], [prefix, bits]: Cidr): boolean {
