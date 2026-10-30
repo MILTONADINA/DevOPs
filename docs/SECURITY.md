@@ -13,7 +13,7 @@ enforced until it moves left.
 | Tier | When | Runs today | Gate today | Planned, not wired | Enforced by: |
 |------|------|------------|------------|--------------------|--------------|
 | 1 | every file write | nothing automatic: `hooks/universal/post-tool/gitleaks-scan.sh` exists but is not wired in `.claude/settings.json` | none | wire the post-tool hook (masterpiece roadmap MR-19 adds a staged-diff pre-commit gitleaks) | Enforced by: UNENFORCED |
-| 2 | every PR | gitleaks (diff) and Semgrep (`p/owasp-top-ten`, `p/r2c-security-audit`, `p/secrets`) in `security-scan.yml` | both are required status checks on `main` and fail on any finding (Semgrep since #178) | npm/pip/cargo audit, axe-core | Enforced by: job:.github/workflows/security-scan.yml#gitleaks; job:.github/workflows/security-scan.yml#semgrep |
+| 2 | every PR | gitleaks (diff) and Semgrep (rule files from `semgrep/semgrep-rules` at a pinned commit, downloaded and sha256-verified) in `security-scan.yml` | both are required status checks on `main` and fail on any finding (Semgrep since #178) | npm/pip/cargo audit, axe-core | Enforced by: job:.github/workflows/security-scan.yml#gitleaks; job:.github/workflows/security-scan.yml#semgrep |
 | 3 | daily and pre-release | gitleaks full-history scan (scheduled, `.gitleaksignore` baseline); DeepTeam red-team, which skips when no provider key is set | the history scan fails its run on a leak; DeepTeam gates nothing while it skips | Trivy | Enforced by: UNENFORCED |
 
 The `agent-config` job in the same workflow runs `node scripts/check-agent-config.mjs` on every
@@ -118,8 +118,21 @@ through the checkout mount. Container-only Git trust names `/src` exactly;
 no host-global Git settings, operator home or Docker socket is mounted or
 changed. Host Node avoids assuming a Node executable in the musl scanner
 image. Docker launch and scanner failures reach the checker as nonzero status;
-missing output fails closed. Registry packs are still remotely resolved, so
-pinning the image does not freeze rule content. This narrows the scan boundary;
+missing output fails closed. A separate step downloads 711 rule files from the
+`semgrep/semgrep-rules` repository at one pinned full commit SHA
+(`raw.githubusercontent.com/semgrep/semgrep-rules/<sha>/<path>`) into the runner temp
+directory and checks each file's sha256 against `governance/semgrep-rules.sha256.json`; a
+mismatch, a malformed or missing digest, a missing file or an unpinned extra file fails the
+job. The earlier registry packs on semgrep.dev were regenerated upstream, so their digest
+drifted and turned the required check red; a commit is immutable. The scan then runs the pinned
+image with `--network none` against those local files, so rule content is frozen by commit and
+digest and scanning needs no network (the image pull and the rule download stay online). The
+rule files are not committed, because they are under the Semgrep Rules License; a person
+moves the pin with `node scripts/semgrep-rules.mjs refresh PINS NEWSHA` and reviews the diff.
+`refresh` re-downloads only the paths already pinned: it never adds rules new at the new commit
+and fails on a file removed or renamed there, so reconcile the file list by hand first. Reported
+`check_id` values now start with `rules.` (the `/rules` mount name); no floor or checker keys on ids.
+This narrows the scan boundary;
 it does not establish safety of arbitrary container code or every scan target.
 
 DeepTeam/Claude's visible unfunded skips and the rest of MR-7 remain separate

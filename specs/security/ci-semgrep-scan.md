@@ -12,8 +12,9 @@ green without a scan.
 
 **Enforced by:** job:.github/workflows/security-scan.yml#semgrep; test:tests/ci/assert-scan.test.mjs
 THE PIPELINE SHALL run Semgrep from the official `semgrep/semgrep` container
-image pinned by digest, with the `p/owasp-top-ten`, `p/r2c-security-audit` and
-`p/secrets` registry packs, metrics off.
+image pinned by digest, with the rules from `semgrep/semgrep-rules` at a pinned commit
+(covering the former owasp-top-ten, r2c-security-audit and secrets registry packs),
+downloaded and sha256-verified per REQ-6, metrics off.
 
 ## REQ-2 — Fail on findings and on errors
 
@@ -78,13 +79,37 @@ this is a measured minimum, not a claim that file counts establish completeness.
 
 THE CI JOB SHALL run the checker with the existing pinned Node22 setup on its
 Ubuntu host. It SHALL execute the same pinned Semgrep image once as a Docker
-step and check the resulting report on the host. Its scanner status, registry
-packs, metrics opt-out and test-tree scope SHALL be preserved. The scanner
+step and check the resulting report on the host. Its scanner status, rule
+set, metrics opt-out and test-tree scope SHALL be preserved. The scanner
 container SHALL mount the checkout read-only and only a fresh report directory
 writable, with Git trust scoped to the checkout mount. It SHALL NOT mount an
 operator home or Docker socket. No host-global Git configuration or user home
 setting SHALL be changed. The report basename remains `semgrep.json`; moving
 its output outside the checkout SHALL NOT alter the scanned source target.
+
+## REQ-6 — Offline scan against digest-pinned rules
+
+**Enforced by:** job:.github/workflows/security-scan.yml#semgrep; test:tests/ci/semgrep-offline.test.mjs
+WHILE the Semgrep job scans, THE SYSTEM SHALL run the pinned image with `--network none`
+against rule files downloaded in an earlier step and verified against the sha256 digests in
+`governance/semgrep-rules.sha256.json`, with no `p/` registry configuration, and SHALL fail
+the job when a rule file's digest differs from its pin, when a pin has no valid digest, when a
+pinned file is absent or when an unpinned file is present. The files SHALL be fetched from
+`raw.githubusercontent.com/semgrep/semgrep-rules/<commit>/<path>` where `<commit>` is a full
+lowercase 40-hex SHA recorded in the pins file; a branch, tag or short SHA SHALL be refused, and
+so SHALL a rule path that is absolute, contains `.` or `..` segments, a backslash or a character
+outside `A-Za-z0-9._-`, or does not end in `.yaml` or `.yml`. A download or redirect that is not
+https on `raw.githubusercontent.com` without credentials SHALL be refused. Rule files SHALL NOT be
+committed (Semgrep Rules License). Pulling the image and downloading the rules stay online.
+The registry packs on semgrep.dev SHALL NOT be used: they are regenerated upstream, so a digest of
+them drifts without any change here.
+
+## REQ-7 — Digest refresh by a person
+
+**Enforced by:** test:tests/ci/semgrep-offline.test.mjs
+THE REPOSITORY SHALL provide `node scripts/semgrep-rules.mjs refresh`, run by a person, which
+downloads each pinned file at the pinned commit over https and rewrites the digests, and with a
+COMMIT argument (a full 40-hex SHA) moves the pin to that commit; CI SHALL NOT run it.
 
 ## Acceptance criteria
 
@@ -120,4 +145,18 @@ comments are accepted; unsupported configuration forms fail.
 findings/errors, both test trees and a count at or above 1046. The scanner's
 status reaches the checker. The supported host Node runtime is explicit; no
 Node executable inside the musl scanner image is assumed. Existing ignore
-scope and all scanner packs remain unchanged.
+scope remain unchanged; the rule set is the pinned semgrep-rules files of REQ-6.
+
+### AC-5 (REQ-6)
+**Given** the semgrep job **Then** it contains `--network none` and `--config /rules/` (the whole
+directory) and no `p/` registry reference. The committed pins name a 40-hex commit of
+`semgrep/semgrep-rules` and at least 600 pinned files, with `generic/secrets/`, `javascript/`,
+`typescript/` and `python/` among them.
+
+### AC-6 (REQ-6, REQ-7)
+**Given** synthetic rule files and pins **Then** a matching digest passes; a mismatch, a missing or
+malformed digest, an absent pinned file, an unpinned file (also in a subdirectory), a
+duplicate or path-escaping rule path and a source commit that is not a full lowercase 40-hex SHA
+each fail; fetch fails closed on a digest mismatch and on an HTTP error; a download redirect that
+is not https on `raw.githubusercontent.com` without credentials is refused; refresh rewrites the
+digests and accepts a new commit only in full-SHA form.

@@ -85,6 +85,8 @@
     "specs/security/ci-semgrep-scan.md#REQ-3",
     "specs/security/ci-semgrep-scan.md#REQ-4",
     "specs/security/ci-semgrep-scan.md#REQ-5",
+    "specs/security/ci-semgrep-scan.md#REQ-6",
+    "specs/security/ci-semgrep-scan.md#REQ-7",
     "specs/security/detector-source-lint.md#REQ-1",
     "specs/security/detector-source-lint.md#REQ-2",
     "specs/security/detector-source-lint.md#REQ-3",
