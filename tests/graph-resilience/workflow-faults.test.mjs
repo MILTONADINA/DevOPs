@@ -1099,7 +1099,7 @@ test('filesSeen: the lister and the reviewer both run quotepath-off git for untr
 test('filesSeen: cycleOutcome.indeterminateReasons names the filesSeen mismatch; empty when clean', async () => {
   const bad = await run(async (p, o) => (o.label === 'reviewer' ? { approved: true, filesSeen: ['src/x.js'] } : ALL_PASS[o.label]), { plan: PLAN, changedFiles: ['src/b.js'], strictReviewer: true });
   assert.equal(bad.cycleOutcome.outcome, 'INDETERMINATE');
-  assert.match(bad.cycleOutcome.indeterminateReasons.join(' '), /reviewer filesSeen \(missing src\/b\.js; unknown src\/x\.js\)/);
+  assert.match(bad.cycleOutcome.indeterminateReasons.join(' '), /reviewer filesSeen \(missing 'src\/b\.js'; unknown 'src\/x\.js'\)/);
   const ok = await run(async (p, o) => (o.label === 'reviewer' ? { approved: true, filesSeen: ['src/b.js'] } : ALL_PASS[o.label]), { plan: PLAN, changedFiles: ['src/b.js'], strictReviewer: true });
   assert.deepEqual(ok.cycleOutcome.indeterminateReasons, []);
 });
@@ -1163,7 +1163,7 @@ test('empty diff: a reviewer inventing a file is INDETERMINATE (unknown)', async
   assertNotReady(await runEmpty({ approved: true, filesSeen: ['src/a.js'] }, []), null);
 });
 
-for (const [name, blank] of [['empty string', ''], ['dot-slash', './'], ['space', ' ']]) {
+for (const [name, blank] of [['empty string', ''], ['dot-slash', './'], ['space', ' '], ['dot', '.'], ['double dot-slash', '././'], ['zero-width space', '\u200b']]) {
   test(`empty diff: a lister and reviewer that both list only a blank entry (${name}) are INDETERMINATE`, async () => {
     assertNotReady(await runEmpty({ approved: true, filesSeen: [blank] }, [blank]));
   });
@@ -1200,8 +1200,13 @@ test('empty diff: a non-array lister result stays INDETERMINATE and a null liste
   assertNotReady(await run(async (_, o) => (o.label === 'reviewer' ? { approved: true, filesSeen: [] } : ALL_PASS[o.label]),
     { plan: PLAN, strictReviewer: true, changedFiles: new Error('git unavailable') }), null);
   // The harness maps an Error to a lister result with no files field; also pass real non-array values.
-  for (const bad of [null, 'foo', { 0: 'src/a.js' }, 42]) {
+  for (const bad of [null, 'foo', { 0: 'src/a.js' }, 42, [null], [undefined]]) {
     assertNotReady(await run(async (_, o) => (o.label === 'reviewer' ? { approved: true, filesSeen: ['src/a.js'] } : ALL_PASS[o.label]),
+      { plan: PLAN, strictReviewer: true, changedFiles: () => bad }), null);
+  }
+  // A reviewer echoing the stringified entry must not match a non-string lister entry.
+  for (const [bad, echo] of [[[null], 'null'], [[undefined], 'undefined']]) {
+    assertNotReady(await run(async (_, o) => (o.label === 'reviewer' ? { approved: true, filesSeen: [echo] } : ALL_PASS[o.label]),
       { plan: PLAN, strictReviewer: true, changedFiles: () => bad }), null);
   }
   const execute = new AsyncFunction('args', 'agent', 'log', 'phase', source);

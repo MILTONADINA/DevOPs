@@ -127,8 +127,11 @@ async function changedFilesFromGit() {
     }
   )
   if (!r || !Array.isArray(r.files)) throw new Error('lister returned no files array')
+  if (!r.files.every(f => typeof f === 'string')) throw new Error('lister returned non-string entries')
   return r.files
 }
+// Blank path: only whitespace, Unicode format characters (Cf), dots and slashes. Never a changed file.
+const isBlankPath = f => /^[\s\p{Cf}./]*$/u.test(f)
 const normalizeFile = f => String(f).replace(/^\.\//, '')
 
 async function workflowAgent(prompt, options) {
@@ -446,7 +449,7 @@ ${ENVIRONMENT_RULES}${ownerDecisionsBlock}`,
 // match it vacuously. No plan or agent field can declare a no-change task.
 let reviewerFilesProblem = null
 try {
-  const changedFiles = (await changedFilesFromGit()).map(normalizeFile).filter(f => f.trim() !== '')
+  const changedFiles = (await changedFilesFromGit()).map(normalizeFile).filter(f => !isBlankPath(f))
   if (!Array.isArray(reviewResult?.filesSeen)) {
     reviewerFilesProblem = 'filesSeen not returned'
   } else if (changedFiles.length === 0) {
@@ -460,7 +463,7 @@ try {
     const changedSet = new Set(changedFiles)
     const unknown = [...seen].filter(f => !changedSet.has(f))
     if (missing.length > 0 || unknown.length > 0) {
-      reviewerFilesProblem = `${missing.length > 0 ? `missing ${missing.join(', ')}` : ''}${missing.length > 0 && unknown.length > 0 ? '; ' : ''}${unknown.length > 0 ? `unknown ${unknown.join(', ')}` : ''}`
+      reviewerFilesProblem = `${missing.length > 0 ? `missing ${missing.map(f => `'${f}'`).join(', ')}` : ''}${missing.length > 0 && unknown.length > 0 ? '; ' : ''}${unknown.length > 0 ? `unknown ${unknown.map(f => `'${f}'`).join(', ')}` : ''}`
     }
   }
 } catch (err) {
