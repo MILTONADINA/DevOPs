@@ -7,6 +7,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { parse } from 'yaml';
+import { loadBaseline, scan } from '../../scripts/check-agent-config.mjs';
 
 const ROOT = path.resolve(import.meta.dirname, '..', '..');
 const CHECKER = path.join(ROOT, 'scripts', 'check-agent-config.mjs');
@@ -131,6 +132,21 @@ test('the repository itself passes with its committed baseline', () => {
   assert.ok(existsSync(CHECKER), 'FEATURE_ABSENT: scripts/check-agent-config.mjs must exist');
   const run = spawnSync(process.execPath, [CHECKER], { cwd: ROOT, encoding: 'utf8' });
   assert.equal(run.status, 0, run.stdout + run.stderr);
+});
+
+test('the shipped mcp-configs pin every npx server except the reviewed unpublished ones', () => {
+  const keys = (list) => list.filter((k) => k.startsWith('unpinned-mcp:')).sort();
+  const raised = keys(scan(ROOT).map((f) => f.key));
+  const baselined = keys([...loadBaseline(path.join(ROOT, 'governance', 'agent-config-baseline.json'))]);
+  // No new unpinned server, and no stale baseline entry the scan no longer raises.
+  assert.deepEqual(raised, baselined);
+  for (const key of baselined) {
+    const file = key.split(':')[1];
+    assert.ok(existsSync(path.join(ROOT, file)), `baseline names a missing file: ${file}`);
+  }
+  const playwright = JSON.parse(readFileSync(path.join(ROOT, 'mcp-configs', 'universal', 'playwright.json'), 'utf8'));
+  assert.match(playwright.args[1], /^@playwright\/mcp@\d+\.\d+\.\d+$/);
+  assert.ok(!baselined.some((k) => k.startsWith('unpinned-mcp:mcp-configs/universal/playwright.json:')));
 });
 
 test('the agent-config job runs the checker, SHA-pinned, with read-only permissions', () => {
