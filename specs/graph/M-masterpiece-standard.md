@@ -96,9 +96,10 @@ THE SYSTEM SHALL compute `readyForPR` in `sprint-cycle.js` as the conjunction of
 - no stage INDETERMINATE (REQ-M3)
 
 No verdict may count only because a prompt tells another agent to weigh it.
+WHEN the reviewer returns, THE SYSTEM SHALL compute the changed-file list from `git diff --name-only` itself (against `HEAD`, plus untracked files, through its own `changed-files` agent call because Workflow scripts have no Node APIs), require the reviewer to return a `filesSeen` list, and set outcome INDETERMINATE (not ready) when any changed file is missing from `filesSeen`, when `filesSeen` names a file that is not in the changed list, or when the changed-file list cannot be computed (a lister that returns a non-array or throws is INDETERMINATE; a lister that returns null is an environment fault that halts the cycle through `stopIfBlocked`).
 **Enforced by:** test:tests/graph-resilience/workflow-faults.test.mjs
 **Enforcement note (pre-MR17 annotation):** code in `sprint-cycle.js` (replacing `:317`); tests in `tests/graph-resilience/workflow-faults.test.mjs`.
-**Falsified by:** a fake-agent run with the reviewer returning `approved:false` (or security `FAIL`) and the validator `PASS` that yields `readyForPR: true`.
+**Falsified by:** a fake-agent run with the reviewer returning `approved:false` (or security `FAIL`) and the validator `PASS` that yields `readyForPR: true`, or a reviewer `filesSeen` that omits one changed file and still yields `readyForPR: true`.
 
 ### REQ-M2 (Event-driven): The orchestrator re-executes proofs and scanner runs; agents do not self-report them
 WHEN a Workflow cycle returns, `/sprint` SHALL run `scripts/graph-rerun-proofs.mjs --cycle <id>`. The script SHALL:
@@ -150,10 +151,11 @@ It SHALL refuse a caller-supplied status that disagrees with the derived one. It
 IF the planner returns a non-empty `ambiguities[]` or `conflicts[]`, THEN `sprint-cycle.js` SHALL throw `AMBIGUITY_BLOCK:` followed by the items as JSON, before Build. The only exception: every item is either matched by an entry's `item` field in `args.acknowledgements` (an array of `{item, answer}` objects), or appears verbatim in `args.acknowledgedAmbiguities`.
 - `graph-run-record.mjs update --ack` SHALL append `{item, answer, at}` entries to `run.json` `acknowledgements` and reject malformed input without touching the record.
 - The planner schema SHALL add `conflicts: [{higher, lower, clause}]`.
+- IF a backlog item's spec holds `[NEEDS CLARIFICATION]`, or any acceptance criterion is covered by no planned task, THEN the cycle SHALL stop before the build phase (`SPEC_GATE_BLOCK:`, AC-M7.2).
 - `AGENTS.md` SHALL carry one precedence line: owner decision > law/safety > approved spec > ADR/AC > plan > code.
 
-**Enforced by:** test:tests/graph-resilience/workflow-faults.test.mjs; test:tests/graph-resilience/req-contracts.test.mjs; test:tests/graph-resilience/run-record.test.mjs
-**Enforcement note:** Code in `sprint-cycle.js`, the `graph-run-record.mjs` acknowledgement field and the planner schema are tested. Where the acknowledgements come from and the blocked record written on the throw are REQ-M31 (PROCESS).
+**Enforced by:** test:tests/graph-resilience/workflow-faults.test.mjs; test:tests/graph-resilience/req-contracts.test.mjs; test:tests/graph-resilience/run-record.test.mjs; test:tests/graph-resilience/plan-covers-gate.test.mjs; test:tests/graph/spec-clarification.test.mjs
+**Enforcement note:** Code in `sprint-cycle.js`, the `graph-run-record.mjs` acknowledgement field and the planner schema are tested. Where the acknowledgements come from and the blocked record written on the throw are REQ-M31 (PROCESS). Running `node scripts/lint-spec-status.mjs --item <spec>` before launch, and passing its markers to the planner, is the orchestrator's PROCESS half of the spec gate; `sprint-cycle.js` has no filesystem access and only checks the planner's report.
 **Falsified by:** a fake planner returning one ambiguity and the coder stage running without a matching acknowledgement.
 
 ### REQ-M8 (Ubiquitous): Every spec declares one Status from a closed vocabulary
@@ -447,6 +449,9 @@ WHEN `hooks/universal/post-tool/sync-lr-refined-date.sh` runs, THE SYSTEM SHALL 
 ### AC-M1.2 (REQ-M1)
 **Given** all stages PASS and reviewer `approved: true` with an empty BLOCKER list **When** the workflow runs **Then** `readyForPR` is true (a positive control, so the gate is not vacuous).
 
+### AC-M1.3 (REQ-M1)
+**Given** all other stages PASS and a reviewer `approved: true` **When** its `filesSeen` omits a changed file, or names a file that is not changed, or is absent **Then** `readyForPR` is false and the cycle outcome is INDETERMINATE. **Given** a `filesSeen` equal to the changed-file set **Then** `readyForPR` is true.
+
 ### AC-M2.1 (REQ-M2)
 **Given** a journal fixture whose tester proof is `{command: "exit 1", exit_code: 0}` **When** `node scripts/graph-rerun-proofs.mjs --journal <fixture>` runs **Then** it exits non-zero and names the task. **Given** the security scan reports `scanned_files: 0` **Then** it also exits non-zero. **Given** matching exit codes and scanned counts at or above the floor **Then** it exits 0.
 
@@ -465,6 +470,8 @@ WHEN `hooks/universal/post-tool/sync-lr-refined-date.sh` runs, THE SYSTEM SHALL 
 ### AC-M7.1 (REQ-M7)
 **Given** a planner result with `ambiguities: ['X']` and no acknowledgement **When** the workflow runs **Then** it throws `AMBIGUITY_BLOCK:` before any `coder:` label is invoked. **Given** `args.acknowledgedAmbiguities: ['X']` **Then** Build runs. **Given** `args.acknowledgements: [{item: "X", answer: "..."}]` and no `acknowledgedAmbiguities` **Then** Build runs. The same holds for a non-empty `conflicts[]`.
 
+### AC-M7.2 (REQ-M7)
+**Given** a planner result with a non-empty `clarification_markers` (copied from `lint-spec-status.mjs --item`), or one whose `criteria` include `AC2` that no task's `covers` lists **When** the workflow runs **Then** it throws `SPEC_GATE_BLOCK:` before any `coder:` label is invoked, and neither `acknowledgedAmbiguities` nor `acknowledgements` lifts it. `node scripts/lint-spec-status.mjs --item <spec>` exits 1 for a spec holding the marker.
 ### AC-M8.1 (REQ-M32)
 **Given** a spec whose Status is `draft` **When** `launch --spec-ref specs/x.md#REQ-X1` runs **Then** it throws. **Given** Status `approved` and a REQ with no AC **Then** it throws. **Given** approved, fully AC-covered and with Falsified-by lines **Then** it succeeds. **Given** a planner task with an empty `ac_ids` **Then** the schema rejects it.
 

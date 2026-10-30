@@ -111,6 +111,26 @@ function stageOutcome(result, boolKey) {
   return outcome
 }
 
+// Changed-file list for the reviewer coverage check. Workflow scripts have no
+// Node APIs (specs/graph/R-resilience.md), so a dedicated 'changed-files' agent
+// runs git and returns the list; it is a separate call from the reviewer, so
+// the reviewer's filesSeen is never checked against the reviewer's own report.
+async function changedFilesFromGit() {
+  const r = await workflowAgent(
+    `You are the changed-files lister in the DevOPs graph-engineering pipeline. Do not review or edit anything. Run git -c core.quotepath=off diff --name-only HEAD (staged and unstaged tracked changes) and git -c core.quotepath=off ls-files --others --exclude-standard (new, untracked files) in the project root, and return the union as files: repo-relative paths, one per entry, exactly as git prints them.\n\n${ENVIRONMENT_RULES}`,
+    {
+      label: 'changed-files',
+      phase: 'Verify',
+      model: 'sonnet',
+      effort: 'low', // a git lister needs no reasoning (cost-controls/model-routing.yml)
+      schema: { type: 'object', properties: { files: { type: 'array', items: { type: 'string' } }, blocked_by_environment: BLOCKED_SCHEMA }, required: ['files'] },
+    }
+  )
+  if (!r || !Array.isArray(r.files)) throw new Error('lister returned no files array')
+  return r.files
+}
+const normalizeFile = f => String(f).replace(/^\.\//, '')
+
 async function workflowAgent(prompt, options) {
   const result = await agent(prompt, options)
   const [stage, taskId] = options.label.split(':')
@@ -162,6 +182,8 @@ Decompose it into a small ordered list of atomic, independently-verifiable tasks
 
 The same applies to source conflicts: precedence order for the sources you read is owner decision > law/safety > approved spec > ADR/AC > plan > code (AGENTS.md's own rule). If a higher-precedence source contradicts a lower-precedence one on some point -- for example, an approved spec disagreeing with plan.md, or plan.md disagreeing with the code -- do not silently pick a side: report it in the \`conflicts\` field as {higher, lower, clause}, naming which source is higher, which is lower, and the contradicting clause.
 
+List every acceptance criterion id of the item's spec in \`criteria\` (the exact \`### AC-...\` heading ids), and give each task a \`covers\` list of the criterion ids it verifies; every criterion must be covered by some task. Run \`node scripts/lint-spec-status.mjs --item <spec path>\` for the item's spec and copy its \`file:line\` lines into \`clarification_markers\` (it exits 1 when any exist).
+
 HARD CONSTRAINT: do not include any task whose job is to stage, commit, or push a git change, open a pull request, or run any deploy/publish command. This pipeline's scope ends at implementation + verification (coder/tester/reviewer/security/validator) -- committing and pushing are a separate, explicitly human-reviewed step outside this Workflow, never an autonomous task in your plan.`,
   {
     label: 'planner',
@@ -179,11 +201,19 @@ HARD CONSTRAINT: do not include any task whose job is to stage, commit, or push 
               id: { type: 'string' },
               description: { type: 'string' },
               files_likely_touched: { type: 'array', items: { type: 'string' } },
+              // Ids of the spec's acceptance criteria this task verifies. Optional first-landed form
+              // of REQ-M32's `tasks[].ac_ids` (specs/graph/M-masterpiece-standard.md); its
+              // non-empty/each-present rule is deliberately not enforced here.
+              covers: { type: 'array', items: { type: 'string' } },
             },
             required: ['id', 'description'],
           },
         },
         ambiguities: { type: 'array', items: { type: 'string' } },
+        // Every acceptance criterion id the backlog item's spec lists (e.g. AC1, AC2).
+        criteria: { type: 'array', items: { type: 'string' } },
+        // Each `[NEEDS CLARIFICATION]` line found in the spec, as "path:line text".
+        clarification_markers: { type: 'array', items: { type: 'string' } },
         // REQ-M7: source conflicts the planner notices (e.g. a spec/ADR
         // clause disagreeing with plan.md) get this typed shape alongside
         // free-text ambiguities, so the block below -- replacing the old
@@ -198,7 +228,7 @@ HARD CONSTRAINT: do not include any task whose job is to stage, commit, or push 
         },
         blocked_by_environment: BLOCKED_SCHEMA,
       },
-      required: ['tasks'],
+      required: ['tasks', 'criteria'],
     },
   }
 )
@@ -208,6 +238,22 @@ if (!plan || !plan.tasks || plan.tasks.length === 0) {
 }
 
 log(`Planner produced ${plan.tasks.length} task(s)` + (plan.ambiguities && plan.ambiguities.length ? `, ${plan.ambiguities.length} ambiguity(ies) flagged` : '') + (plan.conflicts && plan.conflicts.length ? `, ${plan.conflicts.length} conflict(s) flagged` : ''))
+
+// Story dv-covers: a spec marked [NEEDS CLARIFICATION], or an acceptance criterion
+// that no task `covers`, stops the cycle before Build. Not acknowledgeable: the spec
+// or the plan has to be fixed, so this runs before AMBIGUITY_BLOCK (the owner is never
+// asked to answer ambiguities on a plan that must be redone). Runs for a precomputed
+// args.plan as well. `covers` is the optional, first-landed form of REQ-M32's
+// `tasks[].ac_ids` (specs/graph/M-masterpiece-standard.md); REQ-M32's non-empty,
+// each-present rule is deliberately not enforced here. Ids compare as exact strings.
+const clarification = (plan.clarification_markers || [])
+const coveredCriteria = new Set(plan.tasks.flatMap((task) => (Array.isArray(task.covers) ? task.covers : [])))
+if (!plan.criteria || plan.criteria.length === 0) log('Spec gate: planner listed no criteria; coverage not checked')
+const uncovered = (plan.criteria || []).filter((id) => !coveredCriteria.has(id))
+if (clarification.length > 0 || uncovered.length > 0) {
+  log(`Cycle blocked before Build: ${clarification.length} clarification marker(s), ${uncovered.length} uncovered criterion(s)`)
+  throw new Error(`SPEC_GATE_BLOCK:${JSON.stringify({ clarification, uncovered })}`)
+}
 
 // REQ-M7: material ambiguity and source conflicts stop the cycle before
 // Build starts (replaces the old log-only line above). This sits after
@@ -371,7 +417,7 @@ Backlog item: "${backlogItem}"
 Tasks: ${JSON.stringify(plan.tasks)}
 Build results: ${JSON.stringify(buildResults.map(r => ({ task: r.task.id, coder: r.coderResult, tester: r.testerResult })))}
 
-Check spec-anchoring (does every changed line trace to one of the tasks above, or to the backlog item itself?) and general diff quality. List every issue you find in violations, including low-severity ones and ones you are unsure about. Start each with BLOCKER: or CONCERN: and end it with your confidence. The validator and the human reviewer filter the list, so at this stage coverage matters more than precision. A BLOCKER is an untraceable line (drive-by refactoring included), a missing or misleading proof, or a defect that could cause incorrect behavior or a test failure. State each one plainly, and set approved to false if any BLOCKER remains.
+Check spec-anchoring (does every changed line trace to one of the tasks above, or to the backlog item itself?) and general diff quality. List every issue you find in violations, including low-severity ones and ones you are unsure about. Start each with BLOCKER: or CONCERN: and end it with your confidence. The validator and the human reviewer filter the list, so at this stage coverage matters more than precision. A BLOCKER is an untraceable line (drive-by refactoring included), a missing or misleading proof, or a defect that could cause incorrect behavior or a test failure. State each one plainly, and set approved to false if any BLOCKER remains. Run git -c core.quotepath=off diff --name-only HEAD (plus git -c core.quotepath=off ls-files --others --exclude-standard for new files) yourself and return filesSeen: the repo-relative path of every changed file whose diff you actually read. Do not list a file you did not read; the workflow compares your list with its own git diff and treats any mismatch as INDETERMINATE.
 
 ${ENVIRONMENT_RULES}${ownerDecisionsBlock}`,
   {
@@ -384,12 +430,35 @@ ${ENVIRONMENT_RULES}${ownerDecisionsBlock}`,
       properties: {
         approved: { type: 'boolean' },
         violations: { type: 'array', items: { type: 'string' } },
+        filesSeen: { type: 'array', items: { type: 'string' } },
         blocked_by_environment: BLOCKED_SCHEMA,
       },
-      required: ['approved'],
+      required: ['approved', 'filesSeen'],
     },
   }
 )
+
+// Reviewer coverage: the workflow computes the changed-file list itself and
+// compares it with the reviewer's filesSeen. A missing file, an unknown file,
+// a non-array filesSeen or an uncomputable list is INDETERMINATE, never clean.
+let reviewerFilesProblem = null
+try {
+  const changedFiles = (await changedFilesFromGit()).map(normalizeFile)
+  if (!Array.isArray(reviewResult?.filesSeen)) {
+    reviewerFilesProblem = 'filesSeen not returned'
+  } else {
+    const seen = new Set(reviewResult.filesSeen.map(normalizeFile))
+    const missing = changedFiles.filter(f => !seen.has(f))
+    const changedSet = new Set(changedFiles)
+    const unknown = [...seen].filter(f => !changedSet.has(f))
+    if (missing.length > 0 || unknown.length > 0) {
+      reviewerFilesProblem = `${missing.length > 0 ? `missing ${missing.join(', ')}` : ''}${missing.length > 0 && unknown.length > 0 ? '; ' : ''}${unknown.length > 0 ? `unknown ${unknown.join(', ')}` : ''}`
+    }
+  }
+} catch (err) {
+  if (String(err && err.message).startsWith('BLOCKED_BY_ENVIRONMENT')) throw err
+  reviewerFilesProblem = `changed-file list unavailable (${err && err.message ? err.message : err})`
+}
 
 const securityResult = await workflowAgent(
   `You are acting as the 'security' role in the DevOPs graph-engineering pipeline, per subagents/universal/security.md's scoping at the repo root -- you are the only role in this pipeline permitted to invoke the pentest MCP tools, and only if this task's nature genuinely requires it; do not exceed your declared scope. Run the tiered security scan stack (gitleaks, semgrep, dependency check as applicable) on this cycle's changes.
@@ -460,7 +529,7 @@ const indeterminateTesterTasks = buildResults
   .map(r => r.task.id)
 const securityOutcome = stageOutcome(securityResult, 'passed')
 const validatorOutcome = stageOutcome(validatorResult, 'signed_off')
-const anyIndeterminate = indeterminateTesterTasks.length > 0 || securityOutcome === 'INDETERMINATE' || validatorOutcome === 'INDETERMINATE'
+const anyIndeterminate = indeterminateTesterTasks.length > 0 || securityOutcome === 'INDETERMINATE' || validatorOutcome === 'INDETERMINATE' || reviewerFilesProblem !== null
 
 // REQ-M1: readyForPR is the structural AND of every verdict, computed here
 // in code -- no verdict counts only because a prompt tells another agent to
@@ -484,6 +553,7 @@ const indeterminateReasons = [
   indeterminateTesterTasks.length > 0 ? `tester (${indeterminateTesterTasks.join(', ')})` : null,
   securityOutcome === 'INDETERMINATE' ? 'security' : null,
   validatorOutcome === 'INDETERMINATE' ? 'validator' : null,
+  reviewerFilesProblem !== null ? `reviewer filesSeen (${reviewerFilesProblem})` : null,
 ].filter(Boolean)
 
 const cycleOutcome = {
@@ -501,9 +571,11 @@ const cycleOutcome = {
   // the validator's own signed_off.
   outcome: anyIndeterminate ? 'INDETERMINATE' : (readyForPR ? 'PASS' : 'FAIL'),
   readyForPR,
+  // Why the outcome is INDETERMINATE, readable without the log (empty otherwise).
+  indeterminateReasons: anyIndeterminate ? indeterminateReasons : [],
 }
 
-log(`Cycle "${cycleId}" outcome: ${readyForPR ? 'READY for PR (pending human review)' : anyIndeterminate ? `INDETERMINATE (not ready -- ${indeterminateReasons.join(', ')} disagreed with its own outcome or reported none)` : 'NOT ready'}`)
+log(`Cycle "${cycleId}" outcome: ${readyForPR ? 'READY for PR (pending human review)' : anyIndeterminate ? `INDETERMINATE (not ready -- ${indeterminateReasons.join(', ')})` : 'NOT ready'}`)
 if (!readyForPR) {
   log(`Validator reason: ${validatorResult ? validatorResult.reason : 'validator did not return a result'}`)
 }

@@ -175,7 +175,9 @@ The permitted labels SHALL be exactly `preflight`, `planner`, `reviewer`,
 `security`, `validator`, and `coder:<id>`/`tester:<id>` for the final plan's
 task IDs. THE CLI SHALL require one final current object result (not null or
 an array) for every one of those labels, including preflight. Unknown labels
-and unplanned coder/tester IDs SHALL fail. There is no Release agent or native
+and unplanned coder/tester IDs SHALL fail, except that the `changed-files`
+reviewer-coverage lister label is accepted when present: it is not a required
+role and contributes no proof input. There is no Release agent or native
 aggregate event to require or manufacture.
 
 Each final coder and tester result SHALL have `task_id` equal to its raw
@@ -316,7 +318,7 @@ or historical live run is a prerequisite.
 and new agent **When** that retry produces one result **Then** its declaration
 is selected. **Given** a later failed/in-flight attempt, stale old-agent
 terminal, repeated start/terminal, orphan terminal, conflicting mapping,
-unknown event/label/task, missing preflight or required role, non-object
+unknown event/label/task (the optional `changed-files` lister label is not unknown), missing preflight or required role, non-object
 current result, duplicate plan ID or task_id mismatch **Then** the CLI refuses
 instead of selecting an earlier success or inventing aggregate readiness.
 

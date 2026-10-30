@@ -9,9 +9,19 @@ const ROOT = path.resolve(import.meta.dirname, '..', '..');
 const source = readFileSync(path.join(ROOT, '.claude', 'workflows', 'sprint-cycle.js'), 'utf8')
   .replace('export const meta =', 'const meta =');
 
+// Default harness: the 'changed-files' lister returns an empty list and a reviewer that lists no
+// files, so the pre-existing cases stay about their own subject. The
+// filesSeen cases below pass strictReviewer to see the raw reviewer result.
 async function run(agent, args = {}, log = () => {}) {
+  const { strictReviewer, changedFiles = [], ...rest } = args;
+  const wrapped = async (prompt, options) => {
+    if (options.label === 'changed-files') return changedFiles instanceof Error ? {} : { files: typeof changedFiles === 'function' ? changedFiles() : changedFiles };
+    const r = await agent(prompt, options);
+    if (strictReviewer) return r;
+    return options.label === 'reviewer' && r && !('filesSeen' in r) ? { ...r, filesSeen: [] } : r;
+  };
   const execute = new AsyncFunction('args', 'agent', 'log', 'phase', source);
-  return execute({ backlogItem: 'specs/graph/R-resilience.md', cycleId: 'c7', ...args }, agent, log, () => {});
+  return execute({ backlogItem: 'specs/graph/R-resilience.md', cycleId: 'c7', ...rest }, wrapped, log, () => {});
 }
 
 test('preflight needs_human stops before planner', async () => {
@@ -983,4 +993,140 @@ test("T5 (D3): the planner prompt names the `conflicts` field and AGENTS.md's pr
     prompts.planner.includes('owner decision > law/safety > approved spec > ADR/AC > plan > code'),
     "planner prompt should state AGENTS.md's precedence order verbatim"
   );
+});
+
+// --- Reviewer filesSeen coverage (REQ-M1 extension) -------------------------
+
+const ALL_PASS = {
+  preflight: { status: 'ready', check_ids: [] },
+  'coder:T1': { task_id: 'T1', summary: 'done' },
+  'tester:T1': { task_id: 'T1', passed: true, outcome: 'PASS' },
+  security: { passed: true, outcome: 'PASS' },
+  validator: { signed_off: true, outcome: 'PASS', reason: 'verified' },
+};
+const PLAN = { tasks: [{ id: 'T1', description: 'one task' }] };
+
+async function runFilesSeen(reviewer, changed) {
+  return run(async (_, o) => (o.label === 'reviewer' ? reviewer : ALL_PASS[o.label]),
+    { plan: PLAN, strictReviewer: true, changedFiles: changed });
+}
+
+test('filesSeen: a reviewer that omits a changed file is INDETERMINATE and not ready', async () => {
+  const r = await runFilesSeen({ approved: true, filesSeen: ['src/a.js'] }, ['src/a.js', 'src/b.js']);
+  assert.equal(r.cycleOutcome.readyForPR, false);
+  assert.equal(r.cycleOutcome.outcome, 'INDETERMINATE');
+});
+
+test('filesSeen: a reviewer that adds an unknown file is INDETERMINATE and not ready', async () => {
+  const r = await runFilesSeen({ approved: true, filesSeen: ['src/a.js', 'src/ghost.js'] }, ['src/a.js']);
+  assert.equal(r.cycleOutcome.readyForPR, false);
+  assert.equal(r.cycleOutcome.outcome, 'INDETERMINATE');
+});
+
+test('filesSeen: a reviewer that omits filesSeen entirely is INDETERMINATE and not ready', async () => {
+  const r = await runFilesSeen({ approved: true }, []);
+  assert.equal(r.cycleOutcome.readyForPR, false);
+  assert.equal(r.cycleOutcome.outcome, 'INDETERMINATE');
+});
+
+test('filesSeen (positive control): a reviewer returning exactly the changed files is ready', async () => {
+  const r = await runFilesSeen({ approved: true, filesSeen: ['./src/b.js', 'src/a.js'] }, ['src/a.js', 'src/b.js']);
+  assert.equal(r.cycleOutcome.readyForPR, true);
+  assert.equal(r.cycleOutcome.outcome, 'PASS');
+});
+
+test('filesSeen: an uncomputable changed-file list is INDETERMINATE, not ready', async () => {
+  const r = await run(async (_, o) => (o.label === 'reviewer' ? { approved: true, filesSeen: [] } : ALL_PASS[o.label]),
+    { plan: PLAN, changedFiles: new Error('git unavailable') });
+  assert.equal(r.cycleOutcome.readyForPR, false);
+  assert.equal(r.cycleOutcome.outcome, 'INDETERMINATE');
+});
+
+test('filesSeen: the reviewer schema requires filesSeen and the prompt asks for it', async () => {
+  let seen;
+  await run(async (prompt, o) => {
+    if (o.label === 'reviewer') seen = { prompt, schema: o.schema };
+    return o.label === 'reviewer' ? { approved: true, filesSeen: [] } : ALL_PASS[o.label];
+  }, { plan: PLAN });
+  assert.ok(seen.schema.required.includes('filesSeen'));
+  assert.match(seen.prompt, /filesSeen/);
+});
+
+test('filesSeen: paths differing only by trailing whitespace stay distinct', async () => {
+  const r = await runFilesSeen({ approved: true, filesSeen: ['src/a.js'] }, ['src/a.js', 'src/a.js ']);
+  assert.equal(r.cycleOutcome.readyForPR, false);
+  assert.equal(r.cycleOutcome.outcome, 'INDETERMINATE');
+});
+
+test('filesSeen: the changed-file list is computed right after the reviewer, before security writes claim files', async () => {
+  const order = [];
+  const r = await run(async (_, o) => {
+    order.push(o.label);
+    return o.label === 'reviewer' ? { approved: true, filesSeen: ['src/a.js'] } : ALL_PASS[o.label];
+  }, { plan: PLAN, strictReviewer: true, changedFiles: () => {
+    order.push('changed-files');
+    return order.includes('security')
+      ? ['src/a.js', '.workflow/proofs/committed/claims/claim-2026-01-01-001.yml']
+      : ['src/a.js'];
+  } });
+  assert.ok(order.indexOf('changed-files') > order.indexOf('reviewer'));
+  assert.ok(order.indexOf('changed-files') < order.indexOf('security'));
+  assert.equal(r.cycleOutcome.readyForPR, true);
+});
+
+test('filesSeen: the reviewer is told the same quotepath-off git command the lister runs', async () => {
+  let prompt;
+  await run(async (p, o) => {
+    if (o.label === 'reviewer') prompt = p;
+    return o.label === 'reviewer' ? { approved: true, filesSeen: [] } : ALL_PASS[o.label];
+  }, { plan: PLAN });
+  assert.match(prompt, /git -c core\.quotepath=off diff --name-only HEAD/);
+});
+
+test('filesSeen: the lister and the reviewer both run quotepath-off git for untracked files too', async () => {
+  const prompts = {};
+  const execute = new AsyncFunction('args', 'agent', 'log', 'phase', source);
+  await execute({ backlogItem: 'x', cycleId: 'c7', plan: PLAN }, async (p, o) => {
+    prompts[o.label] = p;
+    if (o.label === 'changed-files') return { files: [] };
+    return o.label === 'reviewer' ? { approved: true, filesSeen: [] } : ALL_PASS[o.label];
+  }, () => {}, () => {});
+  for (const label of ['changed-files', 'reviewer']) {
+    assert.match(prompts[label], /git -c core\.quotepath=off ls-files --others --exclude-standard/, label);
+  }
+});
+
+test('filesSeen: cycleOutcome.indeterminateReasons names the filesSeen mismatch; empty when clean', async () => {
+  const bad = await run(async (p, o) => (o.label === 'reviewer' ? { approved: true, filesSeen: ['src/x.js'] } : ALL_PASS[o.label]), { plan: PLAN, changedFiles: ['src/b.js'], strictReviewer: true });
+  assert.equal(bad.cycleOutcome.outcome, 'INDETERMINATE');
+  assert.match(bad.cycleOutcome.indeterminateReasons.join(' '), /reviewer filesSeen \(missing src\/b\.js; unknown src\/x\.js\)/);
+  const ok = await run(async (p, o) => (o.label === 'reviewer' ? { approved: true, filesSeen: ['src/b.js'] } : ALL_PASS[o.label]), { plan: PLAN, changedFiles: ['src/b.js'], strictReviewer: true });
+  assert.deepEqual(ok.cycleOutcome.indeterminateReasons, []);
+});
+
+test('filesSeen: a changed-files lister that returns null halts the cycle as BLOCKED_BY_ENVIRONMENT', async () => {
+  const execute = new AsyncFunction('args', 'agent', 'log', 'phase', source);
+  await assert.rejects(
+    execute({ backlogItem: 'x', cycleId: 'c7', plan: PLAN }, async (p, o) => {
+      if (o.label === 'changed-files') return null;
+      return o.label === 'reviewer' ? { approved: true, filesSeen: [] } : ALL_PASS[o.label];
+    }, () => {}, () => {}),
+    err => {
+      const m = /^BLOCKED_BY_ENVIRONMENT:(.*)$/s.exec(String(err.message));
+      assert.ok(m, err.message);
+      assert.equal(JSON.parse(m[1]).stage, 'changed-files');
+      return true;
+    },
+  );
+});
+
+test('changed-files lister runs at low effort on sonnet', async () => {
+  let opts;
+  const execute = new AsyncFunction('args', 'agent', 'log', 'phase', source);
+  await execute({ backlogItem: 'x', cycleId: 'c7', plan: PLAN }, async (p, o) => {
+    if (o.label === 'changed-files') { opts = o; return { files: [] }; }
+    return o.label === 'reviewer' ? { approved: true, filesSeen: [] } : ALL_PASS[o.label];
+  }, () => {}, () => {});
+  assert.equal(opts.model, 'sonnet');
+  assert.equal(opts.effort, 'low');
 });

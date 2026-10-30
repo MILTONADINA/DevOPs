@@ -33,7 +33,7 @@ const SPLITS = [
     kept: [/scripts\/graph-blocked\.sh/, /\*\*Run record\*\*/, /gitignored/], moved: [/before returning/, /removed only by `\/sprint --resume`/] },
   { file: R, id: 'REQ-R10', twin: 'REQ-R20', tests: ['tests/graph-resilience/run-record.test.mjs', 'tests/graph-resilience/resume-args.test.mjs', 'tests/graph-resilience/req-contracts.test.mjs'],
     kept: [/priorRunIds/, /graph-resume-args\.mjs/, /graph-run-record\.mjs launch/], moved: [/`\/sprint` call `graph-run-record\.mjs launch`/] },
-  { file: M, id: 'REQ-M7', twin: 'REQ-M31', tests: ['tests/graph-resilience/workflow-faults.test.mjs', 'tests/graph-resilience/req-contracts.test.mjs', 'tests/graph-resilience/run-record.test.mjs'],
+  { file: M, id: 'REQ-M7', twin: 'REQ-M31', tests: ['tests/graph-resilience/workflow-faults.test.mjs', 'tests/graph-resilience/req-contracts.test.mjs', 'tests/graph-resilience/run-record.test.mjs', 'tests/graph-resilience/plan-covers-gate.test.mjs', 'tests/graph/spec-clarification.test.mjs'],
     kept: [/AMBIGUITY_BLOCK:/, /`conflicts: \[\{higher, lower, clause\}\]`/, /owner decision > law\/safety/], moved: [/only from the owner's answer/, /`needs_human` blocked record/] },
   // Second batch. A twin is PROCESS only where an orchestrator step is the whole clause; where the
   // moved clause names behaviour no code implements yet, the twin stays UNENFORCED.
