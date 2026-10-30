@@ -238,7 +238,7 @@ test('REQ-7 refresh with a commit argument moves the pin to that commit; a non-S
 test('AC-6 a redirect to http, or to a credentialed or other host, is refused (fetch stubbed, no network)', () => withDir((dir) => {
   const pinFile = path.join(dir, 'pins.json');
   writeFileSync(pinFile, JSON.stringify(pins([entry('a.yaml')])));
-  for (const target of ['http://raw.githubusercontent.com/x/a.yaml', 'https://u:p@raw.githubusercontent.com/x/a.yaml', 'https://evil.invalid/x/a.yaml']) {
+  for (const target of ['http://raw.githubusercontent.com/x/a.yaml', 'https://u:p@raw.githubusercontent.com/x/a.yaml', 'https://evil.invalid/x/a.yaml', 'https://raw.githubusercontent.com:8080/x/a.yaml']) {
     const r = runWithStub(dir, ['refresh', pinFile], { [rawUrl('a.yaml')]: 'rules: []\n' }, { redirectTo: target });
     assert.notEqual(r.status, 0, `${target} must be refused`);
     assert.match(r.stderr, /invalid download url/);

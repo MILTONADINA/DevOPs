@@ -36,7 +36,7 @@ function assertRulePath(value) {
 function assertDownloadUrl(value) {
   let url;
   try { url = new URL(value); } catch { throw new Error(`invalid download url ${JSON.stringify(String(value))}`); }
-  if (url.protocol !== 'https:' || url.hostname !== HOST || url.username || url.password) {
+  if (url.protocol !== 'https:' || url.hostname !== HOST || url.port || url.username || url.password) {
     throw new Error(`invalid download url ${JSON.stringify(String(value))}`);
   }
 }
