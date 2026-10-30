@@ -211,7 +211,6 @@ describe("real transport (loopback fixture, no OS DNS)", () => {
     await new Promise<void>((resolve) => server!.listen(0, "127.0.0.1", resolve));
     const addr = server.address();
     if (!addr || typeof addr === "string") throw new Error("no port");
-    const t0 = Date.now();
     const r = await deliverWebhook(
       `http://hook.test:${addr.port}/cq`,
       "{}",
@@ -219,8 +218,9 @@ describe("real transport (loopback fixture, no OS DNS)", () => {
       { lookup: async () => PUB, transport: (q) => createHttpTransport()({ ...q, address: "127.0.0.1" }) },
       500,
     );
+    // A timeout would give delivered:false with reasonClass "timeout", so this
+    // proves the body was not awaited without a wall-clock bound.
     expect(r).toMatchObject({ delivered: true, status: 200 });
-    expect(Date.now() - t0).toBeLessThan(500);
     server.closeAllConnections();
   });
   test.each([302, 307, 308])("a %i redirect to an internal target is not followed (exactly one request)", async (code) => {
