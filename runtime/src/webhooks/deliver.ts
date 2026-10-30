@@ -3,22 +3,26 @@
  *
  * The webhook URL is CUSTOMER-PROVIDED, so delivery is an SSRF surface: a malicious/misconfigured
  * URL must never let us POST to an internal address (cloud metadata 169.254.169.254, localhost,
- * RFC-1918, link-local). isSafeWebhookUrl blocks literal private/loopback IPs + localhost at the URL
- * layer, INCLUDING IPv4-mapped/embedded IPv6 encodings (::ffff:1.2.3.4 etc.); delivery also sets
- * redirect:"error" so a 3xx into an internal target is not followed. NOTE: this still does NOT defend
- * DNS-rebinding (a public name resolving to a private IP at connect time) — production must additionally
- * resolve + pin the address at connect time; that's documented, not silently skipped.
+ * RFC-1918, link-local). Two layers:
+ *  1. isSafeWebhookUrl (URL layer, defense in depth): scheme, no userinfo, no localhost, and literal
+ *     private IPs (numeric check via isPublicAddress, so every IPv6 encoding of an IPv4 is covered).
+ *  2. Per attempt, the hostname is resolved ONCE, EVERY returned address must be public (a mixed
+ *     public+private answer is refused), and the transport connects only to those vetted addresses, one at a
+ *     time in order (families interleaved; the next is tried only after a pre-connect failure such as ECONNREFUSED,
+ *     EHOSTUNREACH, ENETUNREACH or a connect timeout; Host/SNI stay the hostname), so a DNS-rebinding answer cannot
+ *     change between vet and connect.
+ * Redirects are never followed (the transport returns a 3xx as-is, which is a non-retryable failure).
  *
- * Single-attempt here; the spec's exponential-backoff retry schedule needs a durable queue (a later
- * slice). The fetch is injected so this is fully testable with no network.
+ * One attempt per call; retries and dead-lettering live in retry.ts. Resolver and transport are
+ * injected so this is fully testable with no network.
  */
 
+import { isIP } from "node:net";
+import { promises as dns } from "node:dns";
+import { isPublicAddress } from "./address-guard";
 import { signWebhook, SIGNATURE_HEADER } from "./sign";
 
-/** Reject literal private/loopback/link-local IPv4 (incl. the 169.254 cloud-metadata range). */
-const PRIVATE_V4 = [/^127\./, /^10\./, /^0\./, /^192\.168\./, /^169\.254\./, /^172\.(1[6-9]|2\d|3[01])\./];
-
-/** Validate a customer webhook URL against the SSRF guard. */
+/** Validate a customer webhook URL against the SSRF guard (URL layer). */
 export function isSafeWebhookUrl(raw: string): { ok: true } | { ok: false; reason: string } {
   let u: URL;
   try {
@@ -27,45 +31,114 @@ export function isSafeWebhookUrl(raw: string): { ok: true } | { ok: false; reaso
     return { ok: false, reason: "unparseable URL" };
   }
   if (u.protocol !== "https:" && u.protocol !== "http:") return { ok: false, reason: "URL must be http(s)" };
-  const host = u.hostname.toLowerCase().replace(/^\[|\]$/g, ""); // strip IPv6 brackets
+  if (u.port === "0") return { ok: false, reason: "port 0 is not a valid webhook target" };
+  if (u.username !== "" || u.password !== "") return { ok: false, reason: "URL credentials are not allowed" };
+  const host = u.hostname
+    .toLowerCase()
+    .replace(/^\[|\]$/g, "")
+    .replace(/\.$/, ""); // strip IPv6 brackets + trailing dot
   if (host === "" || host === "localhost" || host.endsWith(".localhost")) return { ok: false, reason: "localhost is not an allowed webhook target" };
-  if (host.includes(":")) {
-    // IPv4-MAPPED IPv6 (::ffff:1.2.3.4 — `new URL` normalizes the dotted tail to hex, e.g.
-    // ::ffff:a9fe:a9fe) is never a legitimate public webhook target and is an SSRF bypass: the embedded
-    // IPv4 reaches loopback / RFC-1918 / 169.254 cloud-metadata. The plain forms are blocked, so these
-    // must be too — reject all ::ffff: outright (host is already lower-cased).
-    if (host.startsWith("::ffff:")) {
-      return { ok: false, reason: "IPv4-mapped IPv6 is not an allowed webhook target" };
-    }
-    // IPv4-COMPATIBLE IPv6 (::a.b.c.d, deprecated — `new URL` normalizes it to ::<hi>:<lo> hex words):
-    // decode the embedded IPv4 and apply the private-range check (e.g. ::7f00:1 → 127.0.0.1).
-    const compat = host.match(/^::([0-9a-f]{1,4}):([0-9a-f]{1,4})$/);
-    if (compat) {
-      const hi = parseInt(compat[1] as string, 16);
-      const lo = parseInt(compat[2] as string, 16);
-      const v4 = `${hi >> 8}.${hi & 0xff}.${lo >> 8}.${lo & 0xff}`;
-      if (PRIVATE_V4.some((re) => re.test(v4))) return { ok: false, reason: "IPv4-compatible IPv6 maps to a private address" };
-    }
-    // IPv6 literal: block loopback (::1), unspecified (::), ULA (fc00::/7), link-local (fe80::/10).
-    if (host === "::1" || host === "::" || host.startsWith("fc") || host.startsWith("fd") || host.startsWith("fe8") || host.startsWith("fe9") || host.startsWith("fea") || host.startsWith("feb")) {
-      return { ok: false, reason: "private/loopback IPv6 is not an allowed webhook target" };
-    }
-  } else if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host)) {
-    if (PRIVATE_V4.some((re) => re.test(host))) return { ok: false, reason: "private/loopback IPv4 is not an allowed webhook target" };
+  if (isIP(host) !== 0 && !isPublicAddress(host)) {
+    return { ok: false, reason: isIP(host) === 6 ? "private/loopback IPv6 is not an allowed webhook target" : "private/loopback IPv4 is not an allowed webhook target" };
   }
   return { ok: true };
 }
 
-/** Minimal fetch shape for delivery (the global `fetch` satisfies it); injected for testability. */
-export type DeliveryFetch = (
-  url: string,
-  init: { method: string; headers: Record<string, string>; body: string; signal?: AbortSignal; redirect?: "error" | "follow" | "manual" },
-) => Promise<{ status: number }>;
+export type ReasonClass = "network" | "timeout" | "http_5xx" | "http_429" | "http_4xx" | "redirect" | "ssrf_blocked" | "budget_exhausted";
+
+export interface ResolvedAddress {
+  address: string;
+  family: number;
+}
+
+export interface TransportRequest {
+  /** The URL hostname: used for Host and TLS SNI/certificate validation, never for connecting. */
+  hostname: string;
+  /** The vetted address to connect to. */
+  address: string;
+  family: number;
+  port: number;
+  path: string;
+  secure: boolean;
+  headers: Record<string, string>;
+  body: string;
+  signal: AbortSignal;
+  /** Give up on the TCP connect after this many ms (rejects ETIMEDOUT, tagged `connectStage`). Unset: no connect-specific deadline. */
+  connectTimeoutMs?: number;
+}
+
+/** Interleave the vetted answer by family (first family seen leads), keeping lookup order within a family; drops duplicates. */
+function interleaveByFamily(list: ResolvedAddress[]): ResolvedAddress[] {
+  const seen = new Set<string>();
+  const uniq = list.filter((a) => (seen.has(a.address) ? false : (seen.add(a.address), true)));
+  const first = uniq[0]?.family;
+  const lead = uniq.filter((a) => a.family === first);
+  const rest = uniq.filter((a) => a.family !== first);
+  const out: ResolvedAddress[] = [];
+  for (let i = 0; i < Math.max(lead.length, rest.length); i++) {
+    if (i < lead.length) out.push(lead[i] as ResolvedAddress);
+    if (i < rest.length) out.push(rest[i] as ResolvedAddress);
+  }
+  return out;
+}
+
+const FAILOVER_CODES = new Set(["ECONNREFUSED", "EHOSTUNREACH", "ENETUNREACH", "ETIMEDOUT"]);
+/** True only for a failure before the TCP connect completed, with a code that another address could cure. */
+function isConnectFailover(e: unknown): boolean {
+  const x = e as { connectStage?: unknown; code?: unknown } | null;
+  return x?.connectStage === true && typeof x.code === "string" && FAILOVER_CODES.has(x.code);
+}
+
+export type Transport = (req: TransportRequest) => Promise<{ status: number; retryAfter?: string }>;
+
+export interface DeliveryDeps {
+  /** Resolve a hostname to all its addresses (dns.promises.lookup all:true in production). */
+  lookup: (hostname: string) => Promise<ResolvedAddress[]>;
+  transport: Transport;
+  /** Clock for Retry-After HTTP dates (Date.now by default). */
+  now?: () => number;
+}
 
 export interface DeliveryResult {
   delivered: boolean;
   status?: number;
   reason?: string;
+  /** Whether a later attempt could succeed (network, timeout, 5xx, 429 only). */
+  retryable: boolean;
+  reasonClass?: ReasonClass;
+  /** Server-requested delay in ms from Retry-After (unclamped; the retrier clamps it). */
+  retryAfterMs?: number;
+}
+
+/** Production dependencies: OS resolver (all addresses) + the pinned node:http(s) transport. */
+export async function productionLookup(hostname: string): Promise<ResolvedAddress[]> {
+  return (await dns.lookup(hostname, { all: true, verbatim: true })).map((a) => ({ address: a.address, family: a.family }));
+}
+
+/** Parse Retry-After: delta-seconds or HTTP-date. NaN/negative/garbage -> undefined; past date -> 0. */
+export function parseRetryAfter(value: string | undefined, now: number): number | undefined {
+  if (value === undefined) return undefined;
+  const v = value.trim();
+  if (v === "") return undefined;
+  if (/^\d+$/.test(v)) {
+    const s = Number(v);
+    return Number.isFinite(s) ? s * 1000 : undefined;
+  }
+  if (!/^[A-Za-z]{3},/.test(v)) return undefined; // HTTP-date only (Date.parse("-5") would be a past year)
+  const t = Date.parse(v);
+  return Number.isNaN(t) ? undefined : Math.max(0, t - now);
+}
+
+const refuse = (reason: string): DeliveryResult => ({ delivered: false, reason, retryable: false, reasonClass: "ssrf_blocked" });
+
+/** Race a promise against the attempt signal (dns.lookup has no timeout of its own). */
+function raceAbort<T>(p: Promise<T>, signal: AbortSignal): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = (): void => reject(Object.assign(new Error("aborted"), { name: "AbortError" }));
+    if (signal.aborted) return onAbort();
+    signal.addEventListener("abort", onAbort, { once: true });
+    p.then(resolve, reject).finally(() => signal.removeEventListener("abort", onAbort));
+  });
 }
 
 /**
@@ -74,30 +147,72 @@ export interface DeliveryResult {
  * @param url - the customer webhook URL (SSRF-checked first).
  * @param payload - the raw JSON body to send (and sign).
  * @param secret - the org's webhook secret.
- * @param doFetch - the fetch implementation (global fetch in prod, a fake in tests).
- * @param timeoutMs - per-attempt timeout (default 10s, per the spec).
- * @returns whether it was delivered (2xx) + the status, or a reason it wasn't.
+ * @param deps - resolver + transport (production: productionLookup + createHttpTransport()).
+ * @param timeoutMs - ONE budget per attempt shared by resolve, connect and response headers (default 10s; the body is not awaited); slow DNS shortens the rest by design, and a timeout is retryable. A host with several addresses gives each connect attempt remaining/addressesLeft of that budget.
  */
-export async function deliverWebhook(url: string, payload: string, secret: string, doFetch: DeliveryFetch, timeoutMs = 10_000): Promise<DeliveryResult> {
+export async function deliverWebhook(url: string, payload: string, secret: string, deps: DeliveryDeps, timeoutMs = 10_000): Promise<DeliveryResult> {
   const safe = isSafeWebhookUrl(url);
-  if (!safe.ok) return { delivered: false, reason: safe.reason };
+  if (!safe.ok) return refuse(safe.reason);
+  const u = new URL(url);
+  const hostname = u.hostname.replace(/^\[|\]$/g, "");
 
   const controller = new AbortController();
+  const started = Date.now();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const r = await doFetch(url, {
-      method: "POST",
-      headers: { "content-type": "application/json", [SIGNATURE_HEADER]: signWebhook(payload, secret) },
-      body: payload,
-      signal: controller.signal,
-      // redirect:"error" — isSafeWebhookUrl validates the ORIGINAL url only; without this, undici's
-      // default "follow" would chase a 3xx Location into an internal target (cloud-metadata / RFC-1918),
-      // re-sending the signed body on 307/308. Reject the redirect; the caller treats it as a failure.
-      redirect: "error",
-    });
-    return { delivered: r.status >= 200 && r.status < 300, status: r.status };
+    let addresses: ResolvedAddress[];
+    const literal = isIP(hostname);
+    if (literal !== 0) {
+      addresses = [{ address: hostname, family: literal }];
+    } else {
+      addresses = await raceAbort(deps.lookup(hostname), controller.signal);
+    }
+    if (addresses.length === 0) return refuse("hostname did not resolve to any address");
+    if (!addresses.every((a) => isPublicAddress(a.address))) return refuse("hostname resolves to a non-public address");
+    const ordered = interleaveByFamily(addresses);
+
+    const secure = u.protocol === "https:";
+    const headers = { "content-type": "application/json", [SIGNATURE_HEADER]: signWebhook(payload, secret) };
+    let r: { status: number; retryAfter?: string } | undefined;
+    for (let i = 0; r === undefined; i++) {
+      const target = ordered[i] as ResolvedAddress;
+      const left = ordered.length - i;
+      const remaining = timeoutMs - (Date.now() - started);
+      try {
+        r = await raceAbort(
+          deps.transport({
+            hostname,
+            address: target.address,
+            family: target.family,
+            port: u.port !== "" ? Number(u.port) : secure ? 443 : 80,
+            path: `${u.pathname}${u.search}`,
+            secure,
+            headers,
+            body: payload,
+            signal: controller.signal,
+            connectTimeoutMs: Math.max(1, Math.floor(remaining / left)),
+          }),
+          controller.signal,
+        );
+      } catch (e) {
+        // Fail over only on a pre-connect failure, never after the abort, and only while another address is left.
+        if (controller.signal.aborted || i + 1 >= ordered.length || !isConnectFailover(e)) throw e;
+      }
+    }
+    const s = r.status;
+    if (s >= 200 && s < 300) return { delivered: true, status: s, retryable: false };
+    const retryAfterMs = parseRetryAfter(r.retryAfter, (deps.now ?? Date.now)());
+    const ra = retryAfterMs !== undefined ? { retryAfterMs } : {};
+    if (s >= 300 && s < 400) return { delivered: false, status: s, reason: "redirect not followed", retryable: false, reasonClass: "redirect" };
+    if (s === 429) return { delivered: false, status: s, retryable: true, reasonClass: "http_429", ...ra };
+    if (s >= 500) return { delivered: false, status: s, retryable: true, reasonClass: "http_5xx", ...ra };
+    if (s >= 400) return { delivered: false, status: s, retryable: false, reasonClass: "http_4xx" };
+    return { delivered: false, status: s, retryable: false, reasonClass: "http_4xx" }; // 1xx / unknown: not a delivery, not worth retrying
   } catch (e) {
-    return { delivered: false, reason: e instanceof Error ? e.message : String(e) };
+    const aborted = controller.signal.aborted || (e instanceof Error && e.name === "AbortError");
+    return aborted
+      ? { delivered: false, reason: "delivery timed out", retryable: true, reasonClass: "timeout" }
+      : { delivered: false, reason: "delivery failed", retryable: true, reasonClass: "network" };
   } finally {
     clearTimeout(timer);
   }

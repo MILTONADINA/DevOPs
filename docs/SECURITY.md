@@ -5,6 +5,9 @@
 OWASP Top 10 for Agentic Applications 2026 (released Dec 2025). Every
 project's threat model uses `templates/threat-model/STRIDE_ASI_TEMPLATE.md`.
 
+Webhook egress to a customer-chosen URL (SSRF, DNS rebinding, redirects, retries and the local dead-letter
+record) is specified in [`specs/security/webhook-egress.md`](../specs/security/webhook-egress.md).
+
 ## Tiered scan stack
 
 This is what runs today (2026-09-25). The design goal is in the "Planned" column; it is not

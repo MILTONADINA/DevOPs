@@ -3,7 +3,7 @@
 import { describe, test, expect } from "vitest";
 import { signWebhook, verifyWebhook, SIGNATURE_HEADER } from "../../src/webhooks/sign";
 import { buildEvent, isWebhookEventType, SAMPLE_EVENT_DATA, WEBHOOK_EVENT_TYPES } from "../../src/webhooks/events";
-import { isSafeWebhookUrl, deliverWebhook, type DeliveryFetch } from "../../src/webhooks/deliver";
+import { isSafeWebhookUrl, deliverWebhook, type DeliveryDeps, type TransportRequest } from "../../src/webhooks/deliver";
 
 const SECRET = "whsec_test_please_rotate_32chars_min";
 
@@ -95,37 +95,41 @@ describe("isSafeWebhookUrl (SSRF guard)", () => {
   });
 });
 
-describe("deliverWebhook", () => {
-  test("signs (X-CQ-Signature) + POSTs to a safe URL; 2xx → delivered", async () => {
-    let seen: { url: string; init: { headers: Record<string, string>; body: string } } | undefined;
-    const fakeFetch: DeliveryFetch = (url, init) => {
-      seen = { url, init };
-      return Promise.resolve({ status: 200 });
+// deliverWebhook's resolve/vet/pin/redirect behaviour is covered in egress.test.ts.
+describe("deliverWebhook (basic contract)", () => {
+  const deps = (status: number | Error): { deps: DeliveryDeps; seen: TransportRequest[] } => {
+    const seen: TransportRequest[] = [];
+    return {
+      seen,
+      deps: {
+        lookup: () => Promise.resolve([{ address: "93.184.216.34", family: 4 }]),
+        transport: (req) => {
+          seen.push(req);
+          return status instanceof Error ? Promise.reject(status) : Promise.resolve({ status });
+        },
+      },
     };
-    const res = await deliverWebhook("https://api.customer.com/cq", '{"event":"x"}', SECRET, fakeFetch);
-    expect(res).toEqual({ delivered: true, status: 200 });
-    expect(seen!.url).toBe("https://api.customer.com/cq");
-    expect(seen!.init.headers[SIGNATURE_HEADER]).toBe(signWebhook('{"event":"x"}', SECRET));
-    expect(seen!.init.body).toBe('{"event":"x"}');
-    // redirect:"error" so a 3xx to an internal target is not followed (SSRF guard is URL-only).
-    expect((seen!.init as { redirect?: string }).redirect).toBe("error");
+  };
+  test("signs (X-CQ-Signature) + POSTs to a safe URL; 2xx → delivered", async () => {
+    const d = deps(200);
+    const res = await deliverWebhook("https://api.customer.com/cq", '{"event":"x"}', SECRET, d.deps);
+    expect(res).toEqual({ delivered: true, status: 200, retryable: false });
+    expect(d.seen[0]!.headers[SIGNATURE_HEADER]).toBe(signWebhook('{"event":"x"}', SECRET));
+    expect(d.seen[0]!.body).toBe('{"event":"x"}');
   });
   test("non-2xx → not delivered (status preserved)", async () => {
-    const res = await deliverWebhook("https://api.customer.com/cq", "{}", SECRET, () => Promise.resolve({ status: 500 }));
-    expect(res).toEqual({ delivered: false, status: 500 });
+    const res = await deliverWebhook("https://api.customer.com/cq", "{}", SECRET, deps(500).deps);
+    expect(res).toMatchObject({ delivered: false, status: 500, retryable: true, reasonClass: "http_5xx" });
   });
-  test("an unsafe URL is never fetched", async () => {
-    let called = false;
-    const res = await deliverWebhook("http://169.254.169.254/x", "{}", SECRET, () => {
-      called = true;
-      return Promise.resolve({ status: 200 });
-    });
-    expect(called).toBe(false);
+  test("an unsafe URL is never connected", async () => {
+    const d = deps(200);
+    const res = await deliverWebhook("http://169.254.169.254/x", "{}", SECRET, d.deps);
+    expect(d.seen).toHaveLength(0);
     expect(res.delivered).toBe(false);
     expect(res.reason).toMatch(/IPv4/);
   });
-  test("a fetch error → not delivered, with the reason", async () => {
-    const res = await deliverWebhook("https://api.customer.com/cq", "{}", SECRET, () => Promise.reject(new Error("ECONNREFUSED")));
-    expect(res).toEqual({ delivered: false, reason: "ECONNREFUSED" });
+  test("a transport error → not delivered, with a generic reason", async () => {
+    const res = await deliverWebhook("https://api.customer.com/cq", "{}", SECRET, deps(new Error("ECONNREFUSED")).deps);
+    expect(res).toMatchObject({ delivered: false, reasonClass: "network", retryable: true });
   });
 });

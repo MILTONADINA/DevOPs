@@ -15,7 +15,8 @@ import { randomUUID } from "node:crypto";
 import type { FastifyInstance, FastifyPluginCallback, FastifyReply, FastifyRequest } from "fastify";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { buildEvent, isWebhookEventType, SAMPLE_EVENT_DATA, WEBHOOK_EVENT_TYPES } from "../../webhooks/events";
-import { deliverWebhook, type DeliveryResult } from "../../webhooks/deliver";
+import { deliverWebhook, productionLookup, type DeliveryDeps, type DeliveryResult } from "../../webhooks/deliver";
+import { createHttpTransport } from "../../webhooks/transport";
 
 export interface WebhookConfig {
   url: string;
@@ -72,10 +73,7 @@ export function makeWebhookRoute(deps: WebhookDeps): FastifyPluginCallback {
 }
 
 /** Live webhook deps over Supabase (org_config) + an injectable fetch for delivery. */
-export function createSupabaseWebhookDeps(
-  client: SupabaseClient,
-  doFetch: (url: string, init: { method: string; headers: Record<string, string>; body: string; signal?: AbortSignal }) => Promise<{ status: number }> = (url, init) => fetch(url, init),
-): WebhookDeps {
+export function createSupabaseWebhookDeps(client: SupabaseClient, delivery: DeliveryDeps = { lookup: productionLookup, transport: createHttpTransport() }): WebhookDeps {
   return {
     async getWebhookConfig(orgId: string): Promise<WebhookConfig | null> {
       const { data, error } = await client.from("org_config").select("webhook_url, webhook_secret").eq("org_id", orgId).limit(1);
@@ -84,6 +82,6 @@ export function createSupabaseWebhookDeps(
       if (!row || !row.webhook_url || !row.webhook_secret) return null;
       return { url: row.webhook_url, secret: row.webhook_secret };
     },
-    deliver: (url, payload, secret) => deliverWebhook(url, payload, secret, doFetch),
+    deliver: (url, payload, secret) => deliverWebhook(url, payload, secret, delivery),
   };
 }

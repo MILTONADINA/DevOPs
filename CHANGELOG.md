@@ -18,6 +18,16 @@ Versions follow [Semantic Versioning](https://semver.org/).
 ### Security
 
 - `mcp-configs/universal/playwright.json` now pins `@playwright/mcp@0.0.83` and its baseline entry is removed. `@miltonadina/lyrie-mcp`, `stratum-mcp`, `pentagi-mcp`, `pentest-ai-mcp` and `shannon-mcp` are not published on npm (E404), so they stay baselined until published or removed (quality plan O-10). A test now locks the baseline to the scan's unpinned findings. Closes #322.
+- Webhook delivery now resolves the customer hostname once, refuses it if any returned address is not public (numeric
+  check, including IPv4-mapped, NAT64, 6to4, Teredo and CGNAT), and connects to the vetted address with Host and TLS name
+  unchanged, closing the documented DNS-rebinding gap. Redirects are never followed. Retries are bounded and jittered,
+  honour a clamped `Retry-After`, and skip 4xx; an undelivered event leaves a body-free local dead-letter record
+  (`specs/security/webhook-egress.md`). BREAKING (runtime-internal): `createDefaultWebhookRetrier` now takes
+  `(transport?, onUndelivered?, lookup?, onError?)` instead of `(doFetch?, onUndelivered?)`, and `DeliveryFetch` is
+  removed; the package is private and nothing else called it. `scripts/check-enforcement.mjs` now reports
+  mechanical=122 for its five REQs. When a hostname has several public addresses, delivery now tries each in turn
+  (IPv6 and IPv4 alternating) after a refused, unreachable or timed-out connect, so an unreachable first address no
+  longer fails the delivery; it never retries another address once connected or after a response.
 - A new `agent-config` job in `security-scan.yml` runs `scripts/check-agent-config.mjs` on every pull
   request. It fails on a broad permission or `bypassPermissions` in `.claude/settings.json`, an
   unpinned MCP server under `mcp-configs/`, or a hook that does not run a file under `hooks/`, unless
