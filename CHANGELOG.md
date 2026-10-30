@@ -25,7 +25,9 @@ Versions follow [Semantic Versioning](https://semver.org/).
   (`specs/security/webhook-egress.md`). BREAKING (runtime-internal): `createDefaultWebhookRetrier` now takes
   `(transport?, onUndelivered?, lookup?, onError?)` instead of `(doFetch?, onUndelivered?)`, and `DeliveryFetch` is
   removed; the package is private and nothing else called it. `scripts/check-enforcement.mjs` now reports
-  mechanical=122 for its five REQs.
+  mechanical=122 for its five REQs. When a hostname has several public addresses, delivery now tries each in turn
+  (IPv6 and IPv4 alternating) after a refused, unreachable or timed-out connect, so an unreachable first address no
+  longer fails the delivery; it never retries another address once connected or after a response.
 - A new `agent-config` job in `security-scan.yml` runs `scripts/check-agent-config.mjs` on every pull
   request. It fails on a broad permission or `bypassPermissions` in `.claude/settings.json`, an
   unpinned MCP server under `mcp-configs/`, or a hook that does not run a file under `hooks/`, unless

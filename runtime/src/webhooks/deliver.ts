@@ -7,8 +7,10 @@
  *  1. isSafeWebhookUrl (URL layer, defense in depth): scheme, no userinfo, no localhost, and literal
  *     private IPs (numeric check via isPublicAddress, so every IPv6 encoding of an IPv4 is covered).
  *  2. Per attempt, the hostname is resolved ONCE, EVERY returned address must be public (a mixed
- *     public+private answer is refused), and the transport connects to exactly that vetted address
- *     (Host/SNI stay the hostname), so a DNS-rebinding answer cannot change between vet and connect.
+ *     public+private answer is refused), and the transport connects only to those vetted addresses, one at a
+ *     time in order (families interleaved; the next is tried only after a pre-connect failure such as ECONNREFUSED,
+ *     EHOSTUNREACH, ENETUNREACH or a connect timeout; Host/SNI stay the hostname), so a DNS-rebinding answer cannot
+ *     change between vet and connect.
  * Redirects are never followed (the transport returns a 3xx as-is, which is a non-retryable failure).
  *
  * One attempt per call; retries and dead-lettering live in retry.ts. Resolver and transport are
@@ -61,6 +63,30 @@ export interface TransportRequest {
   headers: Record<string, string>;
   body: string;
   signal: AbortSignal;
+  /** Give up on the TCP connect after this many ms (rejects ETIMEDOUT, tagged `connectStage`). Unset: no connect-specific deadline. */
+  connectTimeoutMs?: number;
+}
+
+/** Interleave the vetted answer by family (first family seen leads), keeping lookup order within a family; drops duplicates. */
+function interleaveByFamily(list: ResolvedAddress[]): ResolvedAddress[] {
+  const seen = new Set<string>();
+  const uniq = list.filter((a) => (seen.has(a.address) ? false : (seen.add(a.address), true)));
+  const first = uniq[0]?.family;
+  const lead = uniq.filter((a) => a.family === first);
+  const rest = uniq.filter((a) => a.family !== first);
+  const out: ResolvedAddress[] = [];
+  for (let i = 0; i < Math.max(lead.length, rest.length); i++) {
+    if (i < lead.length) out.push(lead[i] as ResolvedAddress);
+    if (i < rest.length) out.push(rest[i] as ResolvedAddress);
+  }
+  return out;
+}
+
+const FAILOVER_CODES = new Set(["ECONNREFUSED", "EHOSTUNREACH", "ENETUNREACH", "ETIMEDOUT"]);
+/** True only for a failure before the TCP connect completed, with a code that another address could cure. */
+function isConnectFailover(e: unknown): boolean {
+  const x = e as { connectStage?: unknown; code?: unknown } | null;
+  return x?.connectStage === true && typeof x.code === "string" && FAILOVER_CODES.has(x.code);
 }
 
 export type Transport = (req: TransportRequest) => Promise<{ status: number; retryAfter?: string }>;
@@ -122,7 +148,7 @@ function raceAbort<T>(p: Promise<T>, signal: AbortSignal): Promise<T> {
  * @param payload - the raw JSON body to send (and sign).
  * @param secret - the org's webhook secret.
  * @param deps - resolver + transport (production: productionLookup + createHttpTransport()).
- * @param timeoutMs - ONE budget per attempt shared by resolve, connect and response headers (default 10s; the body is not awaited); slow DNS shortens the rest by design, and a timeout is retryable.
+ * @param timeoutMs - ONE budget per attempt shared by resolve, connect and response headers (default 10s; the body is not awaited); slow DNS shortens the rest by design, and a timeout is retryable. A host with several addresses gives each connect attempt remaining/addressesLeft of that budget.
  */
 export async function deliverWebhook(url: string, payload: string, secret: string, deps: DeliveryDeps, timeoutMs = 10_000): Promise<DeliveryResult> {
   const safe = isSafeWebhookUrl(url);
@@ -131,6 +157,7 @@ export async function deliverWebhook(url: string, payload: string, secret: strin
   const hostname = u.hostname.replace(/^\[|\]$/g, "");
 
   const controller = new AbortController();
+  const started = Date.now();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     let addresses: ResolvedAddress[];
@@ -142,23 +169,36 @@ export async function deliverWebhook(url: string, payload: string, secret: strin
     }
     if (addresses.length === 0) return refuse("hostname did not resolve to any address");
     if (!addresses.every((a) => isPublicAddress(a.address))) return refuse("hostname resolves to a non-public address");
-    const target = addresses[0] as ResolvedAddress;
+    const ordered = interleaveByFamily(addresses);
 
     const secure = u.protocol === "https:";
-    const r = await raceAbort(
-      deps.transport({
-        hostname,
-        address: target.address,
-        family: target.family,
-        port: u.port !== "" ? Number(u.port) : secure ? 443 : 80,
-        path: `${u.pathname}${u.search}`,
-        secure,
-        headers: { "content-type": "application/json", [SIGNATURE_HEADER]: signWebhook(payload, secret) },
-        body: payload,
-        signal: controller.signal,
-      }),
-      controller.signal,
-    );
+    const headers = { "content-type": "application/json", [SIGNATURE_HEADER]: signWebhook(payload, secret) };
+    let r: { status: number; retryAfter?: string } | undefined;
+    for (let i = 0; r === undefined; i++) {
+      const target = ordered[i] as ResolvedAddress;
+      const left = ordered.length - i;
+      const remaining = timeoutMs - (Date.now() - started);
+      try {
+        r = await raceAbort(
+          deps.transport({
+            hostname,
+            address: target.address,
+            family: target.family,
+            port: u.port !== "" ? Number(u.port) : secure ? 443 : 80,
+            path: `${u.pathname}${u.search}`,
+            secure,
+            headers,
+            body: payload,
+            signal: controller.signal,
+            connectTimeoutMs: Math.max(1, Math.floor(remaining / left)),
+          }),
+          controller.signal,
+        );
+      } catch (e) {
+        // Fail over only on a pre-connect failure, never after the abort, and only while another address is left.
+        if (controller.signal.aborted || i + 1 >= ordered.length || !isConnectFailover(e)) throw e;
+      }
+    }
     const s = r.status;
     if (s >= 200 && s < 300) return { delivered: true, status: s, retryable: false };
     const retryAfterMs = parseRetryAfter(r.retryAfter, (deps.now ?? Date.now)());

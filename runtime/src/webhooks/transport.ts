@@ -43,7 +43,25 @@ export function createHttpTransport(): Transport {
           res.destroy();
         },
       );
-      r.once("error", reject);
+      let connected = false;
+      let connectTimer: NodeJS.Timeout | undefined;
+      r.once("socket", (sock) => {
+        sock.once("connect", () => {
+          connected = true;
+          if (connectTimer !== undefined) clearTimeout(connectTimer);
+        });
+        if (req.connectTimeoutMs !== undefined && !sock.connecting) connected = true;
+        else if (req.connectTimeoutMs !== undefined) {
+          // The OS SYN timeout can outlast the attempt budget: give up on this address early so the caller can try the next.
+          connectTimer = setTimeout(() => sock.destroy(Object.assign(new Error("connect timed out"), { code: "ETIMEDOUT" })), req.connectTimeoutMs);
+          sock.once("close", () => clearTimeout(connectTimer));
+        }
+      });
+      r.once("error", (e) => {
+        if (connectTimer !== undefined) clearTimeout(connectTimer);
+        // Tag a failure that happened before the TCP connect completed: nothing was sent, so another address is safe to try.
+        reject(Object.assign(e, { connectStage: !connected }));
+      });
       r.end(req.body);
     });
 }

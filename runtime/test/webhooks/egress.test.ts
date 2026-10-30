@@ -159,6 +159,118 @@ describe("deliverWebhook: IPv6 literal URL", () => {
   });
 });
 
+describe("deliverWebhook: failover across vetted addresses", () => {
+  const V6A = "2606:4700::1", V6B = "2606:4700::2", V4A = "93.184.216.34", V4B = "93.184.216.35";
+  const a = (address: string) => ({ address, family: address.includes(":") ? 6 : 4 });
+  const connectErr = (code: string, connectStage = true) => Object.assign(new Error(code), { code, connectStage });
+  function multi(answer: string[], respond: (req: TransportRequest, i: number) => Promise<{ status: number }>) {
+    const requests: TransportRequest[] = [];
+    const deps: DeliveryDeps = {
+      lookup: () => Promise.resolve(answer.map(a)),
+      transport: (req) => {
+        requests.push(req);
+        return respond(req, requests.length - 1);
+      },
+    };
+    return { deps, requests };
+  }
+  test("first address connect-refused, second answers: delivered, tried v6 then v4", async () => {
+    const m = multi([V6A, V4A], (_r, i) => (i === 0 ? Promise.reject(connectErr("ECONNREFUSED")) : Promise.resolve({ status: 200 })));
+    const r = await deliverWebhook("https://hook.example/x", "{}", SECRET, m.deps);
+    expect(r).toMatchObject({ delivered: true, status: 200 });
+    expect(m.requests.map((q) => q.address)).toEqual([V6A, V4A]);
+    expect(m.requests.every((q) => q.hostname === "hook.example")).toBe(true);
+  });
+  test("families are interleaved in verbatim order, duplicates dropped, all refused -> retryable network", async () => {
+    const m = multi([V6A, V6B, V4A, V4B, V6A], () => Promise.reject(connectErr("ECONNREFUSED")));
+    const r = await deliverWebhook("https://hook.example/x", "{}", SECRET, m.deps);
+    expect(m.requests.map((q) => q.address)).toEqual([V6A, V4A, V6B, V4B]);
+    expect(r).toMatchObject({ delivered: false, retryable: true, reasonClass: "network", reason: "delivery failed" });
+    expect(r.reason).not.toContain(V6A);
+  });
+  test.each(["EHOSTUNREACH", "ENETUNREACH", "ETIMEDOUT"])("connect-stage %s fails over", async (code) => {
+    const m = multi([V6A, V4A], (_r, i) => (i === 0 ? Promise.reject(connectErr(code)) : Promise.resolve({ status: 204 })));
+    expect((await deliverWebhook("https://hook.example/x", "{}", SECRET, m.deps)).delivered).toBe(true);
+    expect(m.requests).toHaveLength(2);
+  });
+  test("an error without the connect-stage tag (ECONNRESET) does not fail over", async () => {
+    const m = multi([V6A, V4A], () => Promise.reject(connectErr("ECONNRESET", false)));
+    const r = await deliverWebhook("https://hook.example/x", "{}", SECRET, m.deps);
+    expect(m.requests).toHaveLength(1);
+    expect(r).toMatchObject({ delivered: false, reasonClass: "network", retryable: true });
+  });
+  test("a connect-tagged but non-allowlisted code (EPROTO) does not fail over", async () => {
+    const m = multi([V6A, V4A], () => Promise.reject(connectErr("EPROTO")));
+    await deliverWebhook("https://hook.example/x", "{}", SECRET, m.deps);
+    expect(m.requests).toHaveLength(1);
+  });
+  test("a first response, even a 500, ends the attempt", async () => {
+    const m = multi([V6A, V4A], () => Promise.resolve({ status: 500 }));
+    const r = await deliverWebhook("https://hook.example/x", "{}", SECRET, m.deps);
+    expect(m.requests).toHaveLength(1);
+    expect(r).toMatchObject({ reasonClass: "http_5xx", retryable: true });
+  });
+  test("a hanging first transport times out the whole attempt and the second address is never tried", async () => {
+    const m = multi([V6A, V4A], () => new Promise(() => undefined));
+    const r = await deliverWebhook("https://hook.example/x", "{}", SECRET, m.deps, 60);
+    expect(r).toMatchObject({ delivered: false, reasonClass: "timeout", retryable: true });
+    expect(m.requests).toHaveLength(1);
+  });
+  test("each address gets a connect deadline of the remaining budget divided by the addresses left", async () => {
+    const m = multi([V6A, V4A], (_r, i) => (i === 0 ? Promise.reject(connectErr("ETIMEDOUT")) : Promise.resolve({ status: 200 })));
+    await deliverWebhook("https://hook.example/x", "{}", SECRET, m.deps, 10_000);
+    const [first, second] = m.requests.map((q) => q.connectTimeoutMs!);
+    expect(first).toBeGreaterThan(4000);
+    expect(first).toBeLessThanOrEqual(5000);
+    expect(second).toBeGreaterThan(first!);
+    expect(second).toBeLessThanOrEqual(10_000);
+  });
+  test("only vetted addresses reach the transport; a mixed answer still connects nowhere", async () => {
+    const m = multi([V6A, "10.0.0.5", V4A], () => Promise.resolve({ status: 200 }));
+    const r = await deliverWebhook("https://hook.example/x", "{}", SECRET, m.deps);
+    expect(r.reasonClass).toBe("ssrf_blocked");
+    expect(m.requests).toHaveLength(0);
+  });
+  test("an IP literal is a single attempt", async () => {
+    const m = multi([V4A], () => Promise.reject(connectErr("ECONNREFUSED")));
+    const r = await deliverWebhook("https://[2600::1]/x", "{}", SECRET, m.deps);
+    expect(m.requests).toHaveLength(1);
+    expect(r.reasonClass).toBe("network");
+  });
+});
+
+describe("real transport: connect-stage tagging", () => {
+  test("a closed loopback port rejects ECONNREFUSED tagged connect-stage", async () => {
+    const s = createServer();
+    await new Promise<void>((res) => s.listen(0, "127.0.0.1", res));
+    const port = (s.address() as { port: number }).port;
+    await new Promise<void>((res) => s.close(() => res()));
+    const err = await createHttpTransport()({
+      hostname: "hook.test", address: "127.0.0.1", family: 4, port, path: "/", secure: false, headers: {}, body: "{}", signal: new AbortController().signal,
+    }).then(() => null, (e: unknown) => e as NodeJS.ErrnoException & { connectStage?: boolean });
+    expect(err?.code).toBe("ECONNREFUSED");
+    expect(err?.connectStage).toBe(true);
+  });
+});
+
+describe("POST /v1/webhooks/test failover", () => {
+  test("delivers when the first address refuses the connection", async () => {
+    const { createSupabaseWebhookDeps } = await import("../../src/proxy/routes/webhooks");
+    const tried: string[] = [];
+    const client = { from: () => ({ select: () => ({ eq: () => ({ limit: () => Promise.resolve({ data: [{ webhook_url: "https://api.customer.com/cq", webhook_secret: "whsec_s" }], error: null }) }) }) }) };
+    const deps = createSupabaseWebhookDeps(client as never, {
+      lookup: () => Promise.resolve([{ address: "2606:4700::1", family: 6 }, { address: "93.184.216.34", family: 4 }]),
+      transport: (req) => {
+        tried.push(req.address);
+        return tried.length === 1 ? Promise.reject(Object.assign(new Error("x"), { code: "ECONNREFUSED", connectStage: true })) : Promise.resolve({ status: 200 });
+      },
+    });
+    const r = await deps.deliver("https://api.customer.com/cq", "{}", "whsec_s");
+    expect(r).toMatchObject({ delivered: true });
+    expect(tried).toEqual(["2606:4700::1", "93.184.216.34"]);
+  });
+});
+
 describe("real transport (loopback fixture, no OS DNS)", () => {
   let server: Server | undefined;
   afterEach(() => {
@@ -239,6 +351,7 @@ describe("real transport (loopback fixture, no OS DNS)", () => {
     );
     expect(err).not.toBeNull();
     expect(err!.code).not.toBe("ERR_INVALID_ARG_VALUE");
+    expect((err as { connectStage?: boolean }).connectStage).not.toBe(true); // post-connect failure: never fail over
   });
   test("an IPv6-literal host keeps its brackets in the Host header", async () => {
     let host = "";
