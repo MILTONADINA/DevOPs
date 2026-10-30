@@ -185,7 +185,7 @@ Sample session-end payload. `estimated_savings_usd` is an estimated USD cost dif
 
 ## Delivery and Retries
 
-- Webhook delivery timeout: 10 seconds per attempt (covers name resolution, connect and response)
+- Webhook delivery timeout: 10 seconds per attempt (covers name resolution, connect and response headers; the response body is not awaited)
 - CQ retries a network error, a timeout, a 5xx or a 429 with exponential backoff: 5s, 30s, 5min, 30min, 2hr. Each delay is jittered by up to 20% either way, and a valid `Retry-After` header on a 429 or 5xx replaces it (capped at 2hr). Retries stop after 3 hours in total.
 - Other 4xx answers (400, 401, 403, 404, 410, ...) and redirects are not retried. Redirects are never followed.
 - Before connecting, CQ resolves your hostname and refuses to deliver if any address is private, loopback, link-local or otherwise non-public; it then connects to the address it checked. Use a public HTTPS endpoint.

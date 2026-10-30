@@ -9,7 +9,7 @@ import { request as httpsRequest } from "node:https";
 import { isIP } from "node:net";
 import type { Transport } from "./deliver";
 
-/** Build the transport; the response body is drained and discarded, only status + Retry-After are read. */
+/** Build the transport; the attempt is judged on the status line and headers (status + Retry-After). The body is never read: the response is destroyed once they arrive, so a slow or endless body cannot hold or fail a delivery. */
 export function createHttpTransport(): Transport {
   return (req) =>
     new Promise((resolve, reject) => {
@@ -38,10 +38,9 @@ export function createHttpTransport(): Transport {
         } as unknown as Parameters<typeof httpRequest>[0],
         (res) => {
           const ra = res.headers["retry-after"];
-          res.resume();
-          const done = (): void => resolve({ status: res.statusCode ?? 0, ...(typeof ra === "string" ? { retryAfter: ra } : {}) });
-          res.once("end", done);
-          res.once("error", reject);
+          resolve({ status: res.statusCode ?? 0, ...(typeof ra === "string" ? { retryAfter: ra } : {}) });
+          // agent:false means no pooled socket to return; drop the connection instead of reading the body.
+          res.destroy();
         },
       );
       r.once("error", reject);

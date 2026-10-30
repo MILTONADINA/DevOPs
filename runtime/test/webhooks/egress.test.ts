@@ -200,6 +200,29 @@ describe("real transport (loopback fixture, no OS DNS)", () => {
     expect(f.seen[0]!.url).toBe("/cq?a=b");
     expect(f.seen[0]!.headers[SIGNATURE_HEADER]).toBe("sha256=abc");
   });
+  test("a 2xx whose body never ends is judged on the status line and headers, not the body", async () => {
+    server = createServer((req, res) => {
+      req.resume();
+      req.on("end", () => {
+        res.writeHead(200);
+        res.write("partial");
+      });
+    });
+    await new Promise<void>((resolve) => server!.listen(0, "127.0.0.1", resolve));
+    const addr = server.address();
+    if (!addr || typeof addr === "string") throw new Error("no port");
+    const t0 = Date.now();
+    const r = await deliverWebhook(
+      `http://hook.test:${addr.port}/cq`,
+      "{}",
+      SECRET,
+      { lookup: async () => PUB, transport: (q) => createHttpTransport()({ ...q, address: "127.0.0.1" }) },
+      500,
+    );
+    expect(r).toMatchObject({ delivered: true, status: 200 });
+    expect(Date.now() - t0).toBeLessThan(500);
+    server.closeAllConnections();
+  });
   test.each([302, 307, 308])("a %i redirect to an internal target is not followed (exactly one request)", async (code) => {
     const f = await start(() => ({ status: code, headers: { location: "http://127.0.0.1:1/internal" } }));
     const r = await createHttpTransport()(base(f.port));
