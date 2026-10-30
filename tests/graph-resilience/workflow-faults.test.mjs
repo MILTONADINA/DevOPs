@@ -9,16 +9,16 @@ const ROOT = path.resolve(import.meta.dirname, '..', '..');
 const source = readFileSync(path.join(ROOT, '.claude', 'workflows', 'sprint-cycle.js'), 'utf8')
   .replace('export const meta =', 'const meta =');
 
-// Default harness: the 'changed-files' lister returns an empty list and a reviewer that lists no
-// files, so the pre-existing cases stay about their own subject. The
+// Default harness: the 'changed-files' lister returns one synthetic changed file and a reviewer that lists
+// the same file (an empty diff is INDETERMINATE, so it is never the default), so the pre-existing cases stay about their own subject. The
 // filesSeen cases below pass strictReviewer to see the raw reviewer result.
 async function run(agent, args = {}, log = () => {}) {
-  const { strictReviewer, changedFiles = [], ...rest } = args;
+  const { strictReviewer, changedFiles = ['src/a.js'], ...rest } = args;
   const wrapped = async (prompt, options) => {
     if (options.label === 'changed-files') return changedFiles instanceof Error ? {} : { files: typeof changedFiles === 'function' ? changedFiles() : changedFiles };
     const r = await agent(prompt, options);
     if (strictReviewer) return r;
-    return options.label === 'reviewer' && r && !('filesSeen' in r) ? { ...r, filesSeen: [] } : r;
+    return options.label === 'reviewer' && r && !('filesSeen' in r) ? { ...r, filesSeen: ['src/a.js'] } : r;
   };
   const execute = new AsyncFunction('args', 'agent', 'log', 'phase', source);
   return execute({ backlogItem: 'specs/graph/R-resilience.md', cycleId: 'c7', ...rest }, wrapped, log, () => {});
@@ -1129,4 +1129,86 @@ test('changed-files lister runs at low effort on sonnet', async () => {
   }, () => {}, () => {});
   assert.equal(opts.model, 'sonnet');
   assert.equal(opts.effort, 'low');
+});
+
+// --- Empty-diff reviewer gate (#326) -----------------------------------------
+// A cycle whose Build produced no change has nothing to review: an empty lister
+// result plus an empty filesSeen used to match vacuously and read as reviewed.
+
+const NO_CHANGE = /no changed files|Build produced no change/;
+
+async function runEmpty(reviewer, changed, { plan = PLAN, all = ALL_PASS, logs = [] } = {}) {
+  return run(async (_, o) => (o.label === 'reviewer' ? reviewer : all[o.label]),
+    { plan, strictReviewer: true, changedFiles: changed }, (m) => logs.push(String(m)));
+}
+
+function assertNotReady(r, reason = NO_CHANGE) {
+  assert.equal(r.cycleOutcome.outcome, 'INDETERMINATE');
+  assert.equal(r.cycleOutcome.readyForPR, false);
+  if (reason) assert.match(r.cycleOutcome.indeterminateReasons.join(' '), reason);
+}
+
+test('empty diff: empty lister and empty filesSeen is INDETERMINATE on every surface', async () => {
+  const logs = [];
+  const r = await runEmpty({ approved: true, filesSeen: [] }, [], { logs });
+  assertNotReady(r);
+  assert.ok(logs.some((l) => NO_CHANGE.test(l)), logs.join('\n'));
+});
+
+test('empty diff: an absent filesSeen is INDETERMINATE', async () => {
+  assertNotReady(await runEmpty({ approved: true }, []), null);
+});
+
+test('empty diff: a reviewer inventing a file is INDETERMINATE (unknown)', async () => {
+  assertNotReady(await runEmpty({ approved: true, filesSeen: ['src/a.js'] }, []), null);
+});
+
+for (const [name, blank] of [['empty string', ''], ['dot-slash', './'], ['space', ' ']]) {
+  test(`empty diff: a lister and reviewer that both list only a blank entry (${name}) are INDETERMINATE`, async () => {
+    assertNotReady(await runEmpty({ approved: true, filesSeen: [blank] }, [blank]));
+  });
+}
+
+test('empty diff: a blank entry mixed with a real file does not let the reviewer echo the blank', async () => {
+  const ok = await runEmpty({ approved: true, filesSeen: ['src/a.js'] }, ['', 'src/a.js']);
+  assert.equal(ok.cycleOutcome.readyForPR, true);
+  const bad = await runEmpty({ approved: true, filesSeen: [''] }, ['', 'src/a.js']);
+  assert.equal(bad.cycleOutcome.readyForPR, false);
+});
+
+test('empty diff: a coder self-report of changed files never substitutes for git', async () => {
+  const all = { ...ALL_PASS, 'coder:T1': { task_id: 'T1', summary: 'done', files_changed: ['src/a.js'] } };
+  assertNotReady(await runEmpty({ approved: true, filesSeen: [] }, [], { all }));
+});
+
+test('empty diff: no plan field declares a no-change task that unlocks readiness', async () => {
+  for (const task of [
+    { id: 'T1', description: 'one task', no_change: true },
+    { id: 'T1', description: 'one task', files_likely_touched: [] },
+    { id: 'T1', description: 'no change needed' },
+  ]) {
+    assertNotReady(await runEmpty({ approved: true, filesSeen: [] }, [], { plan: { tasks: [task] } }));
+  }
+});
+
+test('empty diff: a validator reason of "nothing to change" does not unlock readiness', async () => {
+  const all = { ...ALL_PASS, validator: { signed_off: true, outcome: 'PASS', reason: 'nothing to change' } };
+  assertNotReady(await runEmpty({ approved: true, filesSeen: [] }, [], { all }));
+});
+
+test('empty diff: a non-array lister result stays INDETERMINATE and a null lister stays BLOCKED_BY_ENVIRONMENT', async () => {
+  assertNotReady(await run(async (_, o) => (o.label === 'reviewer' ? { approved: true, filesSeen: [] } : ALL_PASS[o.label]),
+    { plan: PLAN, strictReviewer: true, changedFiles: new Error('git unavailable') }), null);
+  const execute = new AsyncFunction('args', 'agent', 'log', 'phase', source);
+  await assert.rejects(execute({ backlogItem: 'x', cycleId: 'c7', plan: PLAN }, async (_, o) => {
+    if (o.label === 'changed-files') return null;
+    return o.label === 'reviewer' ? { approved: true, filesSeen: [] } : ALL_PASS[o.label];
+  }, () => {}, () => {}), /BLOCKED_BY_ENVIRONMENT:.*"stage":"changed-files"/);
+});
+
+test('empty diff (positive control): one real changed file seen by the reviewer is ready and PASS', async () => {
+  const r = await runEmpty({ approved: true, filesSeen: ['src/a.js'] }, ['src/a.js']);
+  assert.equal(r.cycleOutcome.readyForPR, true);
+  assert.equal(r.cycleOutcome.outcome, 'PASS');
+  assert.deepEqual(r.cycleOutcome.indeterminateReasons, []);
 });
