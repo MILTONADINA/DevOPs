@@ -8,6 +8,13 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Runtime tests for warm-to-cold promotion (`runtime/test/memory/promote-scope.test.ts`, 18 tests): org,
+  session and project scope reach every graph write (an explicit null scope is passed through, not dropped),
+  per-fact entity id resolution, content-free vector records, a missing embedding dropping only its own fact,
+  and the `promoteFacts` orchestrator's gating. `memory/promote.ts` branch coverage rises from 57% to 95%.
+
 ### Fixed
 
 - The `sprint-cycle.js` reviewer gate no longer passes when Build produced no change: an empty
