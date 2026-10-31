@@ -17,6 +17,14 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Security
 
+- The Semgrep job now downloads the pinned `semgrep-rules` commit as one tarball from `codeload.github.com`
+  instead of about 711 unauthenticated requests to `raw.githubusercontent.com`, so a 429 burst can no longer fail
+  the required check; 429 and 5xx answers are retried with exponential backoff. Only the pinned paths are
+  extracted and each is still checked against its sha256; the run fails closed on a digest mismatch, a missing
+  file, an unpinned file, a corrupt archive or any unsafe tar entry (traversal, absolute or backslash path, link,
+  device, foreign top-level directory). `.workflow/network-allowlist.txt` swaps `raw.githubusercontent.com` for
+  `codeload.github.com`. `docs/SECURITY.md` now documents reconciling the file list when moving the pin
+  (`specs/security/ci-semgrep-scan.md` REQ-6, REQ-7, AC-6). Closes #327.
 - `mcp-configs/universal/playwright.json` now pins `@playwright/mcp@0.0.83` and its baseline entry is removed. `@miltonadina/lyrie-mcp`, `stratum-mcp`, `pentagi-mcp`, `pentest-ai-mcp` and `shannon-mcp` are not published on npm (E404), so they stay baselined until published or removed (quality plan O-10). A test now locks the baseline to the scan's unpinned findings. Closes #322.
 - Webhook delivery now resolves the customer hostname once, refuses it if any returned address is not public (numeric
   check, including IPv4-mapped, NAT64, 6to4, Teredo and CGNAT), and connects to the vetted address with Host and TLS name

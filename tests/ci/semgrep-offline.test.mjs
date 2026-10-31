@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import { gzipSync } from 'node:zlib';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -37,25 +38,67 @@ function verify(dir, pins) {
   return spawnSync(process.execPath, [TOOL, 'verify', rules, pinFile], { encoding: 'utf8', timeout: 10_000 });
 }
 
-// Stubbed fetch: serves `${commit}/${path}` from a table, records nothing on the network.
-function runWithStub(dir, args, table, { redirectTo } = {}) {
+// Minimal ustar writer for synthetic tarballs (the tool under test parses real codeload archives).
+function tarEntry(name, body = '', { type = '0', linkname = '' } = {}) {
+  const data = Buffer.from(body);
+  const header = Buffer.alloc(512);
+  header.write(name, 0, 100, 'utf8');
+  header.write('0000644\0', 100);
+  header.write('0000000\0', 108);
+  header.write('0000000\0', 116);
+  header.write(`${data.length.toString(8).padStart(11, '0')}\0`, 124);
+  header.write('00000000000\0', 136);
+  header.write('        ', 148);
+  header.write(type, 156);
+  header.write(linkname, 157, 100, 'utf8');
+  header.write('ustar\0' + '00', 257);
+  let sum = 0;
+  for (const byte of header) sum += byte;
+  header.write(`${sum.toString(8).padStart(6, '0')}\0 `, 148);
+  const pad = Buffer.alloc((512 - (data.length % 512)) % 512);
+  return Buffer.concat([header, data, pad]);
+}
+const tarball = (entries) => gzipSync(Buffer.concat([...entries, Buffer.alloc(1024)]));
+const TOP = 'semgrep-semgrep-rules-aaaaaaa';
+// A codeload-shaped archive: a global pax header, one top-level directory, pinned files and unrelated repository files.
+const repoTarball = (files, extra = []) => tarball([
+  tarEntry('pax_global_header', `52 comment=${'a'.repeat(40)}\n`, { type: 'g' }),
+  tarEntry(`${TOP}/`, '', { type: '5' }),
+  ...Object.entries(files).map(([file, text]) => tarEntry(`${TOP}/${file}`, text)),
+  tarEntry(`${TOP}/README.md`, '# not a rule\n'),
+  ...extra,
+]);
+
+// Stubbed fetch: serves a URL from a table of Buffers, logs every request, never touches the network.
+// status: { [url]: [code, ...] } makes the first requests to that url answer with those codes.
+function runWithStub(dir, args, table, { redirectTo, status = {} } = {}) {
   const stub = path.join(dir, 'stub-fetch.mjs');
+  const log = path.join(dir, 'requests.log');
+  const encoded = Object.fromEntries(Object.entries(table).map(([key, value]) => [key, Buffer.from(value).toString('base64')]));
   writeFileSync(stub, [
-    `const table = ${JSON.stringify(table)};`,
+    "import { appendFileSync } from 'node:fs';",
+    `const table = ${JSON.stringify(encoded)};`,
+    `const status = ${JSON.stringify(status)};`,
+    'const seen = {};',
     'globalThis.fetch = async (url) => {',
     '  const key = String(url);',
-    '  const body = table[key];',
-    '  const response = body === undefined ? new Response("not found", { status: 404 }) : new Response(body);',
+    `  appendFileSync(${JSON.stringify(log)}, key + "\\n");`,
+    '  seen[key] = (seen[key] ?? 0) + 1;',
+    '  const code = status[key]?.[seen[key] - 1];',
+    '  const body = table[key] === undefined ? undefined : Buffer.from(table[key], "base64");',
+    '  const response = code ? new Response("busy", { status: code }) : body === undefined ? new Response("not found", { status: 404 }) : new Response(body);',
     `  Object.defineProperty(response, "url", { value: ${redirectTo ? JSON.stringify(redirectTo) : 'key'} });`,
     '  return response;',
     '};',
   ].join('\n'));
-  return spawnSync(process.execPath, ['--import', stub, TOOL, ...args], { encoding: 'utf8', timeout: 10_000 });
+  const result = spawnSync(process.execPath, ['--import', stub, TOOL, ...args], { encoding: 'utf8', timeout: 20_000 });
+  result.requests = existsSync(log) ? readFileSync(log, 'utf8').split('\n').filter(Boolean) : [];
+  return result;
 }
 
 
 const COMMIT = 'a'.repeat(40);
-const rawUrl = (file, commit = COMMIT) => `https://raw.githubusercontent.com/semgrep/semgrep-rules/${commit}/${file}`;
+const tarUrl = (commit = COMMIT) => `https://codeload.github.com/semgrep/semgrep-rules/tar.gz/${commit}`;
 const pins = (files, commit = COMMIT) => ({ source: { repository: 'semgrep/semgrep-rules', commit }, files });
 const entry = (file, text = BODY) => ({ path: file, sha256: sha(text) });
 const BODY = 'rules:\n- id: toy.rule\n  pattern: toy($X)\n  message: toy\n  languages: [python]\n  severity: INFO\n';
@@ -174,40 +217,99 @@ test('AC-5 rules are fetched and verified in a step before the scan; the pull st
 });
 
 
-test('AC-6 pins are fetched from the immutable commit url and verified (fetch stubbed, no network)', () => withDir((dir) => {
+test('AC-6 fetch downloads ONE commit tarball (not one request per file) and extracts only the pinned files (stubbed)', () => withDir((dir) => {
   const pinFile = path.join(dir, 'pins.json');
   const files = ['generic/secrets/a.yaml', 'javascript/lang/b.yml'];
   writeFileSync(pinFile, JSON.stringify(pins(files.map((f) => entry(f)))));
-  const table = Object.fromEntries(files.map((f) => [rawUrl(f), BODY]));
   const out = path.join(dir, 'fetched');
-  const r = runWithStub(dir, ['fetch', out, pinFile], table);
+  const r = runWithStub(dir, ['fetch', out, pinFile], { [tarUrl()]: repoTarball(Object.fromEntries([...files, 'other/unpinned.yaml'].map((f) => [f, BODY]))) });
   assert.equal(r.status, 0, r.stderr);
+  assert.deepEqual(r.requests, [tarUrl()], 'exactly one request, to codeload at the pinned commit');
   for (const f of files) assert.equal(readFileSync(path.join(out, f), 'utf8'), BODY);
+  assert.equal(existsSync(path.join(out, 'other', 'unpinned.yaml')), false, 'unpinned repository files are not extracted');
+  assert.equal(existsSync(path.join(out, 'README.md')), false);
 }));
 
-test('AC-6 fetch fails closed when the served bytes differ from the pin (fetch stubbed)', () => withDir((dir) => {
+test('AC-6 fetch fails closed when the tarball bytes differ from the pin (stubbed)', () => withDir((dir) => {
   const pinFile = path.join(dir, 'pins.json');
   writeFileSync(pinFile, JSON.stringify(pins([entry('generic/secrets/a.yaml')])));
-  const r = runWithStub(dir, ['fetch', path.join(dir, 'fetched'), pinFile], { [rawUrl('generic/secrets/a.yaml')]: `${BODY}# drifted\n` });
+  const r = runWithStub(dir, ['fetch', path.join(dir, 'fetched'), pinFile], { [tarUrl()]: repoTarball({ 'generic/secrets/a.yaml': `${BODY}# drifted\n` }) });
   assert.notEqual(r.status, 0);
   assert.match(r.stderr, /digest mismatch.*generic\/secrets\/a\.yaml/);
 }));
 
-test('AC-6 fetch fails on an HTTP error and never fetches a branch url (fetch stubbed)', () => withDir((dir) => {
+test('AC-6 fetch fails when a pinned file is missing from the tarball and names it (stubbed)', () => withDir((dir) => {
   const pinFile = path.join(dir, 'pins.json');
-  writeFileSync(pinFile, JSON.stringify(pins([entry('a.yaml')])));
-  const r = runWithStub(dir, ['fetch', path.join(dir, 'fetched'), pinFile], { 'https://raw.githubusercontent.com/semgrep/semgrep-rules/main/a.yaml': BODY });
+  writeFileSync(pinFile, JSON.stringify(pins([entry('a.yaml'), entry('gone/b.yaml')])));
+  const r = runWithStub(dir, ['fetch', path.join(dir, 'fetched'), pinFile], { [tarUrl()]: repoTarball({ 'a.yaml': BODY }) });
   assert.notEqual(r.status, 0);
-  assert.match(r.stderr, /HTTP 404/);
+  assert.match(r.stderr, /missing rule file.*gone\/b\.yaml/);
 }));
 
-test('AC-6 a pre-existing unpinned file in the fetch directory fails the verification (fetch stubbed)', () => withDir((dir) => {
+test('AC-6 fetch fails on an HTTP 404 without retry and retries a 429 (stubbed)', () => withDir((dir) => {
+  const pinFile = path.join(dir, 'pins.json');
+  writeFileSync(pinFile, JSON.stringify(pins([entry('a.yaml')])));
+  const r = runWithStub(dir, ['fetch', path.join(dir, 'fetched'), pinFile], { 'https://codeload.github.com/semgrep/semgrep-rules/tar.gz/main': repoTarball({ 'a.yaml': BODY }) });
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /HTTP 404/);
+  assert.deepEqual(r.requests, [tarUrl()], '404 is final: one request, never a branch url');
+  const second = path.join(dir, 'second');
+  mkdirSync(second);
+  const retried = runWithStub(second, ['fetch', path.join(second, 'fetched'), pinFile], { [tarUrl()]: repoTarball({ 'a.yaml': BODY }) }, { status: { [tarUrl()]: [429] } });
+  assert.equal(retried.status, 0, retried.stderr);
+  assert.equal(retried.requests.length, 2, 'one 429 then one success');
+}));
+
+test('AC-6 a corrupt or truncated tarball fails closed (stubbed)', () => withDir((dir) => {
+  const pinFile = path.join(dir, 'pins.json');
+  writeFileSync(pinFile, JSON.stringify(pins([entry('a.yaml')])));
+  const good = repoTarball({ 'a.yaml': BODY });
+  for (const bad of [Buffer.from('not a gzip file'), good.subarray(0, Math.floor(good.length / 2))]) {
+    const r = runWithStub(dir, ['fetch', path.join(dir, 'fetched'), pinFile], { [tarUrl()]: bad });
+    assert.notEqual(r.status, 0);
+    assert.match(r.stderr, /invalid tarball/);
+  }
+}));
+
+test('AC-6 unsafe tar entries (traversal, absolute, backslash, symlink, hardlink, device) fail closed and write nothing outside the directory (stubbed)', () => withDir((dir) => {
+  const pinFile = path.join(dir, 'pins.json');
+  writeFileSync(pinFile, JSON.stringify(pins([entry('a.yaml')])));
+  const cases = {
+    traversal: tarEntry(`${TOP}/../../escaped.yaml`, BODY),
+    'dot-dot segment': tarEntry(`${TOP}/a/../../escaped.yaml`, BODY),
+    absolute: tarEntry('/tmp/escaped.yaml', BODY),
+    backslash: tarEntry(`${TOP}/a\\..\\escaped.yaml`, BODY),
+    symlink: tarEntry(`${TOP}/link.yaml`, '', { type: '2', linkname: '../../outside' }),
+    hardlink: tarEntry(`${TOP}/hard.yaml`, '', { type: '1', linkname: `${TOP}/a.yaml` }),
+    device: tarEntry(`${TOP}/dev.yaml`, '', { type: '3' }),
+  };
+  for (const [name, bad] of Object.entries(cases)) {
+    const sub = path.join(dir, name.replace(/\W/g, '_'));
+    mkdirSync(sub);
+    const r = runWithStub(sub, ['fetch', path.join(sub, 'fetched'), pinFile], { [tarUrl()]: repoTarball({ 'a.yaml': BODY }, [bad]) });
+    assert.notEqual(r.status, 0, `${name} must be refused`);
+    assert.match(r.stderr, /unsafe tarball entry/, name);
+    assert.equal(existsSync(path.join(sub, 'escaped.yaml')), false, `${name}: nothing escaped`);
+    assert.equal(existsSync(path.join(dir, 'escaped.yaml')), false, `${name}: nothing escaped`);
+  }
+}));
+
+test('AC-6 a tarball whose entries do not share one top-level directory is refused (stubbed)', () => withDir((dir) => {
+  const pinFile = path.join(dir, 'pins.json');
+  writeFileSync(pinFile, JSON.stringify(pins([entry('a.yaml')])));
+  const tgz = tarball([tarEntry(`${TOP}/a.yaml`, BODY), tarEntry('other-root/a.yaml', BODY)]);
+  const r = runWithStub(dir, ['fetch', path.join(dir, 'fetched'), pinFile], { [tarUrl()]: tgz });
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /unsafe tarball entry.*top-level/);
+}));
+
+test('AC-6 a pre-existing unpinned file in the fetch directory fails the verification (stubbed)', () => withDir((dir) => {
   const pinFile = path.join(dir, 'pins.json');
   writeFileSync(pinFile, JSON.stringify(pins([entry('a.yaml')])));
   const out = path.join(dir, 'fetched');
   mkdirSync(out);
   writeFileSync(path.join(out, 'planted.yaml'), BODY);
-  const r = runWithStub(dir, ['fetch', out, pinFile], { [rawUrl('a.yaml')]: BODY });
+  const r = runWithStub(dir, ['fetch', out, pinFile], { [tarUrl()]: repoTarball({ 'a.yaml': BODY }) });
   assert.notEqual(r.status, 0);
   assert.match(r.stderr, /unpinned rule file.*planted\.yaml/);
 }));
@@ -220,21 +322,21 @@ test('REQ-7 CI never runs refresh; the tool documents it as person-run', () => {
   assert.match(r.stderr, /usage:.*refresh/);
 });
 
-test('REQ-7 refresh rewrites every pinned digest from the bytes at the pinned commit (fetch stubbed, no network)', () => withDir((dir) => {
+test('REQ-7 refresh rewrites every pinned digest from ONE tarball at the pinned commit (stubbed, no network)', () => withDir((dir) => {
   const pinFile = path.join(dir, 'pins.json');
   const stale = '0'.repeat(64);
   const files = ['generic/secrets/a.yaml', 'b.yaml'];
   writeFileSync(pinFile, JSON.stringify(pins(files.map((f) => ({ path: f, sha256: stale })))));
-  const table = Object.fromEntries(files.map((f) => [rawUrl(f), `rules: []\n# ${f}\n`]));
-  const r = runWithStub(dir, ['refresh', pinFile], table);
+  const r = runWithStub(dir, ['refresh', pinFile], { [tarUrl()]: repoTarball(Object.fromEntries(files.map((f) => [f, `rules: []\n# ${f}\n`]))) });
   assert.equal(r.status, 0, r.stderr);
+  assert.deepEqual(r.requests, [tarUrl()]);
   const after = JSON.parse(readFileSync(pinFile, 'utf8'));
   assert.equal(after.source.commit, COMMIT);
   for (const f of after.files) assert.equal(f.sha256, sha(`rules: []\n# ${f.path}\n`), `${f.path} digest refreshed`);
   assert.deepEqual(after.files.map((f) => f.path), files, 'paths and order are kept');
 }));
 
-test('REQ-7 refresh with a commit argument moves the pin to that commit; a non-SHA is refused (fetch stubbed)', () => withDir((dir) => {
+test('REQ-7 refresh with a commit argument moves the pin; a non-SHA is refused; a file missing at the new commit fails and leaves the pins untouched (stubbed)', () => withDir((dir) => {
   const pinFile = path.join(dir, 'pins.json');
   const next = 'b'.repeat(40);
   writeFileSync(pinFile, JSON.stringify(pins([entry('a.yaml')])));
@@ -242,19 +344,36 @@ test('REQ-7 refresh with a commit argument moves the pin to that commit; a non-S
   assert.notEqual(bad.status, 0);
   assert.match(bad.stderr, /invalid source commit/);
   assert.equal(JSON.parse(readFileSync(pinFile, 'utf8')).source.commit, COMMIT, 'file untouched on refusal');
-  const r = runWithStub(dir, ['refresh', pinFile, next], { [rawUrl('a.yaml', next)]: 'rules: []\n' });
+  const missing = runWithStub(dir, ['refresh', pinFile, next], { [tarUrl(next)]: repoTarball({ 'renamed.yaml': 'rules: []\n' }) });
+  assert.notEqual(missing.status, 0);
+  assert.match(missing.stderr, /missing rule file.*a\.yaml/);
+  assert.equal(JSON.parse(readFileSync(pinFile, 'utf8')).source.commit, COMMIT, 'file untouched on failure');
+  const r = runWithStub(dir, ['refresh', pinFile, next], { [tarUrl(next)]: repoTarball({ 'a.yaml': 'rules: []\n' }) });
   assert.equal(r.status, 0, r.stderr);
   const after = JSON.parse(readFileSync(pinFile, 'utf8'));
   assert.equal(after.source.commit, next);
   assert.equal(after.files[0].sha256, sha('rules: []\n'));
 }));
 
-test('AC-6 a redirect to http, or to a credentialed or other host, is refused (fetch stubbed, no network)', () => withDir((dir) => {
+test('AC-6 a redirect to http, or to a credentialed or other host, is refused (stubbed, no network)', () => withDir((dir) => {
   const pinFile = path.join(dir, 'pins.json');
   writeFileSync(pinFile, JSON.stringify(pins([entry('a.yaml')])));
-  for (const target of ['http://raw.githubusercontent.com/x/a.yaml', 'https://u:p@raw.githubusercontent.com/x/a.yaml', 'https://evil.invalid/x/a.yaml', 'https://raw.githubusercontent.com:8080/x/a.yaml']) {
-    const r = runWithStub(dir, ['refresh', pinFile], { [rawUrl('a.yaml')]: 'rules: []\n' }, { redirectTo: target });
+  for (const target of ['http://codeload.github.com/x', 'https://u:p@codeload.github.com/x', 'https://evil.invalid/x', 'https://codeload.github.com:8080/x', 'https://raw.githubusercontent.com/x']) {
+    const r = runWithStub(dir, ['refresh', pinFile], { [tarUrl()]: repoTarball({ 'a.yaml': 'rules: []\n' }) }, { redirectTo: target });
     assert.notEqual(r.status, 0, `${target} must be refused`);
     assert.match(r.stderr, /invalid download url/);
   }
 }));
+
+test('REQ-6 the network allowlist names codeload.github.com and no longer raw.githubusercontent.com', () => {
+  const lines = readFileSync(path.join(ROOT, '.workflow', 'network-allowlist.txt'), 'utf8').split('\n').map((l) => l.trim());
+  const hosts = lines.filter((l) => l && !l.startsWith('#'));
+  assert.ok(hosts.includes('codeload.github.com'));
+  assert.ok(!hosts.includes('raw.githubusercontent.com'));
+});
+
+test('REQ-7 docs/SECURITY.md documents how to reconcile the file list when moving the pin', () => {
+  const doc = readFileSync(path.join(ROOT, 'docs', 'SECURITY.md'), 'utf8');
+  assert.match(doc, /Reconciling the file list/);
+  assert.match(doc, /tar -tzf/);
+});

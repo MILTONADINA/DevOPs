@@ -71,9 +71,9 @@ jobs:
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444  # v5.0.0
         with: { node-version: 22 }
       - name: Fetch Semgrep rules and verify pinned digests
-        # Rules are downloaded here (online) from the semgrep/semgrep-rules repository at one
-        # fixed commit and never committed (Semgrep Rules License). A digest mismatch, a
-        # missing file or an unpinned file fails.
+        # Rules are downloaded here (online) as ONE tarball of the semgrep/semgrep-rules
+        # repository at one fixed commit and never committed (Semgrep Rules License). A digest
+        # mismatch, a missing file, an unpinned file or an unsafe tar entry fails.
         shell: bash
         run: |
           set -euo pipefail
