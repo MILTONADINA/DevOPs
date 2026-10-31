@@ -94,12 +94,19 @@ WHILE the Semgrep job scans, THE SYSTEM SHALL run the pinned image with `--netwo
 against rule files downloaded in an earlier step and verified against the sha256 digests in
 `governance/semgrep-rules.sha256.json`, with no `p/` registry configuration, and SHALL fail
 the job when a rule file's digest differs from its pin, when a pin has no valid digest, when a
-pinned file is absent or when an unpinned file is present. The files SHALL be fetched from
-`raw.githubusercontent.com/semgrep/semgrep-rules/<commit>/<path>` where `<commit>` is a full
-lowercase 40-hex SHA recorded in the pins file; a branch, tag or short SHA SHALL be refused, and
-so SHALL a rule path that is absolute, contains `.` or `..` segments, a backslash or a character
-outside `A-Za-z0-9._-`, or does not end in `.yaml` or `.yml`. A download or redirect that is not
-https on `raw.githubusercontent.com` without credentials SHALL be refused. Rule files SHALL NOT be
+pinned file is absent or when an unpinned file is present. The files SHALL be fetched with ONE
+request for the commit tarball at
+`codeload.github.com/semgrep/semgrep-rules/tar.gz/<commit>` (not one request per file), where
+`<commit>` is a full lowercase 40-hex SHA recorded in the pins file; a branch, tag or short SHA
+SHALL be refused, and so SHALL a rule path that is absolute, contains `.` or `..` segments, a
+backslash or a character outside `A-Za-z0-9._-`, or does not end in `.yaml` or `.yml`. Only the
+pinned paths SHALL be extracted, and the run SHALL fail, writing no file, on a corrupt or
+truncated archive and on any tar entry whose path is absolute, contains a `.`, `..`, empty or
+backslash segment or lies outside the archive's single top-level directory, or that is a symlink,
+hardlink, device or other non-file entry. An HTTP 429 or 5xx answer SHALL be retried with
+exponential backoff and any other HTTP error SHALL fail. A download or redirect that is not
+https on `codeload.github.com` without credentials SHALL be refused, and that host SHALL be in
+`.workflow/network-allowlist.txt`. Rule files SHALL NOT be
 committed (Semgrep Rules License). Pulling the image and downloading the rules stay online.
 The registry packs on semgrep.dev SHALL NOT be used: they are regenerated upstream, so a digest of
 them drifts without any change here.
@@ -108,8 +115,11 @@ them drifts without any change here.
 
 **Enforced by:** test:tests/ci/semgrep-offline.test.mjs
 THE REPOSITORY SHALL provide `node scripts/semgrep-rules.mjs refresh`, run by a person, which
-downloads each pinned file at the pinned commit over https and rewrites the digests, and with a
-COMMIT argument (a full 40-hex SHA) moves the pin to that commit; CI SHALL NOT run it.
+downloads the commit tarball over https and rewrites the digest of each pinned file, and with a
+COMMIT argument (a full 40-hex SHA) moves the pin to that commit; CI SHALL NOT run it. It SHALL
+fail, leaving the pins file unchanged, when a pinned file is absent at that commit. WHEN the pin
+moves, THE REPOSITORY SHALL document in `docs/SECURITY.md` how to reconcile the file list (files
+removed, renamed or added upstream) before running refresh.
 
 ## Acceptance criteria
 
@@ -157,6 +167,11 @@ directory) and no `p/` registry reference. The committed pins name a 40-hex comm
 **Given** synthetic rule files and pins **Then** a matching digest passes; a mismatch, a missing or
 malformed digest, an absent pinned file, an unpinned file (also in a subdirectory), a
 duplicate or path-escaping rule path and a source commit that is not a full lowercase 40-hex SHA
-each fail; fetch fails closed on a digest mismatch and on an HTTP error; a download redirect that
-is not https on `raw.githubusercontent.com` without credentials is refused; refresh rewrites the
-digests and accepts a new commit only in full-SHA form.
+each fail; fetch makes exactly one request, for the commit tarball, and extracts only pinned files;
+it fails closed on a digest mismatch, a pinned file missing from the archive, a 404, a corrupt or
+truncated archive, and any traversal, absolute, backslash, link, device or foreign-top-level entry,
+and retries a 429; a download redirect that is not https on `codeload.github.com` without
+credentials is refused; refresh rewrites the digests from one tarball, fails leaving the pins
+untouched when a pinned file is missing at the new commit, and accepts a new commit only in
+full-SHA form; the allowlist names `codeload.github.com`; `docs/SECURITY.md` documents the
+file-list reconciliation.
