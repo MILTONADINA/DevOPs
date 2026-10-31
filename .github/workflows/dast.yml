@@ -22,11 +22,11 @@ jobs:
       DAST_TARGET: http://127.0.0.1:18080/docs
     steps:
       - name: Checkout
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
       - name: Node
-        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
           node-version: '24.21.0'
       - name: Prepare fixed DAST assets
@@ -38,7 +38,7 @@ jobs:
         run: node --input-type=module -e "import { cleanupCurrentRun } from './scripts/run-dast.mjs'; import { cleanupPreparing } from './scripts/prepare-dast.mjs'; const preparation = await cleanupPreparing(); const run = await cleanupCurrentRun(); process.stdout.write(JSON.stringify({preparation,run}) + '\n'); if (!preparation.complete || !run.complete) process.exitCode = 1;"
       - name: Upload synthetic DAST evidence
         if: always()
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: local-dast-evidence
           path: .workflow/proofs/dast/
