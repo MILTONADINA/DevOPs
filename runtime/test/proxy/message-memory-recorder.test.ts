@@ -10,7 +10,10 @@ const indexRepository = vi.fn();
 const persistAuditResults = vi.fn();
 
 vi.mock("../../src/proxy/conversation", () => ({ createSupabaseConversationResolver: () => resolveConversation }));
-vi.mock("../../src/memory/warm/tier2", async (orig) => ({ ...(await orig<typeof import("../../src/memory/warm/tier2")>()), createWarmMemory: () => ({ persist }) }));
+vi.mock("../../src/memory/warm/tier2", async () => {
+  const actual = (await vi.importActual("../../src/memory/warm/tier2")) as Record<string, unknown>;
+  return { ...actual, createWarmMemory: () => ({ persist }) };
+});
 vi.mock("../../src/audit/git-indexer", () => ({ indexRepository: (...a: unknown[]) => indexRepository(...a) }));
 const statusById: Record<string, string> = {};
 vi.mock("../../src/audit/audit-engine", () => ({
