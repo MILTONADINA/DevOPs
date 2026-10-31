@@ -8,6 +8,13 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Runtime tests for the Gemini provider transport (`runtime/test/proxy/gemini-provider.test.ts`, 18 tests):
+  URL and `x-goog-api-key` construction, error translation that never forwards 401/403 detail, the streaming
+  error-body paths, SSE re-emit across chunk boundaries, mid-stream failure closing, and idle-timer abort and
+  cleanup. `providers/gemini.ts` line coverage rises from 2% to 96%.
+
 ### Fixed
 
 - The `sprint-cycle.js` reviewer gate no longer passes when Build produced no change: an empty
