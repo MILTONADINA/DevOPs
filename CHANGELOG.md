@@ -9,6 +9,11 @@ Versions follow [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Fixed
+### Security
+
+- `client-boundary.sh` no longer evaluates allowlist lines, compares normalised paths by directory boundary, reads the PreToolUse JSON on stdin (every path field, `~` expanded) and writes valid JSON event lines. It fails closed.
+
+## [0.5.1] — 2026-10-26
 
 - `devops analyze` matches README compliance terms as whole words, and counts words such as "child", "minor" and "patient" only next to a data term. "A minor release of a graphics library" no longer adds COPPA, HIPAA or the `coppa-audit` skill, and analyze prints the term behind each scope (#351).
 - `scripts/prepare-dast.mjs` checks the native esbuild where `runtime/package-lock.json` puts it: nested under `tsx` if the lock has that copy, else hoisted to the top level. It looked only under `tsx`, which the current lock does not use (#360).

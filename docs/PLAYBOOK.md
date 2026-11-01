@@ -82,7 +82,43 @@ and resumes from its `## Next action` section.
 ## Multi-client setup
 
 One repo per client. Each has its own `.workflow/client/profile.yml`.
-The client-boundary hook blocks any file access outside the project root.
+The client-boundary hook blocks Read, Write, Edit, MultiEdit, NotebookEdit, Glob
+and Grep paths outside the project root (paths are normalised and symlinks
+resolved first). It is not registered by default and does not inspect Bash
+commands. Register it in `.claude/settings.json`; it reads the PreToolUse JSON
+from stdin, so pass the input straight through with no `jq` wrapper. The
+installer copies the hook to `<project>/.claude/hooks/client-boundary.sh`; in a
+DevOPs checkout it lives at `hooks/universal/pre-tool/client-boundary.sh`. The
+command below tries the installed path first, then the checkout path:
+
+```json
+{ "hooks": { "PreToolUse": [ {
+  "matcher": "Read|Write|Edit|MultiEdit|NotebookEdit|Glob|Grep",
+  "hooks": [ { "type": "command",
+    "command": "R=\"${CLAUDE_PROJECT_DIR:-.}\"; cd \"$R\" || exit 2; H=.claude/hooks/client-boundary.sh; [ -f \"$H\" ] || H=hooks/universal/pre-tool/client-boundary.sh; [ -f \"$H\" ] || { echo \"HOOK MISSING: $R/$H -- failing closed\" >&2; exit 2; }; bash \"$H\"" } ]
+} ] } }
+```
+
+`.workflow/client/path-allowlist.txt` takes one literal absolute path per line.
+Only a leading `~`, `$HOME` or `${HOME}` is expanded. A line with any other `$`,
+a backtick, or a relative path is ignored with a warning, as is a `~`/`$HOME` line
+when `HOME` is unset or relative. The hook needs `node`.
+
+A leading `~` in a tool path is expanded with `HOME` (as the file tools do);
+`~user/...` paths, and `~` paths while `HOME` is unset or relative, are blocked.
+Every present path field of a call is checked. The global read-only list
+includes `$HOME/.cache/`, which can hold other projects' checkouts or build
+caches: it is a known exposure, so remove it from the hook's list if that
+matters to you.
+
+Limits: only `tool_input.file_path`, `path` and `notebook_path` are inspected, so
+a Glob call with an absolute `pattern` and no `path`, and a Grep `glob`, are not
+checked. `.workflow/client/path-allowlist.txt` and `.workflow/state/events.jsonl`
+live inside the project root, so the agent can write them; protect the allowlist
+with review, not with this hook. Relative paths resolve against the project root
+(the hook's working directory), not the session's cwd. Every failure inside the
+hook exits 2; a missing hook file or failed `cd` in the registration above also
+exits 2 (a bare `cd ... && bash ...` would exit 1 or 127, which does not block).
 Cost ledgers are scoped per `tenant_id` (Stratum) for per-client invoicing.
 
 ## When things go wrong
