@@ -99,6 +99,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Runtime tests for the OpenAI-compatible provider transport's streaming and error paths
+  (`runtime/test/proxy/openai-provider-stream.test.ts`, 19 tests): `extraHeaders` merging, 401/403 bodies never
+  echoed (they can embed a key fragment), error-body fallbacks, SSE re-emit across chunk splits, mid-stream
+  failure closing, and idle-timer abort and cleanup. `providers/openai.ts` line coverage rises from 29% to 96%.
 - Runtime unit tests for the Supabase message-memory recorder
   (`runtime/test/proxy/message-memory-recorder.test.ts`, 22 tests): identity and project-scope validation
   fails closed before any write, the legacy session insert is checked, and audited facts are stored
