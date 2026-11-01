@@ -99,6 +99,11 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Runtime unit tests for the Supabase message-memory recorder
+  (`runtime/test/proxy/message-memory-recorder.test.ts`, 22 tests): identity and project-scope validation
+  fails closed before any write, the legacy session insert is checked, and audited facts are stored
+  suppressed and released only when not a CONFLICT, by id, org and session. `message-memory.ts` line
+  coverage rises from 10% to 100%.
 - Runtime tests for the Gemini provider transport (`runtime/test/proxy/gemini-provider.test.ts`, 18 tests):
   URL and `x-goog-api-key` construction, error translation that never forwards 401/403 detail, the streaming
   error-body paths, SSE re-emit across chunk boundaries, mid-stream failure closing, and idle-timer abort and
