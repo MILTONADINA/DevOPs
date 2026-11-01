@@ -3,8 +3,8 @@
 // Rows marked "run" are also executed by real bash with PATH stubs.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runInNewContext } from 'node:vm';
@@ -330,25 +330,64 @@ function ran(ctx, command, hit) {
   return readFileSync(ctx.mark, 'utf8').split('\u0001').filter(Boolean).map((r) => r.split('\0').slice(0, -1)).some(([name, ...args]) => hit(name, args));
 }
 
+// The bash oracle only proves a row when the machine has every program and path the row
+// names. The classifier assertions never consult this: they run for every row everywhere.
+const OPTIONAL_PROGRAMS = ['zsh', 'ksh', 'mksh', 'dash', 'csh', 'tcsh', 'fish', 'caffeinate', 'xcrun', 'arch', 'chrt', 'taskset', 'unbuffer', 'ionice', 'osascript', 'expect', 'perl', 'python3', 'ruby', 'awk', 'base64', 'timeout', 'nice', 'sudo', 'doas', 'xargs', 'find'];
+const onPath = (ctx, program) => spawnSync('sh', ['-c', `command -v ${program}`], { env: { PATH: `${ctx.bin}:/usr/bin:/bin` } }).status === 0;
+// Behaviour that differs between BSD/macOS and GNU/Debian tools: probe it instead of assuming.
+const FEATURE_PROBES = [
+  [/xargs\s[^|]*-\w*J/, 'xargs -J', 'echo x | xargs -J% echo %'],
+  [/\barch\s+-arm64/, 'arch -arm64', 'arch -arm64 true'],
+  [/xargs\s.*\bcommand\b/, 'xargs running the command builtin', 'echo x | xargs command true'],
+  [/(?:^|[\s|;])sh\s+-\w*o\s+pipefail/, 'sh -o pipefail', 'sh -o pipefail -c true'],
+];
+function oracleGap(ctx, command) {
+  for (const [pattern, name, probe] of FEATURE_PROBES) {
+    if (pattern.test(command) && spawnSync('sh', ['-c', probe], { env: { PATH: '/usr/bin:/bin' }, stdio: 'ignore' }).status !== 0) return `${name} is not supported`;
+  }
+  const words = command.split(/[\s'"|;&()`$=]+/).filter(Boolean);
+  // The PATH stubs are lower case; an upper-case spelling finds them only on a case-insensitive filesystem.
+  if (words.some((word) => /^(vercel|git|npm|xargs|sudo)$/i.test(word) && word !== word.toLowerCase()) && !caseInsensitive(ctx.dir)) return 'the filesystem is case-sensitive';
+  for (const word of words) {
+    if (OPTIONAL_PROGRAMS.includes(word) && !onPath(ctx, word)) return `${word} is not installed`;
+    if (word.startsWith('/') && word.length > 1 && !existsSync(word)) return `${word} does not exist`;
+  }
+  return null;
+}
+const gapNote = (gaps) => `oracle not run for ${gaps.length} rows: ${[...new Set(gaps.map((g) => g.slice(g.lastIndexOf('(') + 1, -1)))].join('; ')}`;
+// Split rows into those this machine can execute and those it cannot, with the reason.
+function partitionOracle(ctx, rows, commandOf = (row) => row) {
+  const runnable = [], gaps = [];
+  for (const row of rows) { const gap = oracleGap(ctx, commandOf(row)); if (gap) gaps.push(`${commandOf(row)} (${gap})`); else runnable.push(row); }
+  return { runnable, gaps };
+}
+
 test('ANSI-C and expanded deploy command words are not allowed', () => {
   const ctx = setup();
   try { for (const [command] of DEPLOY_BYPASS) assert.notEqual(decide(ctx.project, 'deploy', command), 'allow', command); }
   finally { rmSync(ctx.dir, { recursive: true, force: true }); }
 });
-test('bash really runs each deploy bypass row', { skip: !hasBash && 'bash not available' }, () => {
+test('bash really runs each deploy bypass row', { skip: !hasBash && 'bash not available' }, (t) => {
   const ctx = setup();
-  try { for (const [command, run] of DEPLOY_BYPASS) if (run) assert.ok(ran(ctx, command, deployed), 'not executed: ' + command); }
-  finally { rmSync(ctx.dir, { recursive: true, force: true }); }
+  try {
+    const { runnable, gaps } = partitionOracle(ctx, DEPLOY_BYPASS.filter(([, run]) => run), ([command]) => command);
+    if (gaps.length) t.diagnostic(gapNote(gaps));
+    assert.ok(runnable.length > 0, 'no deploy row can run here');
+    for (const [command] of runnable) assert.ok(ran(ctx, command, deployed), 'not executed: ' + command);
+  } finally { rmSync(ctx.dir, { recursive: true, force: true }); }
 });
 test('ANSI-C and expanded git command words are blocked in sealed mode', () => {
   const ctx = setup();
   try { for (const command of [...SEALED_BYPASS, ...SEALED_NOT_RUN]) assert.equal(decide(ctx.project, 'sealed', command), 'block', command); }
   finally { rmSync(ctx.dir, { recursive: true, force: true }); }
 });
-test('bash really runs each sealed bypass row', { skip: !hasBash && 'bash not available' }, () => {
+test('bash really runs each sealed bypass row', { skip: !hasBash && 'bash not available' }, (t) => {
   const ctx = setup();
   try {
-    for (const command of SEALED_BYPASS) assert.ok(ran(ctx, command, (name, args) => name === 'git' && sealedMutation(args)), 'not executed: ' + command);
+    const { runnable, gaps } = partitionOracle(ctx, SEALED_BYPASS);
+    if (gaps.length) t.diagnostic(gapNote(gaps));
+    assert.ok(runnable.length > 0, 'no sealed row can run here');
+    for (const command of runnable) assert.ok(ran(ctx, command, (name, args) => name === 'git' && sealedMutation(args)), 'not executed: ' + command);
   } finally { rmSync(ctx.dir, { recursive: true, force: true }); }
 });
 test('literal ANSI-C text stays allowed in both modes; undecodable text is refused', () => {
@@ -385,17 +424,21 @@ test('round 4: oracle rows that bash executed are no longer allowed', () => {
     for (const command of [...R4_SEALED, ...R4_INTERPRETER_SEALED, ...REFUSED_BY_GIT, ...R4_SEALED_MORE]) assert.equal(decide(ctx.project, 'sealed', command), 'block', 'sealed: ' + command);
   } finally { rmSync(ctx.dir, { recursive: true, force: true }); }
 });
-test('round 4: bash really runs each oracle row', { skip: !hasBash && 'bash not available' }, () => {
+test('round 4: bash really runs each oracle row', { skip: !hasBash && 'bash not available' }, (t) => {
   const ctx = setup(true);
   try {
-    for (const command of [...R4_DEPLOY, ...R4_INTERPRETER_DEPLOY.filter((c) => /^(perl|python3|ruby|awk)/.test(c))].filter((c) => !shellMissing(c))) assert.ok(ran(ctx, command, deployed), 'not executed: ' + command);
-    for (const command of [...R4_SEALED, ...R4_INTERPRETER_SEALED]) assert.ok(ran(ctx, command, (name, args) => name === 'git' && sealedMutation(args)), 'not executed: ' + command);
+    const deploy = partitionOracle(ctx, [...R4_DEPLOY, ...R4_INTERPRETER_DEPLOY.filter((c) => /^(perl|python3|ruby|awk)/.test(c))].filter((c) => !shellMissing(c)));
+    const sealed = partitionOracle(ctx, [...R4_SEALED, ...R4_INTERPRETER_SEALED]);
+    if (deploy.gaps.length + sealed.gaps.length) t.diagnostic(gapNote([...deploy.gaps, ...sealed.gaps]));
+    assert.ok(deploy.runnable.length > 0 && sealed.runnable.length > 0, 'no oracle row can run here');
+    for (const command of deploy.runnable) assert.ok(ran(ctx, command, deployed), 'not executed: ' + command);
+    for (const command of sealed.runnable) assert.ok(ran(ctx, command, (name, args) => name === 'git' && sealedMutation(args)), 'not executed: ' + command);
   } finally { rmSync(ctx.dir, { recursive: true, force: true }); }
 });
 
 // Real git in a throwaway repository: a classifier-blocked row must really mutate a
 // sealed ref (or be refused by git), which the PATH stub cannot prove.
-const hasGit = spawnSync('git', ['--version']).status === 0;
+const hasGit = (() => { try { execFileSync('git', ['--version'], { stdio: 'ignore' }); return true; } catch { return false; } })();
 const MUTATING_GIT = [
   `git -c alias.d='tag -d' d v0.2.0`, `GIT_CONFIG_PARAMETERS="'alias.d=tag -d'" git d v0.2.0`,
   `GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=alias.d GIT_CONFIG_VALUE_0='tag -d' git d v0.2.0`, `A='tag -d' git --config-env=alias.d=A d v0.2.0`,
@@ -419,13 +462,16 @@ test('round 4: sealed rows mutate (or are refused by) real git', { skip: !hasGit
   };
   try {
     // A case variant only reaches the loose ref on a case-insensitive filesystem (APFS).
+    // On a case-sensitive filesystem the variant names a different ref: git may create it, but
+    // the sealed refs themselves must stay put, so those rows compare the sealed refs alone.
     const insensitive = caseInsensitive(dir);
-    for (const [command, mutates] of [...MUTATING_GIT.map((c) => [c, true]), ...R5_CASE.map((c) => [c, insensitive]), ...UNCHANGED_GIT.map((c) => [c, false])]) {
+    const sealedRefs = () => sh('for r in refs/tags/v0.2.0 refs/heads/stratum-merge refs/heads/phase-2-security-depth; do git rev-parse -q --verify $r || echo gone-$r; done').stdout;
+    for (const [command, mutates, view] of [...MUTATING_GIT.map((c) => [c, true, snapshot]), ...R5_CASE.map((c) => [c, insensitive, sealedRefs]), ...UNCHANGED_GIT.map((c) => [c, false, snapshot])]) {
       fresh();
       assert.equal(decide(project, 'sealed', command), 'block', command);
-      const before = snapshot();
+      const before = view();
       sh(command);
-      assert.equal(snapshot() !== before, mutates, (mutates ? 'real git did not mutate: ' : 'real git mutated: ') + command);
+      assert.equal(view() !== before, mutates, (mutates ? 'real git did not mutate: ' : 'real git mutated: ') + command);
     }
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
@@ -464,7 +510,8 @@ test('round 5: .git writers are blocked and really change packed-refs', () => {
   const dir = realpathSync(mkdtempSync(path.join(tmpdir(), 'graph-gitwrite-test-')));
   const project = path.join(dir, 'project');
   const gitEnv = { ...env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1', GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@example.invalid', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@example.invalid' };
-  const sh = (command) => spawnSync('sh', ['-c', command], { cwd: project, env: gitEnv, encoding: 'utf8', timeout: 30_000 });
+  // The rows are bash commands (pushd is not in dash, the sh of Debian and Ubuntu).
+  const sh = (command) => spawnSync(hasBash ? 'bash' : 'sh', ['-c', command], { cwd: project, env: gitEnv, encoding: 'utf8', timeout: 30_000 });
   const have = (tool) => spawnSync('sh', ['-c', `command -v ${tool}`]).status === 0;
   const state = () => { try { return readFileSync(path.join(project, '.git/packed-refs'), 'utf8'); } catch { return null; } };
   const fresh = () => {
