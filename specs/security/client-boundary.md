@@ -16,7 +16,7 @@ checkouts; reads there are allowed (a known exposure, not changed here).
 
 ## REQ-1 — Read the tool call from stdin
 
-**Enforced by:** test:tests/hooks/client-boundary.test.mjs; hook:hooks/universal/pre-tool/client-boundary.sh
+**Enforced by:** test:tests/hooks/client-boundary.test.mjs
 WHEN stdin is not a terminal and is non-empty, THE HOOK SHALL take the path
 from `tool_input.file_path`, `tool_input.path` and `tool_input.notebook_path`
 (every present field is checked; one outside path blocks the call) and the
@@ -30,7 +30,7 @@ THEN THE HOOK SHALL exit 2.
 
 ## REQ-2 — Compare normalised paths by directory boundary
 
-**Enforced by:** test:tests/hooks/client-boundary.test.mjs; hook:hooks/universal/pre-tool/client-boundary.sh
+**Enforced by:** test:tests/hooks/client-boundary.test.mjs
 THE HOOK SHALL resolve symlinks, `.` and `..` (symlinks first, as the kernel
 does) before comparing, and SHALL treat a path as inside a directory only when
 it equals the directory or starts with it plus `/`. IF the path is outside the
@@ -39,7 +39,7 @@ line, THEN THE HOOK SHALL exit 2.
 
 ## REQ-3 — Never evaluate the allowlist
 
-**Enforced by:** test:tests/hooks/client-boundary.test.mjs; hook:hooks/universal/pre-tool/client-boundary.sh
+**Enforced by:** test:tests/hooks/client-boundary.test.mjs
 THE HOOK SHALL expand only a leading `~`, `$HOME` or `${HOME}` in an allowlist
 line, and SHALL trim trailing blanks. IF a line still contains `$` or a
 backtick, or is not an absolute path, or starts with `~`, `$HOME` or `${HOME}`
@@ -48,7 +48,7 @@ a warning to stderr.
 
 ## REQ-4 — Fail closed with valid events
 
-**Enforced by:** test:tests/hooks/client-boundary.test.mjs; hook:hooks/universal/pre-tool/client-boundary.sh
+**Enforced by:** test:tests/hooks/client-boundary.test.mjs
 IF the hook cannot decide (missing `node`, unresolvable path, a symlink it
 cannot read) or fails unexpectedly, THEN THE HOOK SHALL exit 2, never 1. WHEN it
 blocks, THE HOOK SHALL append a `boundary_blocked` line to
