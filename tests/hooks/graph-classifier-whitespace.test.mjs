@@ -21,7 +21,7 @@ const label = (value) => 'U+' + value.codePointAt(0).toString(16).toUpperCase().
 // the CLI contract. Decisions below still run through the actual CLI.
 const source = readFileSync(CLASSIFIER, 'utf8');
 const start = source.indexOf('function tokenize(text) {');
-const end = source.indexOf('// Only these literal prefixes', start);
+const end = source.indexOf('// Program position is ONE computed thing', start);
 assert.ok(start >= 0 && end > start, 'locate the production tokenizer');
 const tokenize = runInNewContext('const MAX_TEXT = 64 * 1024;\n' + source.slice(start, end) + '\ntokenize;');
 
