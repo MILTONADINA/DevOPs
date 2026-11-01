@@ -99,6 +99,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Runtime tests for warm-to-cold promotion (`runtime/test/memory/promote-scope.test.ts`, 18 tests): org,
+  session and project scope reach every graph write (an explicit null scope is passed through, not dropped),
+  per-fact entity id resolution, content-free vector records, a missing embedding dropping only its own fact,
+  and the `promoteFacts` orchestrator's gating. `memory/promote.ts` branch coverage rises from 57% to 95%.
 - Runtime tests for the OpenAI-compatible provider transport's streaming and error paths
   (`runtime/test/proxy/openai-provider-stream.test.ts`, 19 tests): `extraHeaders` merging, 401/403 bodies never
   echoed (they can embed a key fragment), error-body fallbacks, SSE re-emit across chunk splits, mid-stream
