@@ -86,6 +86,13 @@ Versions follow [Semantic Versioning](https://semver.org/).
   by a per-response CSP nonce instead of `script-src 'unsafe-inline'`, and the HTML
   is sent with `Cache-Control: no-store`
   (`specs/memory/graph-dashboard.md` REQ-3).
+- The deploy and sealed-ref command classifier fails closed on wrapped and
+  compound-command deploys (nohup, sudo, xargs, `sh -c`, eval, shell loops), on
+  command words written with ANSI-C or locale quoting, parameter expansion, command
+  substitution or globs, on program words that differ only in case, on launcher
+  chains and pseudo-file path spellings, on more git ref-writing forms, on
+  per-command git aliases, on package-runner launchers and on unlisted programs
+  that write to the git directory (GHSA-h7pf-67p2-535f).
 
 ## [0.5.0] — 2026-10-18
 
