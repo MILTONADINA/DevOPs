@@ -14,7 +14,7 @@ disabled by the agent.
 | `block-secrets.sh` | File access blocklist | Sensitive paths (.env, .pem, ssh) |
 | `block-prod-write.sh` | Production write blocker | git push main, kubectl prod, terraform apply without approval |
 | `block-rm-rf.sh` | Destructive command blocker | rm -rf outside whitelisted paths |
-| `client-boundary.sh` | Cross-project access blocker | Paths outside project root |
+| `client-boundary.sh` | Cross-project access blocker | Read/Write/Edit/MultiEdit/NotebookEdit (writes) and Glob/Grep/LS/NotebookRead (reads) tool paths (every path field checked; leading `~` expanded with `HOME`, `~user` blocked; normalised, symlinks resolved) outside the project root, unless equal to or under a global read-only entry (reads only) or a `.workflow/client/path-allowlist.txt` line. Not registered by default (installed copy: `.claude/hooks/client-boundary.sh`); Bash commands are not inspected; the read-only list includes `$HOME/.cache/`, which can hold other projects' checkouts; only `file_path`, `path` and `notebook_path` are checked (a Glob `pattern` without `path` and a Grep `glob` are not); the allowlist and event log sit inside the root and are agent-writable; relative paths resolve against the project root. Every failure exits 2. See [PLAYBOOK](PLAYBOOK.md#multi-client-setup) |
 
 ### Post-tool (fire after every file write)
 
