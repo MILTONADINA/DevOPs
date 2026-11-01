@@ -99,6 +99,23 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Runtime tests for warm-to-cold promotion (`runtime/test/memory/promote-scope.test.ts`, 18 tests): org,
+  session and project scope reach every graph write (an explicit null scope is passed through, not dropped),
+  per-fact entity id resolution, content-free vector records, a missing embedding dropping only its own fact,
+  and the `promoteFacts` orchestrator's gating. `memory/promote.ts` branch coverage rises from 57% to 95%.
+- Runtime tests for the OpenAI-compatible provider transport's streaming and error paths
+  (`runtime/test/proxy/openai-provider-stream.test.ts`, 19 tests): `extraHeaders` merging, 401/403 bodies never
+  echoed (they can embed a key fragment), error-body fallbacks, SSE re-emit across chunk splits, mid-stream
+  failure closing, and idle-timer abort and cleanup. `providers/openai.ts` line coverage rises from 29% to 96%.
+- Runtime unit tests for the Supabase message-memory recorder
+  (`runtime/test/proxy/message-memory-recorder.test.ts`, 22 tests): identity and project-scope validation
+  fails closed before any write, the legacy session insert is checked, and audited facts are stored
+  suppressed and released only when not a CONFLICT, by id, org and session. `message-memory.ts` line
+  coverage rises from 10% to 100%.
+- Runtime tests for the Gemini provider transport (`runtime/test/proxy/gemini-provider.test.ts`, 18 tests):
+  URL and `x-goog-api-key` construction, error translation that never forwards 401/403 detail, the streaming
+  error-body paths, SSE re-emit across chunk boundaries, mid-stream failure closing, and idle-timer abort and
+  cleanup. `providers/gemini.ts` line coverage rises from 2% to 96%.
 - The sprint cycle stops before Build (`SPEC_GATE_BLOCK:`) when the backlog item's spec holds
   `[NEEDS CLARIFICATION]` or an acceptance criterion is covered by no planned task; the planner
   schema gains `covers`, `criteria` and `clarification_markers`, and
