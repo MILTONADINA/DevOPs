@@ -62,6 +62,11 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - The sprint-cycle reviewer must return `filesSeen`; the workflow compares it with its own
   `git diff --name-only` list and sets the outcome INDETERMINATE (not ready) on any missing,
   unknown or absent file (REQ-M1, AC-M1.3).
+- `devops init` links `@agile-graph/engine` 0.4.0 and no longer links 0.1.0 to 0.2.0. The engine changed the
+  cloud-default definitions of `context_get`, `graph_neighbors`, `memory_propose` and `symbol_search`, so
+  `mcp-configs/universal/agile-graph.tool-hashes.json` now holds 0.4.0's hashes (`specs/graph/agile-graph-link.md`
+  REQ-1, REQ-2, AC-8). Before upgrading the engine, a project on an older one replaces its
+  `.claude/agile-graph-tool-hashes.json` (see `docs/UPGRADING.md`).
 
 ### Documentation
 

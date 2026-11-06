@@ -108,11 +108,11 @@ The dashboard pages (`/dashboard`, `/dashboard/graph`) now allow their inline sc
 
 ### Agile Graph engine linking updated
 
-`devops init` now links `@agile-graph/engine` 0.1.2 and 0.2.0 in addition to 0.1.0 and 0.1.1. Their cloud-default tool definitions match the shipped pins exactly.
+`devops init` now links `@agile-graph/engine` 0.4.0 only. The engine changed the cloud-default definitions of `context_get`, `graph_neighbors`, `memory_propose` and `symbol_search`, so the shipped pins are 0.4.0's. Those pins do not match 0.1.0 to 0.2.0, so `init` no longer links them.
 
-`ENGINE_VERSIONS` is an allowlist: `init` links one engine that is already installed, if its version is one of the four. It installs nothing.
+`ENGINE_VERSIONS` is an allowlist: `init` links one engine that is already installed, if its version is listed. It installs nothing.
 
-**Action:** none for existing links. To add the link, install a listed engine (for example `npm install -g @agile-graph/engine@0.2.0`) on Node 24 to 26, run `npx @miltonadina/devops init`, then follow the engine's own init and index steps (see the README's Agile Graph section). Pass `--no-agile-graph` to `init` to skip it.
+**Action:** a project linked to an older engine keeps working with that engine and its pin file. Before it upgrades the engine to 0.4.0, replace `.claude/agile-graph-tool-hashes.json` with `mcp-configs/universal/agile-graph.tool-hashes.json` from this release: the 0.4.0 server refuses to start against the old pins, and `init` keeps an existing pin file, so it will not replace it. To link a new install, install `@agile-graph/engine@0.4.0` on Node 24 to 26, run `npx @miltonadina/devops init`, then follow the engine's own init and index steps (see the README's Agile Graph section). Pass `--no-agile-graph` to `init` to skip it.
 
 ### Subagent additions
 
