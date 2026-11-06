@@ -8,6 +8,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-11-06
+
 ### Fixed
 
 - `devops analyze` matches README compliance terms as whole words, and counts words such as "child", "minor" and "patient" only next to a data term. "A minor release of a graphics library" no longer adds COPPA, HIPAA or the `coppa-audit` skill, and analyze prints the term behind each scope (#351).
