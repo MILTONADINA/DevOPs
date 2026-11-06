@@ -94,13 +94,22 @@ grep -qxF "DevOPs root: $INSTALLED" <<< "$HELP" || fail "devops help does not re
 "$BIN/devops-analyze" > "$WORK/analyze.log" || { cat "$WORK/analyze.log"; fail "devops-analyze failed"; }
 [[ -f .workflow/profile.yml ]] || fail "devops-analyze wrote no .workflow/profile.yml"
 
+# Without cosign the installer cannot verify a skill signature, so init refuses with
+# exit 2 (GHSA-3mv5) and names the opt-out. The smoke run hides any cosign on PATH so
+# it behaves the same on every machine, then takes that logged opt-out.
+export COSIGN_BIN="$WORK/no-cosign"
+UNSIGNED=(--allow-unsigned "--rationale=package smoke test without cosign")
+set +e; "$BIN/devops" init --dry-run > "$WORK/init-refused.log" 2>&1; refused=$?; set -e
+[[ $refused -eq 2 ]] || { cat "$WORK/init-refused.log"; fail "devops init without cosign exited $refused, not 2"; }
+grep -q -- "--allow-unsigned" "$WORK/init-refused.log" || { cat "$WORK/init-refused.log"; fail "devops init did not name the opt-out"; }
+
 # --dry-run verifies each recommended skill again and copies nothing.
-"$BIN/devops" init --dry-run > "$WORK/init.log" || { cat "$WORK/init.log"; fail "devops init --dry-run failed"; }
+"$BIN/devops" init --dry-run "${UNSIGNED[@]}" > "$WORK/init.log" || { cat "$WORK/init.log"; fail "devops init --dry-run failed"; }
 [[ ! -e .git/hooks/pre-commit ]] || fail "devops init --dry-run wrote a git hook"
 
 # A real init writes the gate where Git runs hooks and says so in its summary
 # (specs/release/npm-package.md REQ-3, REQ-8).
-"$BIN/devops" init > "$WORK/init-real.log" || { cat "$WORK/init-real.log"; fail "devops init failed"; }
+"$BIN/devops" init "${UNSIGNED[@]}" > "$WORK/init-real.log" || { cat "$WORK/init-real.log"; fail "devops init failed"; }
 grep -qxF "  pre-commit gate: installed at .git/hooks/pre-commit" "$WORK/init-real.log" || { cat "$WORK/init-real.log"; fail "devops init did not report the installed gate"; }
 [[ -x .git/hooks/pre-commit ]] || fail "devops init did not write an executable .git/hooks/pre-commit"
 grep -q "^  Claude Code hooks: " "$WORK/init-real.log" || fail "devops init did not report the Claude Code hooks"

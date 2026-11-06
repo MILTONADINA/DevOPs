@@ -241,8 +241,9 @@ AI coding agent and ask it to follow this section.
 - Node.js 22.12 or later
 - Optional, only for the local DevOps database and proxy: Docker with
   Compose, and a running Docker engine
-- Optional: `cosign`, to verify skill signatures during install. Without it,
-  the installer falls back to the manifest's SHA-256 check.
+- `cosign`, to verify skill signatures during install. Without it, `devops init`
+  installs no skills and exits 2; `devops init --allow-unsigned --rationale="..."`
+  installs them unverified and logs each one as overridden.
 
 **From npm** (version 0.4.0 and later):
 

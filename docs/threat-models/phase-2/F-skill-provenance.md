@@ -57,7 +57,7 @@ The installer is the gate. If a skill cannot be verified AND no rationale-backed
 
 | Threat | Description | Mitigation | Status |
 |--------|-------------|------------|--------|
-| **Spoofing** | Attacker provides a skill with a forged signature | `cosign verify-blob` against keyless OIDC identity + manifest hash check (defense-in-depth: hash must match even if signature is replayed from an unrelated skill) | spec'd |
+| **Spoofing** | Attacker provides a skill with a forged signature, or one signed by another GitHub workflow | `cosign verify-blob` against the keyless OIDC identity of `MILTONADINA/DevOPs`'s `release-sign.yml` on a branch (REQ-F8), the manifest `signed_by` checked against it, and the manifest hash (defense-in-depth: hash must match even if signature is replayed from an unrelated skill). A signature that cannot be verified (no cosign, a cosign error or timeout, no bundle) refuses the skill (REQ-F9); the manifest hash never stands in for it | implemented (GHSA-3mv5) |
 | **Tampering** | Skill modified between sign-time and install-time | Hash gate catches modification; signature gate catches identity substitution | spec'd |
 | **Repudiation** | Who installed an unsigned skill on this machine? | install.log records `timestamp`, `identity` (from `git config user.email`), `decision`, `sha256`, `signed_by` (when present), and `rationale` (when overridden) | spec'd |
 | **Information disclosure** | Rationale strings may contain operator notes (potentially sensitive) | PII-redaction at telemetry export; install.log is gitignored; rationale is operator-supplied free-text, not censored by the installer | spec'd |

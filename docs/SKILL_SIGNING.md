@@ -226,14 +226,25 @@ override the cadence per project.
 
 The signing flow described above is consumed by `analyzer/install.ts` at
 install time. Every skill is verified before being copied into the target
-project's `.claude/skills/`. Per spec F (REQ-F1 through REQ-F7):
+project's `.claude/skills/`. Per spec F (REQ-F1 through REQ-F9):
+
+- cosign must accept the signature for the identity
+  `^https://github\.com/MILTONADINA/DevOPs/\.github/workflows/release-sign\.yml@refs/heads/.+$`
+  with the issuer `https://token.actions.githubusercontent.com`. A certificate
+  from any other workflow, or a manifest `signed_by` naming one, refuses the
+  skill (REQ-F8).
+- A signature that cannot be verified refuses the skill too: no cosign on the
+  machine, a cosign that errors, times out or is killed, or a `.sig` without its
+  `.bundle` (REQ-F9). The manifest hash is not a fallback, because the manifest
+  ships in the same package as the skill and cannot detect a modified package.
+  Install cosign, or use the logged `--allow-unsigned --rationale="..."` opt-out.
 
 ### Flag matrix
 
 | Invocation | Behavior |
 |---|---|
-| `node analyzer/install.ts --target ./proj` | **Default** — verify every skill via manifest hash + cosign bundle. Unsigned/invalid → exit **2**, name the skill. |
-| `node analyzer/install.ts --target ./proj --allow-unsigned --rationale="..."` | Override path — proceed past unsigned skills; append `decision=overridden` + rationale to `.workflow/state/install.log`. **Hash check still runs** (NFR-F3 defense-in-depth). |
+| `node analyzer/install.ts --target ./proj` | **Default** — verify every skill via manifest hash + cosign bundle. Unsigned, invalid or unverifiable (no cosign, no bundle) → exit **2**, name the skill. |
+| `node analyzer/install.ts --target ./proj --allow-unsigned --rationale="..."` | Override path — proceed past unsigned or unverifiable skills; append `decision=overridden` + rationale to `.workflow/state/install.log`. **Hash check still runs** (NFR-F3 defense-in-depth). |
 | `node analyzer/install.ts --target ./proj --allow-unsigned` | **Rejected** with `--rationale="..." is required when --allow-unsigned is used` (exit 1). |
 | `node analyzer/install.ts --target ./proj --dry-run` | All verification runs; no target mutation. Stdout reports `dry-run: would copy N skills`. |
 | `node analyzer/install.ts --target ./proj --manifest ./alt.yml` | Alternate manifest (for testing or per-project trust overrides). |

@@ -123,6 +123,12 @@ interface VerifyResult {
   signedBy?: string;
 }
 
+// docs/SKILL_SIGNING.md "Signing identity": only release-sign.yml in MILTONADINA/DevOPs,
+// dispatched on a branch, signs skills. Any other GitHub workflow's certificate is refused.
+const SIGNER_IDENTITY_REGEXP = '^https://github\\.com/MILTONADINA/DevOPs/\\.github/workflows/release-sign\\.yml@refs/heads/.+$';
+const SIGNER_OIDC_ISSUER = 'https://token.actions.githubusercontent.com';
+const COSIGN_TIMEOUT_MS = 5000;
+
 function verifySkill(skillFullPath: string, entry: ManifestEntry, allowUnsigned: boolean): VerifyResult {
   // Step 1: NFR-F3 hash check — ALWAYS run, even with --allow-unsigned.
   if (!fs.existsSync(skillFullPath)) {
@@ -134,46 +140,42 @@ function verifySkill(skillFullPath: string, entry: ManifestEntry, allowUnsigned:
     return { ok: false, reason: `manifest hash mismatch (expected ${entry.sha256.slice(0, 16)}…, got ${actualHash.slice(0, 16)}…)`, sha256: actualHash };
   }
 
-  // Step 2: signature check — bypassable by --allow-unsigned.
+  // Step 2: signature check — bypassable only by --allow-unsigned --rationale. The manifest
+  // ships in the same package as the skill, so its hash alone cannot detect a modified
+  // package: every way the signature cannot be verified fails closed.
+  const unverified = (why: string): VerifyResult => allowUnsigned
+    ? { ok: true, reason: `${why}; override`, sha256: actualHash, signedBy: entry.signed_by }
+    : { ok: false, reason: why, sha256: actualHash };
+
   const sigPath = entry.sig_path ? path.join(DEVOPS_ROOT, entry.sig_path) : `${skillFullPath}.sig`;
   const bundlePath = entry.bundle_path ? path.join(DEVOPS_ROOT, entry.bundle_path) : `${skillFullPath}.bundle`;
 
-  if (!fs.existsSync(sigPath)) {
-    if (allowUnsigned) {
-      return { ok: true, reason: 'unsigned (override)', sha256: actualHash, signedBy: entry.signed_by };
-    }
-    return { ok: false, reason: 'unsigned (no .sig present)', sha256: actualHash };
+  if (!fs.existsSync(sigPath)) return unverified('unsigned (no .sig present)');
+  if (entry.signed_by && !new RegExp(SIGNER_IDENTITY_REGEXP).test(entry.signed_by)) {
+    return unverified(`manifest signer is not the DevOPs release-sign workflow: ${entry.signed_by.slice(0, 120)}`);
   }
+  if (!fs.existsSync(bundlePath)) return unverified('unverified (.sig present but no .bundle)');
 
-  // Attempt cosign verify-blob if cosign binary is available and bundle exists.
   // Per NFR-F1: ≤ 200 ms per skill. Local-only call; no network dep beyond
   // cosign's Sigstore trust-root cache.
-  if (fs.existsSync(bundlePath)) {
-    const cosign = process.env['COSIGN_BIN'] ?? 'cosign';
-    const result = spawnSync(cosign, [
-      'verify-blob',
-      '--bundle', bundlePath,
-      '--certificate-identity-regexp', 'https://github.com/',
-      '--certificate-oidc-issuer', 'https://token.actions.githubusercontent.com',
-      skillFullPath,
-    ], { encoding: 'utf-8', timeout: 5000 });
+  const cosign = process.env['COSIGN_BIN'] ?? 'cosign';
+  const result = spawnSync(cosign, [
+    'verify-blob',
+    '--bundle', bundlePath,
+    '--certificate-identity-regexp', SIGNER_IDENTITY_REGEXP,
+    '--certificate-oidc-issuer', SIGNER_OIDC_ISSUER,
+    skillFullPath,
+  ], { encoding: 'utf-8', timeout: COSIGN_TIMEOUT_MS });
 
-    if (result.error || result.status === null) {
-      // cosign binary not available; fall back to hash check (which already passed above)
-      return { ok: true, reason: 'verified (hash; cosign unavailable)', sha256: actualHash, signedBy: entry.signed_by };
-    }
-    if (result.status === 0) {
-      return { ok: true, reason: 'verified (cosign + hash)', sha256: actualHash, signedBy: entry.signed_by };
-    }
-    // cosign ran but verification failed
-    if (allowUnsigned) {
-      return { ok: true, reason: `cosign verify failed; override (${(result.stderr || '').slice(0, 100)})`, sha256: actualHash, signedBy: entry.signed_by };
-    }
-    return { ok: false, reason: `cosign verify failed: ${(result.stderr || '').trim().slice(0, 200)}`, sha256: actualHash };
+  if (result.error || result.status === null) {
+    // cosign is missing, could not start, timed out or was killed: nothing was verified.
+    const why = result.error ? (result.error as NodeJS.ErrnoException).code ?? result.error.message : `signal ${result.signal}`;
+    return unverified(`unverified (cosign did not complete: ${why})`);
   }
-
-  // .sig present but no bundle — partial signature artifact; treat as verified-by-hash only
-  return { ok: true, reason: 'verified (hash; bundle missing)', sha256: actualHash, signedBy: entry.signed_by };
+  if (result.status === 0) {
+    return { ok: true, reason: 'verified (cosign + hash)', sha256: actualHash, signedBy: entry.signed_by };
+  }
+  return unverified(`cosign verify failed: ${(result.stderr || '').trim().slice(0, 200)}`);
 }
 
 // ─── install.log JSONL writer (F.06) ─────────────────────────────────────
@@ -367,6 +369,9 @@ function main() {
   if (failed > 0 && !flags.allowUnsigned) {
     console.error('');
     console.error(`installed=${verified + overridden} verified=${verified} overridden=${overridden} skipped=${skipped} failed=${failed}`);
+    console.error('Skills install only once cosign verifies their signature from the DevOPs release workflow.');
+    console.error('Install cosign (https://docs.sigstore.dev/cosign/system_config/installation/) and rerun, or install');
+    console.error('them unverified with --allow-unsigned --rationale="<why>", which logs each one as overridden.');
     process.exit(2);
   }
 
