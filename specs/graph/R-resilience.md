@@ -174,6 +174,18 @@ An agent returning `blocked_by_environment` SHALL write the record before return
 **Enforcement note:** Split from REQ-R10; every orchestrator invocation is not mechanically enforced.
 THE SYSTEM SHALL have `/sprint` call `graph-run-record.mjs launch` at launch and `update` on every resume or completion, passing the complete args actually sent and the new journal path, so that `scripts/graph-resume-args.mjs` has a current record to read (REQ-R10).
 
+### REQ-R21 (Event-driven) — A record writer creates a missing state directory only inside the root
+**Enforced by:** test:tests/graph-resilience/blocked.test.mjs; test:tests/graph-resilience/run-record.test.mjs; test:tests/graph-resilience/preflight.test.mjs
+WHEN `scripts/graph-blocked.sh`, `scripts/graph-run-record.mjs` or `scripts/graph-preflight.mjs` runs and `.workflow/state/` does not exist yet, THE SYSTEM SHALL resolve the nearest existing ancestor of that directory to its real path, SHALL create the directory only when that path is inside the project root, and SHALL then write its record.
+
+### REQ-R22 (Ubiquitous) — Containment checks compare real paths with the physical project root
+**Enforced by:** test:tests/graph-resilience/blocked.test.mjs
+THE SYSTEM SHALL compare the real path of the state directory and of any evidence file with the physical project root, so that a project reached through a symlink is not refused.
+
+### REQ-R23 (Unwanted behaviour) — A missing evidence file does not stop the blocked record
+**Enforced by:** test:tests/graph-resilience/blocked.test.mjs
+IF `scripts/graph-blocked.sh` is given an `--evidence-file` that does not exist, THEN THE SYSTEM SHALL still write `.workflow/state/blocked.md`, with its Evidence section stating that the evidence file was not found.
+
 ---
 
 ## Acceptance criteria
