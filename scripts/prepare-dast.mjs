@@ -363,7 +363,7 @@ async function prepare() {
     assert(!terminal.Running && terminal.ExitCode === 0 && !terminal.OOMKilled);
     for (const name of ['package.json', 'package-lock.json']) assert.equal(hashFile(path.join(stage, 'runtime', name)), hashFile(path.join(ROOT, 'runtime', name)));
     const modules = path.join(stage, 'runtime/node_modules');
-    assert.equal(JSON.parse(readFileSync(path.join(modules, 'tsx/package.json'))).version, '4.22.3');
+    assert.equal(JSON.parse(readFileSync(path.join(modules, 'tsx/package.json'))).version, '4.23.15');
     const esbuild = path.join(modules, `tsx/node_modules/@esbuild/linux-${arch === 'amd64' ? 'x64' : 'arm64'}`);
     assert.equal(JSON.parse(readFileSync(path.join(esbuild, 'package.json'))).version, '0.28.2');
     const nativeBinary = path.join(esbuild, 'bin/esbuild'), nativeMode = lstatSync(nativeBinary);

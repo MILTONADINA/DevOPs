@@ -25,7 +25,7 @@ function rustTopLevel(source: string): string {
   const blank = (start: number, end: number): void => {
     for (let at = start; at < end; at++) if (clean[at] !== "\n") clean[at] = " ";
   };
-  for (let i = 0; i < source.length; ) {
+  for (let i = 0; i < source.length;) {
     if (source.startsWith("//", i)) {
       const end = source.indexOf("\n", i);
       blank(i, end < 0 ? source.length : end);
@@ -90,7 +90,7 @@ function pythonCode(source: string): string {
   const blank = (start: number, end: number): void => {
     for (let at = start; at < end; at++) if (clean[at] !== "\n") clean[at] = " ";
   };
-  for (let i = 0; i < source.length; ) {
+  for (let i = 0; i < source.length;) {
     if (source[i] === "#") {
       const end = source.indexOf("\n", i);
       blank(i, end < 0 ? source.length : end);

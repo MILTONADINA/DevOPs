@@ -47,7 +47,7 @@ function withFixture(run) {
   feature();
   const parser = path.join(ROOT, 'node_modules/acorn/package.json');
   assert.ok(existsSync(parser), 'fixture prerequisite: locked Acorn must be installed');
-  assert.equal(JSON.parse(readFileSync(parser, 'utf8')).version, '8.18.0', 'fixture parser pin');
+  assert.equal(JSON.parse(readFileSync(parser, 'utf8')).version, '8.19.0', 'fixture parser pin');
   const state = path.join(ROOT, '.workflow/state'); mkdirSync(state, { recursive: true });
   const outer = realpathSync(mkdtempSync(path.join(state, 'detector-lint-')));
   try {
