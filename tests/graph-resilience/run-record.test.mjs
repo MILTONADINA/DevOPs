@@ -635,6 +635,8 @@ test('regression #276: the run-record helper loads in a toy project with no .wor
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /run record missing or redirected/);
     assert.doesNotMatch(result.stderr, /ENOENT|lstat/);
+    // REQ-R21: the run record writer SHALL NOT create the state directory or a record.
+    assert.equal(existsSync(path.join(toy, '.workflow')), false, 'a refused update must not create .workflow/');
   } finally { rmSync(toy, { recursive: true, force: true }); }
 });
 
