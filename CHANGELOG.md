@@ -10,6 +10,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- `loop-detection.sh` halts with exit 2, the only status Claude Code treats as blocking, when it gets no tool name. It exited 1 before, which let the call through (#355).
 - The `sprint-cycle.js` reviewer gate no longer passes when Build produced no change: an empty
   changed-file list (or one with only blank entries: whitespace, zero-width characters, dots and slashes) is INDETERMINATE and not ready, because there was
   nothing to review. No plan field can declare a no-change task. A resumed cycle on a clean tree now
