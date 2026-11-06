@@ -26,7 +26,7 @@ function fixture({ settings = cleanSettings(), mcp = { 'example.json': cleanMcp(
   mkdirSync(path.join(dir, 'mcp-configs', 'universal'), { recursive: true });
   mkdirSync(path.join(dir, 'hooks', 'universal', 'pre-tool'), { recursive: true });
   writeFileSync(path.join(dir, 'hooks', 'universal', 'pre-tool', 'example.sh'), '#!/bin/bash\nexit 0\n');
-  writeFileSync(path.join(dir, '.claude', 'settings.json'), JSON.stringify(settings));
+  if (settings !== null) writeFileSync(path.join(dir, '.claude', 'settings.json'), JSON.stringify(settings));
   for (const [name, body] of Object.entries(mcp)) {
     writeFileSync(path.join(dir, 'mcp-configs', 'universal', name), JSON.stringify(body));
   }
@@ -120,6 +120,12 @@ test('malformed inputs fail closed with exit 2', () => {
   }
   const run = fixture({ baseline: { schema_version: 1, reviewed: 'x' } });
   assert.equal(run.status, 2);
+});
+
+test('a missing .claude/settings.json fails closed instead of passing (REQ-3)', () => {
+  const run = fixture({ settings: null });
+  assert.equal(run.status, 2, run.stdout + run.stderr);
+  assert.match(run.stderr, /\.claude\/settings\.json/);
 });
 
 test('a missing default baseline fails closed instead of passing', () => {
