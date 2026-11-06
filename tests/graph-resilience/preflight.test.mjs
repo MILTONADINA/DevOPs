@@ -304,7 +304,8 @@ test('regression #277: the preflight writes its report in a toy project with no 
     mkdirSync(path.join(toy, 'governance', 'graph'), { recursive: true });
     copyFileSync(path.join(ROOT, 'scripts', 'graph-preflight.mjs'), path.join(toy, 'scripts', 'graph-preflight.mjs'));
     copyFileSync(path.join(ROOT, 'governance', 'graph', 'preflight-remediations.yml'), path.join(toy, 'governance', 'graph', 'preflight-remediations.yml'));
-    const env = { ...process.env };
+    writeFileSync(path.join(toy, 'package.json'), JSON.stringify({ engines: { node: '>=22.12.0' } }));
+    const env = { ...process.env, PATH: `${fakeSecurityTools(toy)}:${process.env.PATH}` };
     for (const key of Object.keys(env)) if (key.startsWith('GRAPH_')) delete env[key];
     const result = spawnSync(process.execPath, [path.join(toy, 'scripts', 'graph-preflight.mjs'), '--check-only'], { cwd: toy, env, encoding: 'utf8', timeout: 60_000 });
     assert.notEqual(result.status, 2, result.stderr);

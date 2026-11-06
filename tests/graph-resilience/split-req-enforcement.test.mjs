@@ -74,7 +74,7 @@ for (const split of SPLITS) {
 test('split ids are appended after the last pre-existing id, so no REQ is renumbered', () => {
   const ids = (file) => [...read(file).matchAll(/^### (REQ-[A-Z]+\d+)\b/gm)].map((m) => m[1]);
   const rIds = ids(R);
-  assert.deepEqual(rIds.slice(rIds.indexOf('REQ-R16')), ['REQ-R16', 'REQ-R17', 'REQ-R18', 'REQ-R19', 'REQ-R20']);
+  assert.deepEqual(rIds.slice(rIds.indexOf('REQ-R16')), ['REQ-R16', 'REQ-R17', 'REQ-R18', 'REQ-R19', 'REQ-R20', 'REQ-R21', 'REQ-R22', 'REQ-R23']);
   const mIds = ids(M);
   assert.deepEqual(mIds.slice(mIds.indexOf('REQ-M30')), ['REQ-M30', 'REQ-M31', 'REQ-M32', 'REQ-M33', 'REQ-M34', 'REQ-M35', 'REQ-M36']);
 });
