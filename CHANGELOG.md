@@ -21,6 +21,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Security
 
+- The TUF-verified Sigstore trust root is committed at `.workflow/sigstore/trust-bundle.json`
+  (sha256 `6494e21e…bc0b66`, the output of `cosign initialize`, matching the weekly refresh run; #217). A test
+  checks its shape, and `docs/SKILL_SIGNING.md` no longer suggests a plain download or the non-existent
+  `--bundle-path` flag; offline verification with this root needs new-format bundles (#345).
 - The Semgrep job now downloads the pinned `semgrep-rules` commit as one tarball from `codeload.github.com`
   instead of about 711 unauthenticated requests to `raw.githubusercontent.com`, so a 429 burst can no longer fail
   the required check; 429 and 5xx answers are retried with exponential backoff. Only the pinned paths are

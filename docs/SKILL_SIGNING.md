@@ -95,45 +95,38 @@ Expected output on a valid signature: `Verified OK`. Expected output on
 a tampered skill or wrong signature: a non-zero exit + an error naming
 the file.
 
-For offline verification, point `cosign verify-blob` at the cached
-trust-bundle:
-
-```bash
-cosign verify-blob \
-  --bundle-path .workflow/sigstore/trust-bundle.json \
-  --signature skills/universal/process/proof-of-work/SKILL.md.sig \
-  skills/universal/process/proof-of-work/SKILL.md
-```
+The committed Sigstore trust root is `.workflow/sigstore/trust-bundle.json`:
+the `trusted_root.json` that `cosign initialize` writes after full TUF
+verification, copied byte for byte. `cosign verify-blob` reads it through
+`--trusted-root`, but only for new-format bundles (`--new-bundle-format`;
+checked with cosign v3.1.4); the
+bundles under `skills/**/SKILL.md.bundle` are still legacy ones, so verifying
+them uses cosign's own TUF cache. Offline verification against the committed
+root comes with new-format bundles (#345).
 
 The trust bundle is the Sigstore root-of-trust at a frozen point in
 time -- it's refreshed weekly by
-`.github/workflows/refresh-trust-bundle.yml` (E.05) so the offline path
-stays current.
-
-The Rekor entry for a signature is queryable by its index (stored in
-the manifest's `rekor_log_index` field):
-
-```bash
-rekor-cli get --log-index <number>
-```
-
-This returns the full Rekor record: the certificate, the signing time,
-and the binding to the workflow identity.
-
----
+`.github/workflows/refresh-trust-bundle.yml` (E.05), which opens an issue with
+the new sha256 when upstream rotates it; a maintainer then commits the
+refreshed root in a normal pull request.
 
 ## What to do on failure
 
 If `cosign verify-blob` exits non-zero against a SKILL.md you expect to
 be valid, work through the failure modes in this order:
 
-1. **Outdated trust bundle.** If verifying offline, refresh:
+1. **Outdated trust bundle.** Refresh it the way the weekly workflow does,
+   never with a plain download (an unverified fetch would let a forged root in):
    ```bash
-   curl -sSfL https://tuf-repo-cdn.sigstore.dev/targets/trusted_root.json \
-     -o .workflow/sigstore/trust-bundle.json
+   cosign initialize
+   cp "$(find ~/.sigstore -name trusted_root.json -print -quit)" \
+     .workflow/sigstore/trust-bundle.json
    ```
-   The weekly workflow normally keeps this current; manual refresh
-   handles the edge case.
+   `cosign initialize` fetches the TUF metadata and verifies it against
+   cosign's embedded Sigstore root; only verified targets land in `~/.sigstore`.
+   Refuse an empty file. Compare its sha256 with the `trust-bundle-*` artifact
+   of the latest `Refresh Sigstore trust bundle` workflow run (or the open
+   trust-bundle issue), then commit it in a normal pull request.
 
 2. **Tampered skill.** If the SKILL.md was modified post-signing, the
    sha256 in the manifest will mismatch the file's current sha256.
