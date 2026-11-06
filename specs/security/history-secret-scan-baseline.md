@@ -2,7 +2,7 @@
 
 **Spec ID**: security/history-secret-scan-baseline
 **Status**: approved (owner: "go with your recommendations", 2026-09-25)
-**Last updated**: 2026-09-25
+**Last updated**: 2026-11-05
 **Owner**: miltonadina
 
 ---
@@ -44,6 +44,9 @@ THE SYSTEM SHALL continue to report the REQ-A8 poisoned fixture in a directory s
 
 ### AC-HSB-1.1 (REQ-HSB-1, REQ-HSB-2)
 **Given** the commit that adds the baseline **When** gitleaks, at the pinned version with `governance/gitleaks-ci.toml`, scans that commit's history **Then** it reports no findings. **When** the baseline is set aside **Then** it reports exactly the baselined fingerprints.
+
+### AC-HSB-1.2 (REQ-HSB-1) — rewritten history
+WHEN a history rewrite replaces a commit that the baseline lists, THE SYSTEM SHALL also list the successor commit's fingerprint, with the same file, rule and line, in `.gitleaksignore`. The attribution rewrite's commit map (`governance/changelog/2026-10-11-attribution-rewrite-commit-map.txt`) names each successor, and `tests/ci/gitleaksignore-baseline.test.mjs` checks every such pair.
 
 ### AC-HSB-3.1 (REQ-HSB-3)
 **Given** a scratch commit on top that adds a fresh fake live key **When** the history scan runs with the baseline **Then** it reports exactly one finding, in the new file.
