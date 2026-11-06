@@ -32,7 +32,6 @@ const APPLIED = [
   ['runtime', '@huggingface/transformers', '4.3.2'],
   ['runtime', '@supabase/supabase-js', '2.118.0'],
   ['runtime', 'axios', '1.21.0'],
-  ['runtime', 'onnxruntime-node', '1.31.1'],
   ['runtime', '@cloudflare/workers-types', '5.20261102.1'],
   ['runtime', '@types/node', '22.20.5'],
   ['runtime', '@vitest/coverage-v8', '5.0.5'],
@@ -79,6 +78,18 @@ for (const name of ['@typescript-eslint/eslint-plugin', '@typescript-eslint/pars
     assert.equal(locked('runtime', name), '8.55.0');
   });
 }
+
+// Held at the version @huggingface/transformers pins exactly: issue #209 lists onnxruntime-node
+// 1.31.1, but a direct bump past that pin installs a second native runtime tree (about 290 MB)
+// beside the one transformers loads, and nothing imports the direct package. Lift the hold when
+// transformers moves its pin.
+test('runtime lockfile holds onnxruntime-node at the version @huggingface/transformers pins', () => {
+  const packages = lockfile('runtime');
+  const pin = packages['node_modules/@huggingface/transformers'].dependencies['onnxruntime-node'];
+  assert.equal(locked('runtime', 'onnxruntime-node'), pin);
+  const nested = Object.keys(packages).filter((key) => key.endsWith('/node_modules/onnxruntime-node'));
+  assert.deepEqual(nested, [], 'no second onnxruntime-node tree is installed');
+});
 
 // scripts/prepare-dast.mjs asserts the tsx version its staged runtime install resolves; it must
 // match the runtime lockfile or the DAST preparation fails.
