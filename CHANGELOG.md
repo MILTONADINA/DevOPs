@@ -33,6 +33,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Security
 
+- The installer accepts a skill signature only from `MILTONADINA/DevOPs`'s `release-sign.yml` on a branch, and refuses a skill whose manifest names another signer. It refuses a skill whose signature it cannot verify (no cosign, a cosign error or timeout, or no bundle) instead of falling back to the manifest hash, which ships with the skill. `devops init` therefore needs cosign, or `--allow-unsigned --rationale="..."`, which logs each skill as overridden (GHSA-3mv5-99fp-7f4c).
 - The TUF-verified Sigstore trust root is committed at `.workflow/sigstore/trust-bundle.json`
   (sha256 `6494e21e…bc0b66`, the output of `cosign initialize`, matching the weekly refresh run; #217). A test
   checks its shape, and `docs/SKILL_SIGNING.md` no longer suggests a plain download or the non-existent
@@ -153,6 +154,12 @@ Versions follow [Semantic Versioning](https://semver.org/).
   and fails below the floor in `governance/coverage-floor.json`, checked by
   `scripts/check-coverage-floor.mjs` (`specs/ops/ci-product-suites.md` REQ-5).
 
+## [0.5.2] — 2026-10-31
+
+### Security
+
+- `client-boundary.sh` no longer evaluates allowlist lines, compares normalised paths by directory boundary, reads the PreToolUse JSON on stdin (every path field, `~` expanded) and writes valid JSON event lines. It fails closed.
+
 ## [0.5.1] — 2026-10-26
 ### Documentation
 
@@ -226,6 +233,13 @@ Versions follow [Semantic Versioning](https://semver.org/).
   by a per-response CSP nonce instead of `script-src 'unsafe-inline'`, and the HTML
   is sent with `Cache-Control: no-store`
   (`specs/memory/graph-dashboard.md` REQ-3).
+- The deploy and sealed-ref command classifier fails closed on wrapped and
+  compound-command deploys (nohup, sudo, xargs, `sh -c`, eval, shell loops), on
+  command words written with ANSI-C or locale quoting, parameter expansion, command
+  substitution or globs, on program words that differ only in case, on launcher
+  chains and pseudo-file path spellings, on more git ref-writing forms, on
+  per-command git aliases, on package-runner launchers and on unlisted programs
+  that write to the git directory (GHSA-h7pf-67p2-535f).
 
 ## [0.5.0] — 2026-10-18
 

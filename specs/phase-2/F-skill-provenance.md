@@ -2,7 +2,7 @@
 
 **Spec ID**: phase-2/F-skill-provenance
 **Status**: draft
-**Last updated**: 2026-05-22
+**Last updated**: 2026-11-06
 **Owner**: miltonadina
 **Reviewers**: miltonadina
 
@@ -52,6 +52,12 @@ WHERE the installer is invoked with `--dry-run`, THE SYSTEM SHALL perform all ve
 ### REQ-F7 (Optional feature) — Alternate manifest
 WHERE the installer is invoked with `--manifest <path>`, THE SYSTEM SHALL load the named manifest instead of the default `governance/skill-manifest.yml` (for testing and per-project trust overrides).
 
+### REQ-F8 (Ubiquitous) — Signatures bind to the DevOPs release workflow
+THE SYSTEM SHALL accept a skill signature only from a certificate whose identity matches `^https://github\.com/MILTONADINA/DevOPs/\.github/workflows/release-sign\.yml@refs/heads/.+$` with the issuer `https://token.actions.githubusercontent.com`, and SHALL refuse a skill whose manifest `signed_by` does not match that identity.
+
+### REQ-F9 (Unwanted behaviour) — Unverifiable signatures fail closed
+IF a skill has a `.sig` but its signature cannot be verified, because the `.bundle` is missing or cosign is absent, fails to start, times out or is killed, THEN THE SYSTEM SHALL refuse the skill as in REQ-F2 and SHALL name the `--allow-unsigned --rationale="..."` opt-out. The manifest hash does not stand in for the signature, because the manifest ships in the same package as the skill.
+
 ---
 
 ## Acceptance criteria
@@ -90,6 +96,16 @@ WHERE the installer is invoked with `--manifest <path>`, THE SYSTEM SHALL load t
 **Given** an alternate manifest at `./tests/manifests/dev.yml`
 **When** `node analyzer/install.ts --manifest ./tests/manifests/dev.yml --target ./fixture-project` runs
 **Then** verification uses the entries from that manifest, not the default.
+
+### AC-F8.1 (maps to REQ-F8)
+**Given** a signed skill whose manifest `signed_by` names a workflow outside `MILTONADINA/DevOPs`, or a cosign that verifies it
+**When** the installer runs
+**Then** it refuses the first skill with exit 2, and for the second it passes cosign the anchored identity and issuer of REQ-F8.
+
+### AC-F9.1 (maps to REQ-F9)
+**Given** a signed skill and no cosign, a cosign that is killed before it answers, or no `.bundle`
+**When** the installer runs without `--allow-unsigned`
+**Then** it exits 2, copies nothing and logs `decision: fail`; with `--allow-unsigned --rationale="..."` it copies the skill and logs `decision: overridden`.
 
 ---
 
@@ -158,6 +174,8 @@ Step 3 atomization will likely produce: (1) extend `analyzer/install.ts` with ve
 | REQ-F5 | AC-F5.1 | (Phase 2 implementation) |
 | REQ-F6 | AC-F6.1 | (Phase 2 implementation) |
 | REQ-F7 | AC-F7.1 | (Phase 2 implementation) |
+| REQ-F8 | AC-F8.1 | tests/install-signature.test.mjs |
+| REQ-F9 | AC-F9.1 | tests/install-signature.test.mjs, scripts/package-smoke.sh |
 
 The Phase 2 spec-authoring claim for this spec is `claim-2026-05-22-022`.
 
@@ -166,3 +184,4 @@ The Phase 2 spec-authoring claim for this spec is `claim-2026-05-22-022`.
 ## Change log
 
 - 2026-05-22 miltonadina: created (Phase 2 Step 1; Prompt 3 area F).
+- 2026-11-06: REQ-F8 binds signatures to the DevOPs release workflow, and REQ-F9 fails closed when a signature cannot be verified (GHSA-3mv5).

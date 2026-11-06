@@ -52,8 +52,14 @@ export STRATUM_TENANT_ID=<client-name>
 If the project needs access to paths outside its root (rare, prefer not to):
 ```bash
 # .workflow/client/path-allowlist.txt
-# One path per line, absolute or with $HOME expansion. Document rationale.
+# One absolute path per line; only a leading ~, $HOME or ${HOME} is expanded.
+# Any other $ or backtick line is ignored. Document rationale.
 ```
+
+To enforce the project boundary for file tools, register the client-boundary
+hook as described in [PLAYBOOK](PLAYBOOK.md#multi-client-setup). The installer
+puts it at `.claude/hooks/client-boundary.sh`; the registration fails closed
+(`HOOK MISSING`, exit 2) if the file is absent.
 
 ## 7. Initial session
 
