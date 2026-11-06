@@ -1216,6 +1216,43 @@ test('empty diff: a non-array lister result stays INDETERMINATE and a null liste
   }, () => {}, () => {}), /BLOCKED_BY_ENVIRONMENT:.*"stage":"changed-files"/);
 });
 
+test('empty diff: a resumed cycle that carries Build forward on a clean tree is INDETERMINATE', async () => {
+  // REQ-M1 / AC-M1.3 (specs/graph/M-masterpiece-standard.md) and the CHANGELOG #329 entry: a resumed
+  // cycle on a clean tree reads INDETERMINATE by design. Build is carried forward, so no coder or tester
+  // runs and only the reviewer gate can stop an empty set from passing.
+  const labels = [];
+  const priorBuildResults = [{
+    task: PLAN.tasks[0],
+    coderResult: { task_id: 'T1', summary: 'done' },
+    testerResult: { task_id: 'T1', passed: true, outcome: 'PASS' },
+  }];
+  const r = await run(async (_, o) => {
+    labels.push(o.label);
+    return o.label === 'reviewer' ? { approved: true, filesSeen: [] } : ALL_PASS[o.label];
+  }, { plan: PLAN, priorBuildResults, strictReviewer: true, changedFiles: [] });
+  assertNotReady(r);
+  assert.ok(!labels.some((l) => l === 'coder:T1' || l === 'tester:T1'), labels.join(', '));
+});
+
+test('empty diff (positive control): a resumed cycle with one real changed file the reviewer saw is ready and PASS', async () => {
+  // AC-M1.2 (specs/graph/M-masterpiece-standard.md): the resumed twin of the clean-tree test above. Without it,
+  // a gate that marks every resumed cycle INDETERMINATE would still pass that test.
+  const labels = [];
+  const priorBuildResults = [{
+    task: PLAN.tasks[0],
+    coderResult: { task_id: 'T1', summary: 'done' },
+    testerResult: { task_id: 'T1', passed: true, outcome: 'PASS' },
+  }];
+  const r = await run(async (_, o) => {
+    labels.push(o.label);
+    return o.label === 'reviewer' ? { approved: true, filesSeen: ['src/a.js'] } : ALL_PASS[o.label];
+  }, { plan: PLAN, priorBuildResults, strictReviewer: true, changedFiles: ['src/a.js'] });
+  assert.equal(r.cycleOutcome.readyForPR, true);
+  assert.equal(r.cycleOutcome.outcome, 'PASS');
+  assert.deepEqual(r.cycleOutcome.indeterminateReasons, []);
+  assert.ok(!labels.some((l) => l === 'coder:T1' || l === 'tester:T1'), labels.join(', '));
+});
+
 test('empty diff (positive control): one real changed file seen by the reviewer is ready and PASS', async () => {
   const r = await runEmpty({ approved: true, filesSeen: ['src/a.js'] }, ['src/a.js']);
   assert.equal(r.cycleOutcome.readyForPR, true);
