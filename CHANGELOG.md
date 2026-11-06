@@ -11,6 +11,12 @@ Versions follow [Semantic Versioning](https://semver.org/).
 ### Fixed
 ### Security
 
+- The installer accepts a skill signature only from `MILTONADINA/DevOPs`'s `release-sign.yml` on a branch, and refuses a skill whose manifest names another signer. It refuses a skill whose signature it cannot verify (no cosign, a cosign error or timeout, or no bundle) instead of falling back to the manifest hash, which ships with the skill. `devops init` therefore needs cosign, or `--allow-unsigned --rationale="..."`, which logs each skill as overridden (GHSA-3mv5-99fp-7f4c).
+
+## [0.5.2] — 2026-10-31
+
+### Security
+
 - `client-boundary.sh` no longer evaluates allowlist lines, compares normalised paths by directory boundary, reads the PreToolUse JSON on stdin (every path field, `~` expanded) and writes valid JSON event lines. It fails closed.
 
 ## [0.5.1] — 2026-10-26
