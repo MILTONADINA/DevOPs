@@ -113,7 +113,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - Root npm dependencies take the non-major updates listed in issue #209: `acorn` 8.19.0,
   `tsx` 4.23.15 (a shipped dependency; patch), `@opentelemetry/core` and
   `@opentelemetry/sdk-trace-base` 2.12.0, and `@types/node` 24.19.2. Major updates stay deferred.
-  `tests/dependency-updates.test.mjs` pins the lockfile versions, and the root test floor rises to 1579.
+  `tests/dependency-updates.test.mjs` pins the root and runtime lockfile versions, and the root test floor rises from 1585 to 1618 (+33).
 
 ### Fixed
 

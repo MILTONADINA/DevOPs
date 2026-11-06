@@ -25,7 +25,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Changed
 - Removed in-file Format Reference example block (DevOPs Session 13 hygiene fix). The block's example "Fixed: Session capture script crashed when Anthropic returned a streaming response" was misread upstream as a real defect entry — it was a documentation-format demonstration. The link to Keep-a-Changelog above is now the canonical format reference.
-- Runtime npm dependencies take the non-major updates listed in issue #209: `vitest` and `@vitest/coverage-v8` 5.0.5, `@supabase/supabase-js` 2.118.0, `wrangler` 4.156.1, `supabase` 2.122.0, `prettier` 3.9.10 (which reformats two `for` headers in `src/memory/source-graph.ts`), `onnxruntime-node` 1.31.1, `axios` 1.21.0, `@huggingface/transformers` 4.3.2, and the rest of that list. `@typescript-eslint` stays at 8.55 because 8.56 and later need Node 22.13. Major updates stay deferred.
+- Runtime npm dependencies take the non-major updates listed in issue #209: `vitest` and `@vitest/coverage-v8` 5.0.5, `@supabase/supabase-js` 2.118.0, `wrangler` 4.156.1, `supabase` 2.122.0, `prettier` 3.9.10 (which reformats two `for` headers in `src/memory/source-graph.ts`), `axios` 1.21.0, `@huggingface/transformers` 4.3.2, and the rest of that list. `@typescript-eslint` stays at 8.55 because 8.56 and later need Node 22.13. `onnxruntime-node` stays at 1.30.0, the version `@huggingface/transformers` pins exactly, because 1.31.1 would install a second native runtime of about 290 MB. Major updates stay deferred.
 
 ### Technical Decisions
 - Supabase (Postgres) over SQLite for local development parity
