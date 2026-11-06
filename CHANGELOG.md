@@ -10,6 +10,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- `CLAUDE.md` lists `block-new-dependency.sh` as a wired Bash pre-tool hook, as `.claude/settings.json` wires it, instead of among the scripts that do not run. A test fails when the two lists diverge (#357).
 - `docs/UPGRADING.md` has "0.5.0 to 0.5.1" and "0.5.1 to 0.5.2" sections. The CSP nonce and subagent items, which shipped in 0.5.1, move out of "Unreleased (dev)". A test fails when a released version has no section, or an Unreleased item names only terms from a released version (#354).
 - `loop-detection.sh` halts with exit 2, the only status Claude Code treats as blocking, when it gets no tool name. It exited 1 before, which let the call through (#355).
 - The `sprint-cycle.js` reviewer gate no longer passes when Build produced no change: an empty
