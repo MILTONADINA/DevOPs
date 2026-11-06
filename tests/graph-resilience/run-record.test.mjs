@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync, statSync, symlinkSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync, statSync, symlinkSync, copyFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 
 const root = path.resolve(import.meta.dirname, '..', '..');
@@ -612,3 +613,54 @@ test('AC-D1.1: readHead(root) agrees with graph-preflight --check-only report gi
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+// Regression tests for consumer-graph reports #275 and #276. Each runs the real script inside a
+// synthetic toy project with no .workflow/state/ directory, as in a fresh consumer checkout.
+function toyRunRecordProject() {
+  const toy = mkdtempSync(path.join(root, '.workflow', 'state', 'graph-run-record-toy-'));
+  mkdirSync(path.join(toy, 'scripts'));
+  copyFileSync(script, path.join(toy, 'scripts', 'graph-run-record.mjs'));
+  return toy;
+}
+function runToyRecord(toy, ...args) {
+  const env = { ...process.env };
+  for (const key of Object.keys(env)) if (key.startsWith('GRAPH_')) delete env[key];
+  return spawnSync(process.execPath, [path.join(toy, 'scripts', 'graph-run-record.mjs'), ...args], { cwd: toy, env, encoding: 'utf8' });
+}
+
+test('regression #276: the run-record helper loads in a toy project with no .workflow/state and refuses an update cleanly', () => {
+  const toy = toyRunRecordProject();
+  try {
+    const result = runToyRecord(toy, 'update', '--cycle', 'c1', '--status', 'running');
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /run record missing or redirected/);
+    assert.doesNotMatch(result.stderr, /ENOENT|lstat/);
+  } finally { rmSync(toy, { recursive: true, force: true }); }
+});
+
+test('regression #276: launch in a toy project with no .workflow/state reaches the preflight check instead of crashing at load', () => {
+  const toy = toyRunRecordProject();
+  try {
+    const result = runToyRecord(toy, 'launch', '--cycle', 'c1', '--backlog', 'toy item');
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /preflight\.json/);
+    assert.doesNotMatch(result.stderr, /lstat|realpath/);
+    assert.equal(existsSync(path.join(toy, '.workflow', 'state', 'graph-cycles', 'c1', 'run.json')), false);
+  } finally { rmSync(toy, { recursive: true, force: true }); }
+});
+
+test('run-record creates nothing outside the project root when an ancestor is a symlink out of it', () => {
+  const toy = toyRunRecordProject();
+  const outside = mkdtempSync(path.join(tmpdir(), 'graph-run-record-outside-'));
+  try {
+    symlinkSync(outside, path.join(toy, '.workflow'));
+    const result = runToyRecord(toy, 'launch', '--cycle', 'c1', '--backlog', 'toy item');
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /state directory leaves project root/);
+    assert.equal(existsSync(path.join(outside, 'state')), false);
+  } finally {
+    rmSync(outside, { recursive: true, force: true });
+    rmSync(toy, { recursive: true, force: true });
+  }
+});
+
