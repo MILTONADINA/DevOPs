@@ -177,7 +177,7 @@ script indirection or shipped runtime guarantee is necessary for this slice.
 
 | AC | Owned fixture / expected observation | Requirement |
 | --- | --- | --- |
-| 1 | Copy actual current workflow and ignore inputs into an owned script-root fixture; CLI succeeds, selects exactly three templates, reports seven entries; a different CWD gives the same result. | 1–5 |
+| 1 | Copy actual current workflow and ignore inputs into an owned script-root fixture; CLI succeeds, selects exactly three templates, reports fourteen entries; a different CWD gives the same result. | 1–5 |
 | 2 | Independently insert each of the three phrases into each detector prompt; each exits1/`phrase`. Include one mixed-case, one wrapped and one escaped-literal variant without expanding the policy. | 4 / AC-M25.1 |
 | 3 | Phrase in either shared initializer fails; nested literal interpolation fails. Same words in a comment or unrelated role are inert controls. Fragments separated by dynamic expressions are a documented non-guarantee, not a passing safety assertion. | 3–4 |
 | 4 | Missing/duplicate role, non-template selected argument, duplicate/spread/computed label configuration, missing shared declaration and malformed JS refuse; nested expressions, escaped backticks and ordinary regex literals elsewhere remain parser controls. | 3 |
