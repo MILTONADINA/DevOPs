@@ -96,15 +96,34 @@ On 2026-10-11 the commit history was rewritten to remove Claude attribution line
 
 **Action:** if you forked or branched from the original history, rebase onto the rewritten history. Use the commit map to reconcile.
 
-## Unreleased (dev)
+## Upgrading from 0.5.0 to 0.5.1
 
-These items are on the `dev` branch but not yet released.
+Install `@miltonadina/devops@0.5.1` in the scope you use, then run `npx @miltonadina/devops init` in the project, as in the 0.5.0 steps above.
 
 ### CSP nonce replaces `unsafe-inline` for dashboard scripts
 
 The dashboard pages (`/dashboard`, `/dashboard/graph`) now allow their inline scripts via a per-response CSP nonce instead of `script-src 'unsafe-inline'`. The HTML is sent with `Cache-Control: no-store`.
 
 **Action:** no migration needed. The nonce is generated server-side. Ensure your proxy or firewall does not strip the CSP header.
+
+### Subagent additions
+
+- The reviewer subagent adds regression-across-specs, privacy-parity checks, per-branch spec and test checks, a trace-primitive-neutral observability check, unconsumed paid calls under cost, evidence for a Blocker, and a per-check "Not applicable" verdict.
+- The security subagent adds an offline mode, a language-model checklist, flag injection detection, and host-project evidence.
+
+**Action:** no migration needed. Update your subagent definitions if you have custom overrides.
+
+## Upgrading from 0.5.1 to 0.5.2
+
+### `client-boundary.sh` fails closed
+
+`client-boundary.sh` no longer evaluates allowlist lines. It compares normalised paths by directory boundary, reads every path field of the PreToolUse JSON on stdin (with `~` expanded), and writes valid JSON event lines.
+
+**Action:** `init` copies the hooks your profile lists into `.claude/hooks/` and replaces existing copies. If your project uses this hook, install `@miltonadina/devops@0.5.2` and run `npx @miltonadina/devops init` to replace it.
+
+## Unreleased (dev)
+
+These items are on the `dev` branch but not yet released.
 
 ### Agile Graph engine linking updated
 
@@ -113,13 +132,6 @@ The dashboard pages (`/dashboard`, `/dashboard/graph`) now allow their inline sc
 `ENGINE_VERSIONS` is an allowlist: `init` links one engine that is already installed, if its version is listed. It installs nothing.
 
 **Action:** a project linked to an older engine keeps working with that engine and its pin file. Before it upgrades the engine to 0.4.0, replace `.claude/agile-graph-tool-hashes.json` with `mcp-configs/universal/agile-graph.tool-hashes.json` from this release: the 0.4.0 server refuses to start against the old pins, and `init` keeps an existing pin file, so it will not replace it. To link a new install, install `@agile-graph/engine@0.4.0` on Node 24 to 26, run `npx @miltonadina/devops init`, then follow the engine's own init and index steps (see the README's Agile Graph section). Pass `--no-agile-graph` to `init` to skip it.
-
-### Subagent additions
-
-- The reviewer subagent adds regression-across-specs, privacy-parity checks, per-branch spec and test checks, a trace-primitive-neutral observability check, unconsumed paid calls under cost, evidence for a Blocker, and a per-check "Not applicable" verdict.
-- The security subagent adds an offline mode, a language-model checklist, flag injection detection, and host-project evidence.
-
-**Action:** no migration needed. Update your subagent definitions if you have custom overrides.
 
 ## Pre-upgrade checklist
 
