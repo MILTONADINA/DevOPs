@@ -9,17 +9,6 @@ Versions follow [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Fixed
-### Security
-
-- The installer accepts a skill signature only from `MILTONADINA/DevOPs`'s `release-sign.yml` on a branch, and refuses a skill whose manifest names another signer. It refuses a skill whose signature it cannot verify (no cosign, a cosign error or timeout, or no bundle) instead of falling back to the manifest hash, which ships with the skill. `devops init` therefore needs cosign, or `--allow-unsigned --rationale="..."`, which logs each skill as overridden (GHSA-3mv5-99fp-7f4c).
-
-## [0.5.2] — 2026-10-31
-
-### Security
-
-- `client-boundary.sh` no longer evaluates allowlist lines, compares normalised paths by directory boundary, reads the PreToolUse JSON on stdin (every path field, `~` expanded) and writes valid JSON event lines. It fails closed.
-
-## [0.5.1] — 2026-10-26
 
 - `devops analyze` matches README compliance terms as whole words, and counts words such as "child", "minor" and "patient" only next to a data term. "A minor release of a graphics library" no longer adds COPPA, HIPAA or the `coppa-audit` skill, and analyze prints the term behind each scope (#351).
 - `scripts/prepare-dast.mjs` checks the native esbuild where `runtime/package-lock.json` puts it: nested under `tsx` if the lock has that copy, else hoisted to the top level. It looked only under `tsx`, which the current lock does not use (#360).
@@ -44,6 +33,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Security
 
+- The installer accepts a skill signature only from `MILTONADINA/DevOPs`'s `release-sign.yml` on a branch, and refuses a skill whose manifest names another signer. It refuses a skill whose signature it cannot verify (no cosign, a cosign error or timeout, or no bundle) instead of falling back to the manifest hash, which ships with the skill. `devops init` therefore needs cosign, or `--allow-unsigned --rationale="..."`, which logs each skill as overridden (GHSA-3mv5-99fp-7f4c).
 - The TUF-verified Sigstore trust root is committed at `.workflow/sigstore/trust-bundle.json`
   (sha256 `6494e21e…bc0b66`, the output of `cosign initialize`, matching the weekly refresh run; #217). A test
   checks its shape, and `docs/SKILL_SIGNING.md` no longer suggests a plain download or the non-existent
@@ -163,6 +153,12 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - The required `runtime-test` job measures V8 line coverage of `runtime/` (`npm run test:coverage`)
   and fails below the floor in `governance/coverage-floor.json`, checked by
   `scripts/check-coverage-floor.mjs` (`specs/ops/ci-product-suites.md` REQ-5).
+
+## [0.5.2] — 2026-10-31
+
+### Security
+
+- `client-boundary.sh` no longer evaluates allowlist lines, compares normalised paths by directory boundary, reads the PreToolUse JSON on stdin (every path field, `~` expanded) and writes valid JSON event lines. It fails closed.
 
 ## [0.5.1] — 2026-10-26
 ### Documentation

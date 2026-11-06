@@ -50,7 +50,9 @@ check_version() {
 
   # 3. devops init registers the server.
   "$bin/devops-analyze" > "$WORK/analyze.log" || { cat "$WORK/analyze.log"; fail "devops-analyze failed"; }
-  "$bin/devops" init > "$WORK/init.log" || { cat "$WORK/init.log"; fail "devops init failed"; }
+  # Skills install only once cosign verifies them; this smoke checks the MCP link, so it
+  # opts out and logs why, as package-smoke.sh does.
+  "$bin/devops" init --allow-unsigned "--rationale=agile-graph link smoke without cosign" > "$WORK/init.log" || { cat "$WORK/init.log"; fail "devops init failed"; }
   grep -q 'registered the MCP server "agile-graph" in .mcp.json' "$WORK/init.log" || { cat "$WORK/init.log"; fail "devops init did not register the server for $version"; }
   cmp -s "$PINS" .claude/agile-graph-tool-hashes.json || fail "devops init did not copy the pins"
 
