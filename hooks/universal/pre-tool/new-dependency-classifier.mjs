@@ -275,7 +275,8 @@ function checkSegment(words, dir, depth, moved) {
   if (pipArgs) {
     const ops = operands(pipArgs, 'pip');
     const declared = ops.length ? declaredIn(declaredPython) : null;
-    return ops.filter((o) => !isLocalPath(o) && o !== '.' && !/\.(whl|tar\.gz|zip)$/.test(o)
+    // A local archive is the project's own build; a remote one is fetched and needs approval.
+    return ops.filter((o) => !isLocalPath(o) && o !== '.' && !(!/^[a-z][a-z0-9+.-]*:/i.test(o) && /\.(whl|tar\.gz|zip)$/.test(o))
       && (isRemote(o) || !declared.has(pyNorm(pyName(o)))))
       .map((o) => ({ name: isRemote(o) ? o : pyName(o), manifest: 'requirements*.txt or pyproject.toml' }));
   }

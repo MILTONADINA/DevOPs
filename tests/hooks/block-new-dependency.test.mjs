@@ -121,6 +121,12 @@ test('pip, uv and poetry block undeclared names and read requirements and pyproj
     allowed(dir, 'uv add toy-proj>=1');
     allowed(dir, 'poetry add toy-poetry');
     allowed(dir, 'pip install toy-dev[extra]==3.0.1');
+    // A remote archive is fetched from elsewhere, so it needs approval; a local one does not.
+    for (const url of ['https://example.invalid/toy-new-1.0.tar.gz', 'https://example.invalid/toy_new-1.0-py3-none-any.whl', 'http://example.invalid/toy-new.zip']) {
+      blocked(dir, `pip install ${url}`, url);
+      blocked(dir, `uv pip install ${url}`, url);
+    }
+    for (const local of ['dist/toy_new-1.0-py3-none-any.whl', './toy-new-1.0.tar.gz', 'toy-new.zip']) allowed(dir, `pip install ${local}`);
   });
   withProject({}, (dir) => blocked(dir, 'pip install toy-new', 'toy-new'));
 });
