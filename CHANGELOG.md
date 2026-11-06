@@ -10,6 +10,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- `docs/UPGRADING.md` has "0.5.0 to 0.5.1" and "0.5.1 to 0.5.2" sections. The CSP nonce and subagent items, which shipped in 0.5.1, move out of "Unreleased (dev)". A test fails when a released version has no section, or an Unreleased item names only terms from a released version (#354).
 - `loop-detection.sh` halts with exit 2, the only status Claude Code treats as blocking, when it gets no tool name. It exited 1 before, which let the call through (#355).
 - The `sprint-cycle.js` reviewer gate no longer passes when Build produced no change: an empty
   changed-file list (or one with only blank entries: whitespace, zero-width characters, dots and slashes) is INDETERMINATE and not ready, because there was
