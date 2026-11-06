@@ -96,6 +96,16 @@ one-entry-at-a-time walk as REQ-3, sharing one 2,000-entry budget across the roo
 every folder it lists. It SHALL skip symbolic links and return as soon as one file shows
 an indicator. On a tree within the budget its result is unchanged.
 
+### REQ-6 — README compliance terms match whole words
+
+`devops analyze` SHALL add a compliance class from `README.md` only for whole-word terms.
+`coppa`, `under 13`, `k-12`, "children's" followed by a data term and a data term
+followed by "about/of/from children" add children's data (COPPA); `hipaa`,
+`phi`, `protected health information` and `health record` add PHI (HIPAA). The group
+words kid, minors, student, pupil, patient and medical count only within the
+same sentence as a data term (data, information, record, privacy, personal, account,
+profile). Analyze SHALL print the README term behind each compliance scope.
+
 ## Acceptance criteria
 
 ### AC-1
@@ -151,6 +161,16 @@ a symlinked folder is not followed, and the scan stops reading once an indicator
 
 **Verified by:** `tests/analyzer-webhook-budget.test.mjs`, test titles naming
 `specs/ops/analyzer-detection.md#ac-5`.
+
+### AC-6
+
+**Given** a README that says "a minor release of a small graphics helper library" **When**
+`devops analyze` runs **Then** it reports no compliance scope and recommends no
+`coppa-audit`. **Given** a README that says it processes children's data **Then** analyze
+reports COPPA and prints the matched term.
+
+**Verified by:** `tests/analyzer-compliance.test.mjs`, test titles naming
+`specs/ops/analyzer-detection.md#ac-6`.
 
 ## Out of scope
 
