@@ -10,6 +10,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- `devops analyze` matches README compliance terms as whole words, and counts words such as "child", "minor" and "patient" only next to a data term. "A minor release of a graphics library" no longer adds COPPA, HIPAA or the `coppa-audit` skill, and analyze prints the term behind each scope (#351).
+- `scripts/prepare-dast.mjs` checks the native esbuild where `runtime/package-lock.json` puts it: nested under `tsx` if the lock has that copy, else hoisted to the top level. It looked only under `tsx`, which the current lock does not use (#360).
+- `CLAUDE.md` lists `block-new-dependency.sh` as a wired Bash pre-tool hook, as `.claude/settings.json` wires it, instead of among the scripts that do not run. A test fails when the two lists diverge (#357).
+- `docs/UPGRADING.md` has "0.5.0 to 0.5.1" and "0.5.1 to 0.5.2" sections. The CSP nonce and subagent items, which shipped in 0.5.1, move out of "Unreleased (dev)". A test fails when a released version has no section, or an Unreleased item names only terms from a released version (#354).
 - `loop-detection.sh` halts with exit 2, the only status Claude Code treats as blocking, when it gets no tool name. It exited 1 before, which let the call through (#355).
 - The `sprint-cycle.js` reviewer gate no longer passes when Build produced no change: an empty
   changed-file list (or one with only blank entries: whitespace, zero-width characters, dots and slashes) is INDETERMINATE and not ready, because there was
