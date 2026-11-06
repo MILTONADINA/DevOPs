@@ -33,6 +33,9 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Security
 
+- `block-new-dependency.sh` asks for approval before `pip`, `uv pip` or `uv add` installs a
+  `.whl`, `.tar.gz` or `.zip` from a URL. Only a local archive, the project's own build, is
+  exempt; a remote one was exempted too.
 - `scripts/check-agent-config.mjs` exits 2 when `.claude/settings.json` is missing, as
   `specs/security/ci-agent-config-scan.md` REQ-3 requires, instead of skipping the permission
   and hook checks and passing.
