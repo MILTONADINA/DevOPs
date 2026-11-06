@@ -121,9 +121,13 @@ The dashboard pages (`/dashboard`, `/dashboard/graph`) now allow their inline sc
 
 **Action:** `init` copies the hooks your profile lists into `.claude/hooks/` and replaces existing copies. If your project uses this hook, install `@miltonadina/devops@0.5.2` and run `npx @miltonadina/devops init` to replace it.
 
-## Unreleased (dev)
+## Upgrading from 0.5.2 to 0.6.0
 
-These items are on the `dev` branch but not yet released.
+### Skills install only once cosign verifies them
+
+`devops init` copies a signed skill only after `cosign` verifies that its signature comes from this repository's `release-sign.yml`. Without `cosign` on `PATH`, each skill is reported as unverified and none is installed.
+
+**Action:** install cosign (https://docs.sigstore.dev/cosign/system_config/installation/) before running `init`. To install without verification, pass `--allow-unsigned --rationale="<why>"`; each skill is then logged as overridden.
 
 ### Agile Graph engine linking updated
 
