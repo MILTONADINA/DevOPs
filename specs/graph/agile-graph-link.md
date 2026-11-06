@@ -256,6 +256,12 @@ scripts off.
 `.github/workflows/agile-graph-versions.yml` job `check`, which runs
 `scripts/agile-graph-version-check.sh`.
 
+### AC-8
+
+WHEN `devops init` runs with `@agile-graph/engine` 0.4.0 installed on a supported Node, THE INSTALLER SHALL register the server and copy the shipped pins, and THE SHIPPED PINS SHALL be the cloud-default tool hashes that engine 0.4.0 reports. WHEN `devops init` runs with an engine version that `ENGINE_VERSIONS` does not list, such as 0.2.0, whose tools differ from those pins, THE INSTALLER SHALL write nothing and print one line.
+
+**Verified by:** `tests/agile-graph-link.test.mjs` (`#ac-8`); the CI job `agile-graph-link` (REQ-7) checks the same hashes against the live engine.
+
 ## Out of scope
 
 - A `/sprint` for npm users.
