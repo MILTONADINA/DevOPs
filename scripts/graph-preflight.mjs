@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { accessSync, readFileSync, readdirSync, writeFileSync, statSync, realpathSync, chmodSync, unlinkSync, existsSync, renameSync, mkdirSync } from 'node:fs';
+import { accessSync, readFileSync, readdirSync, writeFileSync, statSync, realpathSync, chmodSync, unlinkSync, existsSync, renameSync, mkdirSync, lstatSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { constants } from 'node:fs';
 import path from 'node:path';
@@ -16,6 +16,21 @@ const firstLine = (value) => String(value || '').split('\n')[0].trim().slice(0, 
 const add = (id, status, evidence, remedy) => checks.push({ id, status, evidence, ...(remedy ? { remedy } : {}) });
 const recordPath = (id) => path.join(path.dirname(REPORT), `preflight-revert-${id}.json`);
 const insideRoot = (file) => file === ROOT || file.startsWith(`${ROOT}${path.sep}`);
+// The state directory is gitignored and may not exist yet, so resolve the report's directory the
+// way graph-blocked.sh does: the real path of its nearest existing ancestor plus the names missing below it.
+function realPathOf(file) {
+  const missing = [];
+  let current = file;
+  for (;;) {
+    try { lstatSync(current); break; }
+    catch (error) {
+      if (error.code !== 'ENOENT' || path.dirname(current) === current) throw error;
+      missing.unshift(path.basename(current));
+      current = path.dirname(current);
+    }
+  }
+  return path.join(realpathSync(current), ...missing);
+}
 function registryEntry(registry, id, evidence) {
   return registry.find((entry) => entry.check_id === id && entry.detect === evidence);
 }
@@ -317,7 +332,8 @@ function blockedHumanAbsent() {
 }
 
 function main() {
-  if (!REPORT.startsWith(`${ROOT}${path.sep}`) || !realpathSync(path.dirname(REPORT)).startsWith(`${ROOT}${path.sep}`)) throw new Error('report path must remain inside the project');
+  if (!REPORT.startsWith(`${ROOT}${path.sep}`) || !realPathOf(path.dirname(REPORT)).startsWith(`${ROOT}${path.sep}`)) throw new Error('report path must remain inside the project');
+  mkdirSync(path.dirname(REPORT), { recursive: true });
   const registry = loadRegistry();
   if (process.argv[2] === '--revert' && process.argv.length === 4) {
     const id = process.argv[3];

@@ -5,6 +5,9 @@
 OWASP Top 10 for Agentic Applications 2026 (released Dec 2025). Every
 project's threat model uses `templates/threat-model/STRIDE_ASI_TEMPLATE.md`.
 
+Webhook egress to a customer-chosen URL (SSRF, DNS rebinding, redirects, retries and the local dead-letter
+record) is specified in [`specs/security/webhook-egress.md`](../specs/security/webhook-egress.md).
+
 ## Tiered scan stack
 
 This is what runs today (2026-09-25). The design goal is in the "Planned" column; it is not
@@ -13,8 +16,17 @@ enforced until it moves left.
 | Tier | When | Runs today | Gate today | Planned, not wired | Enforced by: |
 |------|------|------------|------------|--------------------|--------------|
 | 1 | every file write | nothing automatic: `hooks/universal/post-tool/gitleaks-scan.sh` exists but is not wired in `.claude/settings.json` | none | wire the post-tool hook (masterpiece roadmap MR-19 adds a staged-diff pre-commit gitleaks) | Enforced by: UNENFORCED |
-| 2 | every PR | gitleaks (diff) and Semgrep (`p/owasp-top-ten`, `p/r2c-security-audit`, `p/secrets`) in `security-scan.yml` | both are required status checks on `main` and fail on any finding (Semgrep since #178) | npm/pip/cargo audit, axe-core | Enforced by: job:.github/workflows/security-scan.yml#gitleaks; job:.github/workflows/security-scan.yml#semgrep |
+| 2 | every PR | gitleaks (diff) and Semgrep (rule files from `semgrep/semgrep-rules` at a pinned commit, downloaded and sha256-verified) in `security-scan.yml` | both are required status checks on `main` and fail on any finding (Semgrep since #178) | npm/pip/cargo audit, axe-core | Enforced by: job:.github/workflows/security-scan.yml#gitleaks; job:.github/workflows/security-scan.yml#semgrep |
 | 3 | daily and pre-release | gitleaks full-history scan (scheduled, `.gitleaksignore` baseline); DeepTeam red-team, which skips when no provider key is set | the history scan fails its run on a leak; DeepTeam gates nothing while it skips | Trivy | Enforced by: UNENFORCED |
+
+The `agent-config` job in the same workflow runs `node scripts/check-agent-config.mjs` on every
+PR. It fails on a broad permission (`Bash(*)`, a bare tool name, `bypassPermissions`) in
+`.claude/settings.json`, an MCP server under `mcp-configs/` that is not pinned to an exact version,
+and a hook that runs no file under `hooks/`. Findings already present when the check was added are
+listed in `governance/agent-config-baseline.json`; run the script locally to see a key to review.
+It is dependency-free and local to this repository, so it is separate from the Agile Graph engine
+pin. Spec: [ci-agent-config-scan](../specs/security/ci-agent-config-scan.md). Enforced by:
+job:.github/workflows/security-scan.yml#agent-config
 
 The Enforced by column describes current reference integrity, not new scan evidence.
 Tier2 names only the gitleaks and Semgrep jobs; it excludes the Planned column.
@@ -109,8 +121,45 @@ through the checkout mount. Container-only Git trust names `/src` exactly;
 no host-global Git settings, operator home or Docker socket is mounted or
 changed. Host Node avoids assuming a Node executable in the musl scanner
 image. Docker launch and scanner failures reach the checker as nonzero status;
-missing output fails closed. Registry packs are still remotely resolved, so
-pinning the image does not freeze rule content. This narrows the scan boundary;
+missing output fails closed. A separate step makes one request for the tarball of the
+`semgrep/semgrep-rules` repository at one pinned full commit SHA
+(`codeload.github.com/semgrep/semgrep-rules/tar.gz/<sha>`; 429 and 5xx answers are retried with
+exponential backoff), extracts the 711 pinned rule files into the runner temp
+directory and checks each file's sha256 against `governance/semgrep-rules.sha256.json`; a
+mismatch, a malformed or missing digest, a missing file or an unpinned extra file fails the
+job. It reads every tar entry and refuses the whole archive on a path with `..`, an absolute or
+backslash path, a symlink, hardlink or device entry, or an entry outside the one top-level directory;
+nothing is written until the archive has parsed cleanly, and only pinned paths are extracted. (The
+earlier design made one unauthenticated request per file, about 711 per run, so a 429 burst could
+fail the required check.) The earlier registry packs on semgrep.dev were regenerated upstream, so their digest
+drifted and turned the required check red; a commit is immutable. The scan then runs the pinned
+image with `--network none` against those local files, so rule content is frozen by commit and
+digest and scanning needs no network (the image pull and the rule download stay online). The
+rule files are not committed, because they are under the Semgrep Rules License; a person
+moves the pin with `node scripts/semgrep-rules.mjs refresh PINS NEWSHA` and reviews the diff.
+`refresh` re-reads only the paths already pinned: it never adds rules new at the new commit
+and fails on a file removed or renamed there (`missing rule file`), leaving the pins file untouched.
+
+*Reconciling the file list when moving the pin.* Run these in a scratch directory, never in the
+checkout, because the rules are not committed:
+
+1. Download the new commit once: `curl -fsSL -o new.tgz https://codeload.github.com/semgrep/semgrep-rules/tar.gz/<NEWSHA>`.
+2. Write the currently pinned paths to `old.txt`:
+   `jq -r '.files[].path' governance/semgrep-rules.sha256.json | sort > old.txt`. Then list the new
+   commit's YAML files, without the leading top-level directory, under the language directories the
+   pins already use (`cut -d/ -f1 old.txt | sort -u`):
+   `tar -tzf new.tgz | sed 's#^[^/]*/##' | grep -E '\.ya?ml$' | sort > all.txt`, and keep the lines of
+   `all.txt` whose first path segment is in that list as `new.txt`.
+3. `diff old.txt new.txt`: every `<` line is a pinned file removed or renamed upstream (remove or
+   re-point it in the pins file, or `refresh` will fail); every `>` line is a new rule file. Add the
+   ones you want with any placeholder `sha256` of 64 hex zeros, because `refresh` overwrites it. Test
+   fixtures and non-rule YAML also match `.yaml`, so add only real rule files.
+4. `node scripts/semgrep-rules.mjs refresh governance/semgrep-rules.sha256.json <NEWSHA>`, review the
+   whole diff, and run `node scripts/semgrep-rules.mjs fetch "$(mktemp -d)"` (it must pass), then
+   open a pull request. Update the file count in this section, the CHANGELOG and the spec if it
+   changed. Reported
+`check_id` values now start with `rules.` (the `/rules` mount name); no floor or checker keys on ids.
+This narrows the scan boundary;
 it does not establish safety of arbitrary container code or every scan target.
 
 DeepTeam/Claude's visible unfunded skips and the rest of MR-7 remain separate

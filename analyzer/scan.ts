@@ -7,6 +7,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { detectState } from './project-state.js';
+import { readmeCompliance } from './compliance.js';
 import { allDependencies } from './workspaces.js';
 
 interface Profile {
@@ -183,6 +184,9 @@ function languagesFromExtensions(root: string): string[] {
   return [...found];
 }
 
+// The README term behind each compliance scope, printed so the user can confirm it.
+const readmeTerms = new Map<string, string>();
+
 function detectDomain(stack: Profile['stack']): Profile['domain'] {
   const classes: string[] = [];
   const compliance: string[] = [];
@@ -196,21 +200,18 @@ function detectDomain(stack: Profile['stack']): Profile['domain'] {
     compliance.push('GDPR');
   }
 
-  // Heuristic: look for keywords in README
+  // Heuristic: whole-word README terms (specs/ops/analyzer-detection.md REQ-6).
   try {
-    const readme = fs.readFileSync('README.md', 'utf-8').toLowerCase();
-    if (/child|kid|minor|under.?13|coppa|k-12|education/.test(readme)) {
-      classes.push("children's data");
-      compliance.push('COPPA');
-    }
-    if (/patient|hipaa|phi|health record/.test(readme)) {
-      classes.push('PHI');
-      compliance.push('HIPAA');
+    for (const hit of readmeCompliance(fs.readFileSync('README.md', 'utf-8'))) {
+      classes.push(hit.cls);
+      compliance.push(hit.scope);
+      readmeTerms.set(hit.scope, hit.term);
     }
   } catch { /* ignore */ }
 
   return { classes, compliance };
 }
+
 
 function recommend(profile: Omit<Profile, 'recommended'>): Profile['recommended'] {
   const skills: string[] = [
@@ -425,7 +426,7 @@ function main() {
     ? 'none detected (no manifest and no source files with known extensions). Run it from the project root or add package.json, pyproject.toml, Cargo.toml or go.mod.'
     : stack.language.join(', ') + (languageFromExtensions ? ' (from file extensions; no manifest found)' : '')}`);
   console.log(`Frameworks: ${stack.frameworks.join(', ') || '(none detected)'}`);
-  console.log(`Compliance scope: ${domain.compliance.join(', ') || '(none detected)'}`);
+  console.log(`Compliance scope: ${domain.compliance.map(scope => readmeTerms.has(scope) ? `${scope} (README: "${readmeTerms.get(scope)}")` : scope).join(', ') || '(none detected)'}`);
   console.log(`Recommended skills: ${profile.recommended.skills.length}`);
 }
 

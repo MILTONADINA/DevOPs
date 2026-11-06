@@ -158,10 +158,11 @@ Confirmed via `gh run list` / `gh run view --log-failed`:
   success immediately above it in the same job (environment/PATH bug in the
   workflow, not a code defect). A previously-sealed security control has
   regressed in CI and nobody caught it.
-- **"Refresh Sigstore trust bundle"** workflow — failing daily:
-  `curl: (22) 404` against `https://tuf-repo-cdn.sigstore.dev/targets/trusted_root.json`
-  (upstream Sigstore TUF path changed). The offline verification trust
-  bundle (`.workflow/sigstore/trust-bundle.json`) has not been refreshed.
+- **"Refresh Sigstore trust bundle"** workflow — resolved: the workflow fetches
+  the root through `cosign initialize` (full TUF verification) and the verified
+  `trusted_root.json` is committed at `.workflow/sigstore/trust-bundle.json`
+  (#217). Offline verification against it still needs new-format skill bundles
+  (#345).
 - Separately, gitleaks is flagging `stratum/test/billing/verify-stripe.test.ts:16,20`
   as containing real Stripe secrets — **confirmed false positive** (they're
   literal test fixtures for a key-classifier unit test), but there's no

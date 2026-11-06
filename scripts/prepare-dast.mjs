@@ -159,6 +159,18 @@ async function imageMetadata(tool, pin, output, signal) {
   return JSON.parse(config);
 }
 
+/**
+ * Where `tsx` finds its native esbuild in an install of `lockPackages` (the
+ * lockfile's `packages` map): its own nested copy if the lock has one, else
+ * the hoisted top-level copy, as Node's lookup from `node_modules/tsx` does.
+ */
+export function esbuildPackageDir(lockPackages, arch) {
+  const name = `@esbuild/linux-${arch === 'amd64' ? 'x64' : 'arm64'}`;
+  for (const key of [`node_modules/tsx/node_modules/${name}`, `node_modules/${name}`])
+    if (lockPackages[key]) return { path: key, version: lockPackages[key].version };
+  throw new Error(`runtime/package-lock.json resolves no ${name} for tsx`);
+}
+
 export function verifyImage(image, pin, config, arch) {
   assert.equal(image.Os, 'linux'); assert.equal(image.Architecture, arch);
   assert.equal(config.os, 'linux'); assert.equal(config.architecture, arch);
@@ -363,8 +375,8 @@ async function prepare() {
     assert(!terminal.Running && terminal.ExitCode === 0 && !terminal.OOMKilled);
     for (const name of ['package.json', 'package-lock.json']) assert.equal(hashFile(path.join(stage, 'runtime', name)), hashFile(path.join(ROOT, 'runtime', name)));
     const modules = path.join(stage, 'runtime/node_modules');
-    assert.equal(JSON.parse(readFileSync(path.join(modules, 'tsx/package.json'))).version, '4.22.3');
-    const esbuild = path.join(modules, `tsx/node_modules/@esbuild/linux-${arch === 'amd64' ? 'x64' : 'arm64'}`);
+    assert.equal(JSON.parse(readFileSync(path.join(modules, 'tsx/package.json'))).version, '4.23.15');
+    const esbuild = path.join(stage, 'runtime', esbuildPackageDir(JSON.parse(readFileSync(path.join(stage, 'runtime/package-lock.json'), 'utf8')).packages, arch).path);
     assert.equal(JSON.parse(readFileSync(path.join(esbuild, 'package.json'))).version, '0.28.2');
     const nativeBinary = path.join(esbuild, 'bin/esbuild'), nativeMode = lstatSync(nativeBinary);
     assert(nativeMode.isFile() && nativeMode.nlink === 1 && (nativeMode.mode & 0o111) === 0o111);

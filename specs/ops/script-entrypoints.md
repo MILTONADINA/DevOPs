@@ -51,6 +51,16 @@ are unchanged.
 
 **Enforced by:** test:tests/long-running-fatal.test.mjs
 
+### REQ-4 — Scripts that own temporary directories clean up on SIGINT and SIGTERM
+
+WHEN `scripts/pack-twice.mjs` receives SIGINT or SIGTERM while a packing step runs, it
+SHALL stop that step's process group (SIGTERM, then SIGKILL after 2 seconds), remove its
+temporary directory, and exit 130 for SIGINT or 143 for SIGTERM. The other long-running
+scripts already handle both signals (`scripts/prepare-dast.mjs`, `scripts/run-dast.mjs`,
+`scripts/dast/proxy.mjs`) or clean up in a shell `EXIT` trap.
+
+**Enforced by:** test:tests/scripts/pack-twice-signal.test.mjs
+
 ## Acceptance criteria
 
 - AC-1: Started through a direct path, including one with a space, the check is true.
@@ -63,6 +73,8 @@ are unchanged.
 
 - AC-5: An unhandled rejection in a running dashboard or DAST control server ends the
   process with a non-zero exit code and frees its port.
+- AC-6: SIGTERM or SIGINT during a slow packing step leaves no `pack-twice-*` temporary
+  directory and no running step, and exits 143 or 130.
 
 ## Out of scope
 

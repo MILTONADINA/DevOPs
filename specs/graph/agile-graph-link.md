@@ -43,8 +43,9 @@ separate, later work.
 `package.json` SHALL list `@agile-graph/engine` under `peerDependencies` with a range
 that never stops `npm install` (`>=0.1.0`), marked optional in `peerDependenciesMeta`.
 `ENGINE_VERSIONS` in `analyzer/agile-graph.js` SHALL list the engine versions whose
-cloud-default tools are exactly the ones the shipped pins describe (0.1.0, 0.1.1, 0.1.2 and 0.2.0
-have identical definitions). A version SHALL be added only with pins that match it, and the
+cloud-default tools are exactly the ones the shipped pins describe (0.4.0 at the time of writing;
+0.1.0, 0.1.1, 0.1.2 and 0.2.0 had identical definitions to the pins that 0.4.0 replaced, so they
+are no longer listed). A version SHALL be added only with pins that match it, and the
 peer range SHALL include every listed version.
 
 **Enforced by:** test:tests/agile-graph-link.test.mjs
@@ -255,6 +256,12 @@ scripts off.
 **Verified by:** `tests/agile-graph-link.test.mjs` (`#ac-7`), and
 `.github/workflows/agile-graph-versions.yml` job `check`, which runs
 `scripts/agile-graph-version-check.sh`.
+
+### AC-8
+
+WHEN `devops init` runs with `@agile-graph/engine` 0.4.0 installed on a supported Node, THE INSTALLER SHALL register the server and copy the shipped pins, and THE SHIPPED PINS SHALL be the cloud-default tool hashes that engine 0.4.0 reports. WHEN `devops init` runs with an engine version that `ENGINE_VERSIONS` does not list, such as 0.2.0, whose tools differ from those pins, THE INSTALLER SHALL write nothing and print one line.
+
+**Verified by:** `tests/agile-graph-link.test.mjs` (`#ac-8`); the CI job `agile-graph-link` (REQ-7) checks the same hashes against the live engine.
 
 ## Out of scope
 

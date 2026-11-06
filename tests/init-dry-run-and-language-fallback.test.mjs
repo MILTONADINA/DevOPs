@@ -25,6 +25,9 @@ function withProject(files, fn) {
   }
 }
 const devops = (cwd, ...args) => spawnSync(process.execPath, [CLI, ...args], { cwd, encoding: 'utf8' });
+// init installs signed skills only once cosign verifies them; these tests are
+// about init's own messages, so they opt out and log why, as package-smoke.sh does.
+const UNSIGNED = ['--allow-unsigned', '--rationale=init message test without cosign'];
 const listing = dir => readdirSync(dir, { recursive: true }).sort();
 const COUNTER = path.join(ROOT, 'tests/fixtures/count-dir-reads.mjs');
 // Runs `analyze` with fs.Dir opens, reads and closes under the project counted.
@@ -139,7 +142,7 @@ test(`init --dry-run says nothing was written and never says initialized (${SPEC
   withProject({ 'package.json': '{"name":"x"}' }, dir => {
     assert.equal(devops(dir, 'analyze').status, 0);
     const before = listing(dir);
-    const r = devops(dir, 'init', '--dry-run');
+    const r = devops(dir, 'init', '--dry-run', ...UNSIGNED);
     assert.equal(r.status, 0, r.stderr);
     assert.ok(!/initialized/i.test(r.stdout), r.stdout);
     assert.ok(r.stdout.includes('Dry run complete: nothing was written'), r.stdout);
@@ -151,7 +154,7 @@ test(`init --dry-run says nothing was written and never says initialized (${SPEC
 test(`a real init still says initialized (${SPEC}#ac-4)`, () => {
   withProject({ 'package.json': '{"name":"x"}' }, dir => {
     assert.equal(devops(dir, 'analyze').status, 0);
-    const r = devops(dir, 'init', '--no-agile-graph');
+    const r = devops(dir, 'init', '--no-agile-graph', ...UNSIGNED);
     assert.equal(r.status, 0, r.stderr + r.stdout);
     assert.ok(r.stdout.includes('DevOPs initialized.'), r.stdout);
   });

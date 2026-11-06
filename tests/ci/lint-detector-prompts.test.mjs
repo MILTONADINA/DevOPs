@@ -47,7 +47,7 @@ function withFixture(run) {
   feature();
   const parser = path.join(ROOT, 'node_modules/acorn/package.json');
   assert.ok(existsSync(parser), 'fixture prerequisite: locked Acorn must be installed');
-  assert.equal(JSON.parse(readFileSync(parser, 'utf8')).version, '8.18.0', 'fixture parser pin');
+  assert.equal(JSON.parse(readFileSync(parser, 'utf8')).version, '8.19.0', 'fixture parser pin');
   const state = path.join(ROOT, '.workflow/state'); mkdirSync(state, { recursive: true });
   const outer = realpathSync(mkdtempSync(path.join(state, 'detector-lint-')));
   try {
@@ -60,7 +60,7 @@ function withFixture(run) {
     writeFileSync(path.join(root, 'package.json'), '{"type":"module"}\n');
     symlinkSync(path.join(ROOT, 'node_modules'), path.join(root, 'node_modules'), 'dir');
     const originalWorkflow = readFileSync(workflow, 'utf8'); const originalIgnore = readFileSync(ignore, 'utf8');
-    assert.equal(originalIgnore.split(/\r?\n/).filter(line => line && !line.trimStart().startsWith('#')).length, 7, 'original seven fingerprints prerequisite');
+    assert.equal(originalIgnore.split(/\r?\n/).filter(line => line && !line.trimStart().startsWith('#')).length, 14, 'original fourteen fingerprints prerequisite');
     run({ root, outer, cwd, workflow, ignore, sentinel, originalWorkflow, originalIgnore,
       source(transform) { writeFileSync(workflow, transform(readFileSync(workflow, 'utf8'))); },
       invoke(args = [], launchCwd = root) {
@@ -80,7 +80,7 @@ function withFixture(run) {
     });
   } finally { rmSync(outer, { recursive: true, force: true }); }
 }
-function passed(result, count = 7) {
+function passed(result, count = 14) {
   assert.equal(result.status, 0, result.output); assert.equal(result.stderr, '');
   assert.match(result.stdout, /^detector-lint: /);
   assert.match(result.stdout, /(?:\b3 (?:selected )?templates\b|\btemplates[:=] ?3\b)/);
@@ -92,7 +92,7 @@ function refused(result, category) {
   assert.match(result.stderr, new RegExp(`^detector-lint: ${category}(?:[ :].*)?\\n$`));
 }
 
-test('original three Workflow prompts and seven full fingerprints pass from either owned CWD', () => withFixture(f => {
+test('original three Workflow prompts and fourteen full fingerprints pass from either owned CWD', () => withFixture(f => {
   passed(f.invoke()); passed(f.invoke([], f.cwd));
   assert.equal(readFileSync(f.workflow, 'utf8'), f.originalWorkflow);
   assert.equal(readFileSync(f.ignore, 'utf8'), f.originalIgnore);

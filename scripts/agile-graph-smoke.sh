@@ -50,7 +50,9 @@ check_version() {
 
   # 3. devops init registers the server.
   "$bin/devops-analyze" > "$WORK/analyze.log" || { cat "$WORK/analyze.log"; fail "devops-analyze failed"; }
-  "$bin/devops" init > "$WORK/init.log" || { cat "$WORK/init.log"; fail "devops init failed"; }
+  # Skills install only once cosign verifies them; this smoke checks the MCP link, so it
+  # opts out and logs why, as package-smoke.sh does.
+  "$bin/devops" init --allow-unsigned "--rationale=agile-graph link smoke without cosign" > "$WORK/init.log" || { cat "$WORK/init.log"; fail "devops init failed"; }
   grep -q 'registered the MCP server "agile-graph" in .mcp.json' "$WORK/init.log" || { cat "$WORK/init.log"; fail "devops init did not register the server for $version"; }
   cmp -s "$PINS" .claude/agile-graph-tool-hashes.json || fail "devops init did not copy the pins"
 
@@ -86,7 +88,8 @@ const reply = id => new Promise((resolve, reject) => {
 try {
   send({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'agile-graph-smoke', version: '0' } } });
   const init = await reply(1);
-  if (init.result?.serverInfo?.name !== 'graph-engineering') throw new Error(`unexpected server: ${JSON.stringify(init)}`);
+  // The engine named its server graph-engineering before 0.4.0 and agile-graph from 0.4.0 on.
+  if (!['agile-graph', 'graph-engineering'].includes(init.result?.serverInfo?.name)) throw new Error(`unexpected server: ${JSON.stringify(init)}`);
   send({ jsonrpc: '2.0', method: 'notifications/initialized' });
   send({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} });
   const names = (await reply(2)).result.tools.map(t => t.name).sort();

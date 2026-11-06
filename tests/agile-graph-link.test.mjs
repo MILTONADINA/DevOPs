@@ -161,6 +161,29 @@ test(`every listed engine version links (${SPEC}#ac-3)`, () => {
   }
 });
 
+// The fixture is what `agile-graph -C <project> mcp-tools --client cloud --hashes` printed for
+// @agile-graph/engine 0.4.0 as published on npm (sha512 integrity tnRVNOn8...). CI's
+// agile-graph-link job checks the same hashes against the live engine (REQ-7).
+test(`engine 0.4.0 links, and 0.2.0 does not because its tools differ from the pins (${SPEC}#ac-8)`, () => {
+  withSetup(setup => {
+    setup.installEngine('project', '0.4.0');
+    assert.equal(link(setup).status, 'linked');
+  });
+  withSetup(setup => {
+    setup.installEngine('project', '0.2.0');
+    const before = listing(setup.projectRoot);
+    const result = link(setup);
+    assert.equal(result.status, 'skipped');
+    assert.match(result.lines[0], /links only 0\.4\.0; not linked/);
+    assert.deepEqual(listing(setup.projectRoot), before, 'nothing written');
+  });
+});
+
+test(`the shipped pins are the cloud-default tool hashes engine 0.4.0 reports (${SPEC}#ac-8)`, () => {
+  const reported = JSON.parse(readFileSync(path.join(ROOT, 'tests/fixtures/agile-graph/cloud-hashes-0.4.0.json'), 'utf8'));
+  assert.deepEqual(JSON.parse(readFileSync(path.join(ROOT, PIN_SOURCE), 'utf8')), reported);
+});
+
 test(`with the engine in the project, .mcp.json gains the pinned cloud entry and the pins are copied (${SPEC}#ac-3)`, () => {
   withSetup(setup => {
     setup.installEngine('project');

@@ -96,9 +96,10 @@ THE SYSTEM SHALL compute `readyForPR` in `sprint-cycle.js` as the conjunction of
 - no stage INDETERMINATE (REQ-M3)
 
 No verdict may count only because a prompt tells another agent to weigh it.
+WHEN the reviewer returns, THE SYSTEM SHALL compute the changed-file list from `git diff --name-only` itself (against `HEAD`, plus untracked files, through its own `changed-files` agent call because Workflow scripts have no Node APIs), require the reviewer to return a `filesSeen` list, and set outcome INDETERMINATE (not ready) when any changed file is missing from `filesSeen`, when `filesSeen` names a file that is not in the changed list, when the changed-file list has no non-blank entry (a blank entry is a non-string entry or a string made only of whitespace, Unicode format characters, dots and slashes, and a non-string entry makes the list uncomputable; Build produced no change, so there was nothing to review; no plan or agent field can declare a no-change task), or when the changed-file list cannot be computed (a lister that returns a non-array or throws is INDETERMINATE; a lister that returns null is an environment fault that halts the cycle through `stopIfBlocked`).
 **Enforced by:** test:tests/graph-resilience/workflow-faults.test.mjs
 **Enforcement note (pre-MR17 annotation):** code in `sprint-cycle.js` (replacing `:317`); tests in `tests/graph-resilience/workflow-faults.test.mjs`.
-**Falsified by:** a fake-agent run with the reviewer returning `approved:false` (or security `FAIL`) and the validator `PASS` that yields `readyForPR: true`.
+**Falsified by:** a fake-agent run with the reviewer returning `approved:false` (or security `FAIL`) and the validator `PASS` that yields `readyForPR: true`, a reviewer `filesSeen` that omits one changed file and still yields `readyForPR: true`, or an empty changed-file list with an empty `filesSeen` that yields `readyForPR: true`.
 
 ### REQ-M2 (Event-driven): The orchestrator re-executes proofs and scanner runs; agents do not self-report them
 WHEN a Workflow cycle returns, `/sprint` SHALL run `scripts/graph-rerun-proofs.mjs --cycle <id>`. The script SHALL:
@@ -148,52 +149,40 @@ It SHALL refuse a caller-supplied status that disagrees with the derived one. It
 
 ### REQ-M7 (Unwanted behaviour): Material ambiguity and source conflicts stop the cycle
 IF the planner returns a non-empty `ambiguities[]` or `conflicts[]`, THEN `sprint-cycle.js` SHALL throw `AMBIGUITY_BLOCK:` followed by the items as JSON, before Build. The only exception: every item is either matched by an entry's `item` field in `args.acknowledgements` (an array of `{item, answer}` objects), or appears verbatim in `args.acknowledgedAmbiguities`.
-- `/sprint` SHALL populate whichever of `args.acknowledgements` or `args.acknowledgedAmbiguities` it uses only from the owner's answer, recorded verbatim in `run.json` (`acknowledgements: [{item, answer, at}]`): `args.acknowledgements` receives those entries unchanged, and `args.acknowledgedAmbiguities` receives each entry's bare `item` value, extracted from it. It SHALL write a `needs_human` blocked record on the throw.
+- `graph-run-record.mjs update --ack` SHALL append `{item, answer, at}` entries to `run.json` `acknowledgements` and reject malformed input without touching the record.
 - The planner schema SHALL add `conflicts: [{higher, lower, clause}]`.
+- IF a backlog item's spec holds `[NEEDS CLARIFICATION]`, or any acceptance criterion is covered by no planned task, THEN the cycle SHALL stop before the build phase (`SPEC_GATE_BLOCK:`, AC-M7.2).
 - `AGENTS.md` SHALL carry one precedence line: owner decision > law/safety > approved spec > ADR/AC > plan > code.
 
-**Enforced by:** UNENFORCED
-**Enforcement note (pre-MR17 annotation):** code in `sprint-cycle.js` (replacing the log-only `:139`); the `graph-run-record.mjs` acknowledgement field; tests.
-**Enforcement note:** Code gates and acknowledgement fixtures exist; authentic owner-answer provenance and required orchestrator writes remain outside those fixtures.
+**Enforced by:** test:tests/graph-resilience/workflow-faults.test.mjs; test:tests/graph-resilience/req-contracts.test.mjs; test:tests/graph-resilience/run-record.test.mjs; test:tests/graph-resilience/plan-covers-gate.test.mjs; test:tests/graph/spec-clarification.test.mjs
+**Enforcement note:** Code in `sprint-cycle.js`, the `graph-run-record.mjs` acknowledgement field and the planner schema are tested. Where the acknowledgements come from and the blocked record written on the throw are REQ-M31 (PROCESS). Running `node scripts/lint-spec-status.mjs --item <spec>` before launch, and passing its markers to the planner, is the orchestrator's PROCESS half of the spec gate; `sprint-cycle.js` has no filesystem access and only checks the planner's report.
 **Falsified by:** a fake planner returning one ambiguity and the coder stage running without a matching acknowledgement.
 
-### REQ-M8 (Event-driven): Every cycle is bound to an approved, falsifiable spec (all 8 chain links, link 1 included)
-WHEN `graph-run-record.mjs launch` runs, THE SYSTEM SHALL require `--spec-ref specs/<path>.md#<anchor>` and SHALL refuse unless:
-- the spec's Status, as `scripts/lint-spec-status.mjs` parses it, is exactly `approved` (a prefix such as "approved for implementation" does not count);
-- the anchor exists;
-- every `REQ-` heading in that spec has at least one `AC-` that references it, and a `Falsified by:` line.
-
-`sprint-cycle.js` SHALL take `args.specRef`. The planner schema SHALL require `tasks[].ac_ids` (non-empty, each present in the spec). The claim schema SHALL require `outcome_ref` (the approved spec anchor) and `decision_ref` (an ADR path or `{na_reason, approver}`) for type `implementation`. It SHALL require `signal {metric, threshold}` and `recovery {mode, doc}` only for types `deploy` and `migration`. `scripts/lint-spec-status.mjs` in `ci.yml` SHALL fail on any spec whose Status is missing or outside `draft|approved|implemented|superseded` (owner decision O-3, 2026-09-26), except the specs listed in `governance/traceability-baseline.json`, a list that may only shrink. It SHALL accept both `**Status**:` and `**Status:**`, and an optional parenthetical note after the status word.
-**Enforced by:** UNENFORCED
-**Enforcement note (pre-MR17 annotation):** code in `graph-run-record.mjs` and `sprint-cycle.js`; `claim-validator.ts`; the CI lint.
-**Enforcement note:** The spec-status slice is implemented; the remaining launch, AC and claim-link obligations remain open.
-**Falsified by:** a launch that succeeds against a `draft` spec, or against an approved spec with a REQ that has no AC.
+### REQ-M8 (Ubiquitous): Every spec declares one Status from a closed vocabulary
+`scripts/lint-spec-status.mjs` in `ci.yml` SHALL fail on any spec whose Status is missing or outside `draft|approved|implemented|superseded` (owner decision O-3, 2026-09-26), except the specs listed in `governance/traceability-baseline.json`, a list that may only shrink. It SHALL accept both `**Status**:` and `**Status:**`, and an optional parenthetical note after the status word.
+**Enforced by:** test:tests/graph/spec-status.test.mjs; test:tests/graph-resilience/split-req-mechanical.test.mjs
+**Enforcement note:** Split from the original REQ-M8, which also bound each cycle to an approved spec; that launch binding is REQ-M32 (UNENFORCED).
+**Falsified by:** a spec with `**Status**: AUTHORED 2026-09-10` or no Status line that the lint accepts outside the baseline, or a baseline that grew and was accepted.
 
 ### REQ-M9 (Ubiquitous): Claims are schema-validated, committed, RED/GREEN, and never vacuous
 THE SYSTEM SHALL meet each of the following:
-- `verification/claim-validator.ts` loads and enforces `verification/claim-schema.yml` (enum, pattern, min/maxLength, required). Today it never reads the schema, despite `claim-validator.ts:5`.
+- `verification/claim-validator.ts` loads and enforces `verification/claim-schema.yml` (enum, pattern, min/maxLength, required).
 - The validator checks that the `spec_ref` file and anchor exist.
 - The validator exits non-zero when invoked with `--claim <id>` for a missing claim, and when invoked with `--all` on an empty set.
 - The proof set is committed per the owner's PB-60 decision (the YAMLs, or `proofs/index.jsonl` of `{id, sha, sha256}`), so CI validates an exact, non-empty set.
-- Type `implementation` or `test` requires `proof.red: {sha, exit_code != 0}`. The validator re-runs the RED at that sha in a temporary worktree when not `--no-rerun` (locally only, not in CI).
-- The tester returns a `claim_id`, and `/sprint` runs `tsx verification/claim-validator.ts --claim <id>` after the cycle; a non-zero exit sets `run.json` to `failed`.
+- Type `implementation` or `test` requires `proof.red: {sha, exit_code != 0}`.
 
-**Enforced by:** UNENFORCED
-**Enforcement note (pre-MR17 annotation):** `claim-validator.ts`; the `ci.yml` validate job; the `/sprint` post-cycle step.
-**Enforcement note:** Schema, committed metadata and RED declarations are implemented. The [validator refusal contract](../verification/claim-replay-refusal.md) removes legacy command replay and requires `--no-rerun`; it does not implement the safe replay, RED retention or sprint integration required here, which remain open.
+**Enforced by:** test:tests/verification/claim-schema-loading.test.mjs; test:tests/verification/committed-claims.test.mjs; test:tests/graph-resilience/split-req-mechanical.test.mjs
+**Enforcement note:** Schema, committed metadata and RED declarations are tested. Observing the RED and the post-cycle step are REQ-M33 (UNENFORCED).
 **Falsified by:** a claim with `description` longer than 280 characters, or `spec_ref` pointing at a missing file, passing; or CI's claim step printing "No claim files to validate." and exiting 0.
 
 ### REQ-M10 (Ubiquitous): Completion states are a closed vocabulary, never estimated upward
-THE SYSTEM SHALL add `state: enum [implemented, verified, code_converged, release_ready, fixed_not_live, production_complete]` to `claim-schema.yml`. The order is implemented < verified < code_converged < release_ready < production_complete. `fixed_not_live` means the repository work is verified but an owner action is pending; it is never called deployed. Underscores are used in code (BrightPath's doc uses hyphens). The validator SHALL refuse:
-- `code_converged` without a `graph-converge.mjs status` exit 0 for the claim's scope (REQ-M11);
-- `production_complete` without a deploy proof `{url, sha, observation_window}`;
-- `release_ready` while any in-scope work-graph node is `CANDIDATE` or `CONFLICT` (REQ-M12).
+THE SYSTEM SHALL add `state: enum [implemented, verified, code_converged, release_ready, fixed_not_live, production_complete]` to `claim-schema.yml`. The order is implemented < verified < code_converged < release_ready < production_complete. `fixed_not_live` means the repository work is verified but an owner action is pending; it is never called deployed. Underscores are used in code (BrightPath's doc uses hyphens).
 
-"Masterpiece" without a qualifier SHALL mean `production_complete`. The sweep counter proves only `code_converged`. `scripts/lint-readiness-claims.mjs` SHALL fail when any of the literal state tokens, or the status column of the version tables in `docs/LAUNCH_READINESS.md` or `SHIP_BLOCKERS.md`, lacks a cited claim id whose state supports it. It deliberately does not match free prose such as "live dashboard".
-**Enforced by:** UNENFORCED
-**Enforcement note (pre-MR17 annotation):** schema, validator and CI lint.
-**Enforcement note:** The optional state vocabulary is implemented. The dedicated MR12-B contract in `specs/verification/readiness-claims.md` narrowly clarifies this requirement's document-lint phrase: explicit machine declarations, four reserved bare underscore tokens and closed current Version-table Status cells require exact cited declared-state equality. Ordinary implemented/verified prose is not selected; the existing historical table is exempt only through its exact bound bytes/location. This checks metadata association, not convergence, release-graph or deployment evidence. Zero selection is not readiness; semantic evidence gates and whole MR12/MR10 remain open, so the whole requirement stays UNENFORCED.
-**Falsified by:** a claim with `state: production_complete` and no deploy proof passing; or `LAUNCH_READINESS.md:241` still asserting production-complete with no claim id.
+`scripts/lint-readiness-claims.mjs` SHALL fail when any of the literal state tokens, or the status column of the version tables in `docs/LAUNCH_READINESS.md` or `SHIP_BLOCKERS.md`, lacks a cited claim id whose state supports it. It deliberately does not match free prose such as "live dashboard".
+**Enforced by:** test:tests/verification/readiness-claims.test.mjs; test:tests/graph-resilience/split-req-mechanical.test.mjs
+**Enforcement note:** The optional state vocabulary is implemented. The dedicated MR12-B contract in `specs/verification/readiness-claims.md` narrowly clarifies this requirement's document-lint phrase: explicit machine declarations, four reserved bare underscore tokens and closed current Version-table Status cells require exact cited declared-state equality. Ordinary implemented/verified prose is not selected; the existing historical table is exempt only through its exact bound bytes/location. This checks metadata association, not convergence, release-graph or deployment evidence. Zero selection is not readiness. The validator refusals that need convergence, work-graph and deploy evidence are REQ-M34 (UNENFORCED).
+**Falsified by:** a literal state token, or a closed Version-table Status cell, in `docs/LAUNCH_READINESS.md` or `SHIP_BLOCKERS.md` with no cited claim id whose declared state supports it passing the lint; or a claim `state` outside the six values passing the schema.
 
 ### REQ-M11 (Ubiquitous): Frozen convergence is a zero anchor plus exactly two fresh-process zero repeats
 THE SYSTEM SHALL provide `scripts/graph-converge.mjs freeze|record|status --scope <s>`.
@@ -238,14 +227,11 @@ THE SYSTEM SHALL keep `governance/required-checks.yml`, the list of the context 
 **Falsified by:** preflight reporting `ready` while `gh api .../required_status_checks` returns 404.
 
 ### REQ-M14 (Unwanted behaviour): A scan that scanned nothing never passes
-IF a security scan in CI exits abnormally, reports rule or parse errors, or scans fewer files than its floor in `governance/scan-floors.yml`, THEN the job SHALL fail. Specifically:
-- Semgrep SHALL run as a pinned `semgrep scan --json --error`, piped to `scripts/assert-scan.mjs`, which fails on a non-empty `errors[]` or on `paths.scanned` below the floor. This replaces `returntocorp/semgrep-action@713efdd` at `security-scan.yml:56-65`.
-- `scripts/run-redteam.sh` SHALL exit non-zero, not 0 with `SKIPPED.md` (`:51-67`), on push-to-main or schedule when it was meant to run and has no key or no target. Skips on PR path filters remain skips and are not required contexts.
+IF the Semgrep scan in CI exits abnormally, reports rule or parse errors, or scans fewer files than its floor in `governance/scan-floors.yml`, THEN the job SHALL fail. Semgrep SHALL run as a pinned `semgrep scan --json --error`, piped to `scripts/assert-scan.mjs`, which fails on a non-empty `errors[]` or on `paths.scanned` below the floor. This replaces `returntocorp/semgrep-action@713efdd` at `security-scan.yml:56-65`.
 
-**Enforced by:** UNENFORCED
-**Enforcement note (pre-MR17 annotation):** CI plus `assert-scan.mjs`; tests with a crashed-scan JSON fixture.
-**Enforcement note:** Strict Semgrep enforcement is implemented; Decision 9 retains visible unfunded DeepTeam/Claude skips, which are not passing evidence.
-**Falsified by:** a Security scan run on `main` that concludes success while its log contains `invalid rule severity value` or `RED-TEAM GATE SKIPPED`.
+**Enforced by:** test:tests/ci/assert-scan.test.mjs; test:tests/graph-resilience/split-req-mechanical.test.mjs
+**Enforcement note:** Strict Semgrep enforcement is tested against report fixtures and the workflow text. The red-team skip rule is REQ-M35 (UNENFORCED).
+**Falsified by:** a Security scan run on `main` that concludes success while its log contains `invalid rule severity value`, or a report with a non-empty `errors[]` or too few scanned paths that `assert-scan.mjs` accepts.
 
 ### REQ-M15 (Ubiquitous): Human-only approvals are signed out of band
 THE SYSTEM SHALL accept a deploy, halt-lift, blocked-clear or ambiguity-acknowledgement marker only if:
@@ -324,12 +310,11 @@ THE SYSTEM SHALL require every `REQ-` in `specs/graph/` and `specs/security/`, a
 **Enforcement note (pre-MR17 annotation):** CI checker plus committed baseline; tests.
 **Falsified by:** `docs/SECURITY.md:12` claiming a gitleaks post-tool hard block while `gitleaks-scan.sh` is unwired, and the check passing.
 
-### REQ-M21 (Ubiquitous): Closures and freshness markers cite evidence
-THE SYSTEM SHALL fail a CI lint (`scripts/lint-closures.mjs`) when a `.workflow/state/polish-backlog.md` or `SHIP_BLOCKERS.md` item marked `CLOSED` does not cite a commit or PR plus a claim id present in the committed proof set (REQ-M9). This applies only to committed copies; the polish backlog is checked locally when it is gitignored. `hooks/universal/post-tool/sync-lr-refined-date.sh` SHALL bump "Last refined" only when invoked by `/launch-readiness` after re-derivation, not on every `plan.md` edit.
-**Enforced by:** UNENFORCED
-**Enforcement note (pre-MR17 annotation):** CI lint; the hook change; tests.
-**Enforcement note:** The scoped MR18-A contract in `specs/graph/closure-references.md` covers citation syntax and validated committed-claim membership through `tests/verification/closure-references.test.mjs` and the `validate` job. It does not prove closure truth. The freshness-hook obligation and whole MR18 remain open, so the whole requirement stays UNENFORCED.
-**Falsified by:** a CLOSED row with no claim id passing, or a `plan.md` whitespace edit changing the Last refined date.
+### REQ-M21 (Ubiquitous): Closures cite evidence
+THE SYSTEM SHALL fail a CI lint (`scripts/lint-closures.mjs`) when a `.workflow/state/polish-backlog.md` or `SHIP_BLOCKERS.md` item marked `CLOSED` does not cite a commit or PR plus a claim id present in the committed proof set (REQ-M9). This applies only to committed copies; the polish backlog is checked locally when it is gitignored.
+**Enforced by:** test:tests/verification/closure-references.test.mjs; test:tests/graph-resilience/split-req-mechanical.test.mjs
+**Enforcement note:** The scoped MR18-A contract in `specs/graph/closure-references.md` covers citation syntax and validated committed-claim membership through `tests/verification/closure-references.test.mjs` and the `validate` job. It does not prove closure truth. The freshness-marker hook is REQ-M36 (UNENFORCED).
+**Falsified by:** a CLOSED row with no claim id passing.
 
 ### REQ-M22 (Ubiquitous): Dependency and secret gates exist where the docs claim them
 THE SYSTEM SHALL:
@@ -412,6 +397,56 @@ THE SYSTEM SHALL correct, at the latest in the cycle that implements the matchin
 **Enforcement note:** Forward SECURITY reference integrity is separate from semantic readiness lint and the remaining procedural corrections.
 **Falsified by:** any listed sentence still present once its REQ is verified.
 
+### REQ-M30 (Event-driven): Agent-run installs of undeclared packages need owner approval
+WHEN a Bash command runs `npm`, `pnpm`, `yarn` or `bun` with `add` or `install` and a package-name operand, `pip`, `uv pip` or `python -m pip` with `install` and a name, `uv add` or `poetry add` with a name, or `cargo add` with a name, AND that name is not declared in the project directory's `package.json` (dependencies, devDependencies, optionalDependencies, peerDependencies), `requirements*.txt`, `pyproject.toml` or `Cargo.toml`, THE `block-new-dependency.sh` PRE-TOOL HOOK SHALL exit 2 with a message that names the package and asks for owner approval. Plain `npm install`, `npm ci`, and installs from a requirements file with no name operand SHALL stay allowed. THE HOOK SHALL make no network call and SHALL fail closed when its classifier fails.
+**Enforced by:** test:tests/hooks/block-new-dependency.test.mjs; hook:PreToolUse:Bash:hooks/universal/pre-tool/block-new-dependency.sh
+**Falsified by:** an undeclared name that installs through a recognised command without a block, a declared name or a plain install that is blocked, or any network access by the hook.
+
+### REQ-M31 (Event-driven): /sprint takes acknowledgements only from the owner
+**Enforced by:** PROCESS
+**Enforcement note:** Split from REQ-M7; authentic owner-answer provenance and the orchestrator's writes cannot be observed by a test.
+WHEN `sprint-cycle.js` throws `AMBIGUITY_BLOCK:` (REQ-M7), THE SYSTEM SHALL have `/sprint` write a `needs_human` blocked record and populate whichever of `args.acknowledgements` or `args.acknowledgedAmbiguities` it uses only from the owner's answer, recorded verbatim in `run.json` (`acknowledgements: [{item, answer, at}]`): `args.acknowledgements` receives those entries unchanged, and `args.acknowledgedAmbiguities` receives each entry's bare `item` value, extracted from it.
+
+### REQ-M32 (Event-driven): Every cycle is bound to an approved, falsifiable spec (all 8 chain links, link 1 included)
+**Enforced by:** UNENFORCED
+**Enforcement note:** Split from REQ-M8, whose spec-status lint is tested; the launch binding, AC coverage and claim links below are not implemented.
+WHEN `graph-run-record.mjs launch` runs, THE SYSTEM SHALL require `--spec-ref specs/<path>.md#<anchor>` and SHALL refuse unless:
+- the spec's Status, as `scripts/lint-spec-status.mjs` parses it (REQ-M8), is exactly `approved` (a prefix such as "approved for implementation" does not count);
+- the anchor exists;
+- every `REQ-` heading in that spec has at least one `AC-` that references it, and a `Falsified by:` line.
+
+`sprint-cycle.js` SHALL take `args.specRef`. The planner schema SHALL require `tasks[].ac_ids` (non-empty, each present in the spec). The claim schema SHALL require `outcome_ref` (the approved spec anchor) and `decision_ref` (an ADR path or `{na_reason, approver}`) for type `implementation`. It SHALL require `signal {metric, threshold}` and `recovery {mode, doc}` only for types `deploy` and `migration`.
+**Falsified by:** a launch that succeeds against a `draft` spec, or against an approved spec with a REQ that has no AC.
+
+### REQ-M33 (Event-driven): The RED is observed and the post-cycle validation runs
+**Enforced by:** UNENFORCED
+**Enforcement note:** Split from REQ-M9 (REQ-M9). The [validator refusal contract](../verification/claim-replay-refusal.md) removes legacy command replay and requires `--no-rerun`; safe replay, RED retention and sprint integration remain open.
+WHEN a claim of type `implementation` or `test` is validated without `--no-rerun`, THE SYSTEM SHALL re-run the RED at `proof.red.sha` in a temporary worktree (locally only, not in CI) and reject a RED whose command exits 0. WHEN a cycle returns, the tester SHALL have returned a `claim_id`, and `/sprint` SHALL run `tsx verification/claim-validator.ts --claim <id>`; a non-zero exit SHALL set `run.json` to `failed`.
+**Falsified by:** a `proof.red.sha` at which the test command exits 0 being accepted, or a cycle whose claim fails validation leaving `run.json` not `failed`.
+
+### REQ-M34 (Ubiquitous): Completion states are backed by evidence
+**Enforced by:** UNENFORCED
+**Enforcement note:** Split from REQ-M10 (REQ-M10), whose vocabulary and readiness lint are tested. These refusals need `graph-converge.mjs` (REQ-M11) and the work graph (REQ-M12), which do not exist yet.
+THE SYSTEM SHALL have the validator refuse:
+- `code_converged` without a `graph-converge.mjs status` exit 0 for the claim's scope (REQ-M11);
+- `production_complete` without a deploy proof `{url, sha, observation_window}`;
+- `release_ready` while any in-scope work-graph node is `CANDIDATE` or `CONFLICT` (REQ-M12).
+
+"Masterpiece" without a qualifier SHALL mean `production_complete`. The sweep counter proves only `code_converged`.
+**Falsified by:** a claim with `state: production_complete` and no deploy proof passing.
+
+### REQ-M35 (Unwanted behaviour): A red-team gate that was meant to run never skips quietly
+**Enforced by:** UNENFORCED
+**Enforcement note:** Split from REQ-M14 (REQ-M14), whose Semgrep half is tested. Decision 9 retains the visible unfunded skips, so `run-redteam.sh` still exits 0 on a missing key; they are not passing evidence.
+IF `scripts/run-redteam.sh` has no key or no target on push-to-main or schedule, when it was meant to run, THEN it SHALL exit non-zero, not 0 with `SKIPPED.md`. Skips on PR path filters remain skips and are not required contexts.
+**Falsified by:** a Security scan run on `main` that concludes success while its log contains `RED-TEAM GATE SKIPPED`.
+
+### REQ-M36 (Event-driven): Freshness markers move only on re-derivation
+**Enforced by:** UNENFORCED
+**Enforcement note:** Split from REQ-M21 (REQ-M21), whose closure lint is tested. The hook still bumps the date on every `plan.md` edit.
+WHEN `hooks/universal/post-tool/sync-lr-refined-date.sh` runs, THE SYSTEM SHALL bump "Last refined" only when invoked by `/launch-readiness` after re-derivation, not on every `plan.md` edit.
+**Falsified by:** a `plan.md` whitespace edit changing the Last refined date.
+
 ---
 
 ## Acceptance criteria
@@ -421,6 +456,9 @@ THE SYSTEM SHALL correct, at the latest in the cycle that implements the matchin
 
 ### AC-M1.2 (REQ-M1)
 **Given** all stages PASS and reviewer `approved: true` with an empty BLOCKER list **When** the workflow runs **Then** `readyForPR` is true (a positive control, so the gate is not vacuous).
+
+### AC-M1.3 (REQ-M1)
+**Given** all other stages PASS and a reviewer `approved: true` **When** its `filesSeen` omits a changed file, or names a file that is not changed, or is absent **Then** `readyForPR` is false and the cycle outcome is INDETERMINATE. **Given** a `filesSeen` equal to the changed-file set **Then** `readyForPR` is true. **Given** an empty changed-file list (or one with only blank entries) and an empty `filesSeen` **Then** `readyForPR` is false, the cycle outcome is INDETERMINATE and `indeterminateReasons` names that no files changed.
 
 ### AC-M2.1 (REQ-M2)
 **Given** a journal fixture whose tester proof is `{command: "exit 1", exit_code: 0}` **When** `node scripts/graph-rerun-proofs.mjs --journal <fixture>` runs **Then** it exits non-zero and names the task. **Given** the security scan reports `scanned_files: 0` **Then** it also exits non-zero. **Given** matching exit codes and scanned counts at or above the floor **Then** it exits 0.
@@ -440,7 +478,9 @@ THE SYSTEM SHALL correct, at the latest in the cycle that implements the matchin
 ### AC-M7.1 (REQ-M7)
 **Given** a planner result with `ambiguities: ['X']` and no acknowledgement **When** the workflow runs **Then** it throws `AMBIGUITY_BLOCK:` before any `coder:` label is invoked. **Given** `args.acknowledgedAmbiguities: ['X']` **Then** Build runs. **Given** `args.acknowledgements: [{item: "X", answer: "..."}]` and no `acknowledgedAmbiguities` **Then** Build runs. The same holds for a non-empty `conflicts[]`.
 
-### AC-M8.1 (REQ-M8)
+### AC-M7.2 (REQ-M7)
+**Given** a planner result with a non-empty `clarification_markers` (copied from `lint-spec-status.mjs --item`), or one whose `criteria` include `AC2` that no task's `covers` lists **When** the workflow runs **Then** it throws `SPEC_GATE_BLOCK:` before any `coder:` label is invoked, and neither `acknowledgedAmbiguities` nor `acknowledgements` lifts it. `node scripts/lint-spec-status.mjs --item <spec>` exits 1 for a spec holding the marker.
+### AC-M8.1 (REQ-M32)
 **Given** a spec whose Status is `draft` **When** `launch --spec-ref specs/x.md#REQ-X1` runs **Then** it throws. **Given** Status `approved` and a REQ with no AC **Then** it throws. **Given** approved, fully AC-covered and with Falsified-by lines **Then** it succeeds. **Given** a planner task with an empty `ac_ids` **Then** the schema rejects it.
 
 ### AC-M8.2 (REQ-M8)
@@ -449,10 +489,10 @@ THE SYSTEM SHALL correct, at the latest in the cycle that implements the matchin
 ### AC-M9.1 (REQ-M9)
 **Given** a claim with `description` 300 characters long **When** the validator runs **Then** it exits non-zero naming `maxLength`. **Given** `--claim nope` **Then** it exits non-zero. **Given** `--all` with zero claims **Then** it exits non-zero.
 
-### AC-M9.2 (REQ-M9)
+### AC-M9.2 (REQ-M9, REQ-M33)
 **Given** a type `implementation` claim without `proof.red` **Then** the validator rejects it. **Given** `proof.red.sha` at which the test command exits 0 **When** run without `--no-rerun` **Then** the validator rejects it (the RED is not RED).
 
-### AC-M10.1 (REQ-M10)
+### AC-M10.1 (REQ-M10, REQ-M34)
 **Given** a claim `state: production_complete` without a deploy proof **Then** the validator rejects it. **Given** `state: code_converged` while `graph-converge.mjs status` exits non-zero **Then** it is rejected. **Given** the current `docs/LAUNCH_READINESS.md:241` **When** `lint-readiness-claims.mjs` runs **Then** it fails until the text is corrected or cites a supporting claim. **Given** the phrase "live dashboard" **Then** the lint does not fail.
 
 **MR12-B address clarification (2026-10-04):** The line241 reference above is a historical source address, not a present regression assertion. The dedicated `specs/verification/readiness-claims.md` contract uses owned nonempty declaration fixtures and the actual candidate's captured current documents instead. The original semantic evidence refusals remain unchanged and pending.
@@ -473,7 +513,7 @@ THE SYSTEM SHALL correct, at the latest in the cycle that implements the matchin
 ### AC-M13.1 (REQ-M13)
 **Given** a stubbed `gh` returning 404 for `required_status_checks` **When** preflight runs **Then** `branch.protection` is `fail` and status is `needs_human`. **Given** a stub listing every context in `required-checks.yml` with 1 required approval **Then** the check passes.
 
-### AC-M14.1 (REQ-M14)
+### AC-M14.1 (REQ-M14, REQ-M35)
 **Given** a Semgrep JSON fixture with a non-empty `errors[]`, or `paths.scanned` below the floor **When** `node scripts/assert-scan.mjs` runs **Then** it exits non-zero. **Given** `run-redteam.sh` with no key and `GITHUB_EVENT_NAME=push` on `main` **Then** it exits non-zero.
 
 ### AC-M15.1 (REQ-M15)
@@ -521,7 +561,7 @@ The regression suite SHALL retain all twelve original deploy-test instances and 
 ### AC-M20.1 (REQ-M20)
 **Given** a REQ whose `Enforced by:` names an unwired hook **When** `check-enforcement.mjs` runs **Then** it exits non-zero. **Given** a baseline listing REQ-X as enforced and the spec now saying `UNENFORCED` **Then** it exits non-zero.
 
-### AC-M21.1 (REQ-M21)
+### AC-M21.1 (REQ-M21, REQ-M36)
 **Given** a `CLOSED` item without a claim id **When** `lint-closures.mjs` runs **Then** it exits non-zero. **Given** a whitespace-only `plan.md` edit **Then** the Last refined date in `LAUNCH_READINESS.md` is unchanged.
 
 ### AC-M22.1 (REQ-M22)
@@ -547,6 +587,9 @@ The regression suite SHALL retain all twelve original deploy-test instances and 
 
 ### AC-M29.1 (REQ-M29)
 **Given** each REQ at state `verified` **When** its listed document lines are grepped **Then** the false sentence is gone or rewritten to name the actual mechanism.
+
+### AC-M30.1 (REQ-M30)
+**Given** a project whose manifest declares `toy-a` **When** the hook receives `npm install toy-new`, `pnpm add toy-new`, `yarn add toy-new`, `bun add toy-new`, `pip install toy-new`, `uv add toy-new`, `poetry add toy-new` or `cargo add toy-new` **Then** it exits 2 and its stderr names `toy-new` and asks for owner approval; **and** `npm install toy-a`, `npm ci`, `npm install` and `pip install -r requirements.txt` exit 0 with no output, and a scoped name such as `@toy/scoped` is compared whole.
 
 ---
 

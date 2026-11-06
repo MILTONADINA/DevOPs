@@ -1,6 +1,6 @@
 {
   "name": "playwright",
   "command": "npx",
-  "args": ["-y", "@playwright/mcp@latest"],
+  "args": ["-y", "@playwright/mcp@0.0.83"],
   "description": "Playwright MCP: browser automation, accessibility tree extraction, visual diff via pixelmatch. Used by the goal-loop for full-stack UI verification."
 }

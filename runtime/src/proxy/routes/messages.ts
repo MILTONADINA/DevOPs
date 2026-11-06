@@ -484,7 +484,7 @@ export function makeMessagesRoute(deps: MessagesDeps): FastifyPluginCallback {
       const memoryReady = recordMemorySafe(deps, request, body, forwarded.data, conversationId, exchangeId, pendingWrites);
       observeSafe(deps, request, body, forwarded.data, conversationId, exchangeId, pendingWrites, memoryReady);
 
-      // nosemgrep: javascript.express.security.audit.xss.direct-response-write.direct-response-write -- FALSE POSITIVE: transparent JSON proxy. Forwards the upstream Anthropic response (Fastify sends it as application/json) to the Claude Code CLI client; never HTML rendered in a browser, so no XSS surface. The "user input" is the upstream provider's own JSON, not attacker markup.
+      // nosemgrep: javascript.express.security.audit.xss.direct-response-write -- FALSE POSITIVE: transparent JSON proxy. Forwards the upstream Anthropic response (Fastify sends it as application/json) to the Claude Code CLI client; never HTML rendered in a browser, so no XSS surface. The "user input" is the upstream provider's own JSON, not attacker markup.
       return reply.send(forwarded.data);
     });
     done();

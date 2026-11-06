@@ -1,6 +1,6 @@
 {
   "name": "@miltonadina/devops",
-  "version": "0.5.2",
+  "version": "0.6.0",
   "description": "A self-configuring, verification-first DevOps workflow for AI coding agents. Built for Claude Code; its AGENTS.md contract is tool-agnostic (Codex reads it natively), and no adapters for other tools ship yet.",
   "type": "module",
   "bin": {
@@ -58,7 +58,7 @@
   "dependencies": {
     "ajv": "8.20.0",
     "ajv-formats": "3.0.1",
-    "tsx": "4.23.13",
+    "tsx": "4.23.15",
     "yaml": "2.9.1"
   },
   "peerDependencies": {
@@ -73,7 +73,7 @@
     "@types/node": "^24.0.0",
     "@opentelemetry/core": "^2.0.0",
     "@opentelemetry/sdk-trace-base": "^2.0.0",
-    "acorn": "8.18.0",
+    "acorn": "8.19.0",
     "typescript": "5.9.3"
   },
   "files": [

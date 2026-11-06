@@ -34,6 +34,11 @@
             "type": "command",
             "command": "jq -r '.tool_input.command // empty' | { cmd=$(cat); [ -z \"$cmd\" ] && exit 0; ROOT=\"${CLAUDE_PROJECT_DIR:-}\"; if [ -z \"$ROOT\" ]; then ROOT=$(git rev-parse --show-toplevel 2>/dev/null); [ -n \"$ROOT\" ] && echo \"HOOK WARNING: CLAUDE_PROJECT_DIR unset; project root resolved from cwd: $ROOT\" >&2; fi; [ -n \"$ROOT\" ] || { echo \"HOOK: cannot resolve the project root (CLAUDE_PROJECT_DIR unset and cwd $(pwd) is not inside a git repo) -- failing closed\" >&2; exit 2; }; cd \"$ROOT\" || { echo \"HOOK: cannot cd to project root $ROOT -- failing closed\" >&2; exit 2; }; H=hooks/universal/pre-tool/deploy-gate.sh; [ -f \"$H\" ] || { echo \"HOOK MISSING: $ROOT/$H -- failing closed\" >&2; exit 2; }; bash \"$H\" \"$cmd\"; }",
             "statusMessage": "Checking graph deploy-gate..."
+          },
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.command // empty' | { cmd=$(cat); [ -z \"$cmd\" ] && exit 0; ROOT=\"${CLAUDE_PROJECT_DIR:-}\"; if [ -z \"$ROOT\" ]; then ROOT=$(git rev-parse --show-toplevel 2>/dev/null); [ -n \"$ROOT\" ] && echo \"HOOK WARNING: CLAUDE_PROJECT_DIR unset; project root resolved from cwd: $ROOT\" >&2; fi; [ -n \"$ROOT\" ] || { echo \"HOOK: cannot resolve the project root (CLAUDE_PROJECT_DIR unset and cwd $(pwd) is not inside a git repo) -- failing closed\" >&2; exit 2; }; cd \"$ROOT\" || { echo \"HOOK: cannot cd to project root $ROOT -- failing closed\" >&2; exit 2; }; H=hooks/universal/pre-tool/block-new-dependency.sh; [ -f \"$H\" ] || { echo \"HOOK MISSING: $ROOT/$H -- failing closed\" >&2; exit 2; }; bash \"$H\" \"$cmd\"; }",
+            "statusMessage": "Checking graph deploy-gate..."
           }
         ]
       }

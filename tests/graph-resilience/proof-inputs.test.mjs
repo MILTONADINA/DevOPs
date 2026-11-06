@@ -54,6 +54,7 @@ function fixture() {
     role(`tester:${id}`, 'Build', { task_id: id, passed: false, outcome: 'FAIL',
       proof: { command: id === 'T1' ? command : 'inert second declaration', exit_code: id === 'T1' ? 1 : 0, unrelated: SENTINEL } });
   }
+  role('changed-files', 'Verify', { files: ['a.js'], unrelated: SENTINEL });
   role('reviewer', 'Verify', { approved: false, unrelated: SENTINEL });
   role('security', 'Verify', { passed: false, scans: [
     { tool: 'semgrep', command: 'inert scan one', exit_code: 1, scanned_files: 0, unrelated: SENTINEL },

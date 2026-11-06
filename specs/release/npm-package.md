@@ -332,6 +332,14 @@ names the differing entry. Both workflows call it.
 
 **Verified by:** `tests/scripts/pack-twice.test.mjs`.
 
+### AC-18
+
+**Given** a code, template or config file in the repository that carries a `schema_version`
+field **When** the tests run **Then** `docs/STATE.md` names that file, has a "Restore drill"
+section, and names only source files that exist. A file that is not named is reported by path.
+
+**Verified by:** `tests/docs/state-doc.test.mjs`.
+
 ## Out of scope
 
 - Publishing `runtime/` (`@miltonadina/devops-runtime` stays `private`).

@@ -13,3 +13,13 @@
 925de334d9483714dfb8787f63ab27c5cc372c7d:tests/fixtures/security/poisoned-mcp-config.json:aws-access-token:8
 925de334d9483714dfb8787f63ab27c5cc372c7d:tests/fixtures/security/poisoned-mcp-config.json:github-pat:9
 925de334d9483714dfb8787f63ab27c5cc372c7d:tests/fixtures/security/poisoned-mcp-config.json:stripe-access-token:7
+# The same seven fixtures after the 2026-10-11 attribution rewrite (identical trees; only the commit ids
+# changed, see governance/changelog/2026-10-11-attribution-rewrite-commit-map.txt). Produced by the pinned
+# gitleaks 8.24.3 (GITLEAKS_VERSION in security-scan.yml), the version the CI job runs.
+858c151134c0c114aee9f0d8ad257bd45b9dbdc8:stratum/test/capture-session/pii-redaction-passthrough.test.ts:jwt:114
+858c151134c0c114aee9f0d8ad257bd45b9dbdc8:stratum/test/observability/pii-redaction.test.ts:generic-api-key:70
+858c151134c0c114aee9f0d8ad257bd45b9dbdc8:stratum/test/observability/pii-redaction.test.ts:jwt:58
+858c151134c0c114aee9f0d8ad257bd45b9dbdc8:stratum/test/observability/pii-redaction.test.ts:jwt:193
+a9600e13a40ae29b2191b414c9c02beeed3c54d5:tests/fixtures/security/poisoned-mcp-config.json:aws-access-token:8
+a9600e13a40ae29b2191b414c9c02beeed3c54d5:tests/fixtures/security/poisoned-mcp-config.json:github-pat:9
+a9600e13a40ae29b2191b414c9c02beeed3c54d5:tests/fixtures/security/poisoned-mcp-config.json:stripe-access-token:7

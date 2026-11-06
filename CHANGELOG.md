@@ -8,9 +8,159 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-11-06
+
+### Fixed
+
+- `devops analyze` matches README compliance terms as whole words, and counts words such as "child", "minor" and "patient" only next to a data term. "A minor release of a graphics library" no longer adds COPPA, HIPAA or the `coppa-audit` skill, and analyze prints the term behind each scope (#351).
+- `scripts/prepare-dast.mjs` checks the native esbuild where `runtime/package-lock.json` puts it: nested under `tsx` if the lock has that copy, else hoisted to the top level. It looked only under `tsx`, which the current lock does not use (#360).
+- `CLAUDE.md` lists `block-new-dependency.sh` as a wired Bash pre-tool hook, as `.claude/settings.json` wires it, instead of among the scripts that do not run. A test fails when the two lists diverge (#357).
+- `docs/UPGRADING.md` has "0.5.0 to 0.5.1" and "0.5.1 to 0.5.2" sections. The CSP nonce and subagent items, which shipped in 0.5.1, move out of "Unreleased (dev)". A test fails when a released version has no section, or an Unreleased item names only terms from a released version (#354).
+- `loop-detection.sh` halts with exit 2, the only status Claude Code treats as blocking, when it gets no tool name. It exited 1 before, which let the call through (#355).
+- The `sprint-cycle.js` reviewer gate no longer passes when Build produced no change: an empty
+  changed-file list (or one with only blank entries: whitespace, zero-width characters, dots and slashes) is INDETERMINATE and not ready, because there was
+  nothing to review. No plan field can declare a no-change task. A resumed cycle on a clean tree now
+  reads INDETERMINATE by design (REQ-M1, AC-M1.3). A lister entry that is not a string is INDETERMINATE too.
+- The scheduled full-history gitleaks scan on `main` passes again. The 2026-10-11 attribution rewrite gave seven
+  reviewed test fixtures new commit ids (858c1511, a9600e13) with identical content, so their baseline fingerprints
+  stopped matching. `.gitleaksignore` now lists the successor fingerprints too (`specs/security/history-secret-scan-baseline.md`
+  AC-HSB-1.2).
+- `scripts/graph-blocked.sh` and `scripts/graph-preflight.mjs` create `.workflow/state/` when it is missing, after
+  checking that its nearest existing ancestor resolves inside the project root, instead of failing with an uncaught
+  ENOENT, and then write their records. `scripts/graph-blocked.sh` compares the physical project root, so a project
+  opened through an alternate path is no longer refused, and it writes the blocked record, with its Evidence section
+  stating that the file was not found, when `--evidence-file` is missing. `scripts/graph-run-record.mjs` loads without
+  throwing when `.workflow/state/` is missing and refuses `update` with `run record missing or redirected`; it does
+  not create the directory or write a record (`specs/graph/R-resilience.md` REQ-R21 to REQ-R23; refs #275 to #278).
+
 ### Security
 
+- `block-new-dependency.sh` asks for approval before `pip`, `uv pip` or `uv add` installs a
+  `.whl`, `.tar.gz` or `.zip` from a URL. Only a local archive, the project's own build, is
+  exempt; a remote one was exempted too.
+- `scripts/check-agent-config.mjs` exits 2 when `.claude/settings.json` is missing, as
+  `specs/security/ci-agent-config-scan.md` REQ-3 requires, instead of skipping the permission
+  and hook checks and passing.
 - The installer accepts a skill signature only from `MILTONADINA/DevOPs`'s `release-sign.yml` on a branch, and refuses a skill whose manifest names another signer. It refuses a skill whose signature it cannot verify (no cosign, a cosign error or timeout, or no bundle) instead of falling back to the manifest hash, which ships with the skill. `devops init` therefore needs cosign, or `--allow-unsigned --rationale="..."`, which logs each skill as overridden (GHSA-3mv5-99fp-7f4c).
+- The TUF-verified Sigstore trust root is committed at `.workflow/sigstore/trust-bundle.json`
+  (sha256 `6494e21e…bc0b66`, the output of `cosign initialize`, matching the weekly refresh run; #217). A test
+  checks its shape, and `docs/SKILL_SIGNING.md` no longer suggests a plain download or the non-existent
+  `--bundle-path` flag; offline verification with this root needs new-format bundles (#345).
+- The Semgrep job now downloads the pinned `semgrep-rules` commit as one tarball from `codeload.github.com`
+  instead of about 711 unauthenticated requests to `raw.githubusercontent.com`, so a 429 burst can no longer fail
+  the required check; 429 and 5xx answers are retried with exponential backoff. Only the pinned paths are
+  extracted and each is still checked against its sha256; the run fails closed on a digest mismatch, a missing
+  file, an unpinned file, a corrupt archive or any unsafe tar entry (traversal, absolute or backslash path, link,
+  device, foreign top-level directory). `.workflow/network-allowlist.txt` swaps `raw.githubusercontent.com` for
+  `codeload.github.com`. `docs/SECURITY.md` now documents reconciling the file list when moving the pin
+  (`specs/security/ci-semgrep-scan.md` REQ-6, REQ-7, AC-6). Closes #327.
+- `mcp-configs/universal/playwright.json` now pins `@playwright/mcp@0.0.83` and its baseline entry is removed. `@miltonadina/lyrie-mcp`, `stratum-mcp`, `pentagi-mcp`, `pentest-ai-mcp` and `shannon-mcp` are not published on npm (E404), so they stay baselined until published or removed (quality plan O-10). A test now locks the baseline to the scan's unpinned findings. Refs #322.
+- Webhook delivery now resolves the customer hostname once, refuses it if any returned address is not public (numeric
+  check, including IPv4-mapped, NAT64, 6to4, Teredo and CGNAT), and connects to the vetted address with Host and TLS name
+  unchanged, closing the documented DNS-rebinding gap. Redirects are never followed. Retries are bounded and jittered,
+  honour a clamped `Retry-After`, and skip 4xx; an undelivered event leaves a body-free local dead-letter record
+  (`specs/security/webhook-egress.md`). BREAKING (runtime-internal): `createDefaultWebhookRetrier` now takes
+  `(transport?, onUndelivered?, lookup?, onError?)` instead of `(doFetch?, onUndelivered?)`, and `DeliveryFetch` is
+  removed; the package is private and nothing else called it. `scripts/check-enforcement.mjs` now reports
+  mechanical=122 for its five REQs. When a hostname has several public addresses, delivery now tries each in turn
+  (IPv6 and IPv4 alternating) after a refused, unreachable or timed-out connect, so an unreachable first address no
+  longer fails the delivery; it never retries another address once connected or after a response.
+- A new `agent-config` job in `security-scan.yml` runs `scripts/check-agent-config.mjs` on every pull
+  request. It fails on a broad permission or `bypassPermissions` in `.claude/settings.json`, an
+  unpinned MCP server under `mcp-configs/`, or a hook that does not run a file under `hooks/`, unless
+  `governance/agent-config-baseline.json` names the finding (`specs/security/ci-agent-config-scan.md`).
+  `scripts/check-enforcement.mjs` now reports mechanical=115 (was 112 above) for its three REQs.
+- New pre-tool hook `hooks/universal/pre-tool/block-new-dependency.sh` blocks agent-run installs of
+  packages the project has not declared (npm/pnpm/yarn/bun, pip/uv/poetry, `cargo add`) and asks for owner
+  approval, with no network call. Plain `npm install` and `npm ci` stay allowed. It runs as a Bash pre-tool hook in
+  `.claude/settings.json` (REQ-M30).
+- The Semgrep job downloads its rules in a separate step from the `semgrep/semgrep-rules` repository at
+  one pinned full commit SHA (711 files, 725 rules, covering the former owasp-top-ten,
+  r2c-security-audit and secrets packs), checks each file's sha256 against
+  `governance/semgrep-rules.sha256.json` (fails on a mismatch, a missing digest, a missing file or an
+  unpinned file), then scans with `--network none` against those local files. The registry packs it
+  used before were regenerated upstream, so their digest drifted and the required check went red; a
+  commit does not change. Rule files are not committed (Semgrep Rules License).
+  `node scripts/semgrep-rules.mjs refresh [PINS [COMMIT]]` updates the digests, or moves the pin to
+  another commit, by hand. Three `nosemgrep` annotations now name the rule ids as the repository
+  builds them (`direct-response-write`, `unknown-value-with-script-tag`).
+  `scripts/check-enforcement.mjs` now reports mechanical=117 (was 115 above) for REQ-6 and REQ-7.
+
+### Changed
+
+- The sprint-cycle reviewer must return `filesSeen`; the workflow compares it with its own
+  `git diff --name-only` list and sets the outcome INDETERMINATE (not ready) on any missing,
+  unknown or absent file (REQ-M1, AC-M1.3).
+- `devops init` links `@agile-graph/engine` 0.4.0 and no longer links 0.1.0 to 0.2.0. The engine changed the
+  cloud-default definitions of `context_get`, `graph_neighbors`, `memory_propose` and `symbol_search`, so
+  `mcp-configs/universal/agile-graph.tool-hashes.json` now holds 0.4.0's hashes (`specs/graph/agile-graph-link.md`
+  REQ-1, REQ-2, AC-8). Before upgrading the engine, a project on an older one replaces its
+  `.claude/agile-graph-tool-hashes.json` (see `docs/UPGRADING.md`).
+
+### Documentation
+
+- `docs/STATE.md` lists every persisted file with its owner, `schema_version`, readers and
+  compatibility rule, plus a backup and restore drill. `tests/docs/state-doc.test.mjs` fails
+  when a file with a `schema_version` field is not named there.
+
+### Internal
+
+- REQ-M8, M9, M10, M14 and M21 are split into a mechanical half (same id, now cites its tests in
+  `Enforced by:`) and a twin for the rest (REQ-M32..M36, appended). The twins are `UNENFORCED`, not
+  `PROCESS`, because each moves behaviour no code implements yet (launch spec binding, RED replay,
+  evidence-backed completion states, red-team skip, freshness hook).
+  `scripts/check-enforcement.mjs` reports mechanical=112 (was 107) and unenforced=19 (unchanged);
+  `governance/enforcement-baseline.json` lists the five, and the root test floor rises to 1495.
+- `tests/graph-dashboard/events-sse.test.mjs` waits for the new run to be active under an explicit 6s
+  deadline instead of asserting on the first frame that lists it, which could see the journal while
+  it was still empty (#300).
+- REQ-HSB-1 moves from UNENFORCED to mechanically enforced via
+  `tests/ci/gitleaksignore-baseline.test.mjs`; `scripts/check-enforcement.mjs` reports
+  unenforced=24 (was 25) and `governance/enforcement-baseline.json` ratchets it. Added
+  `tests/graph-resilience/req-contracts.test.mjs` for the checkable clauses of REQ-R4, R7, R9,
+  R10 and M7, which stay UNENFORCED because each also has procedural clauses.
+- REQ-R4, R7, R9, R10 and M7 are split into a mechanical half (same id, now cites its tests in
+  `Enforced by:`) and a procedural half (REQ-R17, R18, R19, R20 and M31, `PROCESS`).
+  `scripts/check-enforcement.mjs` reports mechanical=107 (was 102) and unenforced=19 (was 24);
+  `governance/enforcement-baseline.json` lists the five, and the root test floor rises to 1471.
+  `tests/graph-resilience/split-req-enforcement.test.mjs` pins the split.
+- Root npm dependencies take the non-major updates listed in issue #209: `acorn` 8.19.0,
+  `tsx` 4.23.15 (a shipped dependency; patch), `@opentelemetry/core` and
+  `@opentelemetry/sdk-trace-base` 2.12.0, and `@types/node` 24.19.2. Major updates stay deferred.
+  `tests/dependency-updates.test.mjs` pins the root and runtime lockfile versions, and the root test floor rises from 1585 to 1618 (+33).
+
+### Fixed
+
+- `scripts/pack-twice.mjs` stops its running `npm pack` step, removes its temporary
+  directory and exits 130 (SIGINT) or 143 (SIGTERM) when interrupted
+  (`specs/ops/script-entrypoints.md` REQ-4).
+
+### Added
+
+- Runtime tests for warm-to-cold promotion (`runtime/test/memory/promote-scope.test.ts`, 18 tests): org,
+  session and project scope reach every graph write (an explicit null scope is passed through, not dropped),
+  per-fact entity id resolution, content-free vector records, a missing embedding dropping only its own fact,
+  and the `promoteFacts` orchestrator's gating. `memory/promote.ts` branch coverage rises from 57% to 95%.
+- Runtime tests for the OpenAI-compatible provider transport's streaming and error paths
+  (`runtime/test/proxy/openai-provider-stream.test.ts`, 19 tests): `extraHeaders` merging, 401/403 bodies never
+  echoed (they can embed a key fragment), error-body fallbacks, SSE re-emit across chunk splits, mid-stream
+  failure closing, and idle-timer abort and cleanup. `providers/openai.ts` line coverage rises from 29% to 96%.
+- Runtime unit tests for the Supabase message-memory recorder
+  (`runtime/test/proxy/message-memory-recorder.test.ts`, 22 tests): identity and project-scope validation
+  fails closed before any write, the legacy session insert is checked, and audited facts are stored
+  suppressed and released only when not a CONFLICT, by id, org and session. `message-memory.ts` line
+  coverage rises from 10% to 100%.
+- Runtime tests for the Gemini provider transport (`runtime/test/proxy/gemini-provider.test.ts`, 18 tests):
+  URL and `x-goog-api-key` construction, error translation that never forwards 401/403 detail, the streaming
+  error-body paths, SSE re-emit across chunk boundaries, mid-stream failure closing, and idle-timer abort and
+  cleanup. `providers/gemini.ts` line coverage rises from 2% to 96%.
+- The sprint cycle stops before Build (`SPEC_GATE_BLOCK:`) when the backlog item's spec holds
+  `[NEEDS CLARIFICATION]` or an acceptance criterion is covered by no planned task; the planner
+  schema gains `covers`, `criteria` and `clarification_markers`, and
+  `scripts/lint-spec-status.mjs --item <spec>` checks the marker.
+- The required `runtime-test` job measures V8 line coverage of `runtime/` (`npm run test:coverage`)
+  and fails below the floor in `governance/coverage-floor.json`, checked by
+  `scripts/check-coverage-floor.mjs` (`specs/ops/ci-product-suites.md` REQ-5).
 
 ## [0.5.2] — 2026-10-31
 
@@ -19,7 +169,6 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - `client-boundary.sh` no longer evaluates allowlist lines, compares normalised paths by directory boundary, reads the PreToolUse JSON on stdin (every path field, `~` expanded) and writes valid JSON event lines. It fails closed.
 
 ## [0.5.1] — 2026-10-26
-
 ### Documentation
 
 - `docs/OBSERVABILITY.md` lists the proxy's structured log levels, the fields each

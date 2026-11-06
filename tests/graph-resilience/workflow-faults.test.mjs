@@ -9,9 +9,19 @@ const ROOT = path.resolve(import.meta.dirname, '..', '..');
 const source = readFileSync(path.join(ROOT, '.claude', 'workflows', 'sprint-cycle.js'), 'utf8')
   .replace('export const meta =', 'const meta =');
 
+// Default harness: the 'changed-files' lister returns one synthetic changed file and a reviewer that lists
+// the same file (an empty diff is INDETERMINATE, so it is never the default), so the pre-existing cases stay about their own subject. The
+// filesSeen cases below pass strictReviewer to see the raw reviewer result.
 async function run(agent, args = {}, log = () => {}) {
+  const { strictReviewer, changedFiles = ['src/a.js'], ...rest } = args;
+  const wrapped = async (prompt, options) => {
+    if (options.label === 'changed-files') return changedFiles instanceof Error ? {} : { files: typeof changedFiles === 'function' ? changedFiles() : changedFiles };
+    const r = await agent(prompt, options);
+    if (strictReviewer) return r;
+    return options.label === 'reviewer' && r && !('filesSeen' in r) ? { ...r, filesSeen: ['src/a.js'] } : r;
+  };
   const execute = new AsyncFunction('args', 'agent', 'log', 'phase', source);
-  return execute({ backlogItem: 'specs/graph/R-resilience.md', cycleId: 'c7', ...args }, agent, log, () => {});
+  return execute({ backlogItem: 'specs/graph/R-resilience.md', cycleId: 'c7', ...rest }, wrapped, log, () => {});
 }
 
 test('preflight needs_human stops before planner', async () => {
@@ -983,4 +993,269 @@ test("T5 (D3): the planner prompt names the `conflicts` field and AGENTS.md's pr
     prompts.planner.includes('owner decision > law/safety > approved spec > ADR/AC > plan > code'),
     "planner prompt should state AGENTS.md's precedence order verbatim"
   );
+});
+
+// --- Reviewer filesSeen coverage (REQ-M1 extension) -------------------------
+
+const ALL_PASS = {
+  preflight: { status: 'ready', check_ids: [] },
+  'coder:T1': { task_id: 'T1', summary: 'done' },
+  'tester:T1': { task_id: 'T1', passed: true, outcome: 'PASS' },
+  security: { passed: true, outcome: 'PASS' },
+  validator: { signed_off: true, outcome: 'PASS', reason: 'verified' },
+};
+const PLAN = { tasks: [{ id: 'T1', description: 'one task' }] };
+
+async function runFilesSeen(reviewer, changed) {
+  return run(async (_, o) => (o.label === 'reviewer' ? reviewer : ALL_PASS[o.label]),
+    { plan: PLAN, strictReviewer: true, changedFiles: changed });
+}
+
+test('filesSeen: a reviewer that omits a changed file is INDETERMINATE and not ready', async () => {
+  const r = await runFilesSeen({ approved: true, filesSeen: ['src/a.js'] }, ['src/a.js', 'src/b.js']);
+  assert.equal(r.cycleOutcome.readyForPR, false);
+  assert.equal(r.cycleOutcome.outcome, 'INDETERMINATE');
+});
+
+test('filesSeen: a reviewer that adds an unknown file is INDETERMINATE and not ready', async () => {
+  const r = await runFilesSeen({ approved: true, filesSeen: ['src/a.js', 'src/ghost.js'] }, ['src/a.js']);
+  assert.equal(r.cycleOutcome.readyForPR, false);
+  assert.equal(r.cycleOutcome.outcome, 'INDETERMINATE');
+});
+
+test('filesSeen: a reviewer that omits filesSeen entirely is INDETERMINATE and not ready', async () => {
+  const r = await runFilesSeen({ approved: true }, []);
+  assert.equal(r.cycleOutcome.readyForPR, false);
+  assert.equal(r.cycleOutcome.outcome, 'INDETERMINATE');
+});
+
+test('filesSeen (positive control): a reviewer returning exactly the changed files is ready', async () => {
+  const r = await runFilesSeen({ approved: true, filesSeen: ['./src/b.js', 'src/a.js'] }, ['src/a.js', 'src/b.js']);
+  assert.equal(r.cycleOutcome.readyForPR, true);
+  assert.equal(r.cycleOutcome.outcome, 'PASS');
+});
+
+test('filesSeen: an uncomputable changed-file list is INDETERMINATE, not ready', async () => {
+  const r = await run(async (_, o) => (o.label === 'reviewer' ? { approved: true, filesSeen: [] } : ALL_PASS[o.label]),
+    { plan: PLAN, changedFiles: new Error('git unavailable') });
+  assert.equal(r.cycleOutcome.readyForPR, false);
+  assert.equal(r.cycleOutcome.outcome, 'INDETERMINATE');
+});
+
+test('filesSeen: the reviewer schema requires filesSeen and the prompt asks for it', async () => {
+  let seen;
+  await run(async (prompt, o) => {
+    if (o.label === 'reviewer') seen = { prompt, schema: o.schema };
+    return o.label === 'reviewer' ? { approved: true, filesSeen: [] } : ALL_PASS[o.label];
+  }, { plan: PLAN });
+  assert.ok(seen.schema.required.includes('filesSeen'));
+  assert.match(seen.prompt, /filesSeen/);
+});
+
+test('filesSeen: paths differing only by trailing whitespace stay distinct', async () => {
+  const r = await runFilesSeen({ approved: true, filesSeen: ['src/a.js'] }, ['src/a.js', 'src/a.js ']);
+  assert.equal(r.cycleOutcome.readyForPR, false);
+  assert.equal(r.cycleOutcome.outcome, 'INDETERMINATE');
+});
+
+test('filesSeen: the changed-file list is computed right after the reviewer, before security writes claim files', async () => {
+  const order = [];
+  const r = await run(async (_, o) => {
+    order.push(o.label);
+    return o.label === 'reviewer' ? { approved: true, filesSeen: ['src/a.js'] } : ALL_PASS[o.label];
+  }, { plan: PLAN, strictReviewer: true, changedFiles: () => {
+    order.push('changed-files');
+    return order.includes('security')
+      ? ['src/a.js', '.workflow/proofs/committed/claims/claim-2026-01-01-001.yml']
+      : ['src/a.js'];
+  } });
+  assert.ok(order.indexOf('changed-files') > order.indexOf('reviewer'));
+  assert.ok(order.indexOf('changed-files') < order.indexOf('security'));
+  assert.equal(r.cycleOutcome.readyForPR, true);
+});
+
+test('filesSeen: the reviewer is told the same quotepath-off git command the lister runs', async () => {
+  let prompt;
+  await run(async (p, o) => {
+    if (o.label === 'reviewer') prompt = p;
+    return o.label === 'reviewer' ? { approved: true, filesSeen: [] } : ALL_PASS[o.label];
+  }, { plan: PLAN });
+  assert.match(prompt, /git -c core\.quotepath=off diff --name-only HEAD/);
+});
+
+test('filesSeen: the lister and the reviewer both run quotepath-off git for untracked files too', async () => {
+  const prompts = {};
+  const execute = new AsyncFunction('args', 'agent', 'log', 'phase', source);
+  await execute({ backlogItem: 'x', cycleId: 'c7', plan: PLAN }, async (p, o) => {
+    prompts[o.label] = p;
+    if (o.label === 'changed-files') return { files: [] };
+    return o.label === 'reviewer' ? { approved: true, filesSeen: [] } : ALL_PASS[o.label];
+  }, () => {}, () => {});
+  for (const label of ['changed-files', 'reviewer']) {
+    assert.match(prompts[label], /git -c core\.quotepath=off ls-files --others --exclude-standard/, label);
+  }
+});
+
+test('filesSeen: cycleOutcome.indeterminateReasons names the filesSeen mismatch; empty when clean', async () => {
+  const bad = await run(async (p, o) => (o.label === 'reviewer' ? { approved: true, filesSeen: ['src/x.js'] } : ALL_PASS[o.label]), { plan: PLAN, changedFiles: ['src/b.js'], strictReviewer: true });
+  assert.equal(bad.cycleOutcome.outcome, 'INDETERMINATE');
+  assert.match(bad.cycleOutcome.indeterminateReasons.join(' '), /reviewer filesSeen \(missing 'src\/b\.js'; unknown 'src\/x\.js'\)/);
+  const ok = await run(async (p, o) => (o.label === 'reviewer' ? { approved: true, filesSeen: ['src/b.js'] } : ALL_PASS[o.label]), { plan: PLAN, changedFiles: ['src/b.js'], strictReviewer: true });
+  assert.deepEqual(ok.cycleOutcome.indeterminateReasons, []);
+});
+
+test('filesSeen: a changed-files lister that returns null halts the cycle as BLOCKED_BY_ENVIRONMENT', async () => {
+  const execute = new AsyncFunction('args', 'agent', 'log', 'phase', source);
+  await assert.rejects(
+    execute({ backlogItem: 'x', cycleId: 'c7', plan: PLAN }, async (p, o) => {
+      if (o.label === 'changed-files') return null;
+      return o.label === 'reviewer' ? { approved: true, filesSeen: [] } : ALL_PASS[o.label];
+    }, () => {}, () => {}),
+    err => {
+      const m = /^BLOCKED_BY_ENVIRONMENT:(.*)$/s.exec(String(err.message));
+      assert.ok(m, err.message);
+      assert.equal(JSON.parse(m[1]).stage, 'changed-files');
+      return true;
+    },
+  );
+});
+
+test('changed-files lister runs at low effort on sonnet', async () => {
+  let opts;
+  const execute = new AsyncFunction('args', 'agent', 'log', 'phase', source);
+  await execute({ backlogItem: 'x', cycleId: 'c7', plan: PLAN }, async (p, o) => {
+    if (o.label === 'changed-files') { opts = o; return { files: [] }; }
+    return o.label === 'reviewer' ? { approved: true, filesSeen: [] } : ALL_PASS[o.label];
+  }, () => {}, () => {});
+  assert.equal(opts.model, 'sonnet');
+  assert.equal(opts.effort, 'low');
+});
+
+// --- Empty-diff reviewer gate (#326) -----------------------------------------
+// A cycle whose Build produced no change has nothing to review: an empty lister
+// result plus an empty filesSeen used to match vacuously and read as reviewed.
+
+const NO_CHANGE = /no changed files|Build produced no change/;
+
+async function runEmpty(reviewer, changed, { plan = PLAN, all = ALL_PASS, logs = [] } = {}) {
+  return run(async (_, o) => (o.label === 'reviewer' ? reviewer : all[o.label]),
+    { plan, strictReviewer: true, changedFiles: changed }, (m) => logs.push(String(m)));
+}
+
+function assertNotReady(r, reason = NO_CHANGE) {
+  assert.equal(r.cycleOutcome.outcome, 'INDETERMINATE');
+  assert.equal(r.cycleOutcome.readyForPR, false);
+  if (reason) assert.match(r.cycleOutcome.indeterminateReasons.join(' '), reason);
+}
+
+test('empty diff: empty lister and empty filesSeen is INDETERMINATE on every surface', async () => {
+  const logs = [];
+  const r = await runEmpty({ approved: true, filesSeen: [] }, [], { logs });
+  assertNotReady(r);
+  assert.ok(logs.some((l) => NO_CHANGE.test(l)), logs.join('\n'));
+});
+
+test('empty diff: an absent filesSeen is INDETERMINATE', async () => {
+  assertNotReady(await runEmpty({ approved: true }, []), null);
+});
+
+test('empty diff: a reviewer inventing a file is INDETERMINATE (unknown)', async () => {
+  assertNotReady(await runEmpty({ approved: true, filesSeen: ['src/a.js'] }, []), null);
+});
+
+for (const [name, blank] of [['empty string', ''], ['dot-slash', './'], ['space', ' '], ['dot', '.'], ['double dot-slash', '././'], ['zero-width space', '\u200b']]) {
+  test(`empty diff: a lister and reviewer that both list only a blank entry (${name}) are INDETERMINATE`, async () => {
+    assertNotReady(await runEmpty({ approved: true, filesSeen: [blank] }, [blank]));
+  });
+}
+
+test('empty diff: a blank entry mixed with a real file does not let the reviewer echo the blank', async () => {
+  const ok = await runEmpty({ approved: true, filesSeen: ['src/a.js'] }, ['', 'src/a.js']);
+  assert.equal(ok.cycleOutcome.readyForPR, true);
+  const bad = await runEmpty({ approved: true, filesSeen: [''] }, ['', 'src/a.js']);
+  assert.equal(bad.cycleOutcome.readyForPR, false);
+});
+
+test('empty diff: a coder self-report of changed files never substitutes for git', async () => {
+  const all = { ...ALL_PASS, 'coder:T1': { task_id: 'T1', summary: 'done', files_changed: ['src/a.js'] } };
+  assertNotReady(await runEmpty({ approved: true, filesSeen: [] }, [], { all }));
+});
+
+test('empty diff: no plan field declares a no-change task that unlocks readiness', async () => {
+  for (const task of [
+    { id: 'T1', description: 'one task', no_change: true },
+    { id: 'T1', description: 'one task', files_likely_touched: [] },
+    { id: 'T1', description: 'no change needed' },
+  ]) {
+    assertNotReady(await runEmpty({ approved: true, filesSeen: [] }, [], { plan: { tasks: [task] } }));
+  }
+});
+
+test('empty diff: a validator reason of "nothing to change" does not unlock readiness', async () => {
+  const all = { ...ALL_PASS, validator: { signed_off: true, outcome: 'PASS', reason: 'nothing to change' } };
+  assertNotReady(await runEmpty({ approved: true, filesSeen: [] }, [], { all }));
+});
+
+test('empty diff: a non-array lister result stays INDETERMINATE and a null lister stays BLOCKED_BY_ENVIRONMENT', async () => {
+  assertNotReady(await run(async (_, o) => (o.label === 'reviewer' ? { approved: true, filesSeen: [] } : ALL_PASS[o.label]),
+    { plan: PLAN, strictReviewer: true, changedFiles: new Error('git unavailable') }), null);
+  // The harness maps an Error to a lister result with no files field; also pass real non-array values.
+  for (const bad of [null, 'foo', { 0: 'src/a.js' }, 42, [null], [undefined]]) {
+    assertNotReady(await run(async (_, o) => (o.label === 'reviewer' ? { approved: true, filesSeen: ['src/a.js'] } : ALL_PASS[o.label]),
+      { plan: PLAN, strictReviewer: true, changedFiles: () => bad }), null);
+  }
+  // A reviewer echoing the stringified entry must not match a non-string lister entry.
+  for (const [bad, echo] of [[[null], 'null'], [[undefined], 'undefined']]) {
+    assertNotReady(await run(async (_, o) => (o.label === 'reviewer' ? { approved: true, filesSeen: [echo] } : ALL_PASS[o.label]),
+      { plan: PLAN, strictReviewer: true, changedFiles: () => bad }), null);
+  }
+  const execute = new AsyncFunction('args', 'agent', 'log', 'phase', source);
+  await assert.rejects(execute({ backlogItem: 'x', cycleId: 'c7', plan: PLAN }, async (_, o) => {
+    if (o.label === 'changed-files') return null;
+    return o.label === 'reviewer' ? { approved: true, filesSeen: [] } : ALL_PASS[o.label];
+  }, () => {}, () => {}), /BLOCKED_BY_ENVIRONMENT:.*"stage":"changed-files"/);
+});
+
+test('empty diff: a resumed cycle that carries Build forward on a clean tree is INDETERMINATE', async () => {
+  // REQ-M1 / AC-M1.3 (specs/graph/M-masterpiece-standard.md) and the CHANGELOG #329 entry: a resumed
+  // cycle on a clean tree reads INDETERMINATE by design. Build is carried forward, so no coder or tester
+  // runs and only the reviewer gate can stop an empty set from passing.
+  const labels = [];
+  const priorBuildResults = [{
+    task: PLAN.tasks[0],
+    coderResult: { task_id: 'T1', summary: 'done' },
+    testerResult: { task_id: 'T1', passed: true, outcome: 'PASS' },
+  }];
+  const r = await run(async (_, o) => {
+    labels.push(o.label);
+    return o.label === 'reviewer' ? { approved: true, filesSeen: [] } : ALL_PASS[o.label];
+  }, { plan: PLAN, priorBuildResults, strictReviewer: true, changedFiles: [] });
+  assertNotReady(r);
+  assert.ok(!labels.some((l) => l === 'coder:T1' || l === 'tester:T1'), labels.join(', '));
+});
+
+test('empty diff (positive control): a resumed cycle with one real changed file the reviewer saw is ready and PASS', async () => {
+  // AC-M1.2 (specs/graph/M-masterpiece-standard.md): the resumed twin of the clean-tree test above. Without it,
+  // a gate that marks every resumed cycle INDETERMINATE would still pass that test.
+  const labels = [];
+  const priorBuildResults = [{
+    task: PLAN.tasks[0],
+    coderResult: { task_id: 'T1', summary: 'done' },
+    testerResult: { task_id: 'T1', passed: true, outcome: 'PASS' },
+  }];
+  const r = await run(async (_, o) => {
+    labels.push(o.label);
+    return o.label === 'reviewer' ? { approved: true, filesSeen: ['src/a.js'] } : ALL_PASS[o.label];
+  }, { plan: PLAN, priorBuildResults, strictReviewer: true, changedFiles: ['src/a.js'] });
+  assert.equal(r.cycleOutcome.readyForPR, true);
+  assert.equal(r.cycleOutcome.outcome, 'PASS');
+  assert.deepEqual(r.cycleOutcome.indeterminateReasons, []);
+  assert.ok(!labels.some((l) => l === 'coder:T1' || l === 'tester:T1'), labels.join(', '));
+});
+
+test('empty diff (positive control): one real changed file seen by the reviewer is ready and PASS', async () => {
+  const r = await runEmpty({ approved: true, filesSeen: ['src/a.js'] }, ['src/a.js']);
+  assert.equal(r.cycleOutcome.readyForPR, true);
+  assert.equal(r.cycleOutcome.outcome, 'PASS');
+  assert.deepEqual(r.cycleOutcome.indeterminateReasons, []);
 });

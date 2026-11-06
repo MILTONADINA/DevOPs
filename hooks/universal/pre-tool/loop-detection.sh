@@ -22,9 +22,10 @@ SESSION_ID="${DEVOPS_SESSION_ID:-unknown}"
 TOOL_NAME="${1:-}"
 TOOL_ARGS="${2:-}"
 
+# Claude Code treats only exit 2 as blocking, so a missing name fails closed.
 if [[ -z "$TOOL_NAME" ]]; then
     echo "loop-detection.sh: tool name required" >&2
-    exit 1
+    exit 2
 fi
 
 # Compute args hash (deterministic)

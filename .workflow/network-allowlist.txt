@@ -33,3 +33,6 @@ production.cloudfront.docker.com
 
 # MR21 AC-12: exact GitHub Actions artifact redirect observed for run 37193372293.
 productionresultssa11.blob.core.windows.net
+
+# Semgrep rules: one commit tarball of the pinned semgrep-rules commit, sha256-verified per file by CI (scripts/semgrep-rules.mjs).
+codeload.github.com

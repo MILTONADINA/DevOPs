@@ -172,7 +172,8 @@ function declarations(roles) {
   requireValue(new Set(ids).size === ids.length, 'PLAN_INVALID');
   const expected = new Set(['preflight', 'planner', 'reviewer', 'security', 'validator',
     ...ids.flatMap((id) => [`coder:${id}`, `tester:${id}`])]);
-  requireValue([...roles.keys()].every((label) => expected.has(label)), 'ROLE_INCOMPLETE');
+  // 'changed-files' (the reviewer-coverage lister) is journaled but declares nothing.
+  requireValue([...roles.keys()].every((label) => expected.has(label) || label === 'changed-files'), 'ROLE_INCOMPLETE');
   for (const label of expected) resultFor(label);
 
   const validCommand = (value) => typeof value === 'string' && value.trim() !== '' && value.length <= 8192;

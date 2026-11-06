@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# pwd -P: the physical path, the one realpathSync returns for every path compared with it below.
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 GRAPH_ROOT="$ROOT" node --input-type=module - "$@" <<'NODE'
-import { readFileSync, writeFileSync, renameSync, appendFileSync, mkdirSync, realpathSync } from 'node:fs';
+import { readFileSync, writeFileSync, renameSync, appendFileSync, mkdirSync, realpathSync, existsSync, lstatSync } from 'node:fs';
 import path from 'node:path';
 
 const root = process.env.GRAPH_ROOT;
@@ -24,20 +25,36 @@ if (!['environment', 'api', 'transient', 'needs_human'].includes(faultClass)) {
   throw new Error('class must be environment, api, transient, or needs_human');
 }
 const insideRoot = (value) => value === root || value.startsWith(`${root}${path.sep}`);
+// The real path of a file that may not exist yet: the real path of its nearest existing ancestor,
+// plus the names still missing below it (they do not exist, so they have no real path to resolve).
+function realPathOf(file) {
+  const missing = [];
+  let current = file;
+  for (;;) {
+    try { lstatSync(current); break; }
+    catch (error) {
+      if (error.code !== 'ENOENT' || path.dirname(current) === current) throw error;
+      missing.unshift(path.basename(current));
+      current = path.dirname(current);
+    }
+  }
+  return path.join(realpathSync(current), ...missing);
+}
 const stateDir = path.resolve(process.env.GRAPH_STATE_DIR || path.join(root, '.workflow', 'state'));
 if (!insideRoot(stateDir)) throw new Error('state directory must be inside the project root');
-if (!insideRoot(realpathSync(path.dirname(stateDir)))) throw new Error('state directory parent leaves the project root');
+if (!insideRoot(realPathOf(stateDir))) throw new Error('state directory parent leaves the project root');
 mkdirSync(stateDir, { recursive: true });
 if (!insideRoot(realpathSync(stateDir))) throw new Error('state directory leaves the project root');
 const secretPath = (value) => /(?:^|\/)(?:\.env(?:\.[^/]*)?|[^/]+\.(?:pem|key))$/i.test(value);
 if (options['evidence-file'] && secretPath(options['evidence-file'])) throw new Error('secret evidence file is forbidden');
-const evidenceFile = options['evidence-file'] && realpathSync(options['evidence-file']);
+const evidenceFile = options['evidence-file'] && existsSync(options['evidence-file']) ? realpathSync(options['evidence-file']) : undefined;
 if (evidenceFile && secretPath(evidenceFile)) throw new Error('secret evidence file is forbidden');
 if (evidenceFile && !insideRoot(evidenceFile)) throw new Error('evidence file must be inside the project root');
 const redact = (value) => String(value)
   .replace(/\b(?:sk-[A-Za-z0-9_-]{12,}|ghp_[A-Za-z0-9_]{12,})\b/g, '[REDACTED]')
   .replace(/\b(api[_-]?key|token|password|secret)\s*[:=]\s*\S+/gi, '$1=[REDACTED]');
-const evidence = evidenceFile ? redact(readFileSync(evidenceFile, 'utf8').split('\n').slice(0, 20).join('\n')) : 'No error text provided.';
+const evidence = evidenceFile ? redact(readFileSync(evidenceFile, 'utf8').split('\n').slice(0, 20).join('\n'))
+  : options['evidence-file'] ? 'Evidence file not found; no error text recorded.' : 'No error text provided.';
 const checkIds = options.checks || 'none';
 if (faultClass === 'needs_human' && !options.fix) throw new Error('needs_human requires --fix with the exact human action');
 const fix = options.fix || (faultClass === 'api' || faultClass === 'transient'

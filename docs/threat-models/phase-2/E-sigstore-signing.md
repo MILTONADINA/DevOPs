@@ -51,7 +51,7 @@ The signing identity is the GitHub Actions workflow's ambient OIDC identity — 
 | Signature (`SKILL.md.sig`) | repo + Rekor | per release | indefinite (Rekor immutable) |
 | Manifest entry | `governance/skill-manifest.yml` | per release | indefinite |
 | Sigstore OIDC token | runner ephemeral env | once per signing event | ephemeral (auto-expires) |
-| Trust bundle | `.workflow/sigstore/` | local-only | refreshed periodically |
+| Trust bundle (`trust-bundle.json`) | repo (`.workflow/sigstore/`), committed | per clone | refreshed weekly by `refresh-trust-bundle.yml`; a maintainer commits each refresh through a reviewed pull request |
 
 ---
 
