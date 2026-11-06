@@ -64,13 +64,18 @@ tracked in this repo and wires these hooks:
   (`runtime/docs/decisions/0025-open-source-local-first-no-payment.md`), so
   billing-path changes are no longer separately gated. See
   `governance/graph/` and SHIP_BLOCKERS.md 1.8.
+- PreToolUse on `Bash` → `hooks/universal/pre-tool/block-new-dependency.sh` —
+  blocks an agent-run install of a package the project's manifests do not
+  declare (npm, pnpm, yarn, bun, pip, uv, poetry or `cargo add`), so an
+  undeclared or nonexistent name is never fetched without owner approval.
+  Exit 2 with an explanation. REQ-M30.
 - PostToolUse on `Write|Edit` → `hooks/universal/post-tool/sync-lr-refined-date.sh`
   — bumps `docs/LAUNCH_READINESS.md`'s "Last refined" date when `plan.md`
   is edited. Date only, never the math sections. References blueprint §11.1.
 
 These `hooks/universal/` scripts are not wired here and do not run:
 `budget-brake.sh`, `loop-detection.sh`, `block-secrets.sh`,
-`block-prod-write.sh`, `block-rm-rf.sh`, `block-new-dependency.sh`, `client-boundary.sh`,
+`block-prod-write.sh`, `block-rm-rf.sh`, `client-boundary.sh`,
 `external-content-boundary.sh`, `gitleaks-scan.sh`, `auto-format.sh`, and the
 session-end `write-baton.sh` and `rotate-session-key.sh`; no hook enforces the
 network whitelist. AGENTS.md → Mandatory checkpoints therefore binds you as
