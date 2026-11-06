@@ -18,6 +18,13 @@ Versions follow [Semantic Versioning](https://semver.org/).
   reviewed test fixtures new commit ids (858c1511, a9600e13) with identical content, so their baseline fingerprints
   stopped matching. `.gitleaksignore` now lists the successor fingerprints too (`specs/security/history-secret-scan-baseline.md`
   AC-HSB-1.2).
+- `scripts/graph-blocked.sh` and `scripts/graph-preflight.mjs` create `.workflow/state/` when it is missing, after
+  checking that its nearest existing ancestor resolves inside the project root, instead of failing with an uncaught
+  ENOENT, and then write their records. `scripts/graph-blocked.sh` compares the physical project root, so a project
+  opened through an alternate path is no longer refused, and it writes the blocked record, with its Evidence section
+  stating that the file was not found, when `--evidence-file` is missing. `scripts/graph-run-record.mjs` loads without
+  throwing when `.workflow/state/` is missing and refuses `update` with `run record missing or redirected`; it does
+  not create the directory or write a record (`specs/graph/R-resilience.md` REQ-R21 to REQ-R23; refs #275 to #278).
 
 ### Security
 

@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync, copyFileSync, symlinkSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 
 const ROOT = path.resolve(import.meta.dirname, '..', '..');
@@ -57,4 +58,75 @@ test('needs_human record names the human fix and marker removal before resume', 
     assert.match(record, /## Fix\n\/graph-resume\nrm -- \.workflow\/state\/blocked\.md/);
     assert.match(record, /## Resume\n\/sprint --resume c7/);
   } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+// Regression tests for consumer-graph reports #275-#278. Each runs the real script inside a
+// synthetic toy project, so the layout matches a consumer checkout: no .workflow/ directory yet,
+// a missing evidence file, or a project path that goes through a symlink.
+const blockedFlags = ['--cycle', 'c7', '--stage', 'tester', '--task', 'T3', '--class', 'environment', '--checks', 'git.runs'];
+const withoutGraphEnv = () => {
+  const env = { ...process.env };
+  for (const key of Object.keys(env)) if (key.startsWith('GRAPH_')) delete env[key];
+  return env;
+};
+function toyBlockedProject() {
+  const toy = mkdtempSync(path.join(ROOT, '.workflow', 'state', 'graph-blocked-toy-'));
+  mkdirSync(path.join(toy, 'scripts'));
+  copyFileSync(path.join(ROOT, 'scripts', 'graph-blocked.sh'), path.join(toy, 'scripts', 'graph-blocked.sh'));
+  return toy;
+}
+const runBlocked = (script, args, cwd) => spawnSync('bash', [script, ...args], { cwd, env: withoutGraphEnv(), encoding: 'utf8' });
+
+test('regression #277: the blocked record is written in a toy project with no .workflow directory', () => {
+  const toy = toyBlockedProject();
+  try {
+    const evidence = path.join(toy, 'error.txt');
+    writeFileSync(evidence, 'git: You have not agreed to the Xcode license agreements\n');
+    const result = runBlocked(path.join(toy, 'scripts', 'graph-blocked.sh'), [...blockedFlags, '--evidence-file', evidence], toy);
+    assert.equal(result.status, 0, result.stderr);
+    assert.doesNotMatch(result.stderr, /ENOENT/);
+    assert.match(readFileSync(path.join(toy, '.workflow', 'state', 'blocked.md'), 'utf8'), /^## Class\nenvironment$/m);
+  } finally { rmSync(toy, { recursive: true, force: true }); }
+});
+
+test('regression #278: a project reached through a symlink still records its blocked record', () => {
+  const toy = toyBlockedProject();
+  const link = `${toy}-link`;
+  try {
+    mkdirSync(path.join(toy, '.workflow', 'state'), { recursive: true });
+    writeFileSync(path.join(toy, 'error.txt'), 'git: You have not agreed to the Xcode license agreements\n');
+    symlinkSync(toy, link);
+    const result = runBlocked(path.join(link, 'scripts', 'graph-blocked.sh'), [...blockedFlags, '--evidence-file', path.join(link, 'error.txt')], link);
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(readFileSync(path.join(toy, '.workflow', 'state', 'blocked.md'), 'utf8'), /You have not agreed to the Xcode license/);
+  } finally {
+    rmSync(link, { force: true });
+    rmSync(toy, { recursive: true, force: true });
+  }
+});
+
+test('regression #275: a missing evidence file is recorded as missing, not as an uncaught ENOENT', () => {
+  const toy = toyBlockedProject();
+  try {
+    mkdirSync(path.join(toy, '.workflow', 'state'), { recursive: true });
+    const result = runBlocked(path.join(toy, 'scripts', 'graph-blocked.sh'), [...blockedFlags, '--evidence-file', path.join(toy, 'never-written.txt')], toy);
+    assert.equal(result.status, 0, result.stderr);
+    assert.doesNotMatch(result.stderr, /ENOENT/);
+    assert.match(readFileSync(path.join(toy, '.workflow', 'state', 'blocked.md'), 'utf8'), /Evidence file not found/);
+  } finally { rmSync(toy, { recursive: true, force: true }); }
+});
+
+test('the blocked writer creates nothing outside the project root when an ancestor is a symlink out of it', () => {
+  const toy = toyBlockedProject();
+  const outside = mkdtempSync(path.join(tmpdir(), 'graph-blocked-outside-'));
+  try {
+    symlinkSync(outside, path.join(toy, '.workflow'));
+    const result = runBlocked(path.join(toy, 'scripts', 'graph-blocked.sh'), blockedFlags, toy);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /leaves the project root/);
+    assert.equal(existsSync(path.join(outside, 'state')), false);
+  } finally {
+    rmSync(outside, { recursive: true, force: true });
+    rmSync(toy, { recursive: true, force: true });
+  }
 });

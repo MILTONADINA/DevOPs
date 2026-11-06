@@ -294,3 +294,24 @@ test('a Stratum dependency override that redirects outside the project still abo
     assert.match(result.stderr, /Runtime dependencies redirect outside the project root/);
   } finally { fixture.cleanup(); }
 });
+
+// Regression test for consumer-graph report #277: the preflight report is the record that
+// launch reads, so it must be written even in a checkout that has no .workflow/state/ yet.
+test('regression #277: the preflight writes its report in a toy project with no .workflow/state', () => {
+  const toy = mkdtempSync(path.join(ROOT, '.workflow', 'state', 'graph-preflight-toy-'));
+  try {
+    mkdirSync(path.join(toy, 'scripts'));
+    mkdirSync(path.join(toy, 'governance', 'graph'), { recursive: true });
+    copyFileSync(path.join(ROOT, 'scripts', 'graph-preflight.mjs'), path.join(toy, 'scripts', 'graph-preflight.mjs'));
+    copyFileSync(path.join(ROOT, 'governance', 'graph', 'preflight-remediations.yml'), path.join(toy, 'governance', 'graph', 'preflight-remediations.yml'));
+    writeFileSync(path.join(toy, 'package.json'), JSON.stringify({ engines: { node: '>=22.12.0' } }));
+    const env = { ...process.env, PATH: `${fakeSecurityTools(toy)}:${process.env.PATH}` };
+    for (const key of Object.keys(env)) if (key.startsWith('GRAPH_')) delete env[key];
+    const result = spawnSync(process.execPath, [path.join(toy, 'scripts', 'graph-preflight.mjs'), '--check-only'], { cwd: toy, env, encoding: 'utf8', timeout: 60_000 });
+    assert.notEqual(result.status, 2, result.stderr);
+    const report = JSON.parse(readFileSync(path.join(toy, '.workflow', 'state', 'preflight.json'), 'utf8'));
+    assert.equal(report.schema_version, 1);
+    assert.equal(report.checks.find((check) => check.id === 'state.writable')?.status, 'pass');
+  } finally { rmSync(toy, { recursive: true, force: true }); }
+});
+

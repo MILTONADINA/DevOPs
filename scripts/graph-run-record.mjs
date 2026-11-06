@@ -1,11 +1,26 @@
 #!/usr/bin/env node
-import { readFileSync, writeFileSync, mkdirSync, realpathSync, existsSync, unlinkSync, statSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, realpathSync, existsSync, unlinkSync, statSync, lstatSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 
 const root = path.resolve(import.meta.dirname, '..');
 const state = path.resolve(process.env.GRAPH_STATE_DIR || path.join(root, '.workflow', 'state'));
-if (!state.startsWith(`${root}${path.sep}`) || !realpathSync(state).startsWith(`${root}${path.sep}`)) throw new Error('state directory leaves project root');
+// The state directory may not exist yet (it is gitignored), so resolve it the way graph-blocked.sh
+// does: the real path of its nearest existing ancestor plus the names still missing below it.
+function realPathOf(file) {
+  const missing = [];
+  let current = file;
+  for (;;) {
+    try { lstatSync(current); break; }
+    catch (error) {
+      if (error.code !== 'ENOENT' || path.dirname(current) === current) throw error;
+      missing.unshift(path.basename(current));
+      current = path.dirname(current);
+    }
+  }
+  return path.join(realpathSync(current), ...missing);
+}
+if (!state.startsWith(`${root}${path.sep}`) || !realPathOf(state).startsWith(`${root}${path.sep}`)) throw new Error('state directory leaves project root');
 const command = process.argv[2];
 const options = {};
 for (let i = 3; i < process.argv.length; i += 2) {
