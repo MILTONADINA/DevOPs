@@ -33,6 +33,9 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Security
 
+- `scripts/check-agent-config.mjs` exits 2 when `.claude/settings.json` is missing, as
+  `specs/security/ci-agent-config-scan.md` REQ-3 requires, instead of skipping the permission
+  and hook checks and passing.
 - The installer accepts a skill signature only from `MILTONADINA/DevOPs`'s `release-sign.yml` on a branch, and refuses a skill whose manifest names another signer. It refuses a skill whose signature it cannot verify (no cosign, a cosign error or timeout, or no bundle) instead of falling back to the manifest hash, which ships with the skill. `devops init` therefore needs cosign, or `--allow-unsigned --rationale="..."`, which logs each skill as overridden (GHSA-3mv5-99fp-7f4c).
 - The TUF-verified Sigstore trust root is committed at `.workflow/sigstore/trust-bundle.json`
   (sha256 `6494e21e…bc0b66`, the output of `cosign initialize`, matching the weekly refresh run; #217). A test

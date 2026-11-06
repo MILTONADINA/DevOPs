@@ -102,11 +102,11 @@ function mcpFindings(root) {
 export function scan(root) {
   const found = [];
   const settingsFile = path.join(root, '.claude', 'settings.json');
-  if (existsSync(settingsFile)) {
-    const settings = readJson(settingsFile);
-    if (!plainObject(settings)) throw new InputError('.claude/settings.json must be a JSON object');
-    found.push(...permissionFindings(settings, '.claude/settings.json'), ...hookFindings(settings, '.claude/settings.json', root));
-  }
+  // REQ-3: the settings file is the primary input; a missing one is an input error, not a pass.
+  if (!existsSync(settingsFile)) throw new InputError('.claude/settings.json is missing');
+  const settings = readJson(settingsFile);
+  if (!plainObject(settings)) throw new InputError('.claude/settings.json must be a JSON object');
+  found.push(...permissionFindings(settings, '.claude/settings.json'), ...hookFindings(settings, '.claude/settings.json', root));
   found.push(...mcpFindings(root));
   return found;
 }
