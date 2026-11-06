@@ -2,7 +2,7 @@
 
 **Spec ID**: phase-2/E-sigstore-signing
 **Status**: draft
-**Last updated**: 2026-05-22
+**Last updated**: 2026-11-06
 **Owner**: miltonadina
 **Reviewers**: miltonadina
 
@@ -84,10 +84,15 @@ does not push a commit to `main`.
 **When** the file is read
 **Then** H2 sections titled `Why Sigstore`, `Signing identity`, `Verify manually`, `What to do on failure`, and `Rotation policy` are present.
 
-### AC-E5.1 (maps to REQ-E5)
-**Given** the trust bundle at `.workflow/sigstore/trust-bundle.json` exists and the network is disconnected
-**When** `cosign verify-blob --bundle-path .workflow/sigstore/trust-bundle.json` runs against a signed skill
-**Then** verification succeeds with exit 0.
+### AC-E5.1 (maps to REQ-E5, prerequisite: the root is committed and well-formed)
+**Given** the trust bundle at `.workflow/sigstore/trust-bundle.json` is committed
+**When** `tests/ci/trust-bundle.test.mjs` runs
+**Then** the file parses as a Sigstore `trustedroot` document (`application/vnd.dev.sigstore.trustedroot+json`) with at least one certificate authority and one transparency log, and `docs/SKILL_SIGNING.md` has no download recipe (`curl`, `wget`, `Invoke-WebRequest`) for the root, only `cosign initialize`.
+
+### AC-E5.2 (maps to REQ-E5) -- open, tracked in #345
+**Given** a skill signed with a new-format bundle and the network disconnected
+**When** `cosign verify-blob --trusted-root .workflow/sigstore/trust-bundle.json --bundle <skill>.bundle` runs with the release-sign identity
+**Then** verification succeeds with exit 0. The current bundles are legacy ones, which cosign refuses to verify with `--trusted-root`.
 
 ### AC-E6.1 (maps to REQ-E6)
 **Given** a signed skill whose `SKILL.md` is then modified by appending one character
@@ -157,7 +162,7 @@ Step 3 atomization will likely produce: (1) author `docs/SKILL_SIGNING.md`; (2) 
 | REQ-E2 | AC-E2.1 | (Phase 2 implementation) |
 | REQ-E3 | AC-E3.1 | (Phase 2 implementation) |
 | REQ-E4 | AC-E4.1 | (Phase 2 implementation) |
-| REQ-E5 | AC-E5.1 | (Phase 2 implementation) |
+| REQ-E5 | AC-E5.1; AC-E5.2 open (#345) | `tests/ci/trust-bundle.test.mjs` |
 | REQ-E6 | AC-E6.1 | (Phase 2 implementation) |
 | REQ-E7 | AC-E7.1 | (Phase 2 implementation) |
 
@@ -168,3 +173,4 @@ The Phase 2 spec-authoring claim for this spec is `claim-2026-05-22-021`.
 ## Change log
 
 - 2026-05-22 miltonadina: created (Phase 2 Step 1; Prompt 3 area E).
+- 2026-11-06: AC-E5.1 rewritten to the committed root's presence and shape (`cosign` has no `--bundle-path`); AC-E5.2 added for offline verification, open until the skill bundles use the new format (#345).
