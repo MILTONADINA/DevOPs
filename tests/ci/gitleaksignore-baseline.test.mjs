@@ -24,3 +24,23 @@ test('REQ-HSB-1: the grammar refuses broader or malformed entries', () => {
   }
   assert.match(`${'b'.repeat(40)}:toy/file.txt:jwt:12`, FINGERPRINT);
 });
+
+// AC-HSB-1.2: the 2026-10-11 attribution rewrite gave the baselined fixtures new commit ids with
+// identical trees, and the scheduled scan reports the new ids. Every baselined commit that the commit
+// map replaces must also have its successor listed, for the same file, rule and line.
+const COMMIT_MAP = 'governance/changelog/2026-10-11-attribution-rewrite-commit-map.txt';
+test('AC-HSB-1.2: a baselined commit the attribution rewrite replaced also has its successor fingerprint', () => {
+  const successor = new Map();
+  for (const line of readFileSync(path.join(ROOT, COMMIT_MAP), 'utf8').split('\n')) {
+    const pair = /^([0-9a-f]{40}) ([0-9a-f]{40})$/.exec(line.trim());
+    if (pair) successor.set(pair[1], pair[2]);
+  }
+  const baseline = entries(readFileSync(path.join(ROOT, '.gitleaksignore'), 'utf8'));
+  const listed = new Set(baseline);
+  const expected = baseline.flatMap((fingerprint) => {
+    const [commit, ...location] = fingerprint.split(':');
+    return successor.has(commit) ? [`${successor.get(commit)}:${location.join(':')}`] : [];
+  });
+  assert.ok(expected.length > 0, 'the commit map should replace at least one baselined commit');
+  assert.deepEqual(expected.filter((fingerprint) => !listed.has(fingerprint)), []);
+});

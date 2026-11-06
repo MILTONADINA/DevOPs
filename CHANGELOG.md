@@ -14,6 +14,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
   changed-file list (or one with only blank entries: whitespace, zero-width characters, dots and slashes) is INDETERMINATE and not ready, because there was
   nothing to review. No plan field can declare a no-change task. A resumed cycle on a clean tree now
   reads INDETERMINATE by design (REQ-M1, AC-M1.3). A lister entry that is not a string is INDETERMINATE too.
+- The scheduled full-history gitleaks scan on `main` passes again. The 2026-10-11 attribution rewrite gave seven
+  reviewed test fixtures new commit ids (858c1511, a9600e13) with identical content, so their baseline fingerprints
+  stopped matching. `.gitleaksignore` now lists the successor fingerprints too (`specs/security/history-secret-scan-baseline.md`
+  AC-HSB-1.2).
 
 ### Security
 
