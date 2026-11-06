@@ -31,7 +31,7 @@ The three selected calls in `.claude/workflows/sprint-cycle.js` are direct
 a conditional and nested template. Their schemas are separate second-argument
 data, not prompt text.
 
-Use pinned Acorn 8.18.0 as a direct dev dependency, with `ecmaVersion: 2022`,
+Use pinned Acorn 8.19.0 as a direct dev dependency, with `ecmaVersion: 2022`,
 `sourceType: 'module'` and `allowReturnOutsideFunction: true`. The last option
 admits the Workflow's top-level return alongside module exports/top-level await.
 Parse without stripping or executing source; no AsyncFunction wrapper, custom

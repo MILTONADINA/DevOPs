@@ -30,7 +30,7 @@ JavaScript. An omitted filename SHALL select JavaScript, preserving the
 existing one-argument `hasAssertion(source)` API. The CLI SHALL pass each
 supplied filename to that selector without changing its file selection.
 
-THE CHECKER SHALL parse JavaScript with pinned Acorn 8.18.0 using
+THE CHECKER SHALL parse JavaScript with pinned Acorn 8.19.0 using
 `ecmaVersion: 'latest'`, `sourceType: 'module'` and `allowHashBang: true`.
 It SHALL parse TypeScript with pinned TypeScript 5.9.3 using `createSourceFile`,
 `ScriptKind.TS` and `ScriptTarget.Latest`, requiring an empty `parseDiagnostics`

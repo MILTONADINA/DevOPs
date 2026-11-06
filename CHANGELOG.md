@@ -110,6 +110,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
   `scripts/check-enforcement.mjs` reports mechanical=107 (was 102) and unenforced=19 (was 24);
   `governance/enforcement-baseline.json` lists the five, and the root test floor rises to 1471.
   `tests/graph-resilience/split-req-enforcement.test.mjs` pins the split.
+- Root npm dependencies take the non-major updates listed in issue #209: `acorn` 8.19.0,
+  `tsx` 4.23.15 (a shipped dependency; patch), `@opentelemetry/core` and
+  `@opentelemetry/sdk-trace-base` 2.12.0, and `@types/node` 24.19.2. Major updates stay deferred.
+  `tests/dependency-updates.test.mjs` pins the lockfile versions, and the root test floor rises to 1579.
 
 ### Fixed
 
