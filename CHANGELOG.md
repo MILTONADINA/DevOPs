@@ -13,6 +13,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - `devops analyze` and `devops init` record every file they write, the DevOPs pre-commit hook and the folders they create in `.workflow/state/install-manifest.json`, with a copy of any file that existed before DevOPs first wrote it under `.workflow/state/originals/`. This is the record `devops uninstall` uses. A committed manifest naming any path outside the files and folders DevOPs writes is refused. In a project an earlier DevOPs installed into, the manifest is marked `adopted`: what that release wrote is recorded as the original. The `.mcp.json` entry and Agile Graph pin are not recorded yet (`specs/release/npm-package.md` REQ-15; #353).
 - `devops uninstall` removes what `devops analyze` and `devops init` recorded and puts back the files that were there before. It leaves a file it cannot safely undo unchanged and names it with the reason: a file edited since, a symlink, a changed original copy, or, in an `adopted` install, a file with a recorded original. `--dry-run` shows the plan (`specs/release/npm-package.md` REQ-16; #353).
 
+### Changed
+
+- `devops init` links `@agile-graph/engine` 0.6.0 and no longer links 0.4.0. The engine changed the cloud-default definitions of `context_get`, `graph_neighbors`, `memory_propose` and `symbol_search`, so `mcp-configs/universal/agile-graph.tool-hashes.json` now holds 0.6.0's hashes (`specs/graph/agile-graph-link.md` REQ-1, REQ-2, AC-8). Before upgrading the engine, a project on 0.4.0 replaces its `.claude/agile-graph-tool-hashes.json` (see `docs/UPGRADING.md`).
+
 ### Fixed
 
 - Dependabot no longer proposes runtime updates past the held `@typescript-eslint/*` 8.55.0 (Node 22.12 floor) and `onnxruntime-node` (pinned by `@huggingface/transformers`). A test checks the ignore list against the held lockfile versions (PR #361 failed on them). Security updates still bypass ignore rules.
