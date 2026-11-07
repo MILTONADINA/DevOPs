@@ -9,7 +9,7 @@ import * as path from 'node:path';
 import { detectState } from './project-state.js';
 import { readmeCompliance } from './compliance.js';
 import { allDependencies } from './workspaces.js';
-import { UnsafeWriteError, backupIfChanged, backupStamp, mkdirInside, writeInside } from './safe-write.js';
+import { UnsafeWriteError, backupIfChanged, freshBackupStamp, mkdirInside, writeInside } from './safe-write.js';
 
 interface Profile {
   detected_at: string;
@@ -425,7 +425,7 @@ function main() {
   // plain re-run, so it is ignored when deciding whether the file was edited.
   const yaml = toYaml(profile);
   const undated = (b: Buffer) => b.toString('utf8').replace(/^detected_at: .*$/m, '');
-  const backup = backupIfChanged(process.cwd(), '.workflow/profile.yml', yaml, backupStamp(),
+  const backup = backupIfChanged(process.cwd(), '.workflow/profile.yml', yaml, freshBackupStamp(process.cwd()),
     (a: Buffer, b: Buffer) => undated(a) === undated(b));
   writeInside(process.cwd(), '.workflow/profile.yml', yaml);
   console.log('Wrote .workflow/profile.yml');

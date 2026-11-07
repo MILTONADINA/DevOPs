@@ -78,7 +78,7 @@ export function writeInside(
     fs.constants.O_WRONLY |
     fs.constants.O_CREAT |
     NOFOLLOW |
-    (options.append ? fs.constants.O_APPEND : fs.constants.O_TRUNC);
+    (options.append ? fs.constants.O_APPEND : options.exclusive ? fs.constants.O_EXCL : fs.constants.O_TRUNC);
   const fd = fs.openSync(file, flags, options.mode ?? 0o644);
   try {
     if (!fs.fstatSync(fd).isFile())
@@ -137,12 +137,24 @@ export function backupIfChanged(root, target, data, stamp, same = (a, b) => a.eq
 /** Writes `bytes` as the backup of `name` for this run and returns its path in the project. */
 export function writeBackup(root, name, bytes, mode, stamp) {
   if (!/^[0-9TZ-]+$/.test(stamp)) throw new UnsafeWriteError(`invalid backup stamp: ${stamp}`);
+  if (path.isAbsolute(name) || name.split(/[\\/]/).some(part => part === '..' || part === ''))
+    throw new UnsafeWriteError(`invalid backup name: ${name}`);
   const backup = path.join('.workflow/state/backups', stamp, name);
-  writeInside(root, backup, bytes, { mode });
+  // Create-only: a backup is never overwritten, even by a run with the same stamp.
+  writeInside(root, backup, bytes, { mode, exclusive: true });
   return backup.split(path.sep).join('/');
 }
 
 /** A UTC timestamp usable as a directory name, e.g. 2026-11-07T05-30-00Z. */
 export function backupStamp(date = new Date()) {
   return date.toISOString().replace(/\.\d+Z$/, 'Z').replace(/:/g, '-');
+}
+
+/** backupStamp(), with -2, -3, ... added when that backup folder already exists. */
+export function freshBackupStamp(root, date = new Date()) {
+  const base = backupStamp(date);
+  for (let n = 1; ; n++) {
+    const stamp = n === 1 ? base : `${base}-${n}`;
+    if (!present(path.join(path.resolve(root), '.workflow/state/backups', stamp))) return stamp;
+  }
 }

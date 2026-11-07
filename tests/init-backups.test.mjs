@@ -6,7 +6,7 @@ import { spawnSync } from 'node:child_process';
 import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { UnsafeWriteError, backupIfChanged, backupStamp, writeBackup } from '../analyzer/safe-write.js';
+import { UnsafeWriteError, backupIfChanged, backupStamp, freshBackupStamp, writeBackup } from '../analyzer/safe-write.js';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 const CLI = path.join(ROOT, 'scripts/devops-cli.js');
@@ -51,10 +51,12 @@ test(`re-running analyze and init backs up every edited file and names it (${SPE
     }
     const { out, status, stderr } = analyzeAndInit(dir);
     assert.equal(status, 0, stderr);
+    // analyze and init are separate runs, so each may have its own stamp.
     const stamps = readdirSync(backupsDir(dir));
-    assert.equal(stamps.length, 1, stamps.join(','));
     for (const file of EDITED) {
-      const backup = `.workflow/state/backups/${stamps[0]}/${backupName(file)}`;
+      const found = stamps.filter(st => existsSync(path.join(backupsDir(dir), st, backupName(file))));
+      assert.equal(found.length, 1, `${file}: ${found.join(',')}`);
+      const backup = `.workflow/state/backups/${found[0]}/${backupName(file)}`;
       assert.match(readFileSync(path.join(dir, backup), 'utf8'), /# local edit\n$/, backup);
       assert.ok(out.includes(`; the previous copy is in ${backup}`), `${file} not named:\n${out}`);
       assert.doesNotMatch(readFileSync(path.join(dir, file), 'utf8'), /# local edit/, `${file} was replaced`);
@@ -81,8 +83,9 @@ test(`a symlinked backups folder is refused and nothing is written through it ($
     try {
       symlinkSync(outside, backupsDir(dir));
       appendFileSync(path.join(dir, '.claude/agents/coder.md'), '# local edit\n');
-      const { status } = analyzeAndInit(dir);
+      const { status, stderr } = analyzeAndInit(dir);
       assert.notEqual(status, 0, 'init refuses to back up through a symlink');
+      assert.match(stderr, /refusing to write through a symlink in the project: \.workflow\/state\/backups/);
       assert.deepEqual(readdirSync(outside), []);
       assert.match(readFileSync(path.join(dir, '.claude/agents/coder.md'), 'utf8'), /# local edit\n$/, 'the edit is kept');
     } finally {
@@ -107,7 +110,49 @@ test(`backupIfChanged copies only a differing regular file (${SPEC}#req-f11)`, (
     writeFileSync(path.join(dir, 'case.txt'), 'ABC');
     assert.equal(backupIfChanged(dir, 'case.txt', 'abc', stamp, ignoreCase), null);
     assert.throws(() => writeBackup(dir, 'x', 'y', 0o644, '../escape'), UnsafeWriteError);
+    for (const name of ['../x', 'a/../../x', '/abs', 'a//b'])
+      assert.throws(() => writeBackup(dir, name, 'y', 0o644, stamp), UnsafeWriteError, name);
+    // A backup is create-only, and a taken stamp folder gets a suffix.
+    assert.throws(() => writeBackup(dir, 'sub/edited.txt', 'again', 0o644, stamp), /EEXIST/);
+    assert.equal(readFileSync(path.join(dir, `.workflow/state/backups/${stamp}/sub/edited.txt`), 'utf8'), 'mine');
+    const at = new Date('2026-11-07T01:02:03Z');
+    assert.equal(freshBackupStamp(dir, at), `${stamp}-2`);
+    mkdirSync(path.join(dir, `.workflow/state/backups/${stamp}-2`));
+    assert.equal(freshBackupStamp(dir, at), `${stamp}-3`);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test(`an edit to the pre-commit hook alone is backed up and named (${SPEC}#req-f11)`, () => {
+  withProject(dir => {
+    assert.equal(analyzeAndInit(dir).status, 0);
+    appendFileSync(path.join(dir, '.git/hooks/pre-commit'), '# local edit\n');
+    const { out, status, stderr } = analyzeAndInit(dir);
+    assert.equal(status, 0, stderr);
+    const line = out.split('\n').find(l => l.startsWith('↻ Replaced .git/hooks/pre-commit; the previous copy is in '));
+    assert.ok(line, out);
+    const backup = line.split(' is in ')[1];
+    assert.match(readFileSync(path.join(dir, backup), 'utf8'), /# local edit\n$/);
+    assert.match(out, /^replaced=0 /m, 'replaced= counts skills, hooks and subagents only');
+  });
+});
+
+test(`a symlinked pre-commit hook is left unchanged, and its target keeps its bytes (${SPEC}#req-f10)`, () => {
+  withProject(dir => {
+    assert.equal(analyzeAndInit(dir).status, 0);
+    const outside = realpathSync(mkdtempSync(path.join(tmpdir(), 'init-hook-outside-')));
+    try {
+      const target = path.join(outside, 'pre-commit');
+      writeFileSync(target, '#!/bin/sh\n# DevOPs pre-commit hook\nexit 0\n');
+      rmSync(path.join(dir, '.git/hooks/pre-commit'));
+      symlinkSync(target, path.join(dir, '.git/hooks/pre-commit'));
+      const { out, status, stderr } = analyzeAndInit(dir);
+      assert.equal(status, 0, stderr);
+      assert.match(out, /Left \.git\/hooks\/pre-commit unchanged: it is a symlink/);
+      assert.equal(readFileSync(target, 'utf8'), '#!/bin/sh\n# DevOPs pre-commit hook\nexit 0\n');
+    } finally {
+      rmSync(outside, { recursive: true, force: true });
+    }
+  });
 });

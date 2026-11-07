@@ -26,7 +26,7 @@ import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { linkAgileGraph } from './agile-graph.js';
-import { UnsafeWriteError, backupIfChanged, backupStamp, copyInside, mkdirInside, present, writeInside } from './safe-write.js';
+import { UnsafeWriteError, backupIfChanged, copyInside, freshBackupStamp, mkdirInside, present, writeInside } from './safe-write.js';
 
 // specs/release/npm-package.md REQ-2: DEVOPS_ROOT if set, else the package this file
 // ships in (analyzer/ sits directly under the package root).
@@ -203,19 +203,23 @@ function logDecision(targetRoot: string, decision: 'pass' | 'fail' | 'overridden
 // `root`, and no write, append or mode change follows a symlink out of it.
 // REQ-F11 (#349): a destination whose bytes differ from the packaged copy (a
 // local edit, or an older release's file) is backed up before it is replaced.
-// `devops init` passes one stamp to this run and init-project.sh.
-const BACKUP_STAMP = /^[0-9TZ-]+$/.test(process.env.DEVOPS_BACKUP_STAMP ?? '')
-  ? process.env.DEVOPS_BACKUP_STAMP!
-  : backupStamp();
+// DEVOPS_BACKUP_STAMP, when it is a valid stamp, names the run's folder.
+let backupStampOfRun: string | undefined;
+function runBackupStamp(root: string): string {
+  backupStampOfRun ??= /^[0-9TZ-]+$/.test(process.env.DEVOPS_BACKUP_STAMP ?? '')
+    ? process.env.DEVOPS_BACKUP_STAMP!
+    : freshBackupStamp(root);
+  return backupStampOfRun;
+}
 const backedUp: string[] = [];
 
 function copy(root: string, src: string, dst: string, mode?: number) {
-  const backup = backupIfChanged(root, dst, fs.readFileSync(src), BACKUP_STAMP);
+  const backup = backupIfChanged(root, dst, fs.readFileSync(src), runBackupStamp(root));
+  copyInside(root, src, dst, mode);
   if (backup) {
     backedUp.push(backup);
     console.log(`↻ Replaced ${path.relative(root, dst).split(path.sep).join('/')}; the previous copy is in ${backup}`);
   }
-  copyInside(root, src, dst, mode);
 }
 
 function copyDir(root: string, src: string, dst: string) {
@@ -485,7 +489,7 @@ function main() {
   } else {
     console.log(`installed=${verified + overridden} verified=${verified} overridden=${overridden} skipped=${skipped} failed=${failed}`);
     console.log(backedUp.length
-      ? `replaced=${backedUp.length} (skills, hooks and agents that differed from this release; the previous copies are in .workflow/state/backups/${BACKUP_STAMP}/)`
+      ? `replaced=${backedUp.length} (skills, hooks and agents that differed from this release; the previous copies are in .workflow/state/backups/${runBackupStamp(PROJECT_ROOT)}/)`
       : 'replaced=0 (no installed skill, hook or agent differed from this release)');
     console.log('Installation complete.');
     console.log('Next steps:');

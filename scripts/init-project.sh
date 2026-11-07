@@ -27,12 +27,6 @@ if [[ ! -f "$PROJECT/.workflow/profile.yml" ]]; then
     exit 1
 fi
 
-# specs/phase-2/F-skill-provenance.md REQ-F11 (#349): one backup folder per run.
-if [[ ! "${DEVOPS_BACKUP_STAMP:-}" =~ ^[0-9TZ-]+$ ]]; then
-    DEVOPS_BACKUP_STAMP="$(date -u +%Y-%m-%dT%H-%M-%SZ)"
-fi
-export DEVOPS_BACKUP_STAMP
-
 if [[ -n "${DEVOPS_TSX:-}" ]]; then
     "${DEVOPS_NODE:-node}" "$DEVOPS_TSX" "$DEVOPS_ROOT/analyzer/install.ts" "$@"
 elif command -v tsx >/dev/null 2>&1; then
@@ -72,15 +66,21 @@ if [[ -n "$hooks_dir" && "$DRY_RUN" == 1 ]]; then
     gate="dry-run: would install $shown_dir/pre-commit"
 elif [[ -n "$hooks_dir" ]]; then
     hook="$hooks_dir/pre-commit"
-    if [[ -e "$hook" ]] && ! grep -qxF "$MARKER" "$hook"; then
+    if [[ -L "$hook" ]]; then
+        # specs/phase-2/F-skill-provenance.md REQ-F10: never write through a link.
+        echo "! Left $shown_dir/pre-commit unchanged: it is a symlink, and init does not write through one. To add the DevOPs checks by hand, run"
+        echo "  $HAND_CHECKS"
+        echo "  from the hook it points at."
+        gate="not installed: $shown_dir/pre-commit is a symlink and was left unchanged (see above)"
+    elif [[ -e "$hook" ]] && ! grep -qxF "$MARKER" "$hook"; then
         echo "! Left the existing $shown_dir/pre-commit unchanged. To add the DevOPs checks by hand, run"
         echo "  $HAND_CHECKS"
         echo "  from it, without copying the '$MARKER' line (that line lets init replace the file)."
         gate="not installed: $shown_dir/pre-commit is another tool's hook and was left unchanged (see above)"
     else
         mkdir -p "$hooks_dir"
-        new_hook="$(mktemp)"
-        cat > "$new_hook" <<'HOOK'
+        # read -d '' keeps the whole text, final newline included; it returns 1 at EOF.
+        IFS= read -r -d '' hook_text <<'HOOK' || true
 #!/usr/bin/env bash
 # DevOPs pre-commit hook
 
@@ -113,14 +113,14 @@ if (( ${#claim_files[@]} )); then
     fi
 fi
 HOOK
-        # REQ-F11: an edited DevOPs hook is backed up before it is replaced.
-        if ! hook_backup="$("${DEVOPS_NODE:-node}" "$DEVOPS_ROOT/analyzer/backup-file.mjs" "$PROJECT" "$hook" "$new_hook" "$DEVOPS_BACKUP_STAMP" git-hooks/pre-commit)"; then
-            rm -f "$new_hook"
+        # specs/phase-2/F-skill-provenance.md REQ-F11 (#349): an existing DevOPs
+        # hook that differs is backed up before it is replaced. Node runs only then.
+        hook_backup=""
+        if [[ -e "$hook" ]] && ! hook_backup="$(printf '%s' "$hook_text" | "${DEVOPS_NODE:-node}" "$DEVOPS_ROOT/analyzer/backup-file.mjs" "$PROJECT" "$hook" - git-hooks/pre-commit)"; then
             echo "Could not back up $shown_dir/pre-commit; left it unchanged." >&2
             exit 1
         fi
-        cat "$new_hook" > "$hook"
-        rm -f "$new_hook"
+        printf '%s' "$hook_text" > "$hook"
         [[ -z "$hook_backup" ]] || echo "↻ Replaced $shown_dir/pre-commit; the previous copy is in $hook_backup"
         chmod +x "$hook"
         echo "✓ Installed pre-commit hook"
