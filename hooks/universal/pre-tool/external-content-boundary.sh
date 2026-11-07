@@ -9,7 +9,7 @@
 # scans tool_input (and any string fields) for <external-content …>
 # markers, re-computes HMAC-SHA256(session_key, body || source ||
 # "untrusted=true") over each marker, and:
-#   - missing hmac or hmac mismatch → halt (exit 1) + log event + blocker
+#   - missing hmac or hmac mismatch → halt (exit 2) + log event + blocker
 #   - valid hmac → exit 0 (call proceeds); OTel attribute recorded by
 #     downstream layer.
 #
@@ -21,10 +21,13 @@
 # (URLs, "Here's what I found:", base64 chunks) is NOT used — the
 # cryptographic gate is the source of truth.
 #
-# AC-C5.1: missing-hmac marker → exit 1 + log + blocker.
+# AC-C5.1: missing-hmac marker → exit 2 + log + blocker. Claude Code treats any
+# other non-zero status as non-blocking, so every halt and every unexpected
+# failure (the ERR trap below) exits 2.
 # AC-C5.2: valid-hmac marker → exit 0.
 
 set -euo pipefail
+trap 'exit 2' ERR
 
 EVENTS_LOG=".workflow/state/events.jsonl"
 BLOCKERS=".workflow/state/blockers.md"
@@ -34,8 +37,21 @@ SESSION_KEY_PATH=".workflow/state/session-key"
 PAYLOAD="$(cat || true)"
 
 # Fast-path: no external-content marker in the payload, allow the call.
-if ! echo "${PAYLOAD}" | grep -q '<external-content '; then
+# Any JSON \uXXXX escape could spell part of a marker, so a payload holding one
+# always reaches the verifier, which reads the decoded strings.
+if ! printf '%s' "${PAYLOAD}" | grep -qiE '<external-content|\\u[0-9a-f]{4}'; then
   exit 0
+fi
+
+# A JSON escape alone is not a marker: decode every string (values and keys)
+# and go on only if the decoded text holds one. A payload that is not JSON
+# cannot be decoded, so it still reaches the checks below (fail closed).
+if ! printf '%s' "${PAYLOAD}" | grep -qi '<external-content'; then
+  if DECODED="$(printf '%s' "${PAYLOAD}" | jq -r '.. | (strings, (objects | keys[]))' 2>/dev/null)"; then
+    if ! printf '%s' "${DECODED}" | grep -qi '<external-content'; then
+      exit 0
+    fi
+  fi
 fi
 
 # If the session key file does not exist, this is itself a violation:
@@ -47,7 +63,7 @@ if [ ! -f "${SESSION_KEY_PATH}" ]; then
     "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "${EVENTS_LOG}"
   echo "- $(date -u +%Y-%m-%dT%H:%M:%SZ) pre-tool boundary hook halted: external-content marker present but session-key missing" >> "${BLOCKERS}"
   echo "BLOCKED: external-content marker present but session-key not initialised; run the boundary layer to generate one" >&2
-  exit 1
+  exit 2
 fi
 
 # Delegate to Python for HMAC verification (Node would also work; Python is
@@ -61,7 +77,7 @@ payload = sys.stdin.read() if not sys.stdin.isatty() else ""
 # Marker pattern: <external-content untrusted="true" source="..." [hmac="..."]>BODY</external-content>
 marker_re = re.compile(
     r'<external-content\s+untrusted="true"\s+source="([^"]+)"(?:\s+hmac="([^"]*)")?\s*>(.*?)</external-content>',
-    re.DOTALL,
+    re.DOTALL | re.IGNORECASE,
 )
 
 with open('.workflow/state/session-key', 'r') as f:
@@ -108,20 +124,35 @@ PYEOF
 # shellcheck disable=SC2181
 if [ $? -ne 0 ]; then
   echo "BLOCKED: external-content boundary verifier failed to execute" >&2
-  exit 1
+  exit 2
 fi
 
 # Need to actually pipe PAYLOAD into the python script. Above heredoc consumed
 # its stdin from the bash stdin which is empty. Redo with payload piped in.
-RESULT=$(printf '%s' "${PAYLOAD}" | python3 - <<'PYEOF'
+IFS= read -r -d '' VERIFY_PY <<'PYEOF' || true
 import sys, os, re, hmac, hashlib, json, base64
 from datetime import datetime, timezone
 
-payload = sys.stdin.read()
+raw = sys.stdin.read()
+# A PreToolUse payload is JSON, where a marker's quotes arrive escaped and < may
+# arrive as the escape u003c: search the decoded strings, not the raw text.
+def strings(value):
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, dict):
+        for item in value.values():
+            yield from strings(item)
+    elif isinstance(value, list):
+        for item in value:
+            yield from strings(item)
+try:
+    payload = "\n".join(strings(json.loads(raw)))
+except ValueError:
+    payload = raw
 
 marker_re = re.compile(
     r'<external-content\s+untrusted="true"\s+source="([^"]+)"(?:\s+hmac="([^"]*)")?\s*>(.*?)</external-content>',
-    re.DOTALL,
+    re.DOTALL | re.IGNORECASE,
 )
 
 with open('.workflow/state/session-key', 'r') as f:
@@ -156,9 +187,12 @@ for m in marker_re.finditer(payload):
             "body_prefix": body[:40],
         })
 
+present = len(re.findall(r'<external-content\b', payload, re.IGNORECASE))
+if present > matched:
+    failures.append({"ts": now, "event": "external_content.malformed_marker", "source": "", "body_prefix": ""})
 print(json.dumps({"matched": matched, "failures": failures}))
 PYEOF
-)
+RESULT=$(printf '%s' "${PAYLOAD}" | python3 -c "${VERIFY_PY}")
 
 # Parse result
 MATCHED=$(echo "${RESULT}" | python3 -c "import json,sys;print(json.load(sys.stdin)['matched'])")
@@ -175,7 +209,7 @@ for f in data['failures']:
 " >> "${EVENTS_LOG}"
   echo "- $(date -u +%Y-%m-%dT%H:%M:%SZ) pre-tool boundary hook halted: ${FAILURE_COUNT} HMAC failure(s); see ${EVENTS_LOG}" >> "${BLOCKERS}"
   echo "BLOCKED: external-content boundary HMAC verification failed (${FAILURE_COUNT} of ${MATCHED} markers); see ${EVENTS_LOG}" >&2
-  exit 1
+  exit 2
 fi
 
 # All markers verified. The OTel attribute external_content.hmac_verified=true
@@ -191,10 +225,12 @@ fi
 # harness is the authoritative gate; this hook adds the approval layer.
 
 # Detect destructive intent from the PAYLOAD JSON (tool_name + tool_input)
-IS_DESTRUCTIVE=$(python3 - <<'PYEOF'
+# The payload reaches Python on stdin and the program through -c. (A line holding
+# only "${PAYLOAD}" after the heredoc ran the payload as a command name.)
+IFS= read -r -d '' DESTRUCTIVE_PY <<'PYEOF' || true
 import sys, json
 try:
-    data = json.loads(sys.argv[1]) if len(sys.argv) > 1 else {}
+    data = json.loads(sys.stdin.read())
 except Exception:
     data = {}
 tn = (data.get("tool_name") or "").lower()
@@ -208,7 +244,7 @@ if tn in {"bash", "powershell"}:
         print("yes"); sys.exit(0)
 print("no")
 PYEOF
- "${PAYLOAD}")
+IS_DESTRUCTIVE=$(printf '%s' "${PAYLOAD}" | python3 -c "${DESTRUCTIVE_PY}")
 
 if [ "${IS_DESTRUCTIVE}" != "yes" ]; then
   # Non-destructive call; HMAC verification already passed above.
@@ -228,7 +264,7 @@ APPROVALS_PATH=".workflow/state/approvals.jsonl"
 if [ ! -f "${APPROVALS_PATH}" ]; then
   echo "BLOCKED: rebuff confidence >= block threshold earlier this session and no approval in ${APPROVALS_PATH}; run: devops approve <claim-id> --rationale=\"...\"" >&2
   echo "- $(date -u +%Y-%m-%dT%H:%M:%SZ) destructive call blocked: missing approval after rebuff block" >> "${BLOCKERS}"
-  exit 1
+  exit 2
 fi
 
 # Look for an unconsumed approval entry with valid entry_hmac.
@@ -287,4 +323,4 @@ fi
 
 echo "BLOCKED: destructive call after rebuff block requires unconsumed approval_token with valid entry_hmac; run: devops approve <claim-id> --rationale=\"...\"" >&2
 echo "- $(date -u +%Y-%m-%dT%H:%M:%SZ) destructive call blocked: no matching unconsumed approval token" >> "${BLOCKERS}"
-exit 1
+exit 2

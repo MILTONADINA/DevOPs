@@ -8,6 +8,23 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- `external-content-boundary.sh` no longer blocks a call whose payload holds a JSON escape (such as `\u00e9`) but no marker when the session key is not yet initialised. It decodes the payload's strings and keys, and goes on to the key and HMAC checks only when a marker is present; a payload that is not JSON still fails closed.
+
+## [0.6.1] — 2026-11-06
+
+### Security
+
+- The deploy and sealed-ref PreToolUse wrappers in `.claude/settings.json` block the call (exit 2) when jq is missing, when the payload is not JSON with a string command, when the command is longer than the exec argument limit, and when the hook exits with any status other than 0 or 2. Before, each of these exited 0, 1 or 126, which Claude Code treats as non-blocking, so the call went through. The wrapper now hands the payload to the hook on stdin, and the hook pipes the command to the classifier on stdin (GHSA-869v-8545-rv5q).
+- Hooks that are not wired by default are hardened the same way, so wiring one no longer opens a bypass (GHSA-869v-8545-rv5q):
+  - `block-rm-rf.sh` recognises split recursive flags (`rm -r -f`, `rm -f -R`, `rm /x -r`), refuses `$HOME`, `~`, substituted and glob targets, collapses `..`, compares paths by directory boundary and exits 2 on any unexpected failure.
+  - `block-rm-rf.sh` never allows deleting the project root, a directory that contains it, `/`, `/tmp` or `/var/tmp`, even when the project itself lives under `/tmp`. The hook also parses under Semgrep's bash parser again, and `scripts/check-enforcement.mjs` knows the fail-closed wrapper of `block-new-dependency.sh`.
+  - `block-secrets.sh` matches names in any case and allows an example file only as the file named.
+  - `block-prod-write.sh` accepts only a JSON approval for the exact command from the last five minutes.
+  - `budget-brake.sh` refuses a reserve, cap or ledger cost that is not a non-negative decimal, and no longer runs it as awk code.
+  - `external-content-boundary.sh` checks markers inside the JSON payload in any case, sends any payload with a JSON escape to the verifier, halts on a malformed marker and exits 2 on every halt.
+
 ## [0.6.0] — 2026-11-06
 
 ### Fixed
