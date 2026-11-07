@@ -154,8 +154,9 @@ IT SHALL identify `@miltonadina/devops` and use package-relative
 WHEN init prints the first-spec step, IT SHALL tell the user to create `specs/`
 and write the first spec there, rather than imply the folder already exists.
 
-WHEN init runs, IT SHALL append the exact line `AGENTS.override.md` to the target's
-`.gitignore` if absent, creating the file if necessary, even outside git. IT SHALL
+WHEN init runs, IT SHALL append the exact lines `AGENTS.override.md`,
+`.workflow/state/install-manifest.json` and `.workflow/state/originals/` to the
+target's `.gitignore`, each only if absent (#390), creating the file if necessary, even outside git. IT SHALL
 preserve existing content and line endings and SHALL NOT duplicate an existing
 entry. WHEN `--dry-run` is given, IT SHALL write nothing and report a needed entry
 as an addition it would make.
@@ -356,10 +357,12 @@ say to create `specs/` and write the first spec there, with no auto-loaded claim
 ### AC-12
 
 **Given** no `.gitignore`, or one with LF/CRLF content, with or without a final
-newline or an existing override entry **When** init runs twice **Then** exactly
-one `AGENTS.override.md` line exists and existing bytes and line endings remain
-unchanged. This also applies outside git. A dry run with a missing file or entry
-reports the proposed addition and leaves every project file and directory unchanged.
+newline or with some of the entries already present **When** init runs twice
+**Then** exactly one line each of `AGENTS.override.md`,
+`.workflow/state/install-manifest.json` and `.workflow/state/originals/` exists,
+in that order after the existing content, and existing bytes and line endings
+remain unchanged. This also applies outside git. A dry run with a missing file or entry
+reports the proposed additions and leaves every project file and directory unchanged.
 
 **Verified by:** `tests/init-agent-bootstrap.test.mjs` (`#ac-12`).
 
