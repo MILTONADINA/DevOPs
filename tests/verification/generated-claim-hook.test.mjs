@@ -107,14 +107,17 @@ test('generated hook preserves gitleaks failure before validation', () => withHo
   assert.deepEqual(result.calls, [{ tool: 'gitleaks', args: GITLEAKS_ARGS }]);
 }));
 
-test('generated hook skips validation when no devops command is installed', () => withHook((f) => {
+// #348: a missing tool stops the commit unless its skip variable is set, never in silence.
+test('generated hook stops a commit with claims when no devops command is installed', () => withHook((f) => {
   f.writeProof('ordinary.yml'); rmSync(path.join(f.bin, 'devops'));
-  const result = f.invoke(); assert.equal(result.status, 0); assert.deepEqual(validatorCalls(result, f.source), []);
+  const result = f.invoke(); assert.equal(result.status, 1); assert.deepEqual(validatorCalls(result, f.source), []);
+  const skipped = f.invoke({ DEVOPS_SKIP_CLAIM_CHECK: '1' }); assert.equal(skipped.status, 0); assert.deepEqual(validatorCalls(skipped, f.source), []);
 }));
 
-test('generated hook validates when optional gitleaks is unavailable', () => withHook((f) => {
+test('generated hook stops when gitleaks is unavailable and validates once the scan is skipped', () => withHook((f) => {
   const file = f.writeProof('ordinary.yml'); rmSync(path.join(f.bin, 'gitleaks'));
-  const result = f.invoke(); assert.equal(result.status, 0);
+  const stopped = f.invoke(); assert.equal(stopped.status, 1); assert.deepEqual(validatorCalls(stopped, f.source), []);
+  const result = f.invoke({ DEVOPS_SKIP_SECRET_SCAN: '1' }); assert.equal(result.status, 0);
   const calls = validatorCalls(result, f.source); assert.equal(calls.length, 1);
   assert.deepEqual(calls[0].args.slice(1).sort(), [file, '--no-rerun'].sort());
   assert.equal(result.calls.some((call) => call.tool === 'gitleaks'), false);

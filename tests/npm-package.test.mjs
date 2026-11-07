@@ -338,3 +338,81 @@ test(`publishing is public, with provenance, and the metadata npm shows is fille
   // In the git+https form npm normalizes to at publish, so publishing corrects nothing.
   assert.equal(pkg.repository.url, 'git+https://github.com/MILTONADINA/DevOPs.git');
 });
+
+// #348: a check whose tool is missing stops the commit instead of being skipped
+// in silence, a skip variable lets it through and says so, and init names each
+// check it cannot run. PATH holds only /usr/bin, /bin and the stubs given.
+function stubTools(dir, tools) {
+  const bin = path.join(dir, '.tool-bin');
+  mkdirSync(bin, { recursive: true });
+  for (const [name, status] of Object.entries(tools)) {
+    writeFileSync(path.join(bin, name), `#!/bin/sh\necho "${name} ran" >&2\nexit ${status}\n`, { mode: 0o755 });
+  }
+  return `${bin}${path.delimiter}/usr/bin${path.delimiter}/bin`;
+}
+function runHook(dir, PATH, extra = {}) {
+  return spawnSync('bash', [path.join(dir, '.git', 'hooks', 'pre-commit')], { cwd: dir, env: { PATH, HOME: dir, ...extra }, encoding: 'utf8' });
+}
+function installedHook(dir) {
+  initProject(dir);
+  assert.equal(runInit(dir).status, 0);
+}
+const lineOf = (stdout, label) => stdout.split('\n').find(line => line.startsWith(`  ${label}: `)) ?? '';
+
+test(`the pre-commit hook stops a commit when gitleaks is missing and names the skip variable (${SPEC}#ac-3)`, () => {
+  withTempDir((dir) => {
+    installedHook(dir);
+    const missing = runHook(dir, stubTools(dir, {}));
+    assert.equal(missing.status, 1);
+    assert.match(missing.stderr, /secret scan cannot run because gitleaks is not on PATH.*DEVOPS_SKIP_SECRET_SCAN=1/);
+    const skipped = runHook(dir, stubTools(dir, {}), { DEVOPS_SKIP_SECRET_SCAN: '1' });
+    assert.equal(skipped.status, 0, skipped.stderr);
+    assert.match(skipped.stderr, /secret scan skipped \(DEVOPS_SKIP_SECRET_SCAN=1\)/);
+  });
+});
+
+test(`the pre-commit hook runs gitleaks when it is on PATH and stops on its failure (${SPEC}#ac-3)`, () => {
+  withTempDir((dir) => {
+    installedHook(dir);
+    const leak = runHook(dir, stubTools(dir, { gitleaks: 1 }));
+    assert.equal(leak.status, 1);
+    assert.match(leak.stderr, /gitleaks ran/);
+    const clean = runHook(dir, stubTools(dir, { gitleaks: 0 }));
+    assert.equal(clean.status, 0, clean.stderr);
+  });
+});
+
+test(`the pre-commit hook stops a commit with claims when devops is missing, and runs it when present (${SPEC}#ac-3)`, () => {
+  withTempDir((dir) => {
+    installedHook(dir);
+    mkdirSync(path.join(dir, '.workflow', 'proofs'), { recursive: true });
+    writeFileSync(path.join(dir, '.workflow', 'proofs', 'c.yml'), 'claim: toy\n');
+    const missing = runHook(dir, stubTools(dir, { gitleaks: 0 }));
+    assert.equal(missing.status, 1);
+    assert.match(missing.stderr, /claim check cannot run because the devops command is not on PATH.*DEVOPS_SKIP_CLAIM_CHECK=1/);
+    const skipped = runHook(dir, stubTools(dir, { gitleaks: 0 }), { DEVOPS_SKIP_CLAIM_CHECK: '1' });
+    assert.equal(skipped.status, 0, skipped.stderr);
+    assert.match(skipped.stderr, /claim check skipped/);
+    const invalid = runHook(dir, stubTools(dir, { gitleaks: 0, devops: 1 }));
+    assert.equal(invalid.status, 1);
+    assert.match(invalid.stderr, /devops ran/);
+  });
+});
+
+test(`devops init names each pre-commit check whose tool is missing (${SPEC}#ac-8)`, () => {
+  withTempDir((dir) => {
+    initProject(dir);
+    const result = runInit(dir, [], { PATH: `${path.join(dir, '.stub-bin')}${path.delimiter}/usr/bin${path.delimiter}/bin` });
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(lineOf(result.stdout, 'secret scan'), /cannot run: gitleaks is not on PATH.*DEVOPS_SKIP_SECRET_SCAN=1/);
+    assert.match(lineOf(result.stdout, 'claim check'), /cannot run: the devops command is not on PATH.*DEVOPS_SKIP_CLAIM_CHECK=1/);
+  });
+  withTempDir((dir) => {
+    initProject(dir);
+    const tools = stubTools(dir, { gitleaks: 0, devops: 0 });
+    const result = runInit(dir, [], { PATH: `${path.join(dir, '.stub-bin')}${path.delimiter}${tools}` });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(lineOf(result.stdout, 'secret scan'), "  secret scan: runs: gitleaks is on this shell's PATH (a git client with another PATH needs it there too)");
+    assert.equal(lineOf(result.stdout, 'claim check'), "  claim check: runs: the devops command is on this shell's PATH or in node_modules/.bin");
+  });
+});
