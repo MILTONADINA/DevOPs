@@ -244,6 +244,11 @@ AI coding agent and ask it to follow this section.
 - `cosign`, to verify skill signatures during install. Without it, `devops init`
   installs no skills and exits 2; `devops init --allow-unsigned --rationale="..."`
   installs them unverified and logs each one as overridden.
+- `gitleaks`, for the secret scan in the pre-commit hook that `devops init` writes.
+  Without it every commit stops, unless you set `DEVOPS_SKIP_SECRET_SCAN=1`. The
+  hook's claim check also needs the `devops` command on PATH or in
+  `node_modules/.bin` when `.workflow/proofs/*.yml` exists
+  (`npm install -D @miltonadina/devops`, or `DEVOPS_SKIP_CLAIM_CHECK=1`).
 
 **From npm** (version 0.4.0 and later):
 

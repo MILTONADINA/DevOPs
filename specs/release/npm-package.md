@@ -64,6 +64,12 @@ worktree's repository or to a submodule's git dir.
 - The hook SHALL scan the staged change with `gitleaks git --pre-commit --staged
   --redact` and SHALL validate local claims with the `devops` command, not with a path
   under `~/DevOPs`.
+- IF a check's tool is missing (`gitleaks` for the scan; `devops` on PATH or in
+  `node_modules/.bin` for claims, checked only when `.workflow/proofs/*.yml` exists),
+  THEN the hook SHALL stop the commit (exit 1) with a message naming the tool and the
+  skip variable, unless that variable (`DEVOPS_SKIP_SECRET_SCAN=1` or
+  `DEVOPS_SKIP_CLAIM_CHECK=1`) is set, in which case it SHALL say the check was
+  skipped. It SHALL NOT skip a check in silence (#348).
 - WHEN `--dry-run` is given, `devops init` SHALL write nothing.
 
 ### REQ-4 — Package contents
@@ -122,6 +128,9 @@ implicit:
   by name, those that neither `.claude/settings.json` nor
   `.claude/settings.local.json` references, so Claude Code does not run them, with
   where wiring is described.
+- **secret scan** and **claim check:** when the hook is installed, whether each check
+  runs or cannot run because its tool is missing, naming the tool and the skip
+  variable (#348).
 
 ### REQ-9 — `devops-analyze` answers its flags before it scans
 
@@ -203,7 +212,10 @@ dependency and not a development one.
 
 **Given** a git repository **When** `devops init` runs **Then** it writes a hook that
 redacts secrets and calls `devops verify`; with a hook another tool wrote, it leaves
-that hook unchanged; with `--dry-run` it writes no hook.
+that hook unchanged; with `--dry-run` it writes no hook. Run with a PATH that lacks
+`gitleaks`, the hook exits 1 naming `DEVOPS_SKIP_SECRET_SCAN=1`, and exits 0 saying
+"skipped" when that is set; with claim files and no `devops`, it exits 1 naming
+`DEVOPS_SKIP_CLAIM_CHECK=1`; a present tool runs and its failure stops the commit.
 
 **Verified by:** `tests/npm-package.test.mjs` (`#ac-3`).
 
@@ -247,7 +259,9 @@ or copied Claude Code hooks some of which `settings.json` references **When**
 - the worktree's hook lands where Git runs it, and the summary says so;
 - `core.hooksPath` gets nothing written and a hand-wiring note;
 - outside git, the summary says "not a git repository";
-- the summary names exactly the unreferenced hooks.
+- the summary names exactly the unreferenced hooks;
+- without `gitleaks` and `devops` on PATH, the "secret scan" and "claim check" lines
+  say each cannot run and name its skip variable; with both, each says it runs.
 
 **Verified by:** `tests/npm-package.test.mjs` (`#ac-8`), with a stub `git`
 (`tests/fixtures/stub-git.mjs`); tests never run the real git.
