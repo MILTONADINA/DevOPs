@@ -8,6 +8,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.6.1] — 2026-11-06
+
 ### Security
 
 - The deploy and sealed-ref PreToolUse wrappers in `.claude/settings.json` block the call (exit 2) when jq is missing, when the payload is not JSON with a string command, when the command is longer than the exec argument limit, and when the hook exits with any status other than 0 or 2. Before, each of these exited 0, 1 or 126, which Claude Code treats as non-blocking, so the call went through. The wrapper now hands the payload to the hook on stdin, and the hook pipes the command to the classifier on stdin (GHSA-869v-8545-rv5q).
