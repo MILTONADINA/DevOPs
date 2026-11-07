@@ -91,7 +91,6 @@
     "lifecycle/",
     "mcp-configs/",
     "memory/README.md",
-    "memory/runtime/README.md",
     "memory/file-based/",
     "meta-memory/",
     "modes/",

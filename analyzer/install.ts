@@ -327,10 +327,10 @@ function main() {
     return packageFiles.some(e => !e.startsWith('!') && hit(e)) && !packageFiles.some(e => e.startsWith('!') && hit(e.slice(1)));
   };
   // A package path such as `docs/MEMORY.md`, or a pattern such as
-  // `lifecycle/<phase>/PHASE.md` whose fixed part ships. Project paths (`.workflow/`),
+  // `lifecycle/<phase>/PHASE.md` whose fixed part ships. Project state (`.workflow/`),
   // slash commands and bare names are not package paths.
   const shipsInPackage = (token: string) => {
-    if (token.startsWith('.') || token.startsWith('/') || !token.includes('/')) return false;
+    if (token.startsWith('.workflow/') || token.startsWith('/') || token.includes('..') || !token.includes('/')) return false;
     const parts = token.split('/');
     const open = parts.findIndex(part => /[<*]/.test(part));
     const fixed = open === -1 ? token : `${parts.slice(0, open).join('/')}/`;
