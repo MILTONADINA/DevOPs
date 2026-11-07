@@ -91,6 +91,38 @@ test('runtime lockfile holds onnxruntime-node at the version @huggingface/transf
   assert.deepEqual(nested, [], 'no second onnxruntime-node tree is installed');
 });
 
+// Dependabot must not propose version updates past the holds above, or each weekly run opens a
+// PR that fails these tests (as PR #361 did). Reads the ignore block of the /runtime npm entry in
+// .github/dependabot.yml, skipping comments, and derives each expected range from the lockfile.
+// Security updates are not covered by ignore rules; a security fix past a hold needs the hold lifted.
+test('.github/dependabot.yml ignores the held runtime packages', () => {
+  const config = readFileSync(path.join(ROOT, '.github/dependabot.yml'), 'utf8');
+  const runtime = config.split(/\n  - package-ecosystem: /).find((entry) => /\n    directory: \/runtime\n/.test(entry));
+  assert.ok(runtime, 'dependabot.yml has a /runtime npm entry');
+  const lines = runtime.split('\n').filter((line) => !/^\s*#/.test(line));
+  const start = lines.indexOf('    ignore:');
+  assert.ok(start >= 0, 'the /runtime entry has an ignore block');
+  const block = [];
+  for (const line of lines.slice(start + 1)) {
+    if (!line.startsWith('      ')) break;
+    block.push(line);
+  }
+  const ignored = [];
+  for (const line of block) {
+    const name = line.match(/^      - dependency-name: "([^"]+)"$/);
+    const versions = line.match(/^        versions: \[(.*)\]$/);
+    if (name) ignored.push({ name: name[1], versions: null });
+    else if (versions && ignored.length) ignored.at(-1).versions = versions[1].split(',').map((v) => v.trim().replace(/^"|"$/g, ''));
+    else assert.fail(`unexpected line in the ignore block: ${line}`);
+  }
+  const held = (name) => [`>${locked('runtime', name)}`];
+  assert.deepEqual(ignored, [
+    { name: '@typescript-eslint/eslint-plugin', versions: held('@typescript-eslint/eslint-plugin') },
+    { name: '@typescript-eslint/parser', versions: held('@typescript-eslint/parser') },
+    { name: 'onnxruntime-node', versions: null },
+  ]);
+});
+
 // scripts/prepare-dast.mjs asserts the tsx version its staged runtime install resolves; it must
 // match the runtime lockfile or the DAST preparation fails.
 test('scripts/prepare-dast.mjs asserts the tsx version that runtime/package-lock.json resolves', () => {
