@@ -200,6 +200,14 @@ The deploy and sealed-ref PreToolUse wrappers now block the call (exit 2) when `
 
 **Action:** if `devops init` or `devops-analyze` names a symlink, replace it with a regular file or directory and run the command again.
 
+## Upgrading from 0.6.2 to 0.6.3
+
+### Agile Graph link refuses project symlinks
+
+`devops init` writes `.mcp.json` and `.claude/agile-graph-tool-hashes.json` through `analyzer/safe-write.js`, so it no longer follows a symlink the project commits to a file outside the project (GHSA-rq2p-3hhc-3mpg). A project whose `.mcp.json` or `.claude` is a symlink is left unlinked, with a message naming the link.
+
+**Action:** if `devops init` reports that Agile Graph was not linked because of a symlink, replace `.mcp.json` or `.claude` with a regular file or directory and run `devops init` again.
+
 ## Pre-upgrade checklist
 
 - [ ] Review this guide for breaking changes that affect your setup.

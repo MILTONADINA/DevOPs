@@ -26,13 +26,20 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - The pre-commit hook that `devops init` writes no longer skips its checks in silence when a tool is missing. Without `gitleaks` on PATH it stops the commit and names `DEVOPS_SKIP_SECRET_SCAN=1`, and with `.workflow/proofs/*.yml` present but no `devops` command it stops the commit and names `DEVOPS_SKIP_CLAIM_CHECK=1`. A skipped check says so. The init summary gains "secret scan" and "claim check" lines that say whether each runs, and the README lists `gitleaks` as a prerequisite. Re-run `devops init` to update an installed hook; a commit on a machine without `gitleaks` now stops until it is installed or the skip variable is set (#348).
 - `external-content-boundary.sh` no longer blocks a call whose payload holds a JSON escape (such as `\u00e9`) but no marker when the session key is not yet initialised. It decodes the payload's strings and keys, and goes on to the key and HMAC checks only when a marker is present; a payload that is not JSON still fails closed.
 
-## [0.6.2] — 2026-11-06
-
 ### Security
 
 - CI and release workflows move to `actions/checkout` 7.0.1, `actions/setup-node` 7.1.0, `actions/cache` 6.1.0, `actions/upload-artifact` 7.0.2, `actions/setup-python` 7.1.0 and the current `gitleaks/gitleaks-action` v2 commit, still pinned by commit SHA. Each pin was checked against its release tag.
-
 - The CI-only DeepTeam red-team environment (`.github/requirements/deepteam.txt`) moves to `certifi` 2026.10.23, `aiohttp` 3.14.5, `setuptools` 84.2.1 and `opentelemetry-api` 1.45.2, which clear the open Dependabot advisories on that lock. The published package does not ship these.
+
+## [0.6.3] — 2026-11-07
+
+### Security
+
+- `devops init` no longer writes `.mcp.json` or `.claude/agile-graph-tool-hashes.json` through a symlink the project commits. Linking Agile Graph wrote both with plain `fs` calls that follow a link, so a cloned repository could have init rewrite a JSON file outside the project. Both writes now go through `analyzer/safe-write.js`, and a symlinked `.mcp.json` or `.claude` leaves the project unlinked with a message (`specs/phase-2/F-skill-provenance.md` AC-F10.3; GHSA-rq2p-3hhc-3mpg).
+
+## [0.6.2] — 2026-11-06
+
+### Security
 
 - `devops init`, `devops-analyze` and the graph record writers no longer write, append or change a file's mode through a symlink the project commits. A write is refused when any part of its path below the project root is a symlink, the file is opened without following a link, and hooks are made executable on the open file. Before this, a repository with a symlinked hook, `AGENTS.md`, `.gitignore` or `.workflow` could make DevOPs overwrite or `chmod 755` a file outside the project (GHSA-rm9j-37wp-mwc3).
 

@@ -123,6 +123,11 @@ WHEN `devops init` replaces an installed skill file, hook script, hook companion
 **When** `scripts/graph-blocked.sh` or `scripts/graph-preflight.mjs` writes its record
 **Then** the file outside the project keeps its bytes.
 
+### AC-F10.3 (maps to REQ-F10)
+**Given** a project with a supported `@agile-graph/engine` whose `.mcp.json` is a symlink, or whose `.claude` directory is a symlink, to a location outside the project
+**When** `devops init` links Agile Graph
+**Then** it reports `refusing to write through a symlink in the project` and `left unchanged, not linked`, the outside file or directory keeps its bytes, and no pin file is created.
+
 ### AC-F11.1 (maps to REQ-F11)
 **Given** a git project where `devops analyze` and `devops init` ran, and a line was appended to an installed hook, skill, subagent, the pre-commit hook and `.workflow/profile.yml`
 **When** `devops analyze` and `devops init` run again
