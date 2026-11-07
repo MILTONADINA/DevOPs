@@ -195,6 +195,18 @@ package file by its path from the project when the package is inside it and othe
 `` `<path>` in the `@miltonadina/devops` package ``. THE SYSTEM SHALL NOT tell the user to
 run a slash command that init did not install (#352).
 
+### REQ-15 — Init and analyze record what they write
+
+WHEN `devops analyze` or `devops init` (not a dry run) writes a file in the project, or
+the DevOPs pre-commit hook, THE SYSTEM SHALL record it in
+`.workflow/state/install-manifest.json` (`schema_version: 1`) with the sha256 of what it
+wrote, and the folders it created. WHEN it first writes a file that already existed, THE
+SYSTEM SHALL copy the existing bytes to `.workflow/state/originals/<path>` and record their
+sha256 as the file's `original`, and SHALL NOT change that `original` on a later run. IF
+the manifest has another `schema_version`, another key set or a path that is not
+project-relative, THEN THE SYSTEM SHALL refuse to run and change nothing. The
+`.mcp.json` entry that linking Agile Graph writes is not recorded yet (#353).
+
 ## Acceptance criteria
 
 ### AC-1
@@ -371,6 +383,16 @@ or from the package root, except `.workflow/client/profile.yml`, which the steps
 user to create; and no step tells the user to run a command such as `/checkpoint`.
 
 **Verified by:** `tests/init-agent-bootstrap.test.mjs`.
+
+### AC-20
+
+**Given** a project with a `.gitignore` **When** `devops analyze` and `devops init` run, and
+run again after local edits **Then** every file they wrote is in the manifest with its
+current sha256, the `.gitignore` entry keeps the first run's `original` and its copy holds
+the original bytes, a dry run records nothing, and a committed manifest with a `..` or
+absolute path, another schema or an extra key makes analyze exit 1 without writing.
+
+**Verified by:** `tests/install-manifest.test.mjs`.
 
 ## Out of scope
 

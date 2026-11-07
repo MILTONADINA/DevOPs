@@ -8,6 +8,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- `devops analyze` and `devops init` record every file they write, the DevOPs pre-commit hook and the folders they create in `.workflow/state/install-manifest.json`, with a copy of any file that existed before DevOPs first wrote it under `.workflow/state/originals/`. This is the record a coming `devops uninstall` uses to remove exactly what DevOPs added (`specs/release/npm-package.md` REQ-15; #353).
+
 ### Fixed
 
 - The steps `devops init` prints name only files that exist. They pointed at `.workflow/client/profile.yml` as if init had created it, and told the user to run `/checkpoint` and `/ears-spec`, which init does not install. They now say to create the client profile (fields in `docs/CLIENT_ONBOARDING.md`), and name the checkpoint and EARS command files where the package ships them, as commands of the DevOPs Claude Code plugin when it is installed. The CLAUDE.md template no longer says `AGENTS.override.md` is loaded after `AGENTS.md`: Codex CLI reads it, Claude Code does not (`specs/release/npm-package.md` REQ-14; #352).

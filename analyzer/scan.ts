@@ -9,6 +9,7 @@ import * as path from 'node:path';
 import { detectState } from './project-state.js';
 import { readmeCompliance } from './compliance.js';
 import { allDependencies } from './workspaces.js';
+import { openManifest } from './install-manifest.js';
 import { UnsafeWriteError, backupIfChanged, freshBackupStamp, mkdirInside, writeInside } from './safe-write.js';
 
 interface Profile {
@@ -420,6 +421,10 @@ function main() {
   const profile: Profile = { ...partial, recommended: recommend(partial) };
 
   // specs/phase-2/F-skill-provenance.md REQ-F10: never through a symlink.
+  // specs/release/npm-package.md REQ-15 (#353): analyze records profile.yml and
+  // the folders it creates, so uninstall removes them too.
+  const record = openManifest(process.cwd());
+  record.dir('.workflow');
   mkdirInside(process.cwd(), '.workflow');
   // REQ-F11 (#349): keep a hand-edited profile. Only detected_at changes on a
   // plain re-run, so it is ignored when deciding whether the file was edited.
@@ -427,7 +432,10 @@ function main() {
   const undated = (b: Buffer) => b.toString('utf8').replace(/^detected_at: .*$/m, '');
   const backup = backupIfChanged(process.cwd(), '.workflow/profile.yml', yaml, freshBackupStamp(process.cwd()),
     (a: Buffer, b: Buffer) => undated(a) === undated(b));
+  record.before('.workflow/profile.yml');
   writeInside(process.cwd(), '.workflow/profile.yml', yaml);
+  record.after('.workflow/profile.yml');
+  record.save();
   console.log('Wrote .workflow/profile.yml');
   if (backup) console.log(`↻ Replaced .workflow/profile.yml; the previous copy is in ${backup}`);
   console.log(`State: ${state}${stateNote ? ` (${stateNote})` : ''}`);
