@@ -8,6 +8,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.6.3] — 2026-11-07
+
 ### Security
 
 - `devops init` no longer writes `.mcp.json` or `.claude/agile-graph-tool-hashes.json` through a symlink the project commits. Linking Agile Graph wrote both with plain `fs` calls that follow a link, so a cloned repository could have init rewrite a JSON file outside the project. Both writes now go through `analyzer/safe-write.js`, and a symlinked `.mcp.json` or `.claude` leaves the project unlinked with a message (`specs/phase-2/F-skill-provenance.md` AC-F10.3; GHSA-rq2p-3hhc-3mpg).
