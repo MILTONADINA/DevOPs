@@ -160,6 +160,9 @@ target's `.gitignore`, each only if absent (#390), creating the file if necessar
 preserve existing content and line endings and SHALL NOT duplicate an existing
 entry. WHEN `--dry-run` is given, IT SHALL write nothing and report a needed entry
 as an addition it would make.
+WHEN analyze runs, IT SHALL append `.workflow/state/install-manifest.json` and
+`.workflow/state/originals/` the same way, and SHALL record the write so uninstall
+restores the project's `.gitignore` (#391).
 
 ### REQ-11 — Init installs a consumer CLAUDE.md, not this repository's own
 
@@ -362,7 +365,8 @@ newline or with some of the entries already present **When** init runs twice
 `.workflow/state/install-manifest.json` and `.workflow/state/originals/` exists,
 in that order after the existing content, and existing bytes and line endings
 remain unchanged. This also applies outside git. A dry run with a missing file or entry
-reports the proposed additions and leaves every project file and directory unchanged.
+reports the proposed additions and leaves every project file and directory unchanged. Analyze alone, run twice, adds the two manifest lines once, leaves a `.gitignore`
+that already has them byte for byte, and uninstall restores the original file.
 
 **Verified by:** `tests/init-agent-bootstrap.test.mjs` (`#ac-12`).
 

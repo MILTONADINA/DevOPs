@@ -2,6 +2,9 @@
 
 # Per-project state (never committed at the workflow repo level)
 .workflow/state/*
+# The exact lines `devops analyze` and `devops init` check for (#391).
+.workflow/state/install-manifest.json
+.workflow/state/originals/
 .workflow/proofs/*
 # Reviewed committed proof declarations; logs and local history remain ignored.
 !.workflow/proofs/committed/

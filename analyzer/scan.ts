@@ -9,7 +9,7 @@ import * as path from 'node:path';
 import { detectState } from './project-state.js';
 import { readmeCompliance } from './compliance.js';
 import { allDependencies } from './workspaces.js';
-import { ADOPTED_NOTICE, openManifest } from './install-manifest.js';
+import { ADOPTED_NOTICE, LOCAL_STATE_IGNORES, ignoreLines, openManifest } from './install-manifest.js';
 import { UnsafeWriteError, backupIfChanged, freshBackupStamp, mkdirInside, writeInside } from './safe-write.js';
 
 interface Profile {
@@ -436,8 +436,16 @@ function main() {
   record.before('.workflow/profile.yml');
   writeInside(process.cwd(), '.workflow/profile.yml', yaml);
   record.after('.workflow/profile.yml');
-  record.save();
+  // REQ-10 (#391): keep the manifest out of Git when only analyze has run.
+  // A refused .gitignore (a symlink) still leaves profile.yml recorded.
+  let ignored: string[];
+  try {
+    ignored = ignoreLines(process.cwd(), LOCAL_STATE_IGNORES, { record });
+  } finally {
+    record.save();
+  }
   console.log('Wrote .workflow/profile.yml');
+  if (ignored.length) console.log(`Added ${ignored.join(', ')} to .gitignore`);
   if (backup) console.log(`↻ Replaced .workflow/profile.yml; the previous copy is in ${backup}`);
   console.log(`State: ${state}${stateNote ? ` (${stateNote})` : ''}`);
   console.log(`Languages: ${stack.language.length === 0

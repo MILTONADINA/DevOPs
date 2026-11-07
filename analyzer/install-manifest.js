@@ -181,3 +181,31 @@ export function openManifest(root) {
   api.dir('.workflow/state');
   return api;
 }
+
+// The manifest and its originals are this machine's record: uninstall refuses
+// them once Git tracks them (REQ-16), so init and analyze both keep them out of
+// Git (REQ-10; #390, #391).
+export const LOCAL_STATE_IGNORES = [MANIFEST, `${ORIGINALS}/`];
+
+/**
+ * Append each of `lines` that `.gitignore` lacks, keeping its bytes, line
+ * endings and a missing final newline. `record` (from openManifest) records the
+ * write so uninstall restores the original file. With `dryRun` nothing is
+ * written. Returns the lines that were (or would be) added.
+ */
+export function ignoreLines(root, lines, { record, dryRun = false } = {}) {
+  const file = path.join(path.resolve(root), '.gitignore');
+  const ignored = fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '';
+  const have = new Set(ignored.split(/\r?\n/));
+  const missing = lines.filter(line => !have.has(line));
+  if (!missing.length || dryRun) return missing;
+  const eol = ignored.match(/\r?\n/)?.[0] ?? '\n';
+  record?.before('.gitignore');
+  try {
+    writeInside(root, file, `${ignored && !ignored.endsWith('\n') ? eol : ''}${missing.map(line => line + eol).join('')}`, { append: true });
+  } finally {
+    // After a failed write, save() still hashes whatever reached the disk.
+    if (record && fs.existsSync(file)) record.after('.gitignore');
+  }
+  return missing;
+}

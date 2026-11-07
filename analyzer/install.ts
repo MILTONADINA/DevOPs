@@ -26,7 +26,7 @@ import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { linkAgileGraph } from './agile-graph.js';
-import { ADOPTED_NOTICE, MANIFEST, ORIGINALS, openManifest } from './install-manifest.js';
+import { ADOPTED_NOTICE, LOCAL_STATE_IGNORES, ignoreLines, openManifest } from './install-manifest.js';
 import { UnsafeWriteError, backupIfChanged, copyInside, freshBackupStamp, mkdirInside, present, writeInside } from './safe-write.js';
 
 // specs/release/npm-package.md REQ-2: DEVOPS_ROOT if set, else the package this file
@@ -385,19 +385,8 @@ function main() {
   // This local override is useful even before the project becomes a git repository.
   // The install manifest and its originals are this machine's record, which
   // uninstall refuses once Git tracks them (REQ-10, REQ-16; #390).
-  const gitignore = path.join(PROJECT_ROOT, '.gitignore');
-  const ignored = fs.existsSync(gitignore) ? fs.readFileSync(gitignore, 'utf-8') : '';
-  const ignoredLines = new Set(ignored.split(/\r?\n/));
-  const missing = ['AGENTS.override.md', MANIFEST, `${ORIGINALS}/`].filter(line => !ignoredLines.has(line));
-  if (missing.length) {
-    if (flags.dryRun) {
-      console.log(`dry-run: would add ${missing.join(', ')} to .gitignore`);
-    } else {
-      const eol = ignored.match(/\r?\n/)?.[0] ?? '\n';
-      recorded(PROJECT_ROOT, gitignore, () => writeInside(PROJECT_ROOT, gitignore, `${ignored && !ignored.endsWith('\n') ? eol : ''}${missing.map(line => line + eol).join('')}`, { append: true }));
-      console.log(`✓ Added ${missing.join(', ')} to .gitignore`);
-    }
-  }
+  const added = ignoreLines(PROJECT_ROOT, ['AGENTS.override.md', ...LOCAL_STATE_IGNORES], { record, dryRun: flags.dryRun });
+  if (added.length) console.log(flags.dryRun ? `dry-run: would add ${added.join(', ')} to .gitignore` : `✓ Added ${added.join(', ')} to .gitignore`);
 
   // Skills with verification (F.01..F.07)
   let verified = 0, overridden = 0, skipped = 0, failed = 0;
