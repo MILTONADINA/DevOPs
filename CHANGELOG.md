@@ -8,6 +8,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- `external-content-boundary.sh` no longer blocks a call whose payload holds a JSON escape (such as `\u00e9`) but no marker when the session key is not yet initialised. It decodes the payload's strings and keys, and goes on to the key and HMAC checks only when a marker is present; a payload that is not JSON still fails closed.
+
 ## [0.6.1] — 2026-11-06
 
 ### Security
