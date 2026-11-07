@@ -86,7 +86,7 @@ THE SYSTEM SHALL update `skills/universal/security/prompt-injection-defense/SKIL
 ### AC-C5.1 (maps to REQ-C5)
 **Given** an agent attempts to call a tool whose argument string contains `<external-content untrusted="true" source="rag">…</external-content>` WITHOUT an `hmac` attribute (or with an invalid `hmac`)
 **When** the pre-tool hook `external-content-boundary.sh` evaluates the call
-**Then** the call is halted, the event is logged to `.workflow/state/events.jsonl`, a blocker is appended to `.workflow/state/blockers.md`, and the hook exits with status 1.
+**Then** the call is halted, the event is logged to `.workflow/state/events.jsonl`, a blocker is appended to `.workflow/state/blockers.md`, and the hook exits with status 2, as it does for any other halt or internal failure (Claude Code treats every other non-zero status as non-blocking).
 
 ### AC-C5.2 (maps to REQ-C5)
 **Given** an agent attempts to call a tool whose argument string contains a properly-HMACed `<external-content … hmac="<valid-base64>">…</external-content>` marker produced by the boundary layer in the same session

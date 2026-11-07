@@ -67,17 +67,35 @@ daily_total() {
 # If not provided, conservatively assume $0.10 (1 standard Opus call).
 RESERVE="${1:-0.10}"
 
+# Every amount is a plain non-negative decimal. A negative reserve would lower the
+# projected total, and any other text would be read by awk as program code, so an
+# amount this hook cannot read blocks the call.
+decimal() { [[ "$1" =~ ^[0-9]+(\.[0-9]+)?$ ]]; }
+for amount in "reserve:$RESERVE" "session_cap_usd:$SESSION_CAP" "hourly_cap_usd:$HOURLY_CAP" "daily_cap_usd:$DAILY_CAP"; do
+    if ! decimal "${amount#*:}"; then
+        echo "DevOPs BUDGET BRAKE: ${amount%%:*} '${amount#*:}' is not a non-negative decimal amount. Blocked." >&2
+        exit 2
+    fi
+done
+
+# A ledger cost that is not a plain non-negative decimal (negative, text, empty)
+# would be summed as 0 or lower the total, so a ledger holding one blocks.
+if [[ -f "$LEDGER" ]] && grep '"cost_usd"' "$LEDGER" | grep -vqE '"cost_usd":[0-9]+(\.[0-9]+)?[,}]'; then
+    echo "DevOPs BUDGET BRAKE: $LEDGER holds a cost_usd that is not a non-negative decimal amount. Blocked." >&2
+    exit 2
+fi
+
 session_now=$(session_total)
 hourly_now=$(hourly_total)
 daily_now=$(daily_total)
 
-projected_session=$(awk "BEGIN {printf \"%.4f\", $session_now + $RESERVE}")
-projected_hourly=$(awk "BEGIN {printf \"%.4f\", $hourly_now + $RESERVE}")
-projected_daily=$(awk "BEGIN {printf \"%.4f\", $daily_now + $RESERVE}")
+projected_session=$(awk -v a="$session_now" -v b="$RESERVE" 'BEGIN {printf "%.4f", a + b}')
+projected_hourly=$(awk -v a="$hourly_now" -v b="$RESERVE" 'BEGIN {printf "%.4f", a + b}')
+projected_daily=$(awk -v a="$daily_now" -v b="$RESERVE" 'BEGIN {printf "%.4f", a + b}')
 
 # ─── Enforce ────────────────────────────────────────────────────────────────
 exceeded() {
-    awk "BEGIN {exit !($1 > $2)}"
+    awk -v a="$1" -v b="$2" 'BEGIN {exit !(a + 0 > b + 0)}'
 }
 
 if exceeded "$projected_session" "$SESSION_CAP"; then

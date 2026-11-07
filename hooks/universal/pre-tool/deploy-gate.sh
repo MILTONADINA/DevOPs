@@ -25,7 +25,22 @@
 
 set -euo pipefail
 
-COMMAND="${1:-}"
+# The .claude/settings.json wrapper hands over the PreToolUse payload on stdin
+# (--payload-stdin) instead of as an argument, so a command longer than ARG_MAX is
+# still classified, and a payload this hook cannot read blocks the call.
+if [[ "${1:-}" == --payload-stdin ]]; then
+    COMMAND="$(node -e '
+        let payload;
+        try { payload = JSON.parse(require("fs").readFileSync(0, "utf8")); } catch { process.exit(1); }
+        const command = payload?.tool_input?.command;
+        if (command === undefined || command === null) process.exit(0);
+        if (typeof command !== "string") process.exit(1);
+        process.stdout.write(command);
+    ')" || { echo "DevOPs DEPLOY-GATE BLOCK: the PreToolUse payload is not JSON with a string tool_input.command -- failing closed" >&2; exit 2; }
+    [[ -n "$COMMAND" ]] || exit 0
+else
+    COMMAND="${1:-}"
+fi
 CLASSIFIER="$(dirname -- "${BASH_SOURCE[0]}")/graph-command-classifier.mjs"
 classifier_fault() {
     echo "DevOPs DEPLOY-GATE BLOCK: graph-command-classifier.mjs is missing, failed, or returned an invalid decision" >&2
@@ -33,7 +48,7 @@ classifier_fault() {
 }
 
 # REQ-M16: command text is one inert argv; the companion never evaluates it.
-RESULT="$(node "$CLASSIFIER" deploy "$COMMAND")" || classifier_fault
+RESULT="$(printf '%s' "$COMMAND" | node "$CLASSIFIER" deploy -)" || classifier_fault
 jq -es '
     length == 1 and (.[0] |
     type == "object" and
