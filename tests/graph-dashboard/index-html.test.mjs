@@ -54,22 +54,19 @@ import * as path from 'node:path';
 import * as os from 'node:os';
 import * as http from 'node:http';
 import { execFileSync, spawn } from 'node:child_process';
+import { freePort } from './free-port.mjs';
 
 const REPO_ROOT = path.resolve(import.meta.dirname, '..', '..');
 const INDEX_HTML = path.join(REPO_ROOT, 'scripts', 'graph-dashboard', 'index.html');
 const SERVER_MJS = path.join(REPO_ROOT, 'scripts', 'graph-dashboard', 'server.mjs');
 
-// Distinct port range from snapshot.test.mjs (41000-44999) and
-// events-sse.test.mjs (48000-51999) -- all three spawn a real integration
-// server and may run together in one combined `node --test` invocation
-// (one shared process.pid), so a colliding range would EADDRINUSE.
-const INTEGRATION_PORT = 45000 + (process.pid % 2000);
+// A free port from the OS (#384): each file's integration server gets its own.
+const INTEGRATION_PORT = await freePort();
 
 // Captured once so PART 2's global document/fetch/EventSource shadow (see
 // buildSandbox() below) can be restored in after() -- good hygiene
 // regardless of whether `node --test` isolates each file into its own
-// process; this file makes the same conservative "maybe not" assumption its
-// own INTEGRATION_PORT choice already makes for the same reason.
+// process; this file makes the conservative "maybe not" assumption.
 const ORIGINAL_GLOBALS = { document: globalThis.document, fetch: globalThis.fetch, EventSource: globalThis.EventSource, setInterval: globalThis.setInterval };
 
 // TEST-HARNESS-ONLY FIX (found and fixed in the tester session that added
