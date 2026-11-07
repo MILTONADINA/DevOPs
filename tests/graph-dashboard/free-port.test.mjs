@@ -24,3 +24,14 @@ test('freePort returns a port that is free while another port is held', async ()
     await new Promise(resolve => held.close(resolve));
   }
 });
+
+test('no test derives a server port from the process id (#384)', async () => {
+  const { readdirSync, readFileSync } = await import('node:fs');
+  const path = await import('node:path');
+  const tests = path.resolve(import.meta.dirname, '..');
+  const offenders = readdirSync(tests, { recursive: true, withFileTypes: true })
+    .filter(e => e.isFile() && e.name.endsWith('.mjs') && !e.parentPath.includes('fixtures'))
+    .map(e => path.join(e.parentPath, e.name))
+    .filter(file => /process\.pid\s*%/.test(readFileSync(file, 'utf8')));
+  assert.deepEqual(offenders.map(f => path.relative(tests, f)), []);
+});

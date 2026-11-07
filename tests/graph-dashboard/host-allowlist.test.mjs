@@ -26,13 +26,13 @@ import * as os from 'node:os';
 import * as http from 'node:http';
 import * as net from 'node:net';
 import { spawn } from 'node:child_process';
+import { freePort } from './free-port.mjs';
 
 const REPO_ROOT = path.resolve(import.meta.dirname, '..', '..');
 const SERVER_MJS = path.join(REPO_ROOT, 'scripts', 'graph-dashboard', 'server.mjs');
 
-// Distinct from every sibling suite's port band so the files can run in one
-// `node --test tests/graph-dashboard/` invocation without colliding.
-const PORT = 46000 + (process.pid % 4000);
+// A free port from the OS (#384): each file's integration server gets its own.
+const PORT = await freePort();
 
 let fixtureRoot;
 let serverProcess;

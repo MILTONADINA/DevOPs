@@ -66,8 +66,7 @@ const INTEGRATION_PORT = await freePort();
 // Captured once so PART 2's global document/fetch/EventSource shadow (see
 // buildSandbox() below) can be restored in after() -- good hygiene
 // regardless of whether `node --test` isolates each file into its own
-// process; this file makes the same conservative "maybe not" assumption its
-// own INTEGRATION_PORT choice already makes for the same reason.
+// process; this file makes the conservative "maybe not" assumption.
 const ORIGINAL_GLOBALS = { document: globalThis.document, fetch: globalThis.fetch, EventSource: globalThis.EventSource, setInterval: globalThis.setInterval };
 
 // TEST-HARNESS-ONLY FIX (found and fixed in the tester session that added
