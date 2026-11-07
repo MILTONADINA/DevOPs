@@ -284,12 +284,13 @@ function main() {
   const packageRelative = path.relative(fs.realpathSync(PROJECT_ROOT), fs.realpathSync(DEVOPS_ROOT));
   const packageInProject = packageRelative !== '..' && !packageRelative.startsWith(`..${path.sep}`)
     && !path.isAbsolute(packageRelative);
+  // A file in this DevOPs package, named so the reader can open it from the project.
+  const packageRef = (inPackage: string) => packageInProject
+    ? `\`${path.join(packageRelative, inPackage).replace(/\\/g, '/')}\``
+    : `\`${inPackage}\` in the \`@miltonadina/devops\` package`;
   const constitutionRefs = new Map(['PRINCIPLES.md', 'ANTIPATTERNS.md', 'LOOP.md'].map(file => {
     const inPackage = `constitution/${file}`;
-    const reference = packageInProject
-      ? `\`${path.join(packageRelative, inPackage).replace(/\\/g, '/')}\``
-      : `\`${inPackage}\` in the \`@miltonadina/devops\` package`;
-    return [inPackage, reference];
+    return [inPackage, packageRef(inPackage)];
   }));
 
   // AGENTS.md + CLAUDE.md install (not skills, no verification).
@@ -492,15 +493,18 @@ function main() {
       ? `replaced=${backedUp.length} (skills, hooks and agents that differed from this release; the previous copies are in .workflow/state/backups/${runBackupStamp(PROJECT_ROOT)}/)`
       : 'replaced=0 (no installed skill, hook or agent differed from this release)');
     console.log('Installation complete.');
+    // specs/release/npm-package.md REQ-14 (#352): every file named here exists in
+    // the project or in this package; init installs no slash commands, so the
+    // command files are named where they ship.
     console.log('Next steps:');
-    console.log('  1. Fill in .workflow/client/profile.yml with your client info');
-    console.log('  2. Adjust .workflow/state/budget.yml for project budget');
-    console.log('  3. Run /checkpoint at session end to write the baton');
+    console.log('  1. Adjust `.workflow/state/budget.yml` for the project budget');
+    console.log(`  2. For client work, create \`.workflow/client/profile.yml\`; ${packageRef('docs/CLIENT_ONBOARDING.md')} lists its fields`);
+    console.log(`  3. At session end, write the baton as ${packageRef('slash-commands/universal/checkpoint.md')} describes (the /checkpoint command of the DevOPs Claude Code plugin)`);
     console.log('');
     console.log('First steps in the agent:');
     console.log(`  1. Read ${[...constitutionRefs.values()].join(', ')}`);
     console.log('  2. Create specs/ and write your first spec there');
-    console.log('  3. Run /ears-spec <feature-name> to convert prose to EARS');
+    console.log(`  3. Convert prose to EARS as ${packageRef('slash-commands/universal/ears-spec.md')} describes (the plugin's /ears-spec command)`);
   }
 }
 

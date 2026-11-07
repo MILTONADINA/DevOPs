@@ -174,3 +174,31 @@ test(`init keeps an existing CLAUDE.md and a dry run writes nothing (${SPEC}#ac-
     assert.equal(readFileSync(path.join(dir, 'CLAUDE.md'), 'utf8'), 'mine\n');
   });
 });
+
+// specs/release/npm-package.md REQ-14, AC-19 (#352): the printed steps name only
+// files that exist, in the project or in the package.
+function printedSteps(stdout) {
+  const start = stdout.indexOf('Next steps:');
+  assert.ok(start >= 0, stdout);
+  return stdout.slice(start);
+}
+for (const relative of ['node_modules/@miltonadina/devops', null]) {
+  test(`init's printed steps name only files that exist (${relative ?? 'package outside the project'}) (${SPEC}#ac-19)`, () => {
+    withProject(dir => {
+      const root = relative ? installPackage(dir, relative) : ROOT;
+      if (relative) for (const name of ['docs/CLIENT_ONBOARDING.md', 'slash-commands/universal']) cpSync(path.join(ROOT, name), path.join(root, name), { recursive: true });
+      const steps = printedSteps(init(dir, [], relative ? undefined : ROOT));
+      const named = [...steps.matchAll(/`([^`\s]+)`(?! in the `@miltonadina\/devops` package)/g)].map(m => m[1])
+        .filter(p => p.includes('/') && p !== '@miltonadina/devops');
+      const inPackage = [...steps.matchAll(/`([^`\s]+)` in the `@miltonadina\/devops` package/g)].map(m => m[1]);
+      assert.ok(named.length + inPackage.length >= 5, steps);
+      for (const p of named) {
+        if (p === '.workflow/client/profile.yml') continue; // the step says to create it
+        assert.ok(existsSync(path.join(dir, p)), `${p} exists from the project:\n${steps}`);
+      }
+      for (const p of inPackage) assert.ok(existsSync(path.join(ROOT, p)), `${p} ships in the package`);
+      if (!relative) assert.ok(inPackage.length >= 5, `an outside package is named as such:\n${steps}`);
+      assert.doesNotMatch(steps, /\bRun \/[a-z-]+/, 'no step says to run a command init did not install');
+    });
+  });
+}

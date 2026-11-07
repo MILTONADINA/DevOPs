@@ -187,6 +187,14 @@ PIPELINE SHALL pack the package twice from the same commit into separate tempora
 directories and compare the tarball sha256 and each entry's path and sha256. IF they
 differ, THEN it SHALL fail and print the differing entries.
 
+### REQ-14 — Init's printed steps name only files that exist
+
+WHEN `devops init` finishes, THE SYSTEM SHALL name in its "Next steps" and "First steps
+in the agent" only files that exist in the project or in the installed package, naming a
+package file by its path from the project when the package is inside it and otherwise as
+`` `<path>` in the `@miltonadina/devops` package ``. THE SYSTEM SHALL NOT tell the user to
+run a slash command that init did not install (#352).
+
 ## Acceptance criteria
 
 ### AC-1
@@ -353,6 +361,16 @@ field **When** the tests run **Then** `docs/STATE.md` names that file, has a "Re
 section, and names only source files that exist. A file that is not named is reported by path.
 
 **Verified by:** `tests/docs/state-doc.test.mjs`.
+
+### AC-19
+
+**Given** a project with the package installed under `node_modules/@miltonadina/devops`,
+and one using a package outside the project **When** `devops init` runs **Then** every
+backticked path in its "Next steps" and "First steps in the agent" exists from the project
+or from the package root, except `.workflow/client/profile.yml`, which the steps tell the
+user to create; and no step tells the user to run a command such as `/checkpoint`.
+
+**Verified by:** `tests/init-agent-bootstrap.test.mjs`.
 
 ## Out of scope
 
