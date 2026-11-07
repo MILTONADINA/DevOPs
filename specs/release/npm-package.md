@@ -214,6 +214,29 @@ DevOPs's copy. Backups (REQ-F11) and the `originals/` copies are DevOPs's own re
 are not themselves recorded. The `.mcp.json` entry and the Agile Graph pin that linking
 writes are not recorded yet (#353).
 
+### REQ-16 — Uninstall removes what was recorded
+
+WHEN `devops uninstall` runs in a project with an install manifest (REQ-15), THE SYSTEM
+SHALL remove each recorded file DevOPs created whose bytes still have the recorded
+`written` sha256, SHALL put back each recorded original whose file still holds what DevOPs
+wrote (or is gone) and whose copy still has the recorded `original` sha256, SHALL remove
+the pre-commit hook only while it carries the DevOPs marker and its recorded bytes, and
+SHALL remove the folders DevOPs created that are then empty. IF a recorded file was edited,
+is a symlink or not a regular file, has an unconfirmed write, or has an original copy that
+is missing or changed, or the manifest is `adopted` and the file has a recorded original,
+THEN THE SYSTEM SHALL leave that file unchanged, name it and the reason, and keep its
+entry in the manifest. IF Git tracks the manifest or `.workflow/state/originals/`, THEN THE
+SYSTEM SHALL refuse with exit 1 and change nothing, because that record came with the
+repository rather than from an install on this machine. THE SYSTEM SHALL look for the hook
+in the repository's own hooks folder, where init writes it, whatever `core.hooksPath` says
+later. THE SYSTEM SHALL drop each file's entry from the manifest as soon as it is handled,
+before deleting its original copy, so that an uninstall that stops part-way finishes when
+run again. WHEN run with `--dry-run`, THE SYSTEM SHALL report the same plan, including the
+folders it would remove, and change nothing. WHEN the project has no manifest, THE SYSTEM
+SHALL change nothing and say so. A file edited in the instant between the check and the
+removal is not protected, and the empty `hooks` folder init may create inside Git's own
+folder is left.
+
 ## Acceptance criteria
 
 ### AC-1
@@ -403,6 +426,22 @@ earlier DevOPs left `install.log` is `adopted`, and a creation whose write faile
 file appeared stays recorded.
 
 **Verified by:** `tests/install-manifest.test.mjs`.
+
+### AC-21
+
+**Given** a project with its own `CLAUDE.md` and `.gitignore` **When** `devops analyze`,
+`devops init` and `devops uninstall` run **Then** every file and folder below the project
+is as it was before, byte for byte (Git's own folder aside), and the pre-commit hook is
+gone. A dry run reports the plan and changes nothing. An edited file, a hook that is no
+longer DevOPs's, a recorded file replaced by a symlink, a changed original copy, and in an
+`adopted` install a file with a recorded original are each left unchanged and named, and
+the edited ones stay in the manifest. A manifest Git tracks makes uninstall exit 1 without
+changes. An uninstall stopped part-way by a file it cannot remove leaves the project as it
+was before once run again. A `core.hooksPath` set after init does not stop the DevOPs hook
+being removed or cause another hook to be touched. Without a manifest uninstall changes
+nothing, and an unknown option exits 1.
+
+**Verified by:** `tests/uninstall.test.mjs`.
 
 ## Out of scope
 
