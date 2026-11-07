@@ -8,6 +8,7 @@ import { createHmac, randomBytes } from 'node:crypto';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
 import { devopsRoot, runTs, tsxCli } from './devops-paths.js';
+import { uninstall } from '../analyzer/uninstall.js';
 
 // specs/release/npm-package.md REQ-2: the installed package, not a fixed home folder.
 const DEVOPS_ROOT = devopsRoot();
@@ -77,6 +78,14 @@ const COMMANDS = {
   init:    () => initCommand(),
   verify:  () => runTs(path.join(DEVOPS_ROOT, 'verification/claim-validator.ts'), args),
   approve: () => approveCommand(args),
+  uninstall: () => {
+    const unknown = args.filter(a => a !== '--dry-run');
+    if (unknown.length) {
+      console.error(`devops uninstall: unknown option ${unknown[0]}`);
+      return 1;
+    }
+    return uninstall(process.cwd(), { dryRun: args.includes('--dry-run') });
+  },
   version: () => {
     const v = fs.readFileSync(path.join(DEVOPS_ROOT, 'package.json'), 'utf-8');
     console.log(JSON.parse(v).version);
@@ -90,6 +99,8 @@ Commands:
                             --dry-run              show what it would do
                             --target DIR           install into DIR
                             --no-agile-graph       skip the optional Agile Graph link
+  devops uninstall          Remove what init and analyze recorded; restore originals
+                            --dry-run              show what it would do
   devops verify [options]   Validate declared claim metadata
                             --all --no-rerun       committed nonempty set
                             --claim ID --no-rerun  one committed ID; bind all members

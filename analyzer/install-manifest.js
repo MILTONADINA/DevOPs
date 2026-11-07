@@ -30,7 +30,7 @@ export const SCHEMA_VERSION = 1;
 export const HOOK_KEY = 'git-hooks/pre-commit';
 
 const NOFOLLOW = fs.constants.O_NOFOLLOW ?? 0;
-const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
+export const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 
 /** A project-relative path with `/` separators, no `..`, no empty or absolute part. */
 export function validKey(key) {
@@ -52,7 +52,7 @@ export function ownDir(key) {
 }
 
 /** Reads a regular file without following a link; null when it is missing. */
-function readRegular(file) {
+export function readRegular(file) {
   let fd;
   try {
     fd = fs.openSync(file, fs.constants.O_RDONLY | NOFOLLOW);
@@ -69,7 +69,8 @@ function readRegular(file) {
   }
 }
 
-function parse(root) {
+/** The checked manifest of `root`, or null when it has none. */
+export function readManifest(root) {
   const bytes = readRegular(path.join(root, MANIFEST));
   if (bytes === null) return null;
   let data;
@@ -104,7 +105,7 @@ export function openManifest(root) {
   const base = path.resolve(root);
   // install.log is written by every init since F.06: its presence without a
   // manifest means an earlier DevOPs installed here.
-  const found = parse(base);
+  const found = readManifest(base);
   const data = found ?? {
     schema_version: SCHEMA_VERSION,
     adopted: present(path.join(base, '.workflow/state/install.log')),
