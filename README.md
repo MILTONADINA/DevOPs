@@ -282,6 +282,11 @@ scripts and subagents into the project's `.claude/` directory. In a git reposito
 writes a `pre-commit` hook where Git runs hooks, which also covers worktrees and
 submodules. It never replaces a pre-commit hook it did not write, and never writes into
 a `core.hooksPath` folder; in both cases it tells you which checks to add by hand.
+On a re-run it replaces the skills, hooks, subagents and its own pre-commit hook
+with this release's copies; a file that differs (a local edit, or an older
+release's file) is first copied to `.workflow/state/backups/<UTC stamp>/` and
+named on a `↻ Replaced` line, and `devops analyze` does the same for
+`.workflow/profile.yml`.
 Each skill is checked against its signed manifest entry first, and an edited
 or unsigned skill stops the install. It does not write `.claude/settings.json`,
 so the copied hook scripts run only after you wire them there (this

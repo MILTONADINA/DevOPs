@@ -12,7 +12,7 @@ npm install -g @miltonadina/devops@latest
 npm install @miltonadina/devops@latest
 ```
 
-Then check the version and refresh the project's installed files. `init` needs `.workflow/profile.yml`, so run `analyze` first if the file is absent. `init` never overwrites an existing `AGENTS.md`, `CLAUDE.md` or `.mcp.json` entry.
+Then check the version and refresh the project's installed files. `init` needs `.workflow/profile.yml`, so run `analyze` first if the file is absent. `init` never overwrites an existing `AGENTS.md`, `CLAUDE.md` or `.mcp.json` entry. It does replace installed skills, hook scripts, subagents and its own pre-commit hook, and `analyze` rewrites `.workflow/profile.yml`. From the next release, a replaced file that differs from the new copy is first saved under `.workflow/state/backups/<UTC stamp>/`, and each one is named on a `↻ Replaced` line, so re-apply local edits from there.
 
 ```sh
 npx @miltonadina/devops version

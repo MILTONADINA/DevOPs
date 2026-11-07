@@ -61,6 +61,9 @@ IF a skill has a `.sig` but its signature cannot be verified, because the `.bund
 ### REQ-F10 (Unwanted behaviour) — No write through a project symlink
 IF a destination that `devops init`, `devops-analyze`, `scripts/graph-blocked.sh` or `scripts/graph-preflight.mjs` writes, appends to or changes the mode of is a symlink, or has a symlinked component below the project root, THEN THE SYSTEM SHALL refuse it or replace the link, and SHALL NOT write to, append to or change the mode of the file the link points at.
 
+### REQ-F11 (Event-driven) — Back up a differing file before replacing it
+WHEN `devops init` replaces an installed skill file, hook script, hook companion, subagent definition or the DevOPs pre-commit hook, or `devops analyze` replaces `.workflow/profile.yml`, and the existing regular file's bytes differ from the new ones (for `profile.yml`, ignoring the `detected_at` line), THE SYSTEM SHALL first copy it to `.workflow/state/backups/<UTC stamp>/<its path in the project>` (the pre-commit hook to `git-hooks/pre-commit`) and print `↻ Replaced <path>; the previous copy is in <backup>`, and `devops init` SHALL print a `replaced=<count>` line counting the replaced skills, hooks and subagents. A backup SHALL be created only, never overwritten: a run whose stamp folder already exists uses `<stamp>-2`, `<stamp>-3` and so on. IF the pre-commit hook is a symlink, THEN `devops init` SHALL leave it unchanged and say so. WHEN no file differs, THE SYSTEM SHALL create no backup and print no `↻ Replaced` line (#349).
+
 ---
 
 ## Acceptance criteria
@@ -119,6 +122,11 @@ IF a destination that `devops init`, `devops-analyze`, `scripts/graph-blocked.sh
 **Given** a symlink to a file outside the project at `.workflow/state/events.jsonl` or at the preflight report path
 **When** `scripts/graph-blocked.sh` or `scripts/graph-preflight.mjs` writes its record
 **Then** the file outside the project keeps its bytes.
+
+### AC-F11.1 (maps to REQ-F11)
+**Given** a git project where `devops analyze` and `devops init` ran, and a line was appended to an installed hook, skill, subagent, the pre-commit hook and `.workflow/profile.yml`
+**When** `devops analyze` and `devops init` run again
+**Then** each edited file is in `.workflow/state/backups/<stamp>/` with the appended line, each is named on a `↻ Replaced` line, and a further re-run with no edits creates no new backup and prints `replaced=0`.
 
 ---
 

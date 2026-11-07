@@ -78,7 +78,7 @@ export function writeInside(
     fs.constants.O_WRONLY |
     fs.constants.O_CREAT |
     NOFOLLOW |
-    (options.append ? fs.constants.O_APPEND : fs.constants.O_TRUNC);
+    (options.append ? fs.constants.O_APPEND : options.exclusive ? fs.constants.O_EXCL : fs.constants.O_TRUNC);
   const fd = fs.openSync(file, flags, options.mode ?? 0o644);
   try {
     if (!fs.fstatSync(fd).isFile())
@@ -99,4 +99,62 @@ export function writeInside(
 /** Copies `src` to `dst` inside the project; `mode` is set on the open file. */
 export function copyInside(root, src, dst, mode) {
   writeInside(root, dst, fs.readFileSync(src), { mode });
+}
+
+/**
+ * specs/phase-2/F-skill-provenance.md REQ-F11 (#349): before init or analyze
+ * replaces a regular file inside the project whose bytes differ from `data`,
+ * copy it to `.workflow/state/backups/<stamp>/<path inside the project>` and
+ * return that backup's path relative to the project; otherwise return null.
+ * A missing file, or one that is not a regular file (writeInside refuses
+ * those), needs no backup. `same(current, data)` decides whether the bytes
+ * differ (default: byte equality).
+ */
+export function backupIfChanged(root, target, data, stamp, same = (a, b) => a.equals(b)) {
+  const base = path.resolve(root);
+  const file = path.resolve(base, target);
+  assertInside(base, file);
+  let fd;
+  try {
+    fd = fs.openSync(file, fs.constants.O_RDONLY | NOFOLLOW);
+  } catch (error) {
+    if (error.code === 'ENOENT' || error.code === 'ELOOP') return null;
+    throw error;
+  }
+  let current, mode;
+  try {
+    const stat = fs.fstatSync(fd);
+    if (!stat.isFile()) return null;
+    mode = stat.mode & 0o777;
+    current = fs.readFileSync(fd);
+  } finally {
+    fs.closeSync(fd);
+  }
+  if (same(current, Buffer.isBuffer(data) ? data : Buffer.from(data))) return null;
+  return writeBackup(base, path.relative(base, file), current, mode, stamp);
+}
+
+/** Writes `bytes` as the backup of `name` for this run and returns its path in the project. */
+export function writeBackup(root, name, bytes, mode, stamp) {
+  if (!/^[0-9TZ-]+$/.test(stamp)) throw new UnsafeWriteError(`invalid backup stamp: ${stamp}`);
+  if (path.isAbsolute(name) || name.split(/[\\/]/).some(part => part === '..' || part === ''))
+    throw new UnsafeWriteError(`invalid backup name: ${name}`);
+  const backup = path.join('.workflow/state/backups', stamp, name);
+  // Create-only: a backup is never overwritten, even by a run with the same stamp.
+  writeInside(root, backup, bytes, { mode, exclusive: true });
+  return backup.split(path.sep).join('/');
+}
+
+/** A UTC timestamp usable as a directory name, e.g. 2026-11-07T05-30-00Z. */
+export function backupStamp(date = new Date()) {
+  return date.toISOString().replace(/\.\d+Z$/, 'Z').replace(/:/g, '-');
+}
+
+/** backupStamp(), with -2, -3, ... added when that backup folder already exists. */
+export function freshBackupStamp(root, date = new Date()) {
+  const base = backupStamp(date);
+  for (let n = 1; ; n++) {
+    const stamp = n === 1 ? base : `${base}-${n}`;
+    if (!present(path.join(path.resolve(root), '.workflow/state/backups', stamp))) return stamp;
+  }
 }
