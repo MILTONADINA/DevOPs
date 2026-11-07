@@ -8,7 +8,7 @@ import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSyn
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { writeStubGit } from './fixtures/stub-git.mjs';
-import { HOOK_KEY, MANIFEST, openManifest, ownFile, validKey } from '../analyzer/install-manifest.js';
+import { HOOK_KEY, MANIFEST, ORIGINALS, openManifest, ownFile, validKey } from '../analyzer/install-manifest.js';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 const CLI = path.join(ROOT, 'scripts/devops-cli.js');
@@ -94,10 +94,54 @@ test(`a dry run writes no manifest (${SPEC}#ac-20)`, () => {
   withProject(dir => {
     assert.equal(devops(dir, 'analyze').status, 0);
     const analyzed = manifestOf(dir);
+    const originalsDir = path.join(dir, ORIGINALS);
+    const copies = () => listFiles(originalsDir).map(f => [f, sha(path.join(originalsDir, f))]);
+    const originals = copies();
     const r = devops(dir, 'init', '--no-agile-graph', '--dry-run', ...UNSIGNED);
     assert.equal(r.status, 0, r.stderr);
     assert.deepEqual(manifestOf(dir), analyzed, 'only analyze recorded anything');
-    assert.ok(!existsSync(path.join(dir, '.workflow/state/originals')));
+    assert.deepEqual(copies(), originals, 'the dry run copied or changed no original');
+  });
+});
+
+// REQ-10 (#391): analyze alone keeps the manifest out of Git, and uninstall
+// puts the project's own .gitignore back.
+test(`analyze alone adds the manifest lines to .gitignore once and uninstall restores it (${SPEC}#ac-12)`, () => {
+  withProject(dir => {
+    for (let i = 0; i < 2; i++) {
+      const r = devops(dir, 'analyze');
+      assert.equal(r.status, 0, r.stderr);
+      assert.equal(readFileSync(path.join(dir, '.gitignore'), 'utf8'),
+        `${GITIGNORE}.workflow/state/install-manifest.json\n.workflow/state/originals/\n`);
+      assert.equal(/Added .* to \.gitignore/.test(r.stdout), i === 0, r.stdout);
+    }
+    assert.ok(manifestOf(dir).files['.gitignore'], '.gitignore is recorded');
+    const u = devops(dir, 'uninstall');
+    assert.equal(u.status, 0, u.stdout + u.stderr);
+    assert.equal(readFileSync(path.join(dir, '.gitignore'), 'utf8'), GITIGNORE);
+  });
+});
+
+test(`analyze creates a .gitignore when there is none and uninstall removes it (${SPEC}#ac-12)`, () => {
+  withProject(dir => {
+    rmSync(path.join(dir, '.gitignore'));
+    assert.equal(devops(dir, 'analyze').status, 0);
+    assert.equal(readFileSync(path.join(dir, '.gitignore'), 'utf8'),
+      '.workflow/state/install-manifest.json\n.workflow/state/originals/\n');
+    assert.equal(manifestOf(dir).files['.gitignore'].original, null, 'DevOPs created it');
+    const u = devops(dir, 'uninstall');
+    assert.equal(u.status, 0, u.stdout + u.stderr);
+    assert.ok(!existsSync(path.join(dir, '.gitignore')));
+  });
+});
+
+test(`analyze leaves an already-ignoring .gitignore byte for byte (${SPEC}#ac-12)`, () => {
+  withProject(dir => {
+    const before = '# keep\r\n.workflow/state/originals/\r\n.workflow/state/install-manifest.json';
+    writeFileSync(path.join(dir, '.gitignore'), before);
+    assert.equal(devops(dir, 'analyze').status, 0);
+    assert.equal(readFileSync(path.join(dir, '.gitignore'), 'utf8'), before);
+    assert.equal(manifestOf(dir).files['.gitignore'], undefined, 'nothing written, nothing recorded');
   });
 });
 
@@ -128,6 +172,7 @@ for (const [label, manifest] of [
   test(`init, too, refuses a committed manifest with ${label} and changes nothing (${SPEC}#ac-20)`, () => {
     withProject(dir => {
       assert.equal(devops(dir, 'analyze').status, 0);
+      const analyzedIgnore = readFileSync(path.join(dir, '.gitignore'), 'utf8');
       const text = JSON.stringify(manifest);
       writeFileSync(path.join(dir, MANIFEST), text);
       const r = devops(dir, 'init', '--no-agile-graph', ...UNSIGNED);
@@ -135,7 +180,7 @@ for (const [label, manifest] of [
       assert.match(r.stderr, /install-manifest\.json has an unknown schema or a path outside the project/);
       assert.equal(readFileSync(path.join(dir, MANIFEST), 'utf8'), text);
       assert.ok(!existsSync(path.join(dir, '.claude')), 'init wrote nothing');
-      assert.equal(readFileSync(path.join(dir, '.gitignore'), 'utf8'), GITIGNORE);
+      assert.equal(readFileSync(path.join(dir, '.gitignore'), 'utf8'), analyzedIgnore);
     });
   });
 }
@@ -146,9 +191,11 @@ test(`a symlinked originals folder is refused and nothing is copied through it (
     try {
       mkdirSync(path.join(dir, '.workflow/state'), { recursive: true });
       symlinkSync(outside, path.join(dir, '.workflow/state/originals'));
-      const r = analyzeAndInit(dir);
+      // analyze copies .gitignore's original first (#391), so it refuses.
+      const r = devops(dir, 'analyze');
       assert.notEqual(r.status, 0);
       assert.match(r.stderr, /refusing to write through a symlink in the project: \.workflow\/state\/originals/);
+      assert.equal(readFileSync(path.join(dir, '.gitignore'), 'utf8'), GITIGNORE, 'nothing appended after the refusal');
       assert.deepEqual(readdirSync(outside), []);
     } finally {
       rmSync(outside, { recursive: true, force: true });
