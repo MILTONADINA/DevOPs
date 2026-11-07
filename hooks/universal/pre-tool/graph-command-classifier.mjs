@@ -1198,8 +1198,10 @@ function decide(mode, command) {
 }
 
 try {
-  const [mode, command, ...extra] = process.argv.slice(2);
-  if (!['deploy', 'sealed'].includes(mode) || typeof command !== 'string' || extra.length) throw new Error('expected <deploy|sealed> <one command argv>');
+  const [mode, given, ...extra] = process.argv.slice(2);
+  if (!['deploy', 'sealed'].includes(mode) || typeof given !== 'string' || extra.length) throw new Error('expected <deploy|sealed> <one command argv, or - to read it from stdin>');
+  // `-` reads the command from stdin, so a command longer than ARG_MAX still reaches the classifier.
+  const command = given === '-' ? fs.readFileSync(0, 'utf8') : given;
   process.stdout.write(JSON.stringify(decide(mode, command)) + '\n');
 } catch (error) {
   process.stderr.write('graph-command-classifier.mjs: ' + error.message + '\n');

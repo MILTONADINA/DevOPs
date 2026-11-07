@@ -6,6 +6,8 @@
 # system paths.
 
 set -euo pipefail
+# Claude Code blocks only on exit 2, so any unexpected failure blocks too.
+trap 'exit 2' ERR
 
 COMMAND="${1:-}"
 
@@ -26,10 +28,10 @@ ALLOWED_ROOTS=(
 
 # Destructive patterns
 DESTRUCTIVE_PATTERNS=(
-    "rm[[:space:]]+-[^[:space:]]*r[^[:space:]]*f"
-    "rm[[:space:]]+-[^[:space:]]*f[^[:space:]]*r"
-    "rm[[:space:]]+--recursive[[:space:]]+--force"
-    "rm[[:space:]]+--force[[:space:]]+--recursive"
+    # rm with a recursive option anywhere among its words, combined or split,
+    # before or after a path (GNU rm accepts rm /x -r), up to the next ; & or |
+    # (rm -rf, rm -r -f, rm -f -R, rm --force --recursive, /bin/rm -r).
+    "(^|[^[:alnum:]_.-])rm([[:space:]]+[^;&|[:space:]]+)*[[:space:]]+(-[[:alpha:]]*[rR][[:alpha:]]*|--recursive)([[:space:]]|$)"
     "find[[:space:]].*-delete"
     "find[[:space:]].*-exec[[:space:]]+rm"
     "shred"
@@ -64,32 +66,66 @@ if echo "$COMMAND" | grep -qE ":(\)\{[[:space:]]*:\|:&[[:space:]]*\}\;:"; then
     exit 2
 fi
 
+# A target this hook cannot read literally ($HOME, `cmd`, $(cmd), ~user) could name
+# any path, so a destructive command holding one is refused.
+if [[ "$COMMAND" == *'$'* || "$COMMAND" == *'`'* || "$COMMAND" =~ (^|[[:space:]=])~ ]]; then
+    echo "DevOPs RM BLOCK: destructive command with a variable, substitution or ~ target, which this hook cannot resolve." >&2
+    echo "  Command: $COMMAND" >&2
+    exit 2
+fi
+# A glob (rm -rf *, rm -rf /*) names paths this hook never sees, so a recursive
+# rm holding one is refused.
+if [[ "$COMMAND" =~ (^|[^[:alnum:]_.-])rm[[:space:]] && "$COMMAND" == *[\*\?\[]* ]]; then
+    echo "DevOPs RM BLOCK: destructive rm with a glob target, which this hook cannot resolve." >&2
+    echo "  Command: $COMMAND" >&2
+    exit 2
+fi
+
+# Collapse . and .. so ../ cannot climb out of the project while the path still
+# starts with the project root; paths compare by directory boundary, not prefix.
+normalise() {
+    local part out=() IFS=/
+    set -f
+    for part in $1; do
+        case "$part" in
+            ''|.) ;;
+            ..) if (( ${#out[@]} )); then unset 'out[${#out[@]}-1]'; out=("${out[@]}"); fi ;;
+            *) out+=("$part") ;;
+        esac
+    done
+    set +f
+    printf '/%s' "${out[*]-}"
+}
+inside() { [[ "$1" == "$2" || "$1" == "$2/"* ]]; }
+
 # Extract target paths from rm commands
 # This is heuristic — extract everything that looks like a path argument
 targets=$(echo "$COMMAND" | grep -oE '(/?[a-zA-Z0-9_./\-]+)' | grep -v '^-' || true)
 
+set -f
 for target in $targets; do
-    # Resolve to absolute path
+    # Resolve to a normalised absolute path
     if [[ "$target" == /* ]]; then
-        abs_target="$target"
+        abs_target="$(normalise "$target")"
     else
-        abs_target="$PROJECT_ROOT/$target"
+        abs_target="$(normalise "$PROJECT_ROOT/$target")"
     fi
 
     # Skip obvious non-paths
-    if [[ "$target" == "rm" || "$target" == "find" || ${#target} -lt 2 ]]; then
+    if [[ "$target" == "rm" || "$target" == "find" || ( ${#target} -lt 2 && "$target" != "." ) ]]; then
         continue
     fi
 
     in_allowed=false
     for allowed in "${ALLOWED_ROOTS[@]}"; do
-        if [[ "$abs_target" == "$allowed"* ]]; then
+        if inside "$abs_target" "$allowed"; then
             in_allowed=true
             break
         fi
     done
 
-    if [[ "$in_allowed" == "false" && "$abs_target" == "$PROJECT_ROOT"* ]]; then
+    # Inside the project but not the project root itself: allowed, and logged.
+    if [[ "$in_allowed" == "false" ]] && inside "$abs_target" "$PROJECT_ROOT" && [[ "$abs_target" != "$PROJECT_ROOT" ]]; then
         # Within project but outside known transient dirs — allow with logging
         mkdir -p .workflow/state
         echo "{\"ts\":$(date -u +%s),\"event\":\"destructive_in_project\",\"target\":\"$abs_target\",\"command\":$(echo "$COMMAND" | jq -R . 2>/dev/null || echo "\"$COMMAND\"")}" >> .workflow/state/events.jsonl

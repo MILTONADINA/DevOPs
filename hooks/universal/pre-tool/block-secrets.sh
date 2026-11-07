@@ -53,15 +53,21 @@ ALLOW=(
 )
 
 # Check allow list first
+# Match case-insensitively: macOS and Windows file systems open .ENV or ID_RSA as
+# the same file. An example file is allowed only when it is the file named (its
+# basename), never because the name appears somewhere in a longer path, and never
+# through a .. component (.env.example/../.env names .env).
+LOWER="$(printf '%s' "$PATH_ARG" | tr '[:upper:]' '[:lower:]')"
+BASE="${LOWER##*/}"
 for a in "${ALLOW[@]}"; do
-    if [[ "$PATH_ARG" == *"$a"* ]]; then
+    if [[ "$BASE" == "$a" && "/$LOWER/" != *"/../"* ]]; then
         exit 0
     fi
 done
 
 # Check sensitive patterns
 for p in "${PATTERNS[@]}"; do
-    if [[ "$PATH_ARG" == *"$p"* ]]; then
+    if [[ "$LOWER" == *"$p"* ]]; then
         cat >&2 <<EOF
 DevOPs SECRET BLOCK: refused to $OPERATION $PATH_ARG
 This file matches sensitive pattern: $p
@@ -83,7 +89,7 @@ done
 
 # Check extension blocklist
 for e in "${EXT_BLOCK[@]}"; do
-    if [[ "$PATH_ARG" == *"$e" ]]; then
+    if [[ "$LOWER" == *"$e" ]]; then
         echo "DevOPs SECRET BLOCK: refused to $OPERATION $PATH_ARG (blocked extension: $e)" >&2
         exit 2
     fi

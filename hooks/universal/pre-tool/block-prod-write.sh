@@ -43,7 +43,8 @@ PROD_PATTERNS=(
 # Check if command matches any production pattern
 matched=""
 for pattern in "${PROD_PATTERNS[@]}"; do
-    if echo "$COMMAND" | grep -qE "$pattern"; then
+    # Case-insensitive: SQL keywords and CLI names are often typed in either case.
+    if echo "$COMMAND" | grep -qiE "$pattern"; then
         matched="$pattern"
         break
     fi
@@ -55,16 +56,19 @@ fi
 
 # Check for valid approval token
 # An approval is valid if it's < 5 minutes old and matches this command pattern
+# An approval is one JSON line whose numeric "ts" is from the last 5 minutes (not
+# the future) and whose "command" is exactly this command, so one approval cannot
+# unlock a different production command. Lines that are not JSON are ignored, and
+# without jq nothing is approved.
 if [[ -f "$APPROVALS" ]]; then
-    recent_approval=$(awk -F'"ts":' -v cutoff="$(($(date -u +%s) - 300))" '
-        { match($2, /[0-9]+/); ts = substr($2, RSTART, RLENGTH)
-          if (ts >= cutoff) print $0 }
-    ' "$APPROVALS" | tail -n 1)
-
-    if [[ -n "$recent_approval" ]]; then
-        # Log the approved action
+    now="$(date -u +%s)"
+    if jq -nRe --arg command "$COMMAND" --argjson now "$now" '
+        [inputs | fromjson? | objects
+         | select((.ts | type) == "number" and .ts >= ($now - 300) and .ts <= $now
+                  and .command == $command)]
+        | length > 0' < "$APPROVALS" > /dev/null 2>&1; then
         mkdir -p .workflow/state
-        echo "{\"ts\":$(date -u +%s),\"event\":\"prod_action_approved\",\"command\":$(echo "$COMMAND" | jq -R . 2>/dev/null || echo "\"$COMMAND\"")}" >> .workflow/state/events.jsonl
+        echo "{\"ts\":$now,\"event\":\"prod_action_approved\",\"command\":$(echo "$COMMAND" | jq -R . 2>/dev/null || echo "\"$COMMAND\"")}" >> .workflow/state/events.jsonl
         exit 0
     fi
 fi
@@ -80,9 +84,10 @@ cat >&2 <<EOF
 ║  BLOCKED because no recent human approval token exists.           ║
 ║                                                                   ║
 ║  Stop and ask the user. Approval is the human operator's action:  ║
-║  they add an entry to .workflow/state/approvals.jsonl, and the    ║
-║  command may be re-run within 5 minutes of it. Do not write an    ║
-║  approval entry yourself.                                         ║
+║  they add {"ts":<unix seconds>,"command":"<this exact command>"}  ║
+║  to .workflow/state/approvals.jsonl, and this command may be      ║
+║  re-run within 5 minutes of it. Do not write an approval entry    ║
+║  yourself.                                                        ║
 ║                                                                   ║
 ║  This block protects production from agent runaway. In a          ║
 ║  reported incident, Amazon's Kiro agent deleted and recreated an  ║
