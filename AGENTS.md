@@ -5,7 +5,10 @@
 > It is the universal operating contract for DevOPs.
 >
 > **Do not modify this file in your project. To customize per-project behavior,**
-> **edit `AGENTS.override.md` (not committed) or your project's `/specs` directory.**
+> **edit `AGENTS.override.md` (not committed) or your project's `specs/` directory.**
+>
+> Paths under `.workflow/` are this project's state. A file named there that does
+> not exist yet is created when it is first needed; "if present" means it may not.
 
 ---
 
@@ -59,10 +62,10 @@ contract still apply to it.
 
 7. **Client Boundary Discipline.** Never read, write, or transmit data outside
    the current project root. Never operate on a different client's data.
-   Compliance scope from `client/profile.yml` is enforced.
+   Compliance scope from `.workflow/client/profile.yml` is enforced.
 
 8. **Spec-Anchored Implementation.** Every commit must trace to a section of
-   `/specs/`. No work that isn't speccable. Specs use EARS notation
+   the project's `specs/`. No work that isn't speccable. Specs use EARS notation
    (see `docs/EARS_GUIDE.md`).
 
 ---
@@ -128,7 +131,8 @@ If you receive a request that doesn't have a corresponding spec:
 DevOPs is designed for session continuity across tools. When your session limit
 is approaching:
 
-1. Run `/checkpoint` (or invoke `baton-handoff` skill).
+1. Run `/checkpoint` with the DevOPs Claude Code plugin installed, or invoke the
+   `baton-handoff` skill.
 2. The baton is written to `.workflow/state/baton.md`.
 3. User opens the next tool (Claude Code → Codex → Cursor → local LLM).
 4. That tool reads the baton on session start and resumes.

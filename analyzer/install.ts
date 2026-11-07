@@ -319,6 +319,23 @@ function main() {
   const packageRef = (inPackage: string) => packageInProject
     ? `\`${path.join(packageRelative, inPackage).replace(/\\/g, '/')}\``
     : `\`${inPackage}\` in the \`@miltonadina/devops\` package`;
+  // package.json `files`: what npm ships of this package (an entry is a file, or a
+  // folder ending in /; a leading ! excludes).
+  const packageFiles: string[] = JSON.parse(fs.readFileSync(path.join(DEVOPS_ROOT, 'package.json'), 'utf-8')).files ?? [];
+  const shipped = (p: string) => {
+    const hit = (entry: string) => (entry.endsWith('/') ? p.startsWith(entry) : p === entry);
+    return packageFiles.some(e => !e.startsWith('!') && hit(e)) && !packageFiles.some(e => e.startsWith('!') && hit(e.slice(1)));
+  };
+  // A package path such as `docs/MEMORY.md`, or a pattern such as
+  // `lifecycle/<phase>/PHASE.md` whose fixed part ships. Project paths (`.workflow/`),
+  // slash commands and bare names are not package paths.
+  const shipsInPackage = (token: string) => {
+    if (token.startsWith('.') || token.startsWith('/') || !token.includes('/')) return false;
+    const parts = token.split('/');
+    const open = parts.findIndex(part => /[<*]/.test(part));
+    const fixed = open === -1 ? token : `${parts.slice(0, open).join('/')}/`;
+    return fixed !== '/' && shipped(fixed) && fs.existsSync(path.join(DEVOPS_ROOT, fixed));
+  };
   const constitutionRefs = new Map(['PRINCIPLES.md', 'ANTIPATTERNS.md', 'LOOP.md'].map(file => {
     const inPackage = `constitution/${file}`;
     return [inPackage, packageRef(inPackage)];
@@ -332,9 +349,12 @@ function main() {
   const targetAgents = path.join(PROJECT_ROOT, 'AGENTS.md');
   if (!present(targetAgents) && fs.existsSync(srcAgents)) {
     if (!flags.dryRun) {
+      // specs/release/npm-package.md REQ-17 (#380): every backticked path that names
+      // a file this package ships is rewritten the way the constitution is, so the
+      // reader can open it from the project.
       const agents = fs.readFileSync(srcAgents, 'utf-8').replace(
-        /`(constitution\/(?:PRINCIPLES|ANTIPATTERNS|LOOP)\.md)`/g,
-        (_match, file) => constitutionRefs.get(file)!,
+        /`([^`\s]+)`/g,
+        (match, token: string) => (shipsInPackage(token) ? packageRef(token) : match),
       );
       recorded(PROJECT_ROOT, targetAgents, () => writeInside(PROJECT_ROOT, targetAgents, agents));
     }
