@@ -174,3 +174,45 @@ test(`init keeps an existing CLAUDE.md and a dry run writes nothing (${SPEC}#ac-
     assert.equal(readFileSync(path.join(dir, 'CLAUDE.md'), 'utf8'), 'mine\n');
   });
 });
+
+// specs/release/npm-package.md REQ-14, AC-19 (#352): the printed steps name only
+// files that exist, in the project or in the package as npm ships it.
+const PKG = JSON.parse(readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
+// True when package.json `files` ships `p` (an entry is a file, or a folder ending in /).
+function shipped(p) {
+  const hit = entry => entry.endsWith('/') ? p.startsWith(entry) : p === entry;
+  return PKG.files.some(e => !e.startsWith('!') && hit(e)) && !PKG.files.some(e => e.startsWith('!') && hit(e.slice(1)));
+}
+function printedSteps(stdout) {
+  const start = stdout.indexOf('Next steps:');
+  assert.ok(start >= 0, stdout);
+  return stdout.slice(start);
+}
+const PACKAGE_DIR = 'node_modules/@miltonadina/devops';
+for (const inside of [true, false]) {
+  test(`init's printed steps name only files that exist (${inside ? 'package in the project' : 'package outside the project'}) (${SPEC}#ac-19)`, () => {
+    withProject(dir => {
+      if (inside) installPackage(dir, PACKAGE_DIR);
+      const steps = printedSteps(init(dir, [], inside ? undefined : ROOT));
+      const files = [...steps.matchAll(/`([^`\s]+)`/g)].map(m => m[1])
+        .filter(p => p !== '@miltonadina/devops' && (p.includes('/') || /\.(md|ya?ml|json|sh)$/.test(p)));
+      assert.ok(files.length >= 6, steps);
+      let fromPackage = 0;
+      for (const p of files) {
+        if (p === '.workflow/client/profile.yml') continue; // the step says to create it
+        const inPackage = inside && p.startsWith(`${PACKAGE_DIR}/`) ? p.slice(PACKAGE_DIR.length + 1)
+          : !inside && steps.includes(`\`${p}\` in the \`@miltonadina/devops\` package`) ? p : null;
+        if (inPackage === null) {
+          assert.ok(existsSync(path.join(dir, p)), `${p} exists in the project:\n${steps}`);
+        } else {
+          fromPackage++;
+          assert.ok(existsSync(path.join(ROOT, inPackage)) && shipped(inPackage), `${inPackage} ships in the package:\n${steps}`);
+        }
+      }
+      assert.ok(fromPackage >= 5, `the constitution and command files are named in the package:\n${steps}`);
+      // Init installs no slash commands: a command is named only with the plugin it needs.
+      for (const line of steps.split('\n').filter(l => /(^|[\s(])\/[a-z][a-z-]+\b/.test(l)))
+        assert.match(line, /with the (DevOPs Claude Code )?plugin installed/, line);
+    });
+  });
+}
