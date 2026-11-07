@@ -78,7 +78,7 @@ export function writeInside(
     fs.constants.O_WRONLY |
     fs.constants.O_CREAT |
     NOFOLLOW |
-    (options.append ? fs.constants.O_APPEND : fs.constants.O_TRUNC);
+    (options.append ? fs.constants.O_APPEND : options.exclusive ? fs.constants.O_EXCL : fs.constants.O_TRUNC);
   const fd = fs.openSync(file, flags, options.mode ?? 0o644);
   try {
     if (!fs.fstatSync(fd).isFile())

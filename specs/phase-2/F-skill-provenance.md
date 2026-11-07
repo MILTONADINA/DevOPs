@@ -120,6 +120,11 @@ IF a destination that `devops init`, `devops-analyze`, `scripts/graph-blocked.sh
 **When** `scripts/graph-blocked.sh` or `scripts/graph-preflight.mjs` writes its record
 **Then** the file outside the project keeps its bytes.
 
+### AC-F10.3 (maps to REQ-F10)
+**Given** a project with a supported `@agile-graph/engine` whose `.mcp.json` is a symlink, or whose `.claude` directory is a symlink, to a location outside the project
+**When** `devops init` links Agile Graph
+**Then** it reports `refusing to write through a symlink in the project` and `left unchanged, not linked`, the outside file or directory keeps its bytes, and no pin file is created.
+
 ---
 
 ## Non-functional requirements
