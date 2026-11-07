@@ -321,7 +321,9 @@ function main() {
     : `\`${inPackage}\` in the \`@miltonadina/devops\` package`;
   // package.json `files`: what npm ships of this package (an entry is a file, or a
   // folder ending in /; a leading ! excludes).
-  const packageFiles: string[] = JSON.parse(fs.readFileSync(path.join(DEVOPS_ROOT, 'package.json'), 'utf-8')).files ?? [];
+  // A DevOPs root without a package.json (a partial layout) ships nothing to name.
+  const packageJson = path.join(DEVOPS_ROOT, 'package.json');
+  const packageFiles: string[] = fs.existsSync(packageJson) ? JSON.parse(fs.readFileSync(packageJson, 'utf-8')).files ?? [] : [];
   const shipped = (p: string) => {
     const hit = (entry: string) => (entry.endsWith('/') ? p.startsWith(entry) : p === entry);
     return packageFiles.some(e => !e.startsWith('!') && hit(e)) && !packageFiles.some(e => e.startsWith('!') && hit(e.slice(1)));
