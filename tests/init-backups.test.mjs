@@ -6,6 +6,7 @@ import { spawnSync } from 'node:child_process';
 import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { writeStubGit } from './fixtures/stub-git.mjs';
 import { UnsafeWriteError, backupIfChanged, backupStamp, freshBackupStamp, writeBackup } from '../analyzer/safe-write.js';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
@@ -14,7 +15,14 @@ const SPEC = 'specs/phase-2/F-skill-provenance.md';
 // These tests are about backups, not signatures, so they opt out of cosign and
 // log why, as package-smoke.sh does.
 const UNSIGNED = ['--allow-unsigned', '--rationale=init backup test without cosign'];
-const devops = (cwd, ...args) => spawnSync(process.execPath, [CLI, ...args], { cwd, encoding: 'utf8' });
+// Tests never run the real git (tests/hermeticity.test.mjs): a stub on PATH tells
+// init-project.sh that the project's hooks live in .git/hooks.
+const STUB_BIN = mkdtempSync(path.join(tmpdir(), 'init-backups-git-'));
+writeStubGit(STUB_BIN);
+process.on('exit', () => rmSync(STUB_BIN, { recursive: true, force: true }));
+const devops = (cwd, ...args) => spawnSync(process.execPath, [CLI, ...args], {
+  cwd, encoding: 'utf8', env: { ...process.env, PATH: `${STUB_BIN}${path.delimiter}${process.env.PATH}` },
+});
 const EDITED = [
   '.claude/hooks/block-secrets.sh',
   '.claude/skills/goal-loop/SKILL.md',
@@ -28,7 +36,7 @@ function withProject(fn) {
   const dir = realpathSync(mkdtempSync(path.join(tmpdir(), 'init-backups-349-')));
   try {
     cpSync(path.join(ROOT, 'tests/fixtures/analyzer/nextjs-project'), dir, { recursive: true });
-    assert.equal(spawnSync('git', ['init', '-q'], { cwd: dir }).status, 0);
+    mkdirSync(path.join(dir, '.git'));
     fn(dir);
   } finally {
     rmSync(dir, { recursive: true, force: true });

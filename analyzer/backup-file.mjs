@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 // specs/phase-2/F-skill-provenance.md REQ-F11 (#349): init-project.sh calls this
 // before it replaces the DevOPs pre-commit hook, which can live outside the
 // project (a worktree's git dir). Usage:
