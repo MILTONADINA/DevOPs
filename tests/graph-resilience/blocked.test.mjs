@@ -130,3 +130,23 @@ test('the blocked writer creates nothing outside the project root when an ancest
     rmSync(toy, { recursive: true, force: true });
   }
 });
+
+// specs/phase-2/F-skill-provenance.md AC-F10.2: the event log is never appended through a symlink.
+test('blocked writer refuses an events.jsonl that links outside the project', () => {
+  const dir = mkdtempSync(path.join(ROOT, '.workflow', 'state', 'graph-blocked-test-'));
+  const outside = mkdtempSync(path.join(tmpdir(), 'graph-blocked-outside-'));
+  try {
+    const victim = path.join(outside, 'victim.txt');
+    writeFileSync(victim, 'outside bytes\n');
+    symlinkSync(victim, path.join(dir, 'events.jsonl'));
+    const result = spawnSync('bash', [path.join(ROOT, 'scripts', 'graph-blocked.sh'),
+      '--cycle', 'c7', '--stage', 'tester', '--task', 'T3', '--class', 'environment',
+      '--checks', 'git.runs', '--fix', 'none'],
+    { cwd: ROOT, env: { ...process.env, GRAPH_STATE_DIR: dir }, encoding: 'utf8' });
+    assert.notEqual(result.status, 0);
+    assert.equal(readFileSync(victim, 'utf8'), 'outside bytes\n');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+    rmSync(outside, { recursive: true, force: true });
+  }
+});

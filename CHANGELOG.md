@@ -14,6 +14,12 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - The pre-commit hook that `devops init` writes no longer skips its checks in silence when a tool is missing. Without `gitleaks` on PATH it stops the commit and names `DEVOPS_SKIP_SECRET_SCAN=1`, and with `.workflow/proofs/*.yml` present but no `devops` command it stops the commit and names `DEVOPS_SKIP_CLAIM_CHECK=1`. A skipped check says so. The init summary gains "secret scan" and "claim check" lines that say whether each runs, and the README lists `gitleaks` as a prerequisite. Re-run `devops init` to update an installed hook; a commit on a machine without `gitleaks` now stops until it is installed or the skip variable is set (#348).
 - `external-content-boundary.sh` no longer blocks a call whose payload holds a JSON escape (such as `\u00e9`) but no marker when the session key is not yet initialised. It decodes the payload's strings and keys, and goes on to the key and HMAC checks only when a marker is present; a payload that is not JSON still fails closed.
 
+## [0.6.2] — 2026-11-06
+
+### Security
+
+- `devops init`, `devops-analyze` and the graph record writers no longer write, append or change a file's mode through a symlink the project commits. A write is refused when any part of its path below the project root is a symlink, the file is opened without following a link, and hooks are made executable on the open file. Before this, a repository with a symlinked hook, `AGENTS.md`, `.gitignore` or `.workflow` could make DevOPs overwrite or `chmod 755` a file outside the project (GHSA-rm9j-37wp-mwc3).
+
 ## [0.6.1] — 2026-11-06
 
 ### Security
