@@ -63,6 +63,9 @@ THE SYSTEM SHALL ensure every stack-specific skill includes at least one fenced 
 ### REQ-D7 (Optional feature) — ASI/AST threat reference (MAY, with explicit opt-out)
 THE SYSTEM MAY ensure every stack-specific skill references at least one OWASP ASI 2026 or AST10 identifier from `governance/owasp-asi-2026/threats.md` that the skill materially mitigates. WHERE no canonical identifier materially applies (for example, language-runtime hygiene with no agent-specific threat path), the skill SHALL include an explicit line `No canonical ASI/AST applies — <one-line reason>` instead of a decorative reference. Any `ASI\d{2}` or `AST\d{2}` identifier present in the skill SHALL exist in the canonical set declared in `governance/owasp-asi-2026/threats.md` (ASI01–ASI10, AST01–AST10).
 
+### REQ-D8 (Event-driven) — Every recommended skill is installed or reported
+WHEN `devops init` installs the skills in `recommended.skills`, THE SYSTEM SHALL resolve a `stack-specific/` skill under `skills/stack-specific/` and every other skill under `skills/universal/`, and SHALL either install each skill or print a `skipped: <skill> (<reason>)` line for it and count it in the `skipped=` total. WHERE a stack-specific skill has no entry in `governance/skill-manifest.yml`, THE SYSTEM SHALL skip it rather than install it unverified, and a skipped skill alone SHALL NOT change the exit status; a universal skill with no manifest entry still fails with exit 2 (REQ-F2). IF a skill name is not lowercase path segments of `[a-z0-9-]` (for example it contains `..`), THEN THE SYSTEM SHALL print it as skipped (`not a valid skill name`) and SHALL NOT resolve it to a path (#350, #347).
+
 ---
 
 ## Acceptance criteria
@@ -169,3 +172,8 @@ The Phase 2 spec-authoring claim for this spec is `claim-2026-05-22-020`.
 
 - 2026-05-22 miltonadina: created (Phase 2 Step 1; Prompt 3 area D).
 - 2026-05-23 miltonadina: revised REQ-D7 (Ubiquitous SHALL → Optional MAY, with explicit `No canonical ASI/AST applies` opt-out path; any present identifier MUST be from the canonical set) and AC-D7.1 (either-or branch — match-found-and-canonical, OR no-match-with-explicit-note). Step 3 reviewer feedback after audit found D.02 and D.09 citing non-canonical ASI identifiers; the spec is updated so honest "no agentic threat applies" is permitted instead of forcing decorative references.
+
+### AC-D8.1 (maps to REQ-D8)
+**Given** a copy of `tests/fixtures/analyzer/nextjs-project` that `devops analyze` has profiled
+**When** `devops init --no-agile-graph` runs
+**Then** every skill in `recommended.skills` is installed under `.claude/skills/` or named on a `skipped:` line, and the `skipped=` total equals the number of `skipped:` lines.

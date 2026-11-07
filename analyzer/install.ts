@@ -327,15 +327,35 @@ function main() {
   // Skills with verification (F.01..F.07)
   let verified = 0, overridden = 0, skipped = 0, failed = 0;
   for (const s of skills) {
-    const srcSkillDir = path.join(DEVOPS_ROOT, 'skills/universal', s);
-    if (!fs.existsSync(srcSkillDir)) continue;
+    // specs/phase-2/D-stack-specific-skills.md REQ-D8: every recommended skill
+    // is installed or printed as skipped with a reason, and counted.
+    // Names come from the project's profile.yml: only lowercase path segments,
+    // never '..', so a lookup stays under skills/.
+    if (!/^[a-z0-9][a-z0-9-]*(?:\/[a-z0-9][a-z0-9-]*)+$/.test(s)) {
+      console.log(`⚠ skipped: ${JSON.stringify(s)} (not a valid skill name)`);
+      skipped++;
+      continue;
+    }
+    const stackSpecific = s.startsWith('stack-specific/');
+    const srcSkillDir = path.join(DEVOPS_ROOT, 'skills', stackSpecific ? '' : 'universal', s);
     const skillMdPath = path.join(srcSkillDir, 'SKILL.md');
-    if (!fs.existsSync(skillMdPath)) continue;
+    if (!fs.existsSync(skillMdPath)) {
+      console.log(`⚠ skipped: ${s} (this DevOPs release has no SKILL.md for it)`);
+      skipped++;
+      continue;
+    }
 
-    // Look up by manifest path; fall back to name.
+    // Look up by manifest path; fall back to name for universal skills only,
+    // so a stack-specific skill never borrows another skill's entry.
     const relPath = path.relative(DEVOPS_ROOT, skillMdPath).replace(/\\/g, '/');
-    const entry = manifestByPath.get(relPath) ?? manifestByName.get(path.basename(s)) ?? null;
+    const entry = manifestByPath.get(relPath) ?? (stackSpecific ? null : manifestByName.get(path.basename(s))) ?? null;
 
+    if (!entry && stackSpecific) {
+      // Not yet signed into governance/skill-manifest.yml (#347): not installed.
+      console.log(`⚠ skipped: ${s} (not in governance/skill-manifest.yml, so it cannot be verified)`);
+      skipped++;
+      continue;
+    }
     if (!entry) {
       // REQ-F2 covers no-sig; here the skill is not in the manifest at all.
       // Defense-in-depth: no manifest entry → cannot verify hash → reject.
