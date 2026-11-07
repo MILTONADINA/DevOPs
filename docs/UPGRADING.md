@@ -137,6 +137,14 @@ The dashboard pages (`/dashboard`, `/dashboard/graph`) now allow their inline sc
 
 **Action:** a project linked to an older engine keeps working with that engine and its pin file. Before it upgrades the engine to 0.4.0, replace `.claude/agile-graph-tool-hashes.json` with `mcp-configs/universal/agile-graph.tool-hashes.json` from this release: the 0.4.0 server refuses to start against the old pins, and `init` keeps an existing pin file, so it will not replace it. To link a new install, install `@agile-graph/engine@0.4.0` on Node 24 to 26, run `npx @miltonadina/devops init`, then follow the engine's own init and index steps (see the README's Agile Graph section). Pass `--no-agile-graph` to `init` to skip it.
 
+## Upgrading from 0.6.0 to 0.6.1
+
+### Hook gates fail closed
+
+The deploy and sealed-ref PreToolUse wrappers now block the call (exit 2) when `jq` is missing, when the payload is not valid JSON with a string command, or when the gate itself fails. Before, these cases let the call through. Hooks that are not wired by default (`block-rm-rf.sh`, `block-secrets.sh`, `block-prod-write.sh`, `budget-brake.sh`, `external-content-boundary.sh`) are hardened the same way (GHSA-869v-8545-rv5q).
+
+**Action:** make sure `jq` is installed wherever Claude Code runs these hooks, then run `devops init` to copy the updated hooks. `block-prod-write.sh` now accepts only a JSON approval for the exact command from the last five minutes, so record approvals in that form.
+
 ## Pre-upgrade checklist
 
 - [ ] Review this guide for breaking changes that affect your setup.
