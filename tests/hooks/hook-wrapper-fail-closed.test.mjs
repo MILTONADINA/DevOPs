@@ -56,20 +56,29 @@ function install(dir, hook) {
   }
 }
 
+// Runs a hook. A hook may refuse without reading its input, so writing the input
+// can fail with EPIPE (#387): spawnSync still reports the exit status and stderr,
+// which is what the tests check. Any other spawn error fails the test.
+function spawnHook(args, options) {
+  const result = spawnSync('bash', args, { encoding: 'utf8', timeout: 60_000, maxBuffer: 16 * 1024 * 1024, ...options });
+  if (result.error && !(result.error.code === 'EPIPE' && result.status !== null))
+    assert.fail(String(result.error));
+  return result;
+}
+
 function run(dir, hook, input, env = {}) {
   const wrapper = path.join(dir, 'wrapper.sh');
   writeFileSync(wrapper, wrapperFor(hook));
-  const result = spawnSync('bash', [wrapper], {
-    cwd: dir,
-    env: { ...BASE_ENV, CLAUDE_PROJECT_DIR: dir, ...env },
-    input,
-    encoding: 'utf8',
-    timeout: 60_000,
-    maxBuffer: 16 * 1024 * 1024,
-  });
-  assert.equal(result.error, undefined, String(result.error));
-  return result;
+  return spawnHook([wrapper], { cwd: dir, env: { ...BASE_ENV, CLAUDE_PROJECT_DIR: dir, ...env }, input });
 }
+
+test('a hook that exits without reading its input is judged by its status, not EPIPE (#387)', () => {
+  // 4 MiB is far more than a pipe holds, so the write fails once bash has exited.
+  const result = spawnHook(['-c', 'echo HOOK MISSING >&2; exit 2'], { input: 'x'.repeat(4 * 1024 * 1024) });
+  assert.equal(result.status, 2);
+  assert.match(result.stderr, /HOOK MISSING/);
+  assert.throws(() => spawnHook(['-c', 'exit 0'], { cwd: path.join(tmpdir(), 'no-such-dir-387') }), /ENOENT/);
+});
 
 const payload = command => JSON.stringify({ tool_input: { command } });
 
