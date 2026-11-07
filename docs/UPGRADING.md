@@ -4,6 +4,12 @@
 
 These changes are on `dev` and ship in the next release.
 
+### Agile Graph pins move to engine 0.6.0
+
+`devops init` now links `@agile-graph/engine` 0.6.0 only. The engine changed the cloud-default definitions of `context_get`, `graph_neighbors`, `memory_propose` and `symbol_search`, so the shipped pins are 0.6.0's. Those pins do not match 0.4.0, so `init` no longer links it.
+
+**Action:** a project linked to engine 0.4.0 keeps working with that engine and its pin file. Before it upgrades the engine to 0.6.0, replace `.claude/agile-graph-tool-hashes.json` with `mcp-configs/universal/agile-graph.tool-hashes.json` from this release: the 0.6.0 server refuses to start against the old pins, and `init` keeps an existing pin file, so it will not replace it. To link a new install, install `@agile-graph/engine@0.6.0` on Node 24 to 26, run `npx @miltonadina/devops init`, then follow the engine's own init and index steps (see the README's Agile Graph section). Pass `--no-agile-graph` to `init` to skip it.
+
 ### The pre-commit hook stops instead of skipping a check
 
 The hook that `devops init` writes used to skip a check without a word when its tool was missing. Now it stops the commit in two cases. Run `devops init` again to get the new hook: init replaces its own hook, keeps a copy of the old one, and lists both checks under `secret scan:` and `claim check:` in its "Safety gates" summary.
