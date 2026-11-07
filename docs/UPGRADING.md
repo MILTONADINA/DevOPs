@@ -1,5 +1,33 @@
 # Upgrading DevOPs
 
+## Unreleased (dev)
+
+These changes are on `dev` and ship in the next release.
+
+### The pre-commit hook stops when `gitleaks` is missing
+
+The hook that `devops init` writes used to skip the secret scan without a word when `gitleaks` was not on PATH. It now stops the commit and tells you how to go on. Install `gitleaks`, or, for one commit you have checked by hand, run it with `DEVOPS_SKIP_SECRET_SCAN=1`. Re-run `devops init` to get the new hook: init replaces its own hook and keeps a copy of the old one.
+
+### Replaced files are backed up first
+
+When `devops init` or `devops analyze` replaces an installed skill, hook, subagent, its own pre-commit hook or `.workflow/profile.yml` whose bytes differ from the new copy, it first saves the old file under `.workflow/state/backups/<UTC stamp>/` and names it on a `↻ Replaced` line. Re-apply local edits from there.
+
+### Init records what it writes, and `devops uninstall` removes it
+
+`devops analyze` and `devops init` now record every file they write in `.workflow/state/install-manifest.json`, with a copy of any file that was there before under `.workflow/state/originals/`. `devops uninstall --dry-run` shows what `devops uninstall` would remove or put back. A file you edited since is left in place and named.
+
+A project installed by an earlier release has no manifest. The first `analyze` or `init` after you upgrade starts one and marks it `adopted`: files that release wrote are recorded as they are, so uninstall names them for you to check instead of restoring them. To have everything recorded from a clean state, first remove the old install by hand, then run `analyze` and `init`. An earlier install consists of the `AGENTS.md` and `CLAUDE.md` it created, `.claude/skills/`, `.claude/hooks/` and `.claude/agents/`, `.workflow/`, the `AGENTS.override.md` line in `.gitignore`, and the DevOPs pre-commit hook in Git's hooks folder.
+
+Keep `.workflow/state/install-manifest.json` out of Git. Uninstall refuses a manifest that Git tracks, since it did not come from an install on this machine. The `.mcp.json` entry and Agile Graph pin that linking writes are not recorded yet; remove them by hand.
+
+### The installed `AGENTS.md` names files you can open
+
+`devops init` now writes every package path in `AGENTS.md` as a path from the project, or as a file in the `@miltonadina/devops` package. Init never overwrites an existing `AGENTS.md`, so to get the new text, move yours aside (keep your edits in `AGENTS.override.md`) and run `devops init` again.
+
+### Stack-specific skills are installed
+
+`devops init` now installs the recommended stack-specific skills (Next.js, Stripe, FastAPI, Supabase, Rust) from `skills/stack-specific/`. Earlier releases skipped them in silence. Each one is checked against its signed manifest entry like any other skill, and one with no entry is skipped on a `⚠ skipped:` line.
+
 ## Upgrading from 0.4.0 to 0.5.0
 
 Match the scope you installed with. The commands below use `npx` so they work for a global, a project or a one-shot install; with a global install you can drop the `npx @miltonadina/devops` prefix and type `devops`.
