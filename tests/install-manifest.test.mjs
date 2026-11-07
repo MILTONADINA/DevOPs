@@ -8,7 +8,7 @@ import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSyn
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { writeStubGit } from './fixtures/stub-git.mjs';
-import { HOOK_KEY, MANIFEST, validKey } from '../analyzer/install-manifest.js';
+import { HOOK_KEY, MANIFEST, openManifest, ownFile, validKey } from '../analyzer/install-manifest.js';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 const CLI = path.join(ROOT, 'scripts/devops-cli.js');
@@ -53,6 +53,7 @@ test(`every file analyze and init write is recorded with its hash (${SPEC}#ac-20
     assert.equal(r.status, 0, r.stderr);
     const m = manifestOf(dir);
     assert.equal(m.schema_version, 1);
+    assert.equal(m.adopted, false);
     const own = new Set([MANIFEST]);
     for (const file of listFiles(dir)) {
       if (file.startsWith('.git/') || own.has(file) || file.startsWith('.workflow/state/originals/')) continue;
@@ -102,10 +103,14 @@ test(`a dry run writes no manifest (${SPEC}#ac-20)`, () => {
 
 for (const [label, manifest] of [
   ['a path with ..', { schema_version: 1, files: { '../outside': { original: null, written: 'a'.repeat(64) } }, dirs: [] }],
-  ['an absolute path', { schema_version: 1, files: {}, dirs: ['/tmp'] }],
-  ['an original copy outside the project', { schema_version: 1, files: { 'x': { original: { sha256: 'a'.repeat(64), copy: '../../x' }, written: 'a'.repeat(64) } }, dirs: [] }],
-  ['another schema', { schema_version: 2, files: {}, dirs: [] }],
-  ['an extra key', { schema_version: 1, files: {}, dirs: [], run: 'x' }],
+  ['an absolute path', { schema_version: 1, adopted: false, files: {}, dirs: ['/tmp'] }],
+  ['an original copy outside the project', { schema_version: 1, adopted: false, files: { 'AGENTS.md': { original: { sha256: 'a'.repeat(64), copy: '../../x' }, written: 'a'.repeat(64) } }, dirs: [] }],
+  ['an original copy that is not its own', { schema_version: 1, adopted: false, files: { 'AGENTS.md': { original: { sha256: 'a'.repeat(64), copy: '.workflow/state/originals/CLAUDE.md' }, written: 'a'.repeat(64) } }, dirs: [] }],
+  ['a project source', { schema_version: 1, adopted: false, files: { 'src/index.js': { original: null, written: 'a'.repeat(64) } }, dirs: [] }],
+  ["Git's config", { schema_version: 1, adopted: false, files: { '.git/config': { original: null, written: 'a'.repeat(64) } }, dirs: [] }],
+  ['a folder DevOPs does not create', { schema_version: 1, adopted: false, files: {}, dirs: ['src'] }],
+  ['another schema', { schema_version: 2, adopted: false, files: {}, dirs: [] }],
+  ['an extra key', { schema_version: 1, adopted: false, files: {}, dirs: [], run: 'x' }],
 ]) {
   test(`init refuses a committed manifest with ${label} and changes nothing (${SPEC}#ac-20)`, () => {
     withProject(dir => {
@@ -117,6 +122,20 @@ for (const [label, manifest] of [
       assert.match(a.stderr, /install-manifest\.json has an unknown schema or a path outside the project/);
       assert.equal(readFileSync(path.join(dir, MANIFEST), 'utf8'), text);
       assert.ok(!existsSync(path.join(dir, '.workflow/profile.yml')), 'analyze wrote nothing');
+    });
+  });
+
+  test(`init, too, refuses a committed manifest with ${label} and changes nothing (${SPEC}#ac-20)`, () => {
+    withProject(dir => {
+      assert.equal(devops(dir, 'analyze').status, 0);
+      const text = JSON.stringify(manifest);
+      writeFileSync(path.join(dir, MANIFEST), text);
+      const r = devops(dir, 'init', '--no-agile-graph', ...UNSIGNED);
+      assert.equal(r.status, 1, r.stdout + r.stderr);
+      assert.match(r.stderr, /install-manifest\.json has an unknown schema or a path outside the project/);
+      assert.equal(readFileSync(path.join(dir, MANIFEST), 'utf8'), text);
+      assert.ok(!existsSync(path.join(dir, '.claude')), 'init wrote nothing');
+      assert.equal(readFileSync(path.join(dir, '.gitignore'), 'utf8'), GITIGNORE);
     });
   });
 }
@@ -141,4 +160,56 @@ test('validKey accepts only project-relative paths', () => {
   for (const key of ['a', '.claude/hooks/x.sh', 'git-hooks/pre-commit']) assert.ok(validKey(key), key);
   for (const key of ['', '/a', '../a', 'a/../b', 'a//b', './a', 'a/.', 'C:/a', 'a\\b', 'a\0b', 1, null])
     assert.ok(!validKey(key), String(key));
+});
+
+test(`a manifest started where an earlier DevOPs installed is marked adopted (${SPEC}#req-15)`, () => {
+  withProject(dir => {
+    // What an install by 0.6.2 or earlier leaves: files, install.log, no manifest.
+    mkdirSync(path.join(dir, '.workflow/state'), { recursive: true });
+    mkdirSync(path.join(dir, '.claude/agents'), { recursive: true });
+    writeFileSync(path.join(dir, '.workflow/state/install.log'), '{}\n');
+    writeFileSync(path.join(dir, '.claude/agents/coder.md'), 'older DevOPs copy\n');
+    const a = devops(dir, 'analyze');
+    assert.equal(a.status, 0, a.stderr);
+    assert.match(a.stdout, /started in a project an earlier DevOPs installed into/);
+    const r = devops(dir, 'init', '--no-agile-graph', ...UNSIGNED);
+    assert.equal(r.status, 0, r.stderr);
+    assert.doesNotMatch(r.stdout, /started in a project/, 'the notice is printed once, when the manifest starts');
+    const m = manifestOf(dir);
+    assert.equal(m.adopted, true);
+    const coder = m.files['.claude/agents/coder.md'].original;
+    assert.equal(readFileSync(path.join(dir, coder.copy), 'utf8'), 'older DevOPs copy\n');
+  });
+});
+
+test(`a recorded creation stays recorded when its write fails part-way, and a stale copy wins (${SPEC}#req-15)`, () => {
+  const dir = realpathSync(mkdtempSync(path.join(tmpdir(), 'install-manifest-unit-')));
+  try {
+    const record = openManifest(dir);
+    record.before('.claude/hooks/x.sh');
+    mkdirSync(path.join(dir, '.claude/hooks'), { recursive: true });
+    writeFileSync(path.join(dir, '.claude/hooks/x.sh'), 'half');
+    record.save(); // no after(): the write "failed" once the file existed
+    const m = manifestOf(dir);
+    assert.deepEqual(m.files['.claude/hooks/x.sh'], { original: null, written: createHash('sha256').update('half').digest('hex') });
+    assert.ok(m.dirs.includes('.claude/hooks'));
+    // An originals copy left behind by a lost manifest is taken as the original.
+    rmSync(path.join(dir, MANIFEST));
+    mkdirSync(path.join(dir, '.workflow/state/originals'), { recursive: true });
+    writeFileSync(path.join(dir, '.workflow/state/originals/AGENTS.md'), 'first');
+    writeFileSync(path.join(dir, 'AGENTS.md'), 'later');
+    const again = openManifest(dir);
+    again.before('AGENTS.md');
+    assert.equal(again.data.files['AGENTS.md'].original.sha256, createHash('sha256').update('first').digest('hex'));
+    assert.throws(() => again.before('src/index.js'), /not a path DevOPs writes/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('ownFile allows only the paths DevOPs writes', () => {
+  for (const key of ['AGENTS.md', 'CLAUDE.md', '.gitignore', HOOK_KEY, '.claude/hooks/x.sh', '.claude/skills/a/SKILL.md', '.workflow/profile.yml'])
+    assert.ok(ownFile(key), key);
+  for (const key of ['src/a.js', '.env', '.git/config', '.claude/settings.json', '.mcp.json', 'README.md', '.claude/hooks'])
+    assert.ok(!ownFile(key), key);
 });

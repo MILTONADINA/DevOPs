@@ -26,7 +26,7 @@ import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { linkAgileGraph } from './agile-graph.js';
-import { openManifest } from './install-manifest.js';
+import { ADOPTED_NOTICE, openManifest } from './install-manifest.js';
 import { UnsafeWriteError, backupIfChanged, copyInside, freshBackupStamp, mkdirInside, present, writeInside } from './safe-write.js';
 
 // specs/release/npm-package.md REQ-2: DEVOPS_ROOT if set, else the package this file
@@ -222,16 +222,22 @@ let record: ReturnType<typeof openManifest> | null = null;
 const keyOf = (root: string, file: string) => path.relative(root, file).split(path.sep).join('/');
 function recorded(root: string, file: string, write: () => void) {
   record?.before(keyOf(root, file));
-  write();
-  record?.after(keyOf(root, file));
+  try {
+    write();
+  } finally {
+    // After a failed write, save() still hashes whatever reached the disk.
+    if (record && fs.existsSync(file)) record.after(keyOf(root, file));
+  }
 }
 function startRecord(root: string) {
   record = openManifest(root);
-  process.on('exit', () => {
+  if (record.started && record.data.adopted) console.log(ADOPTED_NOTICE);
+  process.on('exit', code => {
     try {
       record?.save();
     } catch (error) {
       console.error(`devops: could not save the install manifest: ${(error as Error).message}`);
+      if (code === 0) process.exitCode = 1;
     }
   });
 }

@@ -10,7 +10,9 @@
 //             later upgrade's backup (REQ-F11) is never mistaken for it.
 //   written   the sha256 of what DevOPs last wrote there; null while a write
 //             that was announced has not been confirmed.
-// `dirs` lists the folders DevOPs created, deepest last.
+// `dirs` lists the folders DevOPs created, deepest last. `adopted` is true when
+// the manifest was started in a project an earlier DevOPs had installed into
+// without one: there, an `original` may be that earlier DevOPs's copy.
 //
 // The manifest sits in the project, so a cloned repository can commit one: every
 // path in it is checked before use, and a manifest of another schema is refused.
@@ -37,6 +39,18 @@ export function validKey(key) {
     && key.split('/').every(part => part !== '' && part !== '.' && part !== '..');
 }
 
+// Only where DevOPs writes. A committed manifest can therefore never name a
+// project source, a secret or Git's own files for a later uninstall.
+const OWN_FILES = new Set(['AGENTS.md', 'CLAUDE.md', '.gitignore', HOOK_KEY]);
+const OWN_TREES = ['.claude/skills/', '.claude/hooks/', '.claude/agents/', '.workflow/'];
+export function ownFile(key) {
+  return validKey(key) && (OWN_FILES.has(key) || OWN_TREES.some(tree => key.startsWith(tree)));
+}
+export function ownDir(key) {
+  return validKey(key) && ['.claude', '.claude/skills', '.claude/hooks', '.claude/agents', '.workflow'].includes(key)
+    || OWN_TREES.some(tree => validKey(key) && key.startsWith(tree));
+}
+
 /** Reads a regular file without following a link; null when it is missing. */
 function readRegular(file) {
   let fd;
@@ -57,7 +71,7 @@ function readRegular(file) {
 
 function parse(root) {
   const bytes = readRegular(path.join(root, MANIFEST));
-  if (bytes === null) return { schema_version: SCHEMA_VERSION, files: {}, dirs: [] };
+  if (bytes === null) return null;
   let data;
   try {
     data = JSON.parse(bytes.toString('utf8'));
@@ -67,10 +81,14 @@ function parse(root) {
   const plain = v => v !== null && typeof v === 'object' && !Array.isArray(v);
   const hex = v => typeof v === 'string' && /^[0-9a-f]{64}$/.test(v);
   const ok = plain(data) && data.schema_version === SCHEMA_VERSION && plain(data.files) && Array.isArray(data.dirs)
-    && Object.keys(data).every(k => ['schema_version', 'files', 'dirs'].includes(k))
-    && data.dirs.every(validKey)
-    && Object.entries(data.files).every(([key, entry]) => validKey(key) && plain(entry) && (entry.written === null || hex(entry.written))
-      && (entry.original === null || (plain(entry.original) && hex(entry.original.sha256) && validKey(entry.original.copy))));
+    && typeof data.adopted === 'boolean'
+    && Object.keys(data).every(k => ['schema_version', 'adopted', 'files', 'dirs'].includes(k))
+    && data.dirs.every(ownDir)
+    && Object.entries(data.files).every(([key, entry]) => ownFile(key) && plain(entry)
+      && Object.keys(entry).every(k => ['original', 'written'].includes(k))
+      && (entry.written === null || hex(entry.written))
+      && (entry.original === null || (plain(entry.original) && hex(entry.original.sha256)
+        && entry.original.copy === `${ORIGINALS}/${key}` && Object.keys(entry.original).length === 2)));
   if (!ok) throw new UnsafeWriteError(`${MANIFEST} has an unknown schema or a path outside the project; move it aside and run init again`);
   return data;
 }
@@ -80,11 +98,21 @@ function parse(root) {
  * write, `after(key)` just after it, and `save()` once at the end. `file` is the
  * file's real location when it is not `root/key` (the pre-commit hook).
  */
+export const ADOPTED_NOTICE = 'Install manifest: started in a project an earlier DevOPs installed into; files that release wrote are recorded as originals.';
+
 export function openManifest(root) {
   const base = path.resolve(root);
-  const data = parse(base);
+  // install.log is written by every init since F.06: its presence without a
+  // manifest means an earlier DevOPs installed here.
+  const found = parse(base);
+  const data = found ?? {
+    schema_version: SCHEMA_VERSION,
+    adopted: present(path.join(base, '.workflow/state/install.log')),
+    files: {},
+    dirs: [],
+  };
   const locate = (key, file) => {
-    if (!validKey(key)) throw new UnsafeWriteError(`invalid manifest path: ${key}`);
+    if (!ownFile(key)) throw new UnsafeWriteError(`not a path DevOPs writes: ${key}`);
     if (file) return file;
     const resolved = path.join(base, key);
     assertInside(base, resolved);
@@ -107,9 +135,11 @@ export function openManifest(root) {
         data.files[key] = { original: null, written: null };
         return;
       }
+      // A copy left by an earlier run (its manifest since lost) is the older truth.
       const copy = `${ORIGINALS}/${key}`;
-      if (!present(path.join(base, copy))) writeInside(base, copy, bytes, { exclusive: true });
-      data.files[key] = { original: { sha256: sha256(bytes), copy }, written: null };
+      const kept = readRegular(path.join(base, copy));
+      if (kept === null) writeInside(base, copy, bytes, { exclusive: true });
+      data.files[key] = { original: { sha256: sha256(kept ?? bytes), copy }, written: null };
     },
     after(key, file) {
       const bytes = readRegular(locate(key, file));
@@ -119,7 +149,8 @@ export function openManifest(root) {
     },
     /** Records a folder DevOPs is about to create (with mkdir -p) when it is absent. */
     dir(key) {
-      locate(key);
+      if (!ownDir(key)) throw new UnsafeWriteError(`not a folder DevOPs creates: ${key}`);
+      assertInside(base, path.join(base, key));
       const parts = key.split('/');
       for (let i = 1; i <= parts.length; i++) {
         const dir = parts.slice(0, i).join('/');
@@ -128,12 +159,21 @@ export function openManifest(root) {
     },
     // An entry whose write was never confirmed is dropped, unless `keepPending`
     // (a writer in another process confirms it later).
+    // A pending entry whose file is on disk gets its current hash, so a write that
+    // failed part-way still leaves the created file recorded.
     save({ keepPending = false } = {}) {
       if (!keepPending)
-        for (const [key, entry] of Object.entries(data.files)) if (entry.written === null && entry.original === null) delete data.files[key];
+        for (const [key, entry] of Object.entries(data.files)) {
+          if (entry.written !== null || key === HOOK_KEY) continue;
+          const bytes = readRegular(path.join(base, key));
+          if (bytes !== null) entry.written = sha256(bytes);
+          else if (entry.original === null) delete data.files[key];
+        }
       writeInside(base, MANIFEST, `${JSON.stringify(data, null, 2)}\n`);
     },
     data,
+    /** True when this call started the manifest (none was on disk). */
+    started: found === null,
   };
   // The manifest's own folders, recorded before anything is written into them.
   api.dir('.workflow/state');

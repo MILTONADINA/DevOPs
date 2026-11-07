@@ -9,7 +9,7 @@ import * as path from 'node:path';
 import { detectState } from './project-state.js';
 import { readmeCompliance } from './compliance.js';
 import { allDependencies } from './workspaces.js';
-import { openManifest } from './install-manifest.js';
+import { ADOPTED_NOTICE, openManifest } from './install-manifest.js';
 import { UnsafeWriteError, backupIfChanged, freshBackupStamp, mkdirInside, writeInside } from './safe-write.js';
 
 interface Profile {
@@ -424,6 +424,7 @@ function main() {
   // specs/release/npm-package.md REQ-15 (#353): analyze records profile.yml and
   // the folders it creates, so uninstall removes them too.
   const record = openManifest(process.cwd());
+  if (record.started && record.data.adopted) console.log(ADOPTED_NOTICE);
   record.dir('.workflow');
   mkdirInside(process.cwd(), '.workflow');
   // REQ-F11 (#349): keep a hand-edited profile. Only detected_at changes on a

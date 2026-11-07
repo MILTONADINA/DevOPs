@@ -203,9 +203,16 @@ the DevOPs pre-commit hook, THE SYSTEM SHALL record it in
 wrote, and the folders it created. WHEN it first writes a file that already existed, THE
 SYSTEM SHALL copy the existing bytes to `.workflow/state/originals/<path>` and record their
 sha256 as the file's `original`, and SHALL NOT change that `original` on a later run. IF
-the manifest has another `schema_version`, another key set or a path that is not
-project-relative, THEN THE SYSTEM SHALL refuse to run and change nothing. The
-`.mcp.json` entry that linking Agile Graph writes is not recorded yet (#353).
+the manifest has another `schema_version`, another key set, or a path that is not one
+DevOPs writes (`AGENTS.md`, `CLAUDE.md`, `.gitignore`, the hook, or a path under
+`.claude/skills/`, `.claude/hooks/`, `.claude/agents/` or `.workflow/`), or an `original`
+copy that is not its own `originals/<path>`, THEN THE SYSTEM SHALL refuse to run and change
+nothing. WHEN it starts the manifest in a project that already has
+`.workflow/state/install.log` (an earlier DevOPs installed there), THE SYSTEM SHALL set
+`adopted: true` and say so once, because an `original` recorded there may be that earlier
+DevOPs's copy. Backups (REQ-F11) and the `originals/` copies are DevOPs's own records and
+are not themselves recorded. The `.mcp.json` entry and the Agile Graph pin that linking
+writes are not recorded yet (#353).
 
 ## Acceptance criteria
 
@@ -390,7 +397,10 @@ user to create; and no step tells the user to run a command such as `/checkpoint
 run again after local edits **Then** every file they wrote is in the manifest with its
 current sha256, the `.gitignore` entry keeps the first run's `original` and its copy holds
 the original bytes, a dry run records nothing, and a committed manifest with a `..` or
-absolute path, another schema or an extra key makes analyze exit 1 without writing.
+absolute path, a path DevOPs does not write, a foreign `original` copy, another schema or
+an extra key makes analyze and init exit 1 without writing. A manifest started where an
+earlier DevOPs left `install.log` is `adopted`, and a creation whose write failed after the
+file appeared stays recorded.
 
 **Verified by:** `tests/install-manifest.test.mjs`.
 
