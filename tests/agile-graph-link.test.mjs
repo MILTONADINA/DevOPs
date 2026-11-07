@@ -140,15 +140,17 @@ test(`an unwritable .mcp.json leaves no pins behind and reports that nothing was
   });
 });
 
-test(`a failed .mcp.json write after the pins were copied takes the pins back (${SPEC}#ac-2)`, () => {
+test(`a .mcp.json link into a missing folder is refused before any pin is copied (${SPEC}#ac-2)`, () => {
   withSetup(setup => {
     setup.installEngine('project');
-    // A .mcp.json symlink into a missing folder: the folder above is writable, the write is not.
+    // A .mcp.json symlink into a missing folder used to fail only at the write, after
+    // the pins were copied. REQ-F10 now refuses the link before any write, so the
+    // project is left with neither half of the link.
     symlinkSync(path.join(setup.projectRoot, 'missing', 'mcp.json'), path.join(setup.projectRoot, '.mcp.json'));
     const result = link(setup);
     assert.equal(result.status, 'kept');
-    assert.match(result.lines.join('\n'), /could not write the link \(ENOENT\); not linked/);
-    assert.ok(!existsSync(path.join(setup.projectRoot, PIN_TARGET)), 'the copied pins were taken back');
+    assert.match(result.lines.join('\n'), /refusing to write through a symlink in the project: \.mcp\.json; left unchanged, not linked/);
+    assert.ok(!existsSync(path.join(setup.projectRoot, PIN_TARGET)), 'no pins are left behind');
   });
 });
 
@@ -416,4 +418,65 @@ test('the issue step runs under bash and keeps registry text on one line (specs/
   assert.ok(body.includes('`9.9.9 # injected`'));
   assert.equal((body.match(/```/g) ?? []).length, 2, 'only the fence itself may contain triple backticks');
   rmSync(dir, { recursive: true, force: true });
+});
+
+// specs/phase-2/F-skill-provenance.md REQ-F10, AC-F10.3: a committed symlink at
+// .mcp.json or .claude never sends the link's writes outside the project.
+test('AC-F10.3 a .mcp.json that links outside the project is left unchanged, and so is its target', () => {
+  withSetup(setup => {
+    setup.installEngine('project');
+    const outside = path.join(setup.dir, 'outside.json');
+    writeFileSync(outside, '{"outside":true}\n');
+    symlinkSync(outside, path.join(setup.projectRoot, '.mcp.json'));
+    const result = link(setup);
+    assert.equal(result.status, 'kept', result.lines.join('\n'));
+    assert.match(result.lines.join('\n'), /refusing to write through a symlink in the project: \.mcp\.json/);
+    assert.equal(readFileSync(outside, 'utf8'), '{"outside":true}\n');
+    assert.ok(!existsSync(path.join(setup.projectRoot, PIN_TARGET)), 'no pins copied for a refused link');
+  });
+});
+
+test('AC-F10.3 a .claude directory that links outside the project gets no pins, and .mcp.json is not written', () => {
+  withSetup(setup => {
+    setup.installEngine('project');
+    const outside = path.join(setup.dir, 'outside-claude');
+    mkdirSync(outside);
+    symlinkSync(outside, path.join(setup.projectRoot, '.claude'));
+    const result = link(setup);
+    assert.equal(result.status, 'kept', result.lines.join('\n'));
+    assert.match(result.lines.join('\n'), /refusing to write through a symlink in the project: \.claude/);
+    assert.deepEqual(readdirSync(outside), []);
+    assert.ok(!existsSync(path.join(setup.projectRoot, '.mcp.json')));
+  });
+});
+
+test('AC-F10.3 a dry run refuses a symlinked .mcp.json the same way and writes nothing', () => {
+  withSetup(setup => {
+    setup.installEngine('project');
+    const outside = path.join(setup.dir, 'outside.json');
+    writeFileSync(outside, '{}\n');
+    symlinkSync(outside, path.join(setup.projectRoot, '.mcp.json'));
+    const result = link(setup, { dryRun: true });
+    assert.equal(result.status, 'kept', result.lines.join('\n'));
+    assert.match(result.lines.join('\n'), /refusing to write through a symlink in the project: \.mcp\.json/);
+    assert.equal(readFileSync(outside, 'utf8'), '{}\n');
+  });
+});
+
+test('a directory at .mcp.json or at the pin path is left alone without throwing', () => {
+  withSetup(setup => {
+    setup.installEngine('project');
+    mkdirSync(path.join(setup.projectRoot, '.mcp.json'));
+    assert.equal(link(setup).status, 'kept');
+  });
+  withSetup(setup => {
+    setup.installEngine('project');
+    mkdirSync(path.join(setup.projectRoot, PIN_TARGET), { recursive: true });
+    for (const dryRun of [false, true]) {
+      const result = link(setup, { dryRun });
+      assert.equal(result.status, 'kept', result.lines.join('\n'));
+      assert.match(result.lines.join('\n'), /is not a regular file; left unchanged, not linked/);
+    }
+    assert.ok(!existsSync(path.join(setup.projectRoot, '.mcp.json')));
+  });
 });

@@ -7,6 +7,7 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { UnsafeWriteError, assertInside, writeInside } from './safe-write.js';
 
 export const ENGINE = '@agile-graph/engine';
 // The engine versions whose cloud-default tools are exactly the ones PIN_SOURCE pins,
@@ -74,6 +75,8 @@ export function serverEntry(via) {
 
 function readMcpJson(file) {
   if (!fs.existsSync(file)) return { config: {} };
+  // Only a regular file is read: a directory throws and a FIFO would block.
+  if (!fs.lstatSync(file).isFile()) return { error: true };
   try {
     const config = JSON.parse(fs.readFileSync(file, 'utf8'));
     const plain = value => value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -118,19 +121,31 @@ export function linkAgileGraph({
   }
 
   const mcpFile = path.join(projectRoot, '.mcp.json');
+  const pinTarget = path.join(projectRoot, PIN_TARGET);
+  // specs/phase-2/F-skill-provenance.md REQ-F10: a committed symlink at .mcp.json
+  // or .claude must not send the link's writes to a file outside the project.
+  try {
+    assertInside(projectRoot, mcpFile);
+    assertInside(projectRoot, pinTarget);
+  } catch (error) {
+    if (!(error instanceof UnsafeWriteError)) throw error;
+    return done('kept', `Agile Graph: ${error.message}; left unchanged, not linked.`);
+  }
   const { config, error } = readMcpJson(mcpFile);
   if (error) return done('kept', 'Agile Graph: .mcp.json could not be read as a JSON object; left unchanged, not linked.');
   if (config.mcpServers && Object.hasOwn(config.mcpServers, SERVER_KEY)) {
     return done('kept', `Agile Graph: .mcp.json already registers "${SERVER_KEY}"; left unchanged.`);
   }
   const pinSource = path.join(devopsRoot, PIN_SOURCE);
-  const pinTarget = path.join(projectRoot, PIN_TARGET);
   const copyPins = !fs.existsSync(pinTarget);
   if (!dryRun && (!writable(mcpFile) || (copyPins && !writable(pinTarget)))) {
     return done('kept', 'Agile Graph: .mcp.json or .claude/ is not writable; left unchanged, not linked.');
   }
 
   const lines = [];
+  if (!copyPins && !fs.lstatSync(pinTarget).isFile()) {
+    return done('kept', `Agile Graph: ${PIN_TARGET} is not a regular file; left unchanged, not linked.`);
+  }
   if (!copyPins) {
     const same = fs.readFileSync(pinTarget).equals(fs.readFileSync(pinSource));
     lines.push(same
@@ -149,11 +164,11 @@ export function linkAgileGraph({
   const next = { ...config, mcpServers: { ...(config.mcpServers ?? {}), [SERVER_KEY]: entry } };
   try {
     if (copyPins) {
-      fs.mkdirSync(path.dirname(pinTarget), { recursive: true });
-      fs.copyFileSync(pinSource, pinTarget, fs.constants.COPYFILE_EXCL);
+      // Create-only, never through a link (REQ-F10).
+      writeInside(projectRoot, pinTarget, fs.readFileSync(pinSource), { exclusive: true });
     }
     try {
-      fs.writeFileSync(mcpFile, `${JSON.stringify(next, null, 2)}\n`);
+      writeInside(projectRoot, mcpFile, `${JSON.stringify(next, null, 2)}\n`);
     } catch (error) {
       if (copyPins) fs.rmSync(pinTarget, { force: true });
       throw error;
