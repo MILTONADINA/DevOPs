@@ -2,7 +2,9 @@
 
 # Per-project state (never committed at the workflow repo level)
 .workflow/state/*
-# The exact lines `devops analyze` and `devops init` check for (#391).
+# Redundant with the line above, on purpose: analyze and init look for these exact
+# lines, and tests/analyze-entry.test.mjs runs analyze on this repository, which
+# would otherwise append them to this tracked file (#391).
 .workflow/state/install-manifest.json
 .workflow/state/originals/
 .workflow/proofs/*

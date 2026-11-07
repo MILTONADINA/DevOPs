@@ -94,11 +94,13 @@ test(`a dry run writes no manifest (${SPEC}#ac-20)`, () => {
   withProject(dir => {
     assert.equal(devops(dir, 'analyze').status, 0);
     const analyzed = manifestOf(dir);
-    const originals = listFiles(path.join(dir, ORIGINALS));
+    const originalsDir = path.join(dir, ORIGINALS);
+    const copies = () => listFiles(originalsDir).map(f => [f, sha(path.join(originalsDir, f))]);
+    const originals = copies();
     const r = devops(dir, 'init', '--no-agile-graph', '--dry-run', ...UNSIGNED);
     assert.equal(r.status, 0, r.stderr);
     assert.deepEqual(manifestOf(dir), analyzed, 'only analyze recorded anything');
-    assert.deepEqual(listFiles(path.join(dir, ORIGINALS)), originals, 'the dry run copied no original');
+    assert.deepEqual(copies(), originals, 'the dry run copied or changed no original');
   });
 });
 
@@ -117,6 +119,19 @@ test(`analyze alone adds the manifest lines to .gitignore once and uninstall res
     const u = devops(dir, 'uninstall');
     assert.equal(u.status, 0, u.stdout + u.stderr);
     assert.equal(readFileSync(path.join(dir, '.gitignore'), 'utf8'), GITIGNORE);
+  });
+});
+
+test(`analyze creates a .gitignore when there is none and uninstall removes it (${SPEC}#ac-12)`, () => {
+  withProject(dir => {
+    rmSync(path.join(dir, '.gitignore'));
+    assert.equal(devops(dir, 'analyze').status, 0);
+    assert.equal(readFileSync(path.join(dir, '.gitignore'), 'utf8'),
+      '.workflow/state/install-manifest.json\n.workflow/state/originals/\n');
+    assert.equal(manifestOf(dir).files['.gitignore'].original, null, 'DevOPs created it');
+    const u = devops(dir, 'uninstall');
+    assert.equal(u.status, 0, u.stdout + u.stderr);
+    assert.ok(!existsSync(path.join(dir, '.gitignore')));
   });
 });
 

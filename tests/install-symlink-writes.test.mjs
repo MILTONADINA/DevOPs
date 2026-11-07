@@ -78,6 +78,14 @@ test('AC-F10.1 init refuses a .gitignore that links outside the project', () => 
   });
 });
 
+test('AC-F10.1 devops-analyze refuses a .gitignore that links outside the project (#391)', () => {
+  withProject(({ target, victim, analyze }) => {
+    symlinkSync(victim, path.join(target, '.gitignore'));
+    assertRefused(analyze());
+    assert.equal(readFileSync(victim, 'utf8'), ORIGINAL);
+  });
+});
+
 test('AC-F10.1 devops-analyze refuses a .workflow directory that links outside the project', () => {
   withProject(({ target, outside, analyze }) => {
     rmSync(path.join(target, '.workflow'), { recursive: true });
