@@ -145,6 +145,14 @@ The deploy and sealed-ref PreToolUse wrappers now block the call (exit 2) when `
 
 **Action:** make sure `jq` is installed wherever Claude Code runs these hooks, then run `devops init` to copy the updated hooks. `block-prod-write.sh` now accepts only a JSON approval for the exact command from the last five minutes, so record approvals in that form.
 
+## Upgrading from 0.6.1 to 0.6.2
+
+### No writes through project symlinks
+
+`devops init`, `devops-analyze`, `scripts/graph-blocked.sh` and `scripts/graph-preflight.mjs` refuse to write, append or change a file's mode through a symlink inside the project, and no longer follow it to a file outside the project (GHSA-rm9j-37wp-mwc3). A project that commits a symlink at `.claude`, `.claude/hooks/<hook>`, `.gitignore`, `.workflow` or `.workflow/profile.yml` now gets exit 1 naming the link.
+
+**Action:** if `devops init` or `devops-analyze` names a symlink, replace it with a regular file or directory and run the command again.
+
 ## Pre-upgrade checklist
 
 - [ ] Review this guide for breaking changes that affect your setup.
