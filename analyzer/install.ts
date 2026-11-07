@@ -499,12 +499,12 @@ function main() {
     console.log('Next steps:');
     console.log('  1. Adjust `.workflow/state/budget.yml` for the project budget');
     console.log(`  2. For client work, create \`.workflow/client/profile.yml\`; ${packageRef('docs/CLIENT_ONBOARDING.md')} lists its fields`);
-    console.log(`  3. At session end, write the baton as ${packageRef('slash-commands/universal/checkpoint.md')} describes (the /checkpoint command of the DevOPs Claude Code plugin)`);
+    console.log(`  3. At session end, write the baton as ${packageRef('slash-commands/universal/checkpoint.md')} describes (with the DevOPs Claude Code plugin installed, its /checkpoint command does this)`);
     console.log('');
     console.log('First steps in the agent:');
     console.log(`  1. Read ${[...constitutionRefs.values()].join(', ')}`);
     console.log('  2. Create specs/ and write your first spec there');
-    console.log(`  3. Convert prose to EARS as ${packageRef('slash-commands/universal/ears-spec.md')} describes (the plugin's /ears-spec command)`);
+    console.log(`  3. Convert prose to EARS as ${packageRef('slash-commands/universal/ears-spec.md')} describes (with the plugin installed, its /ears-spec command does this)`);
   }
 }
 

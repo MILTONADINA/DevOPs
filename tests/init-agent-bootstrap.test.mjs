@@ -176,29 +176,43 @@ test(`init keeps an existing CLAUDE.md and a dry run writes nothing (${SPEC}#ac-
 });
 
 // specs/release/npm-package.md REQ-14, AC-19 (#352): the printed steps name only
-// files that exist, in the project or in the package.
+// files that exist, in the project or in the package as npm ships it.
+const PKG = JSON.parse(readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
+// True when package.json `files` ships `p` (an entry is a file, or a folder ending in /).
+function shipped(p) {
+  const hit = entry => entry.endsWith('/') ? p.startsWith(entry) : p === entry;
+  return PKG.files.some(e => !e.startsWith('!') && hit(e)) && !PKG.files.some(e => e.startsWith('!') && hit(e.slice(1)));
+}
 function printedSteps(stdout) {
   const start = stdout.indexOf('Next steps:');
   assert.ok(start >= 0, stdout);
   return stdout.slice(start);
 }
-for (const relative of ['node_modules/@miltonadina/devops', null]) {
-  test(`init's printed steps name only files that exist (${relative ?? 'package outside the project'}) (${SPEC}#ac-19)`, () => {
+const PACKAGE_DIR = 'node_modules/@miltonadina/devops';
+for (const inside of [true, false]) {
+  test(`init's printed steps name only files that exist (${inside ? 'package in the project' : 'package outside the project'}) (${SPEC}#ac-19)`, () => {
     withProject(dir => {
-      const root = relative ? installPackage(dir, relative) : ROOT;
-      if (relative) for (const name of ['docs/CLIENT_ONBOARDING.md', 'slash-commands/universal']) cpSync(path.join(ROOT, name), path.join(root, name), { recursive: true });
-      const steps = printedSteps(init(dir, [], relative ? undefined : ROOT));
-      const named = [...steps.matchAll(/`([^`\s]+)`(?! in the `@miltonadina\/devops` package)/g)].map(m => m[1])
-        .filter(p => p.includes('/') && p !== '@miltonadina/devops');
-      const inPackage = [...steps.matchAll(/`([^`\s]+)` in the `@miltonadina\/devops` package/g)].map(m => m[1]);
-      assert.ok(named.length + inPackage.length >= 5, steps);
-      for (const p of named) {
+      if (inside) installPackage(dir, PACKAGE_DIR);
+      const steps = printedSteps(init(dir, [], inside ? undefined : ROOT));
+      const files = [...steps.matchAll(/`([^`\s]+)`/g)].map(m => m[1])
+        .filter(p => p !== '@miltonadina/devops' && (p.includes('/') || /\.(md|ya?ml|json|sh)$/.test(p)));
+      assert.ok(files.length >= 6, steps);
+      let fromPackage = 0;
+      for (const p of files) {
         if (p === '.workflow/client/profile.yml') continue; // the step says to create it
-        assert.ok(existsSync(path.join(dir, p)), `${p} exists from the project:\n${steps}`);
+        const inPackage = inside && p.startsWith(`${PACKAGE_DIR}/`) ? p.slice(PACKAGE_DIR.length + 1)
+          : !inside && steps.includes(`\`${p}\` in the \`@miltonadina/devops\` package`) ? p : null;
+        if (inPackage === null) {
+          assert.ok(existsSync(path.join(dir, p)), `${p} exists in the project:\n${steps}`);
+        } else {
+          fromPackage++;
+          assert.ok(existsSync(path.join(ROOT, inPackage)) && shipped(inPackage), `${inPackage} ships in the package:\n${steps}`);
+        }
       }
-      for (const p of inPackage) assert.ok(existsSync(path.join(ROOT, p)), `${p} ships in the package`);
-      if (!relative) assert.ok(inPackage.length >= 5, `an outside package is named as such:\n${steps}`);
-      assert.doesNotMatch(steps, /\bRun \/[a-z-]+/, 'no step says to run a command init did not install');
+      assert.ok(fromPackage >= 5, `the constitution and command files are named in the package:\n${steps}`);
+      // Init installs no slash commands: a command is named only with the plugin it needs.
+      for (const line of steps.split('\n').filter(l => /(^|[\s(])\/[a-z][a-z-]+\b/.test(l)))
+        assert.match(line, /with the (DevOPs Claude Code )?plugin installed/, line);
     });
   });
 }
