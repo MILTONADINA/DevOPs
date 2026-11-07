@@ -9,6 +9,7 @@ import * as path from 'node:path';
 import { detectState } from './project-state.js';
 import { readmeCompliance } from './compliance.js';
 import { allDependencies } from './workspaces.js';
+import { UnsafeWriteError, mkdirInside, writeInside } from './safe-write.js';
 
 interface Profile {
   detected_at: string;
@@ -418,8 +419,9 @@ function main() {
 
   const profile: Profile = { ...partial, recommended: recommend(partial) };
 
-  fs.mkdirSync('.workflow', { recursive: true });
-  fs.writeFileSync('.workflow/profile.yml', toYaml(profile));
+  // specs/phase-2/F-skill-provenance.md REQ-F10: never through a symlink.
+  mkdirInside(process.cwd(), '.workflow');
+  writeInside(process.cwd(), '.workflow/profile.yml', toYaml(profile));
   console.log('Wrote .workflow/profile.yml');
   console.log(`State: ${state}${stateNote ? ` (${stateNote})` : ''}`);
   console.log(`Languages: ${stack.language.length === 0
@@ -447,4 +449,10 @@ function toYaml(obj: unknown, indent = 0): string {
   return String(obj);
 }
 
-main();
+try {
+  main();
+} catch (error) {
+  if (!(error instanceof UnsafeWriteError)) throw error;
+  console.error(`devops: ${error.message}`);
+  process.exit(1);
+}

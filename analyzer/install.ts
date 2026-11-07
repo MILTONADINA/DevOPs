@@ -26,6 +26,7 @@ import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { linkAgileGraph } from './agile-graph.js';
+import { UnsafeWriteError, copyInside, mkdirInside, present, writeInside } from './safe-write.js';
 
 // specs/release/npm-package.md REQ-2: DEVOPS_ROOT if set, else the package this file
 // ships in (analyzer/ sits directly under the package root).
@@ -185,7 +186,6 @@ function logDecision(targetRoot: string, decision: 'pass' | 'fail' | 'overridden
                      rationale: string | null, dryRun: boolean) {
   if (dryRun) return; // F.07: dry-run does not mutate
   const logPath = path.join(targetRoot, '.workflow/state/install.log');
-  fs.mkdirSync(path.dirname(logPath), { recursive: true });
   const entry: Record<string, unknown> = {
     timestamp: new Date().toISOString(),
     skill_path: skillPath,
@@ -194,23 +194,24 @@ function logDecision(targetRoot: string, decision: 'pass' | 'fail' | 'overridden
   };
   if (signedBy) entry.signed_by = signedBy;
   if (rationale && decision === 'overridden') entry.rationale = rationale;
-  fs.appendFileSync(logPath, JSON.stringify(entry) + '\n');
+  writeInside(targetRoot, logPath, JSON.stringify(entry) + '\n', { append: true });
 }
 
 // ─── copy primitives (preserved) ─────────────────────────────────────────
 
-function copy(src: string, dst: string) {
-  fs.mkdirSync(path.dirname(dst), { recursive: true });
-  fs.copyFileSync(src, dst);
+// specs/phase-2/F-skill-provenance.md REQ-F10: every destination is inside
+// `root`, and no write, append or mode change follows a symlink out of it.
+function copy(root: string, src: string, dst: string, mode?: number) {
+  copyInside(root, src, dst, mode);
 }
 
-function copyDir(src: string, dst: string) {
-  fs.mkdirSync(dst, { recursive: true });
+function copyDir(root: string, src: string, dst: string) {
+  mkdirInside(root, dst);
   for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
     const s = path.join(src, entry.name);
     const d = path.join(dst, entry.name);
-    if (entry.isDirectory()) copyDir(s, d);
-    else copy(s, d);
+    if (entry.isDirectory()) copyDir(root, s, d);
+    else copy(root, s, d);
   }
 }
 
@@ -280,32 +281,32 @@ function main() {
   // verification-gated artifacts.
   const srcAgents = path.join(DEVOPS_ROOT, 'AGENTS.md');
   const targetAgents = path.join(PROJECT_ROOT, 'AGENTS.md');
-  if (!fs.existsSync(targetAgents) && fs.existsSync(srcAgents)) {
+  if (!present(targetAgents) && fs.existsSync(srcAgents)) {
     if (!flags.dryRun) {
       const agents = fs.readFileSync(srcAgents, 'utf-8').replace(
         /`(constitution\/(?:PRINCIPLES|ANTIPATTERNS|LOOP)\.md)`/g,
         (_match, file) => constitutionRefs.get(file)!,
       );
-      fs.writeFileSync(targetAgents, agents);
+      writeInside(PROJECT_ROOT, targetAgents, agents);
     }
     console.log(flags.dryRun ? 'would install: AGENTS.md' : '✓ Installed AGENTS.md');
-  } else if (fs.existsSync(targetAgents)) {
+  } else if (present(targetAgents)) {
     console.log('⚠ AGENTS.md already exists; not overwriting');
   }
   // specs/release/npm-package.md REQ-11: consumers get a short adapter template, not
   // this repository's own development CLAUDE.md.
   const srcClaude = path.join(DEVOPS_ROOT, 'templates/claude-md/CLAUDE_TEMPLATE.md');
   const targetClaude = path.join(PROJECT_ROOT, 'CLAUDE.md');
-  if (!fs.existsSync(targetClaude) && fs.existsSync(srcClaude)) {
+  if (!present(targetClaude) && fs.existsSync(srcClaude)) {
     if (!flags.dryRun) {
       const claude = fs.readFileSync(srcClaude, 'utf-8').replace(
         /\{\{(constitution\/(?:PRINCIPLES|ANTIPATTERNS|LOOP)\.md)\}\}/g,
         (_match, file) => constitutionRefs.get(file)!,
       );
-      fs.writeFileSync(targetClaude, claude);
+      writeInside(PROJECT_ROOT, targetClaude, claude);
     }
     console.log(flags.dryRun ? 'would install: CLAUDE.md' : '✓ Installed CLAUDE.md');
-  } else if (fs.existsSync(targetClaude)) {
+  } else if (present(targetClaude)) {
     console.log('⚠ CLAUDE.md already exists; not overwriting');
   }
 
@@ -318,7 +319,7 @@ function main() {
       console.log('dry-run: would add AGENTS.override.md to .gitignore');
     } else {
       const eol = ignored.match(/\r?\n/)?.[0] ?? '\n';
-      fs.appendFileSync(gitignore, `${ignored && !ignored.endsWith('\n') ? eol : ''}AGENTS.override.md${eol}`);
+      writeInside(PROJECT_ROOT, gitignore, `${ignored && !ignored.endsWith('\n') ? eol : ''}AGENTS.override.md${eol}`, { append: true });
       console.log('✓ Added AGENTS.override.md to .gitignore');
     }
   }
@@ -362,7 +363,7 @@ function main() {
       continue;
     }
     const dst = path.join(PROJECT_ROOT, '.claude/skills', path.basename(s));
-    copyDir(srcSkillDir, dst);
+    copyDir(PROJECT_ROOT, srcSkillDir, dst);
   }
 
   // F.03: if any skill failed and no override, exit 2.
@@ -387,7 +388,7 @@ function main() {
       console.error(`required graph hook companion missing: ${companion}`);
       process.exit(1);
     }
-    if (!flags.dryRun) copy(src, path.join(PROJECT_ROOT, '.claude/hooks', companion));
+    if (!flags.dryRun) copy(PROJECT_ROOT, src, path.join(PROJECT_ROOT, '.claude/hooks', companion));
   }
   // REQ-M30: the new-dependency hook also invokes a fixed sibling companion.
   if (hooks.includes('universal/pre-tool/block-new-dependency.sh')) {
@@ -397,7 +398,7 @@ function main() {
       console.error(`required hook companion missing: ${companion}`);
       process.exit(1);
     }
-    if (!flags.dryRun) copy(src, path.join(PROJECT_ROOT, '.claude/hooks', companion));
+    if (!flags.dryRun) copy(PROJECT_ROOT, src, path.join(PROJECT_ROOT, '.claude/hooks', companion));
   }
   let hooksInstalled = 0;
   for (const h of hooks) {
@@ -405,8 +406,7 @@ function main() {
     if (!fs.existsSync(src)) continue;
     if (!flags.dryRun) {
       const dst = path.join(PROJECT_ROOT, '.claude/hooks', path.basename(h));
-      copy(src, dst);
-      try { fs.chmodSync(dst, 0o755); } catch { /* best-effort on Windows */ }
+      copy(PROJECT_ROOT, src, dst, 0o755);
     }
     hooksInstalled++;
   }
@@ -416,20 +416,20 @@ function main() {
     if (!fs.existsSync(src)) continue;
     if (!flags.dryRun) {
       const dst = path.join(PROJECT_ROOT, '.claude/agents', `${a}.md`);
-      copy(src, dst);
+      copy(PROJECT_ROOT, src, dst);
     }
     subagentsInstalled++;
   }
 
   if (!flags.dryRun) {
-    fs.mkdirSync(path.join(PROJECT_ROOT, '.workflow/state'), { recursive: true });
-    fs.mkdirSync(path.join(PROJECT_ROOT, '.workflow/proofs'), { recursive: true });
-    fs.mkdirSync(path.join(PROJECT_ROOT, '.workflow/memory'), { recursive: true });
-    fs.mkdirSync(path.join(PROJECT_ROOT, '.workflow/client'), { recursive: true });
+    mkdirInside(PROJECT_ROOT, path.join(PROJECT_ROOT, '.workflow/state'));
+    mkdirInside(PROJECT_ROOT, path.join(PROJECT_ROOT, '.workflow/proofs'));
+    mkdirInside(PROJECT_ROOT, path.join(PROJECT_ROOT, '.workflow/memory'));
+    mkdirInside(PROJECT_ROOT, path.join(PROJECT_ROOT, '.workflow/client'));
     const srcBudget = path.join(DEVOPS_ROOT, 'cost-controls/budget.yml');
     const dstBudget = path.join(PROJECT_ROOT, '.workflow/state/budget.yml');
-    if (!fs.existsSync(dstBudget) && fs.existsSync(srcBudget)) {
-      copy(srcBudget, dstBudget);
+    if (!present(dstBudget) && fs.existsSync(srcBudget)) {
+      copy(PROJECT_ROOT, srcBudget, dstBudget);
     }
   }
 
@@ -464,4 +464,10 @@ function main() {
   }
 }
 
-main();
+try {
+  main();
+} catch (error) {
+  if (!(error instanceof UnsafeWriteError)) throw error;
+  console.error(`devops: ${error.message}`);
+  process.exit(1);
+}

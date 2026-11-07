@@ -8,6 +8,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Security
+
+- `devops init`, `devops-analyze` and the graph record writers no longer write, append or change a file's mode through a symlink the project commits. A write is refused when any part of its path below the project root is a symlink, the file is opened without following a link, and hooks are made executable on the open file. Before this, a repository with a symlinked hook, `AGENTS.md`, `.gitignore` or `.workflow` could make DevOPs overwrite or `chmod 755` a file outside the project.
+
 ## [0.6.1] — 2026-11-06
 
 ### Security

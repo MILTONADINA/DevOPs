@@ -9,6 +9,14 @@ import { createHash } from 'node:crypto';
 const ROOT = path.resolve(import.meta.dirname, '..');
 const STATE = path.join(ROOT, '.workflow', 'state');
 const REPORT = path.resolve(process.env.GRAPH_PREFLIGHT_REPORT || path.join(STATE, 'preflight.json'));
+// specs/phase-2/F-skill-provenance.md REQ-F10: the report goes to a fresh
+// exclusive temporary file and is renamed over REPORT, so a symlink planted at
+// either name is replaced or refused, never written through.
+const writeReport = (report) => {
+  const temporary = `${REPORT}.${process.pid}.tmp`;
+  writeFileSync(temporary, `${JSON.stringify(report, null, 2)}\n`, { mode: 0o600, flag: 'wx' });
+  renameSync(temporary, REPORT);
+};
 const REGISTRY = path.resolve(process.env.GRAPH_PREFLIGHT_REGISTRY || path.join(ROOT, 'governance', 'graph', 'preflight-remediations.yml'));
 const checks = [];
 const run = (file, args, timeout = 5000) => spawnSync(file, args, { cwd: ROOT, encoding: 'utf8', timeout });
@@ -396,7 +404,7 @@ function main() {
   const status = checks.some((check) => check.status === 'fail') ? 'needs_human'
     : checks.some((check) => check.status === 'fixed') ? 'remediated' : 'ready';
   const report = { schema_version: 1, ran_at: new Date().toISOString(), git_sha: sha, status, checks };
-  writeFileSync(REPORT, `${JSON.stringify(report, null, 2)}\n`, { mode: 0o600 });
+  writeReport(report);
   if (process.argv.includes('--json')) process.stdout.write(`${JSON.stringify(report)}\n`);
   else for (const check of checks) process.stdout.write(`${check.status === 'pass' ? '✓' : ['skipped', 'fixed'].includes(check.status) ? '!' : '✗'} ${check.id}: ${check.evidence}\n`);
   process.exitCode = status === 'ready' ? 0 : status === 'remediated' ? 10 : 20;
@@ -407,7 +415,7 @@ catch (error) {
   const report = { schema_version: 1, ran_at: new Date().toISOString(), git_sha: null, status: 'error', checks, error: error.message };
   try {
     if (REPORT.startsWith(`${ROOT}${path.sep}`) && realpathSync(path.dirname(REPORT)).startsWith(`${ROOT}${path.sep}`)) {
-      writeFileSync(REPORT, `${JSON.stringify(report, null, 2)}\n`, { mode: 0o600 });
+      writeReport(report);
     }
   } catch { /* report path unavailable */ }
   process.stderr.write(`graph-preflight: ${error.message}\n`);

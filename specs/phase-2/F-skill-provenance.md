@@ -58,6 +58,9 @@ THE SYSTEM SHALL accept a skill signature only from a certificate whose identity
 ### REQ-F9 (Unwanted behaviour) — Unverifiable signatures fail closed
 IF a skill has a `.sig` but its signature cannot be verified, because the `.bundle` is missing or cosign is absent, fails to start, times out or is killed, THEN THE SYSTEM SHALL refuse the skill as in REQ-F2 and SHALL name the `--allow-unsigned --rationale="..."` opt-out. The manifest hash does not stand in for the signature, because the manifest ships in the same package as the skill.
 
+### REQ-F10 (Unwanted behaviour) — No write through a project symlink
+IF a destination that `devops init`, `devops-analyze`, `scripts/graph-blocked.sh` or `scripts/graph-preflight.mjs` writes, appends to or changes the mode of is a symlink, or has a symlinked component below the project root, THEN THE SYSTEM SHALL refuse it or replace the link, and SHALL NOT write to, append to or change the mode of the file the link points at.
+
 ---
 
 ## Acceptance criteria
@@ -106,6 +109,16 @@ IF a skill has a `.sig` but its signature cannot be verified, because the `.bund
 **Given** a signed skill and no cosign, a cosign that is killed before it answers, or no `.bundle`
 **When** the installer runs without `--allow-unsigned`
 **Then** it exits 2, copies nothing and logs `decision: fail`; with `--allow-unsigned --rationale="..."` it copies the skill and logs `decision: overridden`.
+
+### AC-F10.1 (maps to REQ-F10)
+**Given** a project that commits a symlink pointing outside it at `.claude/hooks/<hook>`, `.claude`, `.gitignore`, `.workflow` or `.workflow/profile.yml`, or a dangling `AGENTS.md` link
+**When** `devops init` or `devops-analyze` runs
+**Then** it exits 1 naming the symlink (or, for the existing `AGENTS.md`, does not overwrite it), and the file outside the project keeps its bytes and mode.
+
+### AC-F10.2 (maps to REQ-F10)
+**Given** a symlink to a file outside the project at `.workflow/state/events.jsonl` or at the preflight report path
+**When** `scripts/graph-blocked.sh` or `scripts/graph-preflight.mjs` writes its record
+**Then** the file outside the project keeps its bytes.
 
 ---
 
@@ -176,6 +189,8 @@ Step 3 atomization will likely produce: (1) extend `analyzer/install.ts` with ve
 | REQ-F7 | AC-F7.1 | (Phase 2 implementation) |
 | REQ-F8 | AC-F8.1 | tests/install-signature.test.mjs |
 | REQ-F9 | AC-F9.1 | tests/install-signature.test.mjs, scripts/package-smoke.sh |
+| REQ-F10 | AC-F10.1 | `tests/install-symlink-writes.test.mjs` |
+| REQ-F10 | AC-F10.2 | `tests/graph-resilience/blocked.test.mjs`, `tests/graph-resilience/preflight.test.mjs` |
 
 The Phase 2 spec-authoring claim for this spec is `claim-2026-05-22-022`.
 
