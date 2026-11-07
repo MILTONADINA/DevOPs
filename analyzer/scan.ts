@@ -9,7 +9,7 @@ import * as path from 'node:path';
 import { detectState } from './project-state.js';
 import { readmeCompliance } from './compliance.js';
 import { allDependencies } from './workspaces.js';
-import { UnsafeWriteError, mkdirInside, writeInside } from './safe-write.js';
+import { UnsafeWriteError, backupIfChanged, backupStamp, mkdirInside, writeInside } from './safe-write.js';
 
 interface Profile {
   detected_at: string;
@@ -421,8 +421,15 @@ function main() {
 
   // specs/phase-2/F-skill-provenance.md REQ-F10: never through a symlink.
   mkdirInside(process.cwd(), '.workflow');
-  writeInside(process.cwd(), '.workflow/profile.yml', toYaml(profile));
+  // REQ-F11 (#349): keep a hand-edited profile. Only detected_at changes on a
+  // plain re-run, so it is ignored when deciding whether the file was edited.
+  const yaml = toYaml(profile);
+  const undated = (b: Buffer) => b.toString('utf8').replace(/^detected_at: .*$/m, '');
+  const backup = backupIfChanged(process.cwd(), '.workflow/profile.yml', yaml, backupStamp(),
+    (a: Buffer, b: Buffer) => undated(a) === undated(b));
+  writeInside(process.cwd(), '.workflow/profile.yml', yaml);
   console.log('Wrote .workflow/profile.yml');
+  if (backup) console.log(`↻ Replaced .workflow/profile.yml; the previous copy is in ${backup}`);
   console.log(`State: ${state}${stateNote ? ` (${stateNote})` : ''}`);
   console.log(`Languages: ${stack.language.length === 0
     ? 'none detected (no manifest and no source files with known extensions). Run it from the project root or add package.json, pyproject.toml, Cargo.toml or go.mod.'

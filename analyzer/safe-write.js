@@ -100,3 +100,49 @@ export function writeInside(
 export function copyInside(root, src, dst, mode) {
   writeInside(root, dst, fs.readFileSync(src), { mode });
 }
+
+/**
+ * specs/phase-2/F-skill-provenance.md REQ-F11 (#349): before init or analyze
+ * replaces a regular file inside the project whose bytes differ from `data`,
+ * copy it to `.workflow/state/backups/<stamp>/<path inside the project>` and
+ * return that backup's path relative to the project; otherwise return null.
+ * A missing file, or one that is not a regular file (writeInside refuses
+ * those), needs no backup. `same(current, data)` decides whether the bytes
+ * differ (default: byte equality).
+ */
+export function backupIfChanged(root, target, data, stamp, same = (a, b) => a.equals(b)) {
+  const base = path.resolve(root);
+  const file = path.resolve(base, target);
+  assertInside(base, file);
+  let fd;
+  try {
+    fd = fs.openSync(file, fs.constants.O_RDONLY | NOFOLLOW);
+  } catch (error) {
+    if (error.code === 'ENOENT' || error.code === 'ELOOP') return null;
+    throw error;
+  }
+  let current, mode;
+  try {
+    const stat = fs.fstatSync(fd);
+    if (!stat.isFile()) return null;
+    mode = stat.mode & 0o777;
+    current = fs.readFileSync(fd);
+  } finally {
+    fs.closeSync(fd);
+  }
+  if (same(current, Buffer.isBuffer(data) ? data : Buffer.from(data))) return null;
+  return writeBackup(base, path.relative(base, file), current, mode, stamp);
+}
+
+/** Writes `bytes` as the backup of `name` for this run and returns its path in the project. */
+export function writeBackup(root, name, bytes, mode, stamp) {
+  if (!/^[0-9TZ-]+$/.test(stamp)) throw new UnsafeWriteError(`invalid backup stamp: ${stamp}`);
+  const backup = path.join('.workflow/state/backups', stamp, name);
+  writeInside(root, backup, bytes, { mode });
+  return backup.split(path.sep).join('/');
+}
+
+/** A UTC timestamp usable as a directory name, e.g. 2026-11-07T05-30-00Z. */
+export function backupStamp(date = new Date()) {
+  return date.toISOString().replace(/\.\d+Z$/, 'Z').replace(/:/g, '-');
+}
