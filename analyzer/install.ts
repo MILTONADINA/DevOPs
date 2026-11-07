@@ -26,6 +26,7 @@ import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { linkAgileGraph } from './agile-graph.js';
+import { ADOPTED_NOTICE, openManifest } from './install-manifest.js';
 import { UnsafeWriteError, backupIfChanged, copyInside, freshBackupStamp, mkdirInside, present, writeInside } from './safe-write.js';
 
 // specs/release/npm-package.md REQ-2: DEVOPS_ROOT if set, else the package this file
@@ -194,7 +195,7 @@ function logDecision(targetRoot: string, decision: 'pass' | 'fail' | 'overridden
   };
   if (signedBy) entry.signed_by = signedBy;
   if (rationale && decision === 'overridden') entry.rationale = rationale;
-  writeInside(targetRoot, logPath, JSON.stringify(entry) + '\n', { append: true });
+  recorded(targetRoot, logPath, () => writeInside(targetRoot, logPath, JSON.stringify(entry) + '\n', { append: true }));
 }
 
 // ─── copy primitives (preserved) ─────────────────────────────────────────
@@ -213,9 +214,37 @@ function runBackupStamp(root: string): string {
 }
 const backedUp: string[] = [];
 
+// specs/release/npm-package.md REQ-15 (#353): every file a real (not dry) run
+// writes is recorded in .workflow/state/install-manifest.json, so uninstall can
+// remove it and restore what was there. Saved when the process ends, even on an
+// early exit, so a half-finished run is still recorded.
+let record: ReturnType<typeof openManifest> | null = null;
+const keyOf = (root: string, file: string) => path.relative(root, file).split(path.sep).join('/');
+function recorded(root: string, file: string, write: () => void) {
+  record?.before(keyOf(root, file));
+  try {
+    write();
+  } finally {
+    // After a failed write, save() still hashes whatever reached the disk.
+    if (record && fs.existsSync(file)) record.after(keyOf(root, file));
+  }
+}
+function startRecord(root: string) {
+  record = openManifest(root);
+  if (record.started && record.data.adopted) console.log(ADOPTED_NOTICE);
+  process.on('exit', code => {
+    try {
+      record?.save();
+    } catch (error) {
+      console.error(`devops: could not save the install manifest: ${(error as Error).message}`);
+      if (code === 0) process.exitCode = 1;
+    }
+  });
+}
+
 function copy(root: string, src: string, dst: string, mode?: number) {
   const backup = backupIfChanged(root, dst, fs.readFileSync(src), runBackupStamp(root));
-  copyInside(root, src, dst, mode);
+  recorded(root, dst, () => copyInside(root, src, dst, mode));
   if (backup) {
     backedUp.push(backup);
     console.log(`↻ Replaced ${path.relative(root, dst).split(path.sep).join('/')}; the previous copy is in ${backup}`);
@@ -223,6 +252,7 @@ function copy(root: string, src: string, dst: string, mode?: number) {
 }
 
 function copyDir(root: string, src: string, dst: string) {
+  record?.dir(keyOf(root, dst));
   mkdirInside(root, dst);
   for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
     const s = path.join(src, entry.name);
@@ -263,6 +293,7 @@ function extractList(text: string, sectionKey: string): string[] {
 function main() {
   const flags = parseFlags(process.argv.slice(2));
   const PROJECT_ROOT = flags.target;
+  if (!flags.dryRun) startRecord(PROJECT_ROOT);
   const manifest = loadManifest(flags.manifestPath);
   const manifestByName = new Map(manifest.map(e => [e.name, e]));
   const manifestByPath = new Map(manifest.map(e => [e.path, e]));
@@ -305,7 +336,7 @@ function main() {
         /`(constitution\/(?:PRINCIPLES|ANTIPATTERNS|LOOP)\.md)`/g,
         (_match, file) => constitutionRefs.get(file)!,
       );
-      writeInside(PROJECT_ROOT, targetAgents, agents);
+      recorded(PROJECT_ROOT, targetAgents, () => writeInside(PROJECT_ROOT, targetAgents, agents));
     }
     console.log(flags.dryRun ? 'would install: AGENTS.md' : '✓ Installed AGENTS.md');
   } else if (present(targetAgents)) {
@@ -321,7 +352,7 @@ function main() {
         /\{\{(constitution\/(?:PRINCIPLES|ANTIPATTERNS|LOOP)\.md)\}\}/g,
         (_match, file) => constitutionRefs.get(file)!,
       );
-      writeInside(PROJECT_ROOT, targetClaude, claude);
+      recorded(PROJECT_ROOT, targetClaude, () => writeInside(PROJECT_ROOT, targetClaude, claude));
     }
     console.log(flags.dryRun ? 'would install: CLAUDE.md' : '✓ Installed CLAUDE.md');
   } else if (present(targetClaude)) {
@@ -337,7 +368,7 @@ function main() {
       console.log('dry-run: would add AGENTS.override.md to .gitignore');
     } else {
       const eol = ignored.match(/\r?\n/)?.[0] ?? '\n';
-      writeInside(PROJECT_ROOT, gitignore, `${ignored && !ignored.endsWith('\n') ? eol : ''}AGENTS.override.md${eol}`, { append: true });
+      recorded(PROJECT_ROOT, gitignore, () => writeInside(PROJECT_ROOT, gitignore, `${ignored && !ignored.endsWith('\n') ? eol : ''}AGENTS.override.md${eol}`, { append: true }));
       console.log('✓ Added AGENTS.override.md to .gitignore');
     }
   }
@@ -460,10 +491,10 @@ function main() {
   }
 
   if (!flags.dryRun) {
-    mkdirInside(PROJECT_ROOT, path.join(PROJECT_ROOT, '.workflow/state'));
-    mkdirInside(PROJECT_ROOT, path.join(PROJECT_ROOT, '.workflow/proofs'));
-    mkdirInside(PROJECT_ROOT, path.join(PROJECT_ROOT, '.workflow/memory'));
-    mkdirInside(PROJECT_ROOT, path.join(PROJECT_ROOT, '.workflow/client'));
+    for (const dir of ['.workflow/state', '.workflow/proofs', '.workflow/memory', '.workflow/client']) {
+      record?.dir(dir);
+      mkdirInside(PROJECT_ROOT, path.join(PROJECT_ROOT, dir));
+    }
     const srcBudget = path.join(DEVOPS_ROOT, 'cost-controls/budget.yml');
     const dstBudget = path.join(PROJECT_ROOT, '.workflow/state/budget.yml');
     if (!present(dstBudget) && fs.existsSync(srcBudget)) {

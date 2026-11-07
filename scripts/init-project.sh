@@ -120,7 +120,14 @@ HOOK
             echo "Could not back up $shown_dir/pre-commit; left it unchanged." >&2
             exit 1
         fi
+        # specs/release/npm-package.md REQ-15 (#353): record the hook in the install
+        # manifest. `devops init` always passes DEVOPS_NODE; without it nothing is recorded.
+        record_hook() {
+            [[ -z "${DEVOPS_NODE:-}" ]] || "$DEVOPS_NODE" "$DEVOPS_ROOT/analyzer/record-hook.mjs" "$PROJECT" "$hook" "$1"
+        }
+        record_hook before
         printf '%s' "$hook_text" > "$hook"
+        record_hook after
         [[ -z "$hook_backup" ]] || echo "↻ Replaced $shown_dir/pre-commit; the previous copy is in $hook_backup"
         chmod +x "$hook"
         echo "✓ Installed pre-commit hook"

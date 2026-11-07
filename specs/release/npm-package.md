@@ -195,6 +195,25 @@ package file by its path from the project when the package is inside it and othe
 `` `<path>` in the `@miltonadina/devops` package ``. THE SYSTEM SHALL NOT tell the user to
 run a slash command that init did not install (#352).
 
+### REQ-15 — Init and analyze record what they write
+
+WHEN `devops analyze` or `devops init` (not a dry run) writes a file in the project, or
+the DevOPs pre-commit hook, THE SYSTEM SHALL record it in
+`.workflow/state/install-manifest.json` (`schema_version: 1`) with the sha256 of what it
+wrote, and the folders it created. WHEN it first writes a file that already existed, THE
+SYSTEM SHALL copy the existing bytes to `.workflow/state/originals/<path>` and record their
+sha256 as the file's `original`, and SHALL NOT change that `original` on a later run. IF
+the manifest has another `schema_version`, another key set, or a path that is not one
+DevOPs writes (`AGENTS.md`, `CLAUDE.md`, `.gitignore`, the hook, or a path under
+`.claude/skills/`, `.claude/hooks/`, `.claude/agents/` or `.workflow/`), or an `original`
+copy that is not its own `originals/<path>`, THEN THE SYSTEM SHALL refuse to run and change
+nothing. WHEN it starts the manifest in a project that already has
+`.workflow/state/install.log` (an earlier DevOPs installed there), THE SYSTEM SHALL set
+`adopted: true` and say so once, because an `original` recorded there may be that earlier
+DevOPs's copy. Backups (REQ-F11) and the `originals/` copies are DevOPs's own records and
+are not themselves recorded. The `.mcp.json` entry and the Agile Graph pin that linking
+writes are not recorded yet (#353).
+
 ## Acceptance criteria
 
 ### AC-1
@@ -371,6 +390,19 @@ or from the package root, except `.workflow/client/profile.yml`, which the steps
 user to create; and no step tells the user to run a command such as `/checkpoint`.
 
 **Verified by:** `tests/init-agent-bootstrap.test.mjs`.
+
+### AC-20
+
+**Given** a project with a `.gitignore` **When** `devops analyze` and `devops init` run, and
+run again after local edits **Then** every file they wrote is in the manifest with its
+current sha256, the `.gitignore` entry keeps the first run's `original` and its copy holds
+the original bytes, a dry run records nothing, and a committed manifest with a `..` or
+absolute path, a path DevOPs does not write, a foreign `original` copy, another schema or
+an extra key makes analyze and init exit 1 without writing. A manifest started where an
+earlier DevOPs left `install.log` is `adopted`, and a creation whose write failed after the
+file appeared stays recorded.
+
+**Verified by:** `tests/install-manifest.test.mjs`.
 
 ## Out of scope
 
