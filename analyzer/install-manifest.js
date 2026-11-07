@@ -71,6 +71,7 @@ export function readRegular(file) {
 
 /** The checked manifest of `root`, or null when it has none. */
 export function readManifest(root) {
+  assertInside(root, path.join(root, MANIFEST));
   const bytes = readRegular(path.join(root, MANIFEST));
   if (bytes === null) return null;
   let data;

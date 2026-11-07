@@ -4,6 +4,7 @@
 //   -C <dir> rev-parse --git-common-dir   STUB_GIT_COMMON_DIR, else the git dir
 //   -C <dir> config --get core.hooksPath  STUB_HOOKS_PATH when set, else not set
 //   -C <dir> rev-parse --git-path hooks   STUB_GIT_PATH_HOOKS, else .git/hooks
+//   -C <dir> ls-files ...                 STUB_GIT_LS_FILES (the tracked paths), else none
 // STUB_GIT_DIR overrides the git dir it prints.
 import { chmodSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -24,7 +25,9 @@ switch (args.join(' ')) {
   case 'rev-parse --git-common-dir': say(env.STUB_GIT_COMMON_DIR || env.STUB_GIT_DIR || '.git'); break;
   case 'config --get core.hooksPath': if (env.STUB_HOOKS_PATH) say(env.STUB_HOOKS_PATH); process.exit(1); break;
   case 'rev-parse --git-path hooks': say(env.STUB_GIT_PATH_HOOKS || '.git/hooks'); break;
-  default: process.exit(2);
+  default:
+    if (args[0] === 'ls-files') { if (env.STUB_GIT_LS_FILES) say(env.STUB_GIT_LS_FILES); process.exit(0); }
+    process.exit(2);
 }
 `;
 

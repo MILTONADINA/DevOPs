@@ -14,7 +14,8 @@
 //     such a file is kept and reported for the user to check.
 //   - The pre-commit hook is removed only while it still carries the DevOPs marker
 //     and its recorded bytes.
-// Nothing is followed through a symlink. Folders DevOPs created are removed when
+// Nothing is followed through a symlink. A manifest Git tracks is refused: it came
+// with the repository, not from an install here. Folders DevOPs created are removed when
 // empty. Whatever is kept stays in the manifest, so a later uninstall can finish.
 
 import { execFileSync } from 'node:child_process';
@@ -25,17 +26,19 @@ import { assertInside, present, writeInside } from './safe-write.js';
 
 const HOOK_MARKER = '# DevOPs pre-commit hook';
 
-/** Where Git keeps this project's hooks; null outside a repository. */
-function hookFile(root) {
+function git(root, args) {
   try {
-    const dir = execFileSync('git', ['-C', root, 'rev-parse', '--git-path', 'hooks'], {
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore'],
-    }).trim();
-    return dir ? path.join(path.resolve(root, dir), 'pre-commit') : null;
+    return execFileSync('git', ['-C', root, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
   } catch {
     return null;
   }
+}
+
+// Where init put the hook: the repository's own hooks folder. Init never writes
+// into a core.hooksPath folder, so a hooksPath set since is not looked at.
+function hookFile(root) {
+  const common = git(root, ['rev-parse', '--git-common-dir']);
+  return common ? path.join(path.resolve(root, common), 'hooks', 'pre-commit') : null;
 }
 
 function hasMarker(bytes) {
@@ -80,6 +83,7 @@ function plan(root, key, entry, adopted) {
     return { action: 'keep', reason: 'recorded where an earlier DevOPs had installed; its original may be that release\'s copy' };
   let copy;
   try {
+    assertInside(root, path.join(root, entry.original.copy));
     copy = readRegular(path.join(root, entry.original.copy));
   } catch (error) {
     return { action: 'keep', reason: `its original copy is unreadable: ${error.message}` };
@@ -116,9 +120,18 @@ function removeIfEmpty(dir) {
   return false;
 }
 
+const save = (base, data) => writeInside(base, MANIFEST, `${JSON.stringify(data, null, 2)}\n`);
+
 /** Runs the uninstall for `root`; returns the exit status. */
 export function uninstall(root, { dryRun = false, log = console.log } = {}) {
   const base = path.resolve(root);
+  // A manifest or originals that Git tracks came with the repository, not from an
+  // install on this machine: following it could put someone else's bytes back.
+  const tracked = git(base, ['ls-files', '--', MANIFEST, ORIGINALS]);
+  if (tracked) {
+    log(`devops uninstall: ${tracked.split('\n')[0]} is tracked by Git, so it is not this machine's install record. Run git rm --cached on it, check it, then run uninstall again.`);
+    return 1;
+  }
   const data = readManifest(base);
   if (data === null) {
     log(`No ${MANIFEST} here: nothing DevOPs recorded to remove.`);
@@ -127,46 +140,51 @@ export function uninstall(root, { dryRun = false, log = console.log } = {}) {
     return 0;
   }
   const verb = dryRun ? 'would ' : '';
-  const kept = {};
-  const resolved = [];
+  let keptCount = 0;
+  let handled = 0;
   for (const key of Object.keys(data.files).sort()) {
     const entry = data.files[key];
-    const step = plan(base, key, entry, data.adopted);
-    if (step.action === 'keep') {
-      kept[key] = entry;
-      log(`kept      ${key}: ${step.reason}`);
-      continue;
-    }
-    if (step.action === 'remove') {
-      if (!dryRun) removeRegular(step.at);
-      log(`${verb}remove    ${key}`);
-    } else if (step.action === 'restore') {
-      if (!dryRun) writeInside(base, key, step.bytes);
-      log(`${verb}restore   ${key} (as it was before DevOPs)`);
-    }
-    resolved.push(key);
-  }
-  const keptCount = Object.keys(kept).length;
-  if (dryRun) {
-    log(`dry-run: ${resolved.length} recorded file(s) handled, ${keptCount} kept; nothing changed.`);
-    return 0;
-  }
-  // The originals copies of handled files are no longer needed.
-  for (const key of resolved) {
-    const original = data.files[key].original;
-    if (original === null) continue;
-    const copy = path.join(base, original.copy);
-    assertInside(base, copy);
     try {
-      removeRegular(copy);
-    } catch {
-      /* already gone */
+      let step = plan(base, key, entry, data.adopted);
+      // Restored by an earlier run that stopped before it updated the manifest.
+      if (step.action === 'keep' && entry.original !== null && !data.adopted && key !== HOOK_KEY) {
+        const current = readRegular(path.join(base, key));
+        if (current !== null && sha256(current) === entry.original.sha256) step = { action: 'none' };
+      }
+      if (step.action === 'keep') {
+        keptCount++;
+        log(`kept      ${key}: ${step.reason}`);
+        continue;
+      }
+      if (step.action === 'remove') log(`${verb}remove    ${key}`);
+      if (step.action === 'restore') log(`${verb}restore   ${key} (as it was before DevOPs)`);
+      handled++;
+      if (dryRun) continue;
+      if (step.action === 'remove') removeRegular(step.at);
+      if (step.action === 'restore') writeInside(base, key, step.bytes);
+      // The manifest stops naming the file before its copy goes, so a run that stops
+      // here can always be finished by running uninstall again.
+      delete data.files[key];
+      save(base, data);
+      if (entry.original !== null) {
+        const copy = path.join(base, entry.original.copy);
+        assertInside(base, copy);
+        if (present(copy)) removeRegular(copy);
+      }
+    } catch (error) {
+      keptCount++;
+      log(`kept      ${key}: ${error.message}`);
     }
+  }
+  // Recorded folders, deepest first; one that still holds anything stays.
+  const dirs = [...data.dirs].sort((a, b) => b.split('/').length - a.split('/').length);
+  if (dryRun) {
+    for (const dir of dirs) log(`would remove ${dir}/ once empty`);
+    log(`dry-run: ${handled} recorded file(s) handled, ${keptCount} kept; nothing changed.`);
+    return 0;
   }
   if (keptCount === 0) removeRegular(path.join(base, MANIFEST));
   for (const dir of emptyDirsUnder(path.join(base, ORIGINALS))) removeIfEmpty(dir);
-  // Recorded folders, deepest first; one that still holds anything stays.
-  const dirs = [...data.dirs].sort((a, b) => b.split('/').length - a.split('/').length);
   const left = [];
   for (const dir of dirs) {
     const full = path.join(base, dir);
@@ -175,13 +193,14 @@ export function uninstall(root, { dryRun = false, log = console.log } = {}) {
     else if (present(full)) left.push(dir);
   }
   if (keptCount > 0) {
-    writeInside(base, MANIFEST, `${JSON.stringify({ ...data, files: kept, dirs: data.dirs.filter(d => left.includes(d)) }, null, 2)}\n`);
+    data.dirs = data.dirs.filter(d => left.includes(d));
+    save(base, data);
     log(`${keptCount} file(s) kept; they stay in ${MANIFEST}. Check them, then run devops uninstall again.`);
-  } else {
-    if (left.length) log(`Left in place (not empty): ${left.map(d => `${d}/`).join(', ')}`);
-    if (data.adopted)
-      log('An earlier DevOPs installed here before this manifest; a file it wrote that init never changed is not recorded, so check .claude/ and .workflow/ by hand.');
-    log('DevOPs removed.');
+    return 0;
   }
+  if (left.length) log(`Left in place (not empty): ${left.map(d => `${d}/`).join(', ')}`);
+  if (data.adopted)
+    log('An earlier DevOPs installed here before this manifest; a file it wrote that init never changed is not recorded, so check .claude/ and .workflow/ by hand.');
+  log('DevOPs removed.');
   return 0;
 }

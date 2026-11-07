@@ -225,9 +225,17 @@ SHALL remove the folders DevOPs created that are then empty. IF a recorded file 
 is a symlink or not a regular file, has an unconfirmed write, or has an original copy that
 is missing or changed, or the manifest is `adopted` and the file has a recorded original,
 THEN THE SYSTEM SHALL leave that file unchanged, name it and the reason, and keep its
-entry in the manifest. WHEN run with `--dry-run`, THE SYSTEM SHALL report the same plan and
-change nothing. WHEN the project has no manifest, THE SYSTEM SHALL change nothing and say
-so.
+entry in the manifest. IF Git tracks the manifest or `.workflow/state/originals/`, THEN THE
+SYSTEM SHALL refuse with exit 1 and change nothing, because that record came with the
+repository rather than from an install on this machine. THE SYSTEM SHALL look for the hook
+in the repository's own hooks folder, where init writes it, whatever `core.hooksPath` says
+later. THE SYSTEM SHALL drop each file's entry from the manifest as soon as it is handled,
+before deleting its original copy, so that an uninstall that stops part-way finishes when
+run again. WHEN run with `--dry-run`, THE SYSTEM SHALL report the same plan, including the
+folders it would remove, and change nothing. WHEN the project has no manifest, THE SYSTEM
+SHALL change nothing and say so. A file edited in the instant between the check and the
+removal is not protected, and the empty `hooks` folder init may create inside Git's own
+folder is left.
 
 ## Acceptance criteria
 
@@ -427,8 +435,11 @@ is as it was before, byte for byte (Git's own folder aside), and the pre-commit 
 gone. A dry run reports the plan and changes nothing. An edited file, a hook that is no
 longer DevOPs's, a recorded file replaced by a symlink, a changed original copy, and in an
 `adopted` install a file with a recorded original are each left unchanged and named, and
-the edited ones stay in the manifest. Without a manifest uninstall changes nothing, and an
-unknown option exits 1.
+the edited ones stay in the manifest. A manifest Git tracks makes uninstall exit 1 without
+changes. An uninstall stopped part-way by a file it cannot remove leaves the project as it
+was before once run again. A `core.hooksPath` set after init does not stop the DevOPs hook
+being removed or cause another hook to be touched. Without a manifest uninstall changes
+nothing, and an unknown option exits 1.
 
 **Verified by:** `tests/uninstall.test.mjs`.
 
