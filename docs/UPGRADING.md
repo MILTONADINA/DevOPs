@@ -4,9 +4,16 @@
 
 These changes are on `dev` and ship in the next release.
 
-### The pre-commit hook stops when `gitleaks` is missing
+### The pre-commit hook stops instead of skipping a check
 
-The hook that `devops init` writes used to skip the secret scan without a word when `gitleaks` was not on PATH. It now stops the commit and tells you how to go on. Install `gitleaks`, or, for one commit you have checked by hand, run it with `DEVOPS_SKIP_SECRET_SCAN=1`. Re-run `devops init` to get the new hook: init replaces its own hook and keeps a copy of the old one.
+The hook that `devops init` writes used to skip a check without a word when its tool was missing. Now it stops the commit in two cases. Run `devops init` again to get the new hook: init replaces its own hook, keeps a copy of the old one, and lists both checks under `secret scan:` and `claim check:` in its "Safety gates" summary.
+
+- Without `gitleaks` on PATH, install `gitleaks`. Or scan the staged changes some other way, for example with `gitleaks git --pre-commit --staged --redact` on another machine, and commit once with `DEVOPS_SKIP_SECRET_SCAN=1`. That variable turns the scan off for that commit.
+- With `.workflow/proofs/*.yml` claims in the project and no `devops` command on PATH or in `node_modules/.bin`, run `npm install -D @miltonadina/devops`, or commit with `DEVOPS_SKIP_CLAIM_CHECK=1`.
+
+### `budget-brake.sh` caps new sessions
+
+`budget-brake.sh` now caps a session before its first ledger line, and blocks a call (exit 2) when it cannot read the ledger. A session that used to run uncapped can now stop at its budget, so check the caps in `.workflow/state/budget.yml`.
 
 ### Replaced files are backed up first
 
@@ -16,17 +23,29 @@ When `devops init` or `devops analyze` replaces an installed skill, hook, subage
 
 `devops analyze` and `devops init` now record every file they write in `.workflow/state/install-manifest.json`, with a copy of any file that was there before under `.workflow/state/originals/`. `devops uninstall --dry-run` shows what `devops uninstall` would remove or put back. A file you edited since is left in place and named.
 
-A project installed by an earlier release has no manifest. The first `analyze` or `init` after you upgrade starts one and marks it `adopted`: files that release wrote are recorded as they are, so uninstall names them for you to check instead of restoring them. To have everything recorded from a clean state, first remove the old install by hand, then run `analyze` and `init`. An earlier install consists of the `AGENTS.md` and `CLAUDE.md` it created, `.claude/skills/`, `.claude/hooks/` and `.claude/agents/`, `.workflow/`, the `AGENTS.override.md` line in `.gitignore`, and the DevOPs pre-commit hook in Git's hooks folder.
+Keep the manifest out of Git: add `.workflow/state/install-manifest.json` and `.workflow/state/originals/` to `.gitignore`. Init does not add them for you. Uninstall refuses a manifest that Git tracks, because it did not come from an install on this machine. The `.mcp.json` entry and Agile Graph pin that linking writes are not recorded yet; remove them by hand.
 
-Keep `.workflow/state/install-manifest.json` out of Git. Uninstall refuses a manifest that Git tracks, since it did not come from an install on this machine. The `.mcp.json` entry and Agile Graph pin that linking writes are not recorded yet; remove them by hand.
+A project installed by an earlier release has no manifest. If that install verified at least one skill, it left `.workflow/state/install.log`, and the first `analyze` or `init` after you upgrade starts the manifest marked `adopted`. In an adopted install:
+
+- A file the earlier release wrote and this release rewrites is recorded with the earlier copy as its original. Uninstall names it for you to check, and does not restore it.
+- A file the earlier release wrote that this release leaves alone is not recorded at all. Uninstall cannot see it, so check `.claude/` and `.workflow/` by hand.
+
+To have everything recorded from a clean state instead, remove the old install before you run `analyze` and `init`. Copy aside what is yours first:
+
+- your edits to `AGENTS.md` and `CLAUDE.md`;
+- `.workflow/client/profile.yml`;
+- `.workflow/proofs/`;
+- the budgets in `.workflow/state/budget.yml`.
+
+Then remove `.claude/skills/`, `.claude/hooks/`, `.claude/agents/`, `.workflow/`, the `AGENTS.override.md` line in `.gitignore`, and the DevOPs pre-commit hook in Git's hooks folder. Put your copies back after `init`.
 
 ### The installed `AGENTS.md` names files you can open
 
-`devops init` now writes every package path in `AGENTS.md` as a path from the project, or as a file in the `@miltonadina/devops` package. Init never overwrites an existing `AGENTS.md`, so to get the new text, move yours aside (keep your edits in `AGENTS.override.md`) and run `devops init` again.
+`devops init` now writes every package path in `AGENTS.md` as a path from the project, or as a file in the `@miltonadina/devops` package. Init never overwrites an existing `AGENTS.md`, so to get the new text, move yours aside and run `devops init` again. Then put your changes back: personal ones in `AGENTS.override.md`, which is gitignored, and rules the team shares in a tracked file such as the project's `specs/`.
 
-### Stack-specific skills are installed
+### Stack-specific skills are looked up where they are
 
-`devops init` now installs the recommended stack-specific skills (Next.js, Stripe, FastAPI, Supabase, Rust) from `skills/stack-specific/`. Earlier releases skipped them in silence. Each one is checked against its signed manifest entry like any other skill, and one with no entry is skipped on a `⚠ skipped:` line.
+`devops init` used to drop the recommended stack-specific skills (Next.js, Stripe, FastAPI, Supabase, Rust) without a word. It now finds them under `skills/stack-specific/` and checks each one against `governance/skill-manifest.yml`. None is signed yet, so for now each is reported on a `⚠ skipped:` line and not installed.
 
 ## Upgrading from 0.4.0 to 0.5.0
 
