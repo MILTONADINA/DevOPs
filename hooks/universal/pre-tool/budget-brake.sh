@@ -36,30 +36,34 @@ else
 fi
 
 # ─── Compute running totals from ledger ─────────────────────────────────────
+# Each total reads the ledger in one awk program, so a ledger with no matching
+# line sums to 0 instead of failing a grep stage under pipefail (#356). The
+# session id is compared as text from the environment, never as a pattern. An
+# unreadable ledger fails the function, and the caller blocks the call.
 session_total() {
-    if [[ ! -f "$LEDGER" ]]; then echo "0.00"; return; fi
-    grep "\"session_id\":\"$SESSION_ID\"" "$LEDGER" 2>/dev/null | \
-        awk -F'"cost_usd":' '{print $2}' | awk -F',' '{sum += $1} END {printf "%.4f", sum+0}'
+    if [[ ! -f "$LEDGER" ]]; then echo "0.0000"; return; fi
+    BRAKE_SESSION="$SESSION_ID" awk '
+        index($0, "\"session_id\":\"" ENVIRON["BRAKE_SESSION"] "\"") {
+            if (match($0, /"cost_usd":[0-9.]+/)) sum += substr($0, RSTART+11, RLENGTH-11) }
+        END { printf "%.4f", sum+0 }
+    ' "$LEDGER"
+}
+
+window_total() {
+    if [[ ! -f "$LEDGER" ]]; then echo "0.0000"; return; fi
+    awk -F'"ts":' -v cutoff="$1" '
+        { match($2, /[0-9]+/); ts = substr($2, RSTART, RLENGTH);
+          if (ts >= cutoff) { match($0, /"cost_usd":[0-9.]+/); cost = substr($0, RSTART+11, RLENGTH-11); sum += cost } }
+        END { printf "%.4f", sum+0 }
+    ' "$LEDGER"
 }
 
 hourly_total() {
-    if [[ ! -f "$LEDGER" ]]; then echo "0.00"; return; fi
-    local one_hour_ago=$(date -u -d '1 hour ago' +%s 2>/dev/null || date -u -v-1H +%s)
-    awk -F'"ts":' -v cutoff="$one_hour_ago" '
-        { match($2, /[0-9]+/); ts = substr($2, RSTART, RLENGTH);
-          if (ts >= cutoff) { match($0, /"cost_usd":[0-9.]+/); cost = substr($0, RSTART+11, RLENGTH-11); sum += cost } }
-        END { printf "%.4f", sum+0 }
-    ' "$LEDGER" 2>/dev/null || echo "0.00"
+    window_total "$(date -u -d '1 hour ago' +%s 2>/dev/null || date -u -v-1H +%s)"
 }
 
 daily_total() {
-    if [[ ! -f "$LEDGER" ]]; then echo "0.00"; return; fi
-    local one_day_ago=$(date -u -d '1 day ago' +%s 2>/dev/null || date -u -v-1d +%s)
-    awk -F'"ts":' -v cutoff="$one_day_ago" '
-        { match($2, /[0-9]+/); ts = substr($2, RSTART, RLENGTH);
-          if (ts >= cutoff) { match($0, /"cost_usd":[0-9.]+/); cost = substr($0, RSTART+11, RLENGTH-11); sum += cost } }
-        END { printf "%.4f", sum+0 }
-    ' "$LEDGER" 2>/dev/null || echo "0.00"
+    window_total "$(date -u -d '1 day ago' +%s 2>/dev/null || date -u -v-1d +%s)"
 }
 
 # ─── Reserve check ──────────────────────────────────────────────────────────
@@ -78,16 +82,29 @@ for amount in "reserve:$RESERVE" "session_cap_usd:$SESSION_CAP" "hourly_cap_usd:
     fi
 done
 
+# A ledger path that exists but is not a regular file (a directory, a dangling
+# link) would count as no spend, and the reservation could not be appended.
+if [[ ( -e "$LEDGER" || -L "$LEDGER" ) && ! -f "$LEDGER" ]]; then
+    echo "DevOPs BUDGET BRAKE: $LEDGER is not a regular file. Blocked." >&2
+    exit 2
+fi
+
 # A ledger cost that is not a plain non-negative decimal (negative, text, empty)
 # would be summed as 0 or lower the total, so a ledger holding one blocks.
-if [[ -f "$LEDGER" ]] && grep '"cost_usd"' "$LEDGER" | grep -vqE '"cost_usd":[0-9]+(\.[0-9]+)?[,}]'; then
+# One awk program, not a grep pipeline: under pipefail an early `grep -q` exit
+# would kill the first grep with SIGPIPE on a large ledger and let the call through.
+if [[ -f "$LEDGER" ]] && awk '/"cost_usd"/ && !/"cost_usd":[0-9]+(\.[0-9]+)?[,}]/ { bad = 1; exit } END { exit !bad }' "$LEDGER"; then
     echo "DevOPs BUDGET BRAKE: $LEDGER holds a cost_usd that is not a non-negative decimal amount. Blocked." >&2
     exit 2
 fi
 
-session_now=$(session_total)
-hourly_now=$(hourly_total)
-daily_now=$(daily_total)
+unreadable() {
+    echo "DevOPs BUDGET BRAKE: cannot read $LEDGER to total the spend. Blocked." >&2
+    exit 2
+}
+session_now=$(session_total) || unreadable
+hourly_now=$(hourly_total) || unreadable
+daily_now=$(daily_total) || unreadable
 
 projected_session=$(awk -v a="$session_now" -v b="$RESERVE" 'BEGIN {printf "%.4f", a + b}')
 projected_hourly=$(awk -v a="$hourly_now" -v b="$RESERVE" 'BEGIN {printf "%.4f", a + b}')

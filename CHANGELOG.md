@@ -10,6 +10,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- `budget-brake.sh` caps a session that has no ledger line yet. The session total used to fail a `grep` stage under `pipefail` and end the hook with exit 1, which Claude Code treats as non-blocking, so a new session was never capped. Each total now reads the ledger in one `awk` program and compares the session id as text, not as a pattern. An unreadable ledger, or a ledger path that is not a regular file, blocks the call (exit 2) instead of counting as no spend. The check for a malformed `cost_usd` is one `awk` program, so a large ledger can no longer let a malformed cost through when an early `grep -q` exit makes the pipeline fail with SIGPIPE (#356).
 - `external-content-boundary.sh` no longer blocks a call whose payload holds a JSON escape (such as `\u00e9`) but no marker when the session key is not yet initialised. It decodes the payload's strings and keys, and goes on to the key and HMAC checks only when a marker is present; a payload that is not JSON still fails closed.
 
 ## [0.6.1] — 2026-11-06
