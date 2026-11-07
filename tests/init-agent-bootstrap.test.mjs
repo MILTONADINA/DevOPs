@@ -94,19 +94,24 @@ test(`first spec instructions say to create specs/ (${SPEC}#ac-11)`, () => {
   });
 });
 
-for (const before of [undefined, '', '# keep\nnode_modules/\n', '# keep\nnode_modules/', '# keep\r\nnode_modules/\r\n', '# keep\r\nnode_modules/', 'AGENTS.override.md\n# keep\n', '# keep\r\nAGENTS.override.md']) {
+// Every line init keeps out of Git: the local override, plus the install
+// manifest and its originals, which uninstall refuses once tracked (#390).
+const IGNORED = ['AGENTS.override.md', '.workflow/state/install-manifest.json', '.workflow/state/originals/'];
+
+for (const before of [undefined, '', '# keep\nnode_modules/\n', '.workflow/state/originals/\n', '# keep\r\n.workflow/state/install-manifest.json', '# keep\nnode_modules/', '# keep\r\nnode_modules/\r\n', '# keep\r\nnode_modules/', 'AGENTS.override.md\n# keep\n', '# keep\r\nAGENTS.override.md']) {
   test(`gitignore preserves bytes and adds no duplicate for ${JSON.stringify(before)} (${SPEC}#ac-12)`, () => {
     withProject(dir => {
       const file = path.join(dir, '.gitignore');
       if (before !== undefined) writeFileSync(file, before);
       const eol = before?.includes('\r\n') ? '\r\n' : '\n';
-      const expected = before?.split(/\r?\n/).includes('AGENTS.override.md') ? before
-        : (before || '') + (before && !before.endsWith('\n') ? eol : '') + 'AGENTS.override.md' + eol;
+      const lines = new Set((before ?? '').split(/\r?\n/));
+      const missing = IGNORED.filter(line => !lines.has(line));
+      const expected = (before || '') + (before && !before.endsWith('\n') ? eol : '') + missing.map(line => line + eol).join('');
       for (let i = 0; i < 2; i++) {
         init(dir, [], ROOT);
         const after = readFileSync(file, 'utf8');
         assert.equal(after, expected);
-        assert.equal(after.split(/\r?\n/).filter(l => l === 'AGENTS.override.md').length, 1);
+        for (const line of IGNORED) assert.equal(after.split(/\r?\n/).filter(l => l === line).length, 1, line);
       }
     });
   });
@@ -119,7 +124,7 @@ for (const before of [undefined, '# keep\r\nnode_modules/']) {
       const original = snapshot(dir);
       const stdout = init(dir, ['--dry-run'], ROOT);
       assert.deepEqual(snapshot(dir), original);
-      assert.match(stdout, /dry-run: would add AGENTS\.override\.md to \.gitignore/);
+      assert.match(stdout, /dry-run: would add AGENTS\.override\.md, \.workflow\/state\/install-manifest\.json, \.workflow\/state\/originals\/ to \.gitignore/);
     });
   });
 }
