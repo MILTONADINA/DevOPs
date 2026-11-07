@@ -4,7 +4,7 @@ set -euo pipefail
 # pwd -P: the physical path, the one realpathSync returns for every path compared with it below.
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 GRAPH_ROOT="$ROOT" node --input-type=module - "$@" <<'NODE'
-import { readFileSync, writeFileSync, renameSync, appendFileSync, mkdirSync, realpathSync, existsSync, lstatSync } from 'node:fs';
+import { readFileSync, writeFileSync, renameSync, mkdirSync, realpathSync, existsSync, lstatSync, openSync, closeSync, constants } from 'node:fs';
 import path from 'node:path';
 
 const root = process.env.GRAPH_ROOT;
@@ -97,10 +97,17 @@ const record = [
 ].join('\n');
 const blockedPath = path.join(stateDir, 'blocked.md');
 const temporary = `${blockedPath}.${process.pid}.tmp`;
-writeFileSync(temporary, record, { mode: 0o600 });
+// specs/phase-2/F-skill-provenance.md REQ-F10: exclusive create refuses a link
+// planted at the temporary name, and the rename replaces a link at blocked.md.
+writeFileSync(temporary, record, { mode: 0o600, flag: 'wx' });
 renameSync(temporary, blockedPath);
 const base = { timestamp: new Date().toISOString(), cycle_id: cycle, stage, task_id: task, class: faultClass, check_ids: checkIds.split(',') };
-appendFileSync(path.join(stateDir, 'events.jsonl'), `${JSON.stringify({ event: 'graph.blocked', ...base })}\n`);
-appendFileSync(path.join(stateDir, 'events.jsonl'), `${JSON.stringify({ event: 'graph.environment_fault', ...base })}\n`);
+// The event log is appended without following a link out of the state directory.
+const events = openSync(path.join(stateDir, 'events.jsonl'), constants.O_WRONLY | constants.O_CREAT | constants.O_APPEND | (constants.O_NOFOLLOW ?? 0), 0o600);
+try {
+  writeFileSync(events, `${JSON.stringify({ event: 'graph.blocked', ...base })}\n${JSON.stringify({ event: 'graph.environment_fault', ...base })}\n`);
+} finally {
+  closeSync(events);
+}
 process.stdout.write(`${blockedPath}\n`);
 NODE

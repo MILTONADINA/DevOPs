@@ -315,3 +315,15 @@ test('regression #277: the preflight writes its report in a toy project with no 
   } finally { rmSync(toy, { recursive: true, force: true }); }
 });
 
+// specs/phase-2/F-skill-provenance.md AC-F10.2: the report replaces a symlink at its path
+// instead of writing through it.
+test('the preflight report replaces a symlink at its path instead of writing through it', () => {
+  const fixture = linkedDependenciesProject();
+  try {
+    const victim = path.join(fixture.outside, 'victim.txt');
+    writeFileSync(victim, 'outside bytes\n');
+    symlinkSync(victim, path.join(fixture.project, '.workflow', 'state', 'preflight.json'));
+    fixture.runPreflight();
+    assert.equal(readFileSync(victim, 'utf8'), 'outside bytes\n');
+  } finally { fixture.cleanup(); }
+});
