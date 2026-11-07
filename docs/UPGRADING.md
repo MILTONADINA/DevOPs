@@ -23,7 +23,7 @@ When `devops init` or `devops analyze` replaces an installed skill, hook, subage
 
 `devops analyze` and `devops init` now record every file they write in `.workflow/state/install-manifest.json`, with a copy of any file that was there before under `.workflow/state/originals/`. `devops uninstall --dry-run` shows what `devops uninstall` would remove or put back. A file you edited since is left in place and named.
 
-Init adds `.workflow/state/install-manifest.json` and `.workflow/state/originals/` to `.gitignore`, so the manifest stays out of Git. If you already committed them, run `git rm --cached -r --ignore-unmatch .workflow/state/install-manifest.json .workflow/state/originals` before uninstalling. Uninstall refuses a manifest that Git tracks, because it did not come from an install on this machine. The `.mcp.json` entry and Agile Graph pin that linking writes are not recorded yet; remove them by hand.
+Init adds `.workflow/state/install-manifest.json` and `.workflow/state/originals/` to `.gitignore`, so the manifest stays out of Git. If you already committed them, run `git rm --cached -r --ignore-unmatch .workflow/state/install-manifest.json .workflow/state/originals` and commit that before uninstalling. Uninstall refuses a manifest or originals folder that Git tracks, because it did not come from an install on this machine. The `.mcp.json` entry and Agile Graph pin that linking writes are not recorded yet; remove them by hand.
 
 A project installed by an earlier release has no manifest. If that install verified at least one skill, it left `.workflow/state/install.log`, and the first `analyze` or `init` after you upgrade starts the manifest marked `adopted`. In an adopted install:
 

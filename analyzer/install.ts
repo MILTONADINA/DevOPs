@@ -384,7 +384,7 @@ function main() {
   // Append only: retain existing bytes, including CRLF and a missing final newline.
   // This local override is useful even before the project becomes a git repository.
   // The install manifest and its originals are this machine's record, which
-  // uninstall refuses once Git tracks them (REQ-12, REQ-16; #390).
+  // uninstall refuses once Git tracks them (REQ-10, REQ-16; #390).
   const gitignore = path.join(PROJECT_ROOT, '.gitignore');
   const ignored = fs.existsSync(gitignore) ? fs.readFileSync(gitignore, 'utf-8') : '';
   const ignoredLines = new Set(ignored.split(/\r?\n/));
