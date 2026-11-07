@@ -237,6 +237,16 @@ SHALL change nothing and say so. A file edited in the instant between the check 
 removal is not protected, and the empty `hooks` folder init may create inside Git's own
 folder is left.
 
+### REQ-17 — The installed AGENTS.md names paths the reader can open
+
+WHEN `devops init` installs `AGENTS.md`, THE SYSTEM SHALL rewrite each backticked path that
+names a file or folder the package ships (by `package.json` `files`), including a pattern
+such as `lifecycle/<phase>/PHASE.md` whose fixed part ships, the way REQ-10 names the
+constitution: by its path from the project when the package is inside it, else as
+`<path>` in the `@miltonadina/devops` package. THE SYSTEM SHALL leave paths under
+`.workflow/`, which `AGENTS.md` states are project state created when first needed, and
+the project's own `specs/`, `AGENTS.override.md` and `package.json`, as written (#380).
+
 ## Acceptance criteria
 
 ### AC-1
@@ -442,6 +452,17 @@ being removed or cause another hook to be touched. Without a manifest uninstall 
 nothing, and an unknown option exits 1.
 
 **Verified by:** `tests/uninstall.test.mjs`.
+
+### AC-22
+
+**Given** the package installed inside the project, or outside it, **When** `devops init`
+installs `AGENTS.md` **Then** every backticked path in it exists in the project, or names
+a file the package ships, or is project state under `.workflow/`, or is one of the named
+exceptions (a branch pattern, the project's `specs/`, `AGENTS.override.md`, the project's
+`package.json`); at least 15 package files are named from the project; it holds no
+absolute machine path; and a slash command is named only with the plugin it needs.
+
+**Verified by:** `tests/init-agent-bootstrap.test.mjs`.
 
 ## Out of scope
 
