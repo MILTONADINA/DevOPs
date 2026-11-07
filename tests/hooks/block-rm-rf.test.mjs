@@ -10,9 +10,14 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 
 const HOOK = path.resolve(import.meta.dirname, '..', '..', 'hooks', 'universal', 'pre-tool', 'block-rm-rf.sh');
+const FIXTURES = path.resolve(import.meta.dirname, '..', '..', 'node_modules', '.cache', 'block-rm-rf-tests');
 
-function decide(command) {
-  const dir = realpathSync(mkdtempSync(path.join(tmpdir(), 'block-rm-rf-')));
+function decide(command, base = FIXTURES) {
+  // The fixture must not sit under an allowed root such as /tmp (the Linux
+  // tmpdir), or targets that climb out of the project land inside /tmp and are
+  // rightly allowed. node_modules/.cache is inside the checkout instead.
+  mkdirSync(base, { recursive: true });
+  const dir = realpathSync(mkdtempSync(path.join(base, 'block-rm-rf-')));
   try {
     const project = path.join(dir, 'project');
     mkdirSync(project);
@@ -66,5 +71,13 @@ for (const command of BLOCKED) {
 for (const command of ALLOWED) {
   test(`block-rm-rf allows: ${command}`, () => {
     assert.equal(decide(command), 0);
+  });
+}
+
+// On Linux the system temp directory is /tmp, an allowed root. A project that
+// lives there must still not delete itself, a parent of itself or /tmp.
+for (const command of ['rm -rf .', 'rm -rf ..', 'rm -rf /tmp', 'rm -rf /var/tmp']) {
+  test(`block-rm-rf refuses from a project under the system temp directory: ${command}`, () => {
+    assert.equal(decide(command, tmpdir()), 2);
   });
 }

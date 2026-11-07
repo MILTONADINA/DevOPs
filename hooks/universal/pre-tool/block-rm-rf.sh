@@ -75,7 +75,10 @@ if [[ "$COMMAND" == *'$'* || "$COMMAND" == *'`'* || "$COMMAND" =~ (^|[[:space:]=
 fi
 # A glob (rm -rf *, rm -rf /*) names paths this hook never sees, so a recursive
 # rm holding one is refused.
-if [[ "$COMMAND" =~ (^|[^[:alnum:]_.-])rm[[:space:]] && "$COMMAND" == *[\*\?\[]* ]]; then
+# Glob characters, matched through a variable so Semgrep's bash parser can
+# read the test.
+GLOB_CHARS='[*?[]'
+if [[ "$COMMAND" =~ (^|[^[:alnum:]_.-])rm[[:space:]] && "$COMMAND" =~ $GLOB_CHARS ]]; then
     echo "DevOPs RM BLOCK: destructive rm with a glob target, which this hook cannot resolve." >&2
     echo "  Command: $COMMAND" >&2
     exit 2
@@ -87,8 +90,10 @@ normalise() {
     local part out=() IFS=/
     set -f
     for part in $1; do
+        # Empty and "." components add nothing. (An empty case pattern is
+        # valid bash but breaks Semgrep's bash parser.)
+        [[ -z "$part" || "$part" == "." ]] && continue
         case "$part" in
-            ''|.) ;;
             ..) if (( ${#out[@]} )); then unset 'out[${#out[@]}-1]'; out=("${out[@]}"); fi ;;
             *) out+=("$part") ;;
         esac
@@ -117,15 +122,24 @@ for target in $targets; do
     fi
 
     in_allowed=false
-    for allowed in "${ALLOWED_ROOTS[@]}"; do
-        if inside "$abs_target" "$allowed"; then
-            in_allowed=true
-            break
-        fi
-    done
+    # The project root, a directory that contains it, / and the shared temp
+    # roots themselves are never allowed targets, even when the project lives
+    # under /tmp.
+    if [[ "$abs_target" == "/" || "$abs_target" == "/tmp" || "$abs_target" == "/var/tmp" ]] ||
+        inside "$PROJECT_ROOT" "$abs_target"; then
+        protected=true
+    else
+        protected=false
+        for allowed in "${ALLOWED_ROOTS[@]}"; do
+            if inside "$abs_target" "$allowed"; then
+                in_allowed=true
+                break
+            fi
+        done
+    fi
 
     # Inside the project but not the project root itself: allowed, and logged.
-    if [[ "$in_allowed" == "false" ]] && inside "$abs_target" "$PROJECT_ROOT" && [[ "$abs_target" != "$PROJECT_ROOT" ]]; then
+    if [[ "$protected" == "false" && "$in_allowed" == "false" ]] && inside "$abs_target" "$PROJECT_ROOT"; then
         # Within project but outside known transient dirs — allow with logging
         mkdir -p .workflow/state
         echo "{\"ts\":$(date -u +%s),\"event\":\"destructive_in_project\",\"target\":\"$abs_target\",\"command\":$(echo "$COMMAND" | jq -R . 2>/dev/null || echo "\"$COMMAND\"")}" >> .workflow/state/events.jsonl
