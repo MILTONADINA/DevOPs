@@ -3,24 +3,45 @@
 Deterministic safety layer. Hooks fire on the tool calls Claude Code sends them, whatever the
 agent intends.
 
-Guarded: the agent cannot change its own gates or approvals. `protect-gates.sh` blocks the
+Guarded: the agent cannot change its own gates or approvals. `protect-gates.sh` guards the
 agent's Write, Edit, MultiEdit and NotebookEdit calls on `.claude/settings.json`,
 `.claude/settings.local.json`, anything under `.claude/hooks/`, `.workflow/state/approvals.jsonl`,
-`.workflow/state/install-manifest.json` and anything under `.workflow/state/originals/`. It resolves
-the path first (a relative path from the project root, a leading `~`, symlinks, `..`, and letter
-case on macOS and Windows). `protect-gates-bash.sh` blocks a Bash command that names one of those
-paths: a relative form such as `.claude/settings.json` or `.claude/hooks`, a token that resolves to
-one, or a bare `approvals.jsonl`, `settings.json`, `settings.local.json` or `install-manifest.json`.
-It lets the command through only when it is a plain read: the first word is `cat`, `head`, `tail`,
-`less`, `grep`, `rg`, `ls`, `stat`, `wc` or `diff`, or `jq` with no `-i`, or the command is
-`git status` (`git diff`, `log` and `show` can write with `--output` or run a configured
-external diff, so they are not plain reads; nor is `rg --pre`); and the command has no `>`, `|`, `;`, `&`,
-parentheses, backtick, `$(` or newline. Reads by a file tool are not guarded.
+`.workflow/state/install-manifest.json` and anything under `.workflow/state/originals/`. It compares
+file identity, not spellings. It resolves the target the way the kernel does: the deepest existing
+part of the path is resolved with `realpath`, so symlinks and `..` count, and a `~` is expanded and a
+relative path is taken from the project root. It then blocks the call when the target is one of
+those files by `{dev, ino}`, so a symlink or a hard link to one is caught too; when it is under one
+of those directories; or when it is a file or directory that does not exist yet under an existing
+directory with the same identity and name. Letter case and Unicode forms reach the same decision as
+the volume compares them: on macOS and Windows names fold case, use NFD, and map U+017F to `s`; on
+Linux the bytes must match. An error other than a missing path component exits 2.
 
-Not guarded, and the Bash check is only a heuristic: a Bash command that builds one of these paths
-at run time (a variable, a glob, an interpreter that writes the file without naming it) gets past
-it. Any other path the agent can write is outside these hooks. Write approvals in
-`.workflow/state/approvals.jsonl` yourself, outside the agent, and keep the agent from writing it.
+`protect-gates-bash.sh` is a convenience guard, not a security boundary, and owner approvals must not
+rely on it. It reads the command text only, and nothing on disk. It blocks a command when the text,
+with `'`, `"` and `\` deleted, contains one of these paths: `.claude/settings.json`,
+`.claude/settings.local.json`, `.claude/hooks`, `.workflow/state/approvals.jsonl`,
+`.workflow/state/install-manifest.json` or `.workflow/state/originals` (case-insensitive on macOS and
+Windows). It also blocks a command with a `mv`, `rm`, `cp`, `ln`, `tar` or `rsync` word and a bare
+`.claude`, `.workflow` or `.workflow/state` word. It lets a command through when it is a plain read:
+the first word is `cat`, `head`, `tail`, `less`, `grep`, `ls`, `stat`, `wc`, `diff` or `jq`, or the
+command is `git add`, `git commit` or `git status`; and outside quotes the command has no `>`, `|`,
+`;`, `&`, parentheses, backtick, `$(` or newline, except `2>&1` and a trailing pipe into `head`,
+`tail`, `wc`, `grep` or `sort`. `sort` is allowed in that pipe only without `-o`, `--output` or
+`--compress-program`. `less` is a plain read only without `-o`, `-O`, `--log-file`, `+cmd`, `-k` or `--lesskey`, which
+write a file or run a program.
+
+Not caught, so the Bash check does not stop these:
+- a `cd` into `.claude` or `.workflow/state`, then a relative write such as `echo x > hooks/a.sh`,
+  in the same call or a later one, since the shell keeps its directory between calls;
+- a path built at run time: a variable (`D=.claude; echo x > $D/settings.json`), a glob, or a
+  command substitution in a word that names no gate;
+- an interpreter or program that writes a file without naming it (`node -e`, `python -c`, a script);
+- `git status` running a `core.fsmonitor` program, and `git add` or `git commit` running a filter or
+  a hook, when `.git/config` or a hook is one the agent wrote (neither is guarded);
+- any other tool call, and any path outside the list above.
+
+Write approvals in `.workflow/state/approvals.jsonl` yourself, outside the agent, and keep the agent
+from writing it.
 
 ## Wiring into Claude Code
 
@@ -155,8 +176,8 @@ Installing the files does not register them with every agent or tool.
 
 Arbitrary script contents, aliases/functions and generated programs are outside
 this parser. The current JSON wrappers retain malformed/nonstring-input and
-failed-extraction limits. Plain marker authenticity, protected file-tool paths
-and broader tool coverage remain separate MR-5/MR-4/MR-6 work.
+failed-extraction limits. Plain marker authenticity and broader tool coverage remain separate
+MR-5/MR-4 work.
 
 ## Adding hooks
 
