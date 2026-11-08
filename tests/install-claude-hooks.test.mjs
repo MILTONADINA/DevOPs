@@ -268,6 +268,43 @@ test(`uninstall keeps an edited run-hook entry, its runner and its hook, and nam
   });
 });
 
+test(`uninstall keeps the modules a kept hook calls beside it (${SPEC}#ac-27)`, () => {
+  withProject(dir => {
+    assert.equal(init(dir).status, 0);
+    const settings = readSettings(dir);
+    const all = Object.values(settings.hooks).flat().flatMap(group => group.hooks);
+    for (const name of ['protect-gates.sh', 'deploy-gate.sh', 'block-new-dependency.sh']) all.find(h => h.command.includes(` ${name} `)).timeout = 30;
+    writeFileSync(settingsPath(dir), `${JSON.stringify(settings, null, 2)}\n`);
+    const r = uninstall(dir);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    for (const file of ['protect-gates.sh', 'protect-gates.mjs', 'deploy-gate.sh', 'graph-command-classifier.mjs', 'block-new-dependency.sh', 'new-dependency-classifier.mjs']) {
+      assert.ok(existsSync(path.join(dir, '.claude/hooks', file)), `${file} stays for the kept entry`);
+    }
+    assert.equal(existsSync(path.join(dir, '.claude/hooks/block-rm-rf.sh')), false, 'a hook no kept entry runs is removed');
+  });
+});
+
+test(`uninstall that cannot rewrite settings.json keeps every hook file it still runs (${SPEC}#ac-27)`, () => {
+  withProject(dir => {
+    // A user's own key, so uninstall rewrites the file instead of deleting it.
+    mkdirSync(path.join(dir, '.claude'));
+    writeFileSync(settingsPath(dir), '{ "model": "user-choice" }\n');
+    assert.equal(init(dir).status, 0);
+    // A directory where the temporary copy goes makes the whole-file replacement fail.
+    mkdirSync(path.join(dir, '.claude/settings.json.tmp'));
+    const r = uninstall(dir);
+    assert.match(r.stdout, /^kept {6}\.claude\/settings\.json: /m);
+    const commands = commandsIn(readSettings(dir));
+    assert.ok(commands.length > 0, 'the entries are still in settings.json');
+    for (const command of commands) {
+      for (const file of hookFilesNamedBy(command)) assert.ok(existsSync(path.join(dir, '.claude/hooks', file)), `${file} exists for ${command}`);
+    }
+    for (const file of ['protect-gates.mjs', 'graph-command-classifier.mjs', 'new-dependency-classifier.mjs']) {
+      assert.ok(existsSync(path.join(dir, '.claude/hooks', file)), `${file} stays beside the hook that calls it`);
+    }
+  });
+});
+
 test(`uninstall removes its own entry, not a user's identical command in another group (${SPEC}#ac-27)`, () => {
   withProject(dir => {
     const inner = RUN('pre', 'block-rm-rf.sh', 'command');
