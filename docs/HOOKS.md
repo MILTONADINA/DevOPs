@@ -13,7 +13,8 @@ paths: a relative form such as `.claude/settings.json` or `.claude/hooks`, a tok
 one, or a bare `approvals.jsonl`, `settings.json`, `settings.local.json` or `install-manifest.json`.
 It lets the command through only when it is a plain read: the first word is `cat`, `head`, `tail`,
 `less`, `grep`, `rg`, `ls`, `stat`, `wc` or `diff`, or `jq` with no `-i`, or the command is
-`git diff`, `git log`, `git show` or `git status`; and the command has no `>`, `|`, `;`, `&`,
+`git status` (`git diff`, `log` and `show` can write with `--output` or run a configured
+external diff, so they are not plain reads; nor is `rg --pre`); and the command has no `>`, `|`, `;`, `&`,
 parentheses, backtick, `$(` or newline. Reads by a file tool are not guarded.
 
 Not guarded, and the Bash check is only a heuristic: a Bash command that builds one of these paths

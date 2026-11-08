@@ -32,7 +32,9 @@ const COMMAND_NAMES = [...PROTECTED_FILES, ...PROTECTED_DIRS];
 const PROTECTED_BASENAMES = ['settings.json', 'settings.local.json', 'approvals.jsonl', 'install-manifest.json'];
 
 const READ_COMMANDS = new Set(['cat', 'head', 'tail', 'less', 'grep', 'rg', 'ls', 'stat', 'wc', 'diff']);
-const GIT_READS = new Set(['diff', 'log', 'show', 'status']);
+// Only `git status`: diff, log and show accept --output=<file> and can run an external diff
+// program configured in .git/config, which the agent can write.
+const GIT_READS = new Set(['status']);
 // Any of these leads into another command or a write: a redirection, a pipe, a list, a
 // background job, a subshell, a substitution or a newline.
 const CHAINS = /[>|;&()`\n\r]|\$\(/;
@@ -132,6 +134,8 @@ function isPlainRead(command) {
   if (CHAINS.test(command)) return false;
   const words = command.trim().split(/\s+/);
   const [first, second] = words;
+  // rg --pre runs a program on each file it searches.
+  if (first === 'rg' && words.some(word => /^--pre(=|$)/.test(word))) return false;
   if (READ_COMMANDS.has(first)) return true;
   if (first === 'jq') return !words.some(word => /^-[A-Za-z]*i[A-Za-z]*$/.test(word));
   return first === 'git' && GIT_READS.has(second);

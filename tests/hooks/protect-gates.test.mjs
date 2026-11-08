@@ -132,7 +132,11 @@ test(`Bash: a command that writes a gate file is blocked; plain reads pass (${SP
   allowed(bashHook(dir, 'head -n 3 .workflow/state/approvals.jsonl'), 'head of approvals.jsonl');
   allowed(bashHook(dir, 'grep -i secret .claude/hooks/block-rm-rf.sh'), 'grep -i in .claude/hooks');
   allowed(bashHook(dir, 'git status'), 'git status');
-  allowed(bashHook(dir, 'git diff -- .claude/settings.json'), 'git diff of settings.json');
+  allowed(bashHook(dir, 'git status -- .claude/settings.json'), 'git status of settings.json');
+  blocked(bashHook(dir, 'git diff --output=.claude/settings.json HEAD~1'), 'git diff --output writes the file');
+  blocked(bashHook(dir, 'git log -p -- .claude/settings.json'), 'git log can run an external diff');
+  blocked(bashHook(dir, 'rg --pre ./x.sh deny .claude/settings.json'), 'rg --pre runs a program');
+  allowed(bashHook(dir, 'rg deny .claude/settings.json'), 'plain rg');
   allowed(bashHook(dir, 'echo hello'), 'echo that names nothing protected');
   allowed(bashHook(dir, 'npm run test'), 'npm run test');
 });
