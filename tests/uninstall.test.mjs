@@ -263,3 +263,27 @@ test(`a file not edited between two DevOPs runs is still restored (${SPEC}#ac-23
     assert.equal(readFileSync(path.join(dir, '.gitignore'), 'utf8'), GITIGNORE);
   });
 });
+
+test(`an original copy read through a symlinked originals folder is kept and named, not followed (${SPEC}#ac-24)`, () => {
+  withProject(dir => {
+    install(dir);
+    // The copy .gitignore's original lives in is moved outside and linked back in: its bytes are still right.
+    const originals = path.join(dir, '.workflow/state/originals');
+    const outside = realpathSync(mkdtempSync(path.join(tmpdir(), 'uninstall-outside-')));
+    try {
+      cpSync(originals, outside, { recursive: true });
+      rmSync(originals, { recursive: true, force: true });
+      symlinkSync(outside, originals);
+      const before = readFileSync(path.join(dir, '.gitignore'), 'utf8');
+      const u = uninstall(dir);
+      assert.equal(u.status, 0, u.stdout + u.stderr);
+      assert.match(u.stdout, /kept {6}\.gitignore: its original copy is unreadable: refusing to write through a symlink in the project: \.workflow\/state\/originals/);
+      assert.doesNotMatch(u.stdout, /restore {3}\.gitignore/);
+      assert.equal(readFileSync(path.join(dir, '.gitignore'), 'utf8'), before, 'the file is left as it is');
+      assert.ok(manifestNow(dir).files['.gitignore'], '.gitignore stays in the manifest');
+      assert.equal(readFileSync(path.join(outside, '.gitignore'), 'utf8'), GITIGNORE, 'the outside copy is untouched');
+    } finally {
+      rmSync(outside, { recursive: true, force: true });
+    }
+  });
+});

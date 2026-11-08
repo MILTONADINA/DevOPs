@@ -111,6 +111,28 @@ function emptyDirsUnder(dir) {
   return out;
 }
 
+/** Regular `*.tmp` files under `dir`, never through a symlink. */
+function tempFilesUnder(base, dir) {
+  const out = [];
+  const walk = at => {
+    let stat;
+    try {
+      stat = fs.lstatSync(at);
+    } catch {
+      return;
+    }
+    if (stat.isDirectory()) for (const name of fs.readdirSync(at)) walk(path.join(at, name));
+    else if (stat.isFile() && at.endsWith('.tmp')) out.push(at);
+  };
+  try {
+    assertInside(base, dir);
+  } catch {
+    return out;
+  }
+  walk(dir);
+  return out;
+}
+
 function removeIfEmpty(dir) {
   try {
     if (fs.lstatSync(dir).isDirectory() && fs.readdirSync(dir).length === 0) {
@@ -186,7 +208,11 @@ export function uninstall(root, { dryRun = false, log = console.log } = {}) {
     log(`dry-run: ${handled} recorded file(s) handled, ${keptCount} kept; nothing changed.`);
     return 0;
   }
-  if (keptCount === 0) removeRegular(path.join(base, MANIFEST));
+  if (keptCount === 0) {
+    removeRegular(path.join(base, MANIFEST));
+    // Leftovers of a write interrupted between its temp file and the rename.
+    for (const file of tempFilesUnder(base, path.join(base, ORIGINALS))) removeRegular(file);
+  }
   for (const dir of emptyDirsUnder(path.join(base, ORIGINALS))) removeIfEmpty(dir);
   const left = [];
   for (const dir of dirs) {

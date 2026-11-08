@@ -24,6 +24,7 @@ import { UnsafeWriteError, assertInside, present, writeInside } from './safe-wri
 
 export const MANIFEST = '.workflow/state/install-manifest.json';
 export const ORIGINALS = '.workflow/state/originals';
+export const MANIFEST_TEMP = `${ORIGINALS}/.install-manifest.json.tmp`;
 export const SCHEMA_VERSION = 1;
 // The DevOPs pre-commit hook lives in Git's hooks folder, not under the project
 // root; it is recorded under this name.
@@ -98,9 +99,34 @@ export function readManifest(root) {
 
 /**
  * Opens the manifest of `root` for recording. Call `before(key)` just before a
- * write, `after(key)` just after it, and `save()` once at the end. `file` is the
- * file's real location when it is not `root/key` (the pre-commit hook).
+ * write, `after(key)` just after it, and `save()` once at the end. Each record
+ * also saves at once (keepPending), so a run killed by a signal keeps what it
+ * recorded. `file` is the file's real location when it is not `root/key`
+ * (the pre-commit hook).
  */
+/**
+ * Writes `bytes` to `target` whole: into `temp` (`target.tmp`), flushed to disk, then
+ * renamed over it (or, with `exclusive`, linked to it, which fails when the
+ * target exists). A signal or crash leaves the old file or the new one, never
+ * part of it. A leftover `.tmp` is overwritten by the next write.
+ */
+export function replaceWhole(base, target, bytes, { exclusive = false, temp = `${target}.tmp` } = {}) {
+  writeInside(base, temp, bytes);
+  const tempFile = path.join(base, temp);
+  const fd = fs.openSync(tempFile, fs.constants.O_RDONLY | NOFOLLOW);
+  try {
+    fs.fsyncSync(fd);
+  } finally {
+    fs.closeSync(fd);
+  }
+  const file = path.join(base, target);
+  assertInside(base, file);
+  if (exclusive) {
+    fs.linkSync(tempFile, file);
+    fs.unlinkSync(tempFile);
+  } else fs.renameSync(tempFile, file);
+}
+
 export const ADOPTED_NOTICE = 'Install manifest: started in a project an earlier DevOPs installed into; files that release wrote are recorded as originals.';
 
 export function openManifest(root) {
@@ -128,7 +154,10 @@ export function openManifest(root) {
         // Bytes that differ from what DevOPs last wrote were edited by someone else.
         const entry = data.files[key];
         const now = entry.written === null ? null : readRegular(at);
-        if (now !== null && sha256(now) !== entry.written) entry.edited = true;
+        if (now !== null && sha256(now) !== entry.written) {
+          entry.edited = true;
+          api.save({ keepPending: true });
+        }
         return;
       }
       if (!file) {
@@ -142,29 +171,42 @@ export function openManifest(root) {
       const bytes = readRegular(at);
       if (bytes === null) {
         data.files[key] = { original: null, written: null };
+        // Saved before the write, so a kill mid-write leaves the file recorded.
+        api.save({ keepPending: true });
         return;
       }
       // A copy left by an earlier run (its manifest since lost) is the older truth.
       const copy = `${ORIGINALS}/${key}`;
+      // A symlinked folder above the copy would make the read below hash an outside file.
+      assertInside(base, path.join(base, copy));
       const kept = readRegular(path.join(base, copy));
-      if (kept === null) writeInside(base, copy, bytes, { exclusive: true });
+      // Written whole: a copy cut short by a signal would later be restored as the original.
+      if (kept === null) replaceWhole(base, copy, bytes, { exclusive: true });
       data.files[key] = { original: { sha256: sha256(kept ?? bytes), copy }, written: null };
+      api.save({ keepPending: true });
     },
     after(key, file) {
       const bytes = readRegular(locate(key, file));
       if (bytes === null) throw new UnsafeWriteError(`${key} was not written`);
       if (!Object.hasOwn(data.files, key)) throw new UnsafeWriteError(`${key} was written without being recorded first`);
       data.files[key].written = sha256(bytes);
+      // Saved now, not only at exit: a SIGINT or SIGTERM skips the exit listener.
+      api.save({ keepPending: true });
     },
     /** Records a folder DevOPs is about to create (with mkdir -p) when it is absent. */
     dir(key) {
       if (!ownDir(key)) throw new UnsafeWriteError(`not a folder DevOPs creates: ${key}`);
       assertInside(base, path.join(base, key));
       const parts = key.split('/');
+      let added = false;
       for (let i = 1; i <= parts.length; i++) {
         const dir = parts.slice(0, i).join('/');
-        if (!present(path.join(base, dir)) && !data.dirs.includes(dir)) data.dirs.push(dir);
+        if (!present(path.join(base, dir)) && !data.dirs.includes(dir)) {
+          data.dirs.push(dir);
+          added = true;
+        }
       }
+      if (added) api.save({ keepPending: true });
     },
     // An entry whose write was never confirmed is dropped, unless `keepPending`
     // (a writer in another process confirms it later).
@@ -178,7 +220,10 @@ export function openManifest(root) {
           if (bytes !== null) entry.written = sha256(bytes);
           else if (entry.original === null) delete data.files[key];
         }
-      writeInside(base, MANIFEST, `${JSON.stringify(data, null, 2)}\n`);
+      // Replaced whole, so an interruption cannot leave a truncated manifest
+      // that the next run would refuse.
+      // The temp file sits under originals/, which .gitignore already covers.
+      replaceWhole(base, MANIFEST, `${JSON.stringify(data, null, 2)}\n`, { temp: MANIFEST_TEMP });
     },
     data,
     /** True when this call started the manifest (none was on disk). */
