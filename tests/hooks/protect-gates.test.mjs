@@ -17,6 +17,7 @@ const ROOT = path.resolve(import.meta.dirname, '..', '..');
 const FILE_HOOK = path.join(ROOT, 'hooks/universal/pre-tool/protect-gates.sh');
 const BASH_HOOK = path.join(ROOT, 'hooks/universal/pre-tool/protect-gates-bash.sh');
 const SPEC = 'specs/release/npm-package.md';
+const GIT = '/usr/bin/git';
 const BLOCK = /^DevOPs GATE BLOCK: .+ holds DevOPs gates or approvals; change it yourself outside the agent$/m;
 
 const dirs = [];
@@ -245,7 +246,7 @@ test(`file tools: an empty path passes; an internal error fails closed (${SPEC}#
 test(`the project root is CLAUDE_PROJECT_DIR, else the git top level (${SPEC}#ac-28)`, () => {
   const dir = project();
   rmSync(path.join(dir, '.git'), { recursive: true, force: true });
-  const git = spawnSync('git', ['init', '-q'], { cwd: dir, encoding: 'utf8' });
+  const git = spawnSync(GIT, ['init', '-q'], { cwd: dir, encoding: 'utf8' });
   assert.equal(git.status, 0, git.stderr);
   const env = { ...process.env };
   delete env.CLAUDE_PROJECT_DIR;
