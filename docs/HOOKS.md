@@ -3,11 +3,55 @@
 Deterministic safety layer. Hooks fire on the tool calls Claude Code sends them, whatever the
 agent intends.
 
-Limitation: the agent's own Write and Edit tools can change `.claude/settings.json`,
-`.claude/hooks/` and `.workflow/state/approvals.jsonl`. Only `block-secrets.sh` checks file-tool
-calls among the wired hooks, and it does not guard those paths. No wired hook blocks a write to
-them, from a file tool or from Bash. A Bash `cat` of a secret file is not checked by
-`block-secrets.sh`.
+Guarded: the agent cannot change its own gates or approvals. `protect-gates.sh` guards the
+agent's Write, Edit, MultiEdit and NotebookEdit calls on `.claude/settings.json`,
+`.claude/settings.local.json`, anything under `.claude/hooks/`, `.workflow/state/approvals.jsonl`,
+`.workflow/state/install-manifest.json` and anything under `.workflow/state/originals/`. It compares
+file identity, not spellings. Only an absolute path is accepted: a relative path, or one that starts with
+`~`, exits 2 with `is not an absolute path`, because the file tools take absolute paths. The target is
+resolved the way the kernel does: the deepest existing part of the path is resolved with `realpath`, so
+symlinks and `..` count. It then blocks the call when the target is one of those files by `{dev, ino}`,
+so a symlink or a hard link to one is caught too; when it is under one of those directories, with the
+last component left unresolved as well, so a symbolic link inside a protected directory counts as inside
+it even when it points out; when it is the same file (`{dev, ino}`) as an entry under one of those
+directories, so a hard link to a hook or an original is caught; when it is at or under the real path a
+symbolic link inside one of those directories points to, existing or not, so a link to a directory
+protects files not yet made there and a dangling link protects its missing target; or when it is a file
+or directory that does not exist yet under an existing directory with the same identity and name. The
+walk of a protected directory follows real directories only (a symbolic link is one entry, so a linked
+tree or a loop costs nothing; links nested inside a linked tree are not followed), goes eight levels deep and no further, and stops after 5000 entries;
+past either limit the call exits 2, and the message says what to move out. Names fold the same way on
+every platform: NFD, U+017F as `s`, and upper then lower case. The names are ASCII, so folding refuses
+little that is not a gate. An error other than a missing path component exits 2.
+
+`protect-gates-bash.sh` is a convenience guard, not a security boundary, and owner approvals must not
+rely on it. It reads the command text only, and nothing on disk. It blocks a command when the text,
+with `'`, `"` and `\` deleted, contains one of these paths: `.claude/settings.json`,
+`.claude/settings.local.json`, `.claude/hooks`, `.workflow/state/approvals.jsonl`,
+`.workflow/state/install-manifest.json` or `.workflow/state/originals` (folded on every platform, as the
+file-tool check folds them). It also blocks a command with a `mv`, `rm`, `cp`, `ln`, `tar` or `rsync` word and a bare
+`.claude`, `.workflow` or `.workflow/state` word. It lets a command through when it is a plain read:
+the first word is `cat`, `head`, `tail`, `less`, `grep`, `ls`, `stat`, `wc`, `diff` or `jq`, or the
+command is `git add`, `git commit` or `git status`; and outside quotes the command has no `>`, `|`,
+`;`, `&`, parentheses, backtick, `$(` or newline, except `2>&1` and a trailing pipe into `head`,
+`tail`, `wc`, `grep` or `sort`. `sort` is allowed in that pipe only without `-o`, `--output` or
+`--compress-program`. `less` is a plain read only without `-o`, `-O`, `--log-file`, `+cmd`, `-k` or `--lesskey`, which
+write a file or run a program.
+
+Not caught, so the Bash check does not stop these:
+- a `cd` into `.claude` or `.workflow/state`, then a relative write such as `echo x > hooks/a.sh`,
+  in the same call or a later one, since the shell keeps its directory between calls;
+- a path spelled with an extra `/` or a `.` component, such as `.claude//settings.json` or
+  `.claude/./settings.json`, since the text match looks for the plain spelling;
+- a path built at run time: a variable (`D=.claude; echo x > $D/settings.json`), a glob, or a
+  command substitution in a word that names no gate;
+- an interpreter or program that writes a file without naming it (`node -e`, `python -c`, a script);
+- `git status` running a `core.fsmonitor` program, and `git add` or `git commit` running a filter or
+  a hook, when `.git/config` or a hook is one the agent wrote (neither is guarded);
+- any other tool call, and any path outside the list above.
+
+Write approvals in `.workflow/state/approvals.jsonl` yourself, outside the agent, and keep the agent
+from writing it.
 
 ## Wiring into Claude Code
 
@@ -53,6 +97,8 @@ so Claude Code shows the leak.
 | `block-rm-rf.sh` | `PreToolUse` | `Bash` | command |
 | `block-new-dependency.sh` | `PreToolUse` | `Bash` | command |
 | `block-secrets.sh` | `PreToolUse` | `Read\|Write\|Edit\|MultiEdit\|NotebookEdit` | file |
+| `protect-gates.sh` | `PreToolUse` | `Write\|Edit\|MultiEdit\|NotebookEdit` | file |
+| `protect-gates-bash.sh` | `PreToolUse` | `Bash` | command |
 | `gitleaks-scan.sh` | `PostToolUse` | `Write\|Edit\|MultiEdit` | file |
 | `load-baton.sh` | `SessionStart` | none | (plain command) |
 
@@ -140,8 +186,8 @@ Installing the files does not register them with every agent or tool.
 
 Arbitrary script contents, aliases/functions and generated programs are outside
 this parser. The current JSON wrappers retain malformed/nonstring-input and
-failed-extraction limits. Plain marker authenticity, protected file-tool paths
-and broader tool coverage remain separate MR-5/MR-4/MR-6 work.
+failed-extraction limits. Plain marker authenticity and broader tool coverage remain separate
+MR-5/MR-4 work.
 
 ## Adding hooks
 

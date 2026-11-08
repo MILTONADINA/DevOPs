@@ -38,6 +38,8 @@ const HOOKS = [
   'block-rm-rf.sh',
   'block-new-dependency.sh',
   'block-secrets.sh',
+  'protect-gates.sh',
+  'protect-gates-bash.sh',
   'gitleaks-scan.sh',
 ];
 
