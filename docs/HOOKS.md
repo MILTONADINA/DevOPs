@@ -14,10 +14,13 @@ symlinks and `..` count. It then blocks the call when the target is one of those
 so a symlink or a hard link to one is caught too; when it is under one of those directories, with the
 last component left unresolved as well, so a symbolic link inside a protected directory counts as inside
 it even when it points out; when it is the same file (`{dev, ino}`) as an entry under one of those
-directories, so a hard link to a hook or an original is caught, and so is a file that a link inside the
-directory points to; or when it is a file or directory that does not exist yet under an existing
-directory with the same identity and name. The walk of a protected directory goes eight levels deep and
-no further, and stops after 5000 entries; past either limit the call exits 2. Names fold the same way on
+directories, so a hard link to a hook or an original is caught; when it is at or under the real path a
+symbolic link inside one of those directories points to, existing or not, so a link to a directory
+protects files not yet made there and a dangling link protects its missing target; or when it is a file
+or directory that does not exist yet under an existing directory with the same identity and name. The
+walk of a protected directory follows real directories only (a symbolic link is one entry, so a linked
+tree or a loop costs nothing), goes eight levels deep and no further, and stops after 5000 entries;
+past either limit the call exits 2, and the message says what to move out. Names fold the same way on
 every platform: NFD, U+017F as `s`, and upper then lower case. The names are ASCII, so folding refuses
 little that is not a gate. An error other than a missing path component exits 2.
 

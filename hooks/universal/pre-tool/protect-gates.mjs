@@ -189,20 +189,27 @@ function unresolvedLeaf(abs) {
   return path.join(realTarget(joinRaw(root, parts.slice(0, -1))), last);
 }
 
-// The identity of every entry under the protected directories, each mapped to the directory it is in.
-// Links are followed (statSync), so an entry that is a link has its target's identity. A tree nested
-// past MAX_DEPTH levels, or with more than MAX_ENTRIES entries, throws, and the caller fails closed.
-function protectedIdentities(root) {
+// What the protected directories hold. `holders` maps the identity of every real entry (lstat, so a
+// hard link has its file's identity) to the directory it is in. `linkRoots` lists, for every symbolic
+// link in them, the real path it points to (a dangling link included), with that directory: a target
+// at or under a link root is reached through the gate directory. Only real directories are walked,
+// so a link to a large tree, or a loop, costs one entry. A tree nested past MAX_DEPTH levels, or
+// with more than MAX_ENTRIES entries, throws, and the caller fails closed.
+function protectedContents(root) {
   const holders = new Map();
+  const linkRoots = [];
   let count = 0;
   const visit = (dir, rel, depth) => {
     for (const name of fs.readdirSync(dir)) {
-      if (depth + 1 > MAX_DEPTH) throw new Error(`${rel} is nested more than ${MAX_DEPTH} levels deep`);
+      if (depth + 1 > MAX_DEPTH) throw new Error(`${rel} is nested more than ${MAX_DEPTH} levels deep; remove the extra levels outside the agent`);
       count += 1;
-      if (count > MAX_ENTRIES) throw new Error(`${rel} holds more than ${MAX_ENTRIES} entries`);
+      if (count > MAX_ENTRIES) throw new Error(`${rel} holds more than ${MAX_ENTRIES} entries; move them out of ${rel} outside the agent`);
       const full = path.join(dir, name);
-      const st = statOrNull(full);
-      if (st === null) continue;
+      const st = fs.lstatSync(full);
+      if (st.isSymbolicLink()) {
+        linkRoots.push({ parts: partsOf(realTarget(full)), rel });
+        continue;
+      }
       const key = `${st.dev}:${st.ino}`;
       if (!holders.has(key)) holders.set(key, rel);
       if (st.isDirectory()) visit(full, rel, depth + 1);
@@ -212,7 +219,7 @@ function protectedIdentities(root) {
     const dir = realTarget(under(root, rel));
     if (isDirectory(dir)) visit(dir, rel, 0);
   }
-  return holders;
+  return { holders, linkRoots };
 }
 
 // The protected name a real path spells under the root, compared folded. A gate that does not exist
@@ -278,11 +285,17 @@ function fileBlock(input) {
       if (matchesDir(leafTarget, leafChain, locate(realTarget(under(root, rel))))) return gateMessage(rel);
     }
   }
-  // An existing target is compared by identity with every entry under the protected directories,
-  // so a hard link to one of them, or a link to one from outside, is blocked too.
+  // The contents of the protected directories: an existing target with the identity of an entry in
+  // them (a hard link) is blocked, and so is any target, existing or not, at or under the real path a
+  // link in them points to (the link's target is reached through the gate directory).
+  const { holders, linkRoots } = protectedContents(root);
   if (target.rest.length === 0) {
-    const holder = protectedIdentities(root).get(target.key);
+    const holder = holders.get(target.key);
     if (holder !== undefined) return gateMessage(holder);
+  }
+  const realParts = partsOf(real);
+  for (const link of linkRoots) {
+    if (startsWith(realParts, link.parts)) return gateMessage(link.rel);
   }
   return null;
 }

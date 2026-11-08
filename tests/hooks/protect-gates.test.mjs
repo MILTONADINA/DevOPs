@@ -133,6 +133,33 @@ test(`file tools: a symlink inside a protected directory that points out of it i
   blocked(fileHook(dir, path.join(dir, 'src/real.md')), 'src/real.md, the target of that symlink');
 });
 
+test(`file tools: a link in a protected directory to a directory or a missing file protects what it reaches (${SPEC}#ac-28)`, () => {
+  const dir = project();
+  mkdirSync(path.join(dir, 'src/lib/sub'), { recursive: true });
+  writeFileSync(path.join(dir, 'src/lib/old.js'), 'old\n');
+  symlinkSync(path.join(dir, 'src/lib'), path.join(dir, '.claude/hooks/lib'));
+  symlinkSync(path.join(dir, 'src/future.sh'), path.join(dir, '.claude/hooks/future.sh'));
+  mkdirSync(path.join(dir, 'src/out'));
+  symlinkSync(path.join(dir, 'src/out'), path.join(dir, '.workflow/state/originals/o'));
+  blocked(fileHook(dir, path.join(dir, 'src/lib/new.js')), 'a new file in a directory a hooks link points to');
+  blocked(fileHook(dir, path.join(dir, 'src/lib/sub/new.js')), 'a new file deeper in that directory');
+  blocked(fileHook(dir, path.join(dir, '.claude/hooks/lib/new.js')), 'the same file through the link');
+  blocked(fileHook(dir, path.join(dir, 'src/future.sh')), 'the missing target of a dangling hooks link');
+  blocked(fileHook(dir, path.join(dir, 'src/out/new.md')), 'a new file in a directory an originals link points to');
+  allowed(fileHook(dir, path.join(dir, 'src/other.js')), 'a file no link reaches');
+});
+
+test(`file tools: a symlinked tree in a protected directory is one entry, not walked (${SPEC}#ac-28)`, () => {
+  const dir = project();
+  const big = path.join(dir, 'vendor/big');
+  mkdirSync(big, { recursive: true });
+  for (let i = 0; i < 5100; i += 1) writeFileSync(path.join(big, `f${i}.js`), '');
+  symlinkSync(big, path.join(dir, '.claude/hooks/node_modules'));
+  symlinkSync(path.join(dir, '.claude/hooks'), path.join(dir, '.claude/hooks/loop'));
+  writeFileSync(path.join(dir, 'src/app.ts'), 'export {};\n');
+  allowed(fileHook(dir, path.join(dir, 'src/app.ts')), 'an edit elsewhere with a large linked tree and a loop under hooks');
+});
+
 test(`file tools: a protected directory walk fails closed past 8 levels or 5000 entries (${SPEC}#ac-28)`, () => {
   const dir = project();
   writeFileSync(path.join(dir, 'src/app.ts'), 'export {};\n');
