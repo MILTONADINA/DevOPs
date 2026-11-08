@@ -62,6 +62,8 @@ other key and hook in that file, never adds an entry whose command is already th
 and records what it added in the install manifest, so `devops uninstall` removes only
 those entries.
 
+A settings.json rewrite keeps what the user wrote. Init and uninstall write the file through a temp file they create exclusively under a unique name, so a `.claude/settings.json.tmp` the user already has is never read, overwritten or removed. The file keeps its indentation (a tab, or the spaces of its first indented line; 2 spaces for a new file or one with no indented line) and its trailing newline. A settings.json holding an integer above 2^53 is left unchanged with a warning, because JSON would round the number. Uninstall deletes an event array, or the `hooks` object, only when init created it and uninstall's removal emptied it; an empty array that was there before init stays (specs/release/npm-package.md AC-27, #426).
+
 A pre or post hook is named as
 
     node "${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/run-hook.mjs" <pre|post> <hook-file> <stdin|command|file>

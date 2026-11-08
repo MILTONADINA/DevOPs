@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, chmodSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { writeStubGit } from './fixtures/stub-git.mjs';
@@ -321,15 +321,20 @@ test(`a later uninstall still keeps a hook file a user's own entry runs (${SPEC}
   });
 });
 
-test(`uninstall that cannot rewrite settings.json keeps every hook file it still runs (${SPEC}#ac-27)`, () => {
+test(`uninstall that cannot rewrite settings.json keeps every hook file it still runs (${SPEC}#ac-27)`, { skip: process.getuid?.() === 0 && 'root writes into a read-only folder' }, () => {
   withProject(dir => {
     // A user's own key, so uninstall rewrites the file instead of deleting it.
     mkdirSync(path.join(dir, '.claude'));
     writeFileSync(settingsPath(dir), '{ "model": "user-choice" }\n');
     assert.equal(init(dir).status, 0);
-    // A directory where the temporary copy goes makes the whole-file replacement fail.
-    mkdirSync(path.join(dir, '.claude/settings.json.tmp'));
-    const r = uninstall(dir);
+    // A read-only folder makes the temporary copy impossible to create, so the whole-file replacement fails.
+    chmodSync(path.join(dir, '.claude'), 0o555);
+    let r;
+    try {
+      r = uninstall(dir);
+    } finally {
+      chmodSync(path.join(dir, '.claude'), 0o755);
+    }
     assert.match(r.stdout, /^kept {6}\.claude\/settings\.json: /m);
     const commands = commandsIn(readSettings(dir));
     assert.ok(commands.length > 0, 'the entries are still in settings.json');
@@ -533,5 +538,86 @@ test(`the run-hook.mjs runner is recorded in the manifest with the hooks (${SPEC
     assert.ok(readRecord(dir).files['.claude/hooks/run-hook.mjs'], 'run-hook.mjs is in the manifest files');
     assert.equal(uninstall(dir).status, 0);
     assert.equal(existsSync(path.join(dir, '.claude/hooks/run-hook.mjs')), false, 'uninstall removes the runner');
+  });
+});
+
+// #426: the side effects of rewriting settings.json.
+test(`a pre-existing .claude/settings.json.tmp is never read, overwritten or removed (${SPEC}#ac-27)`, () => {
+  withProject(dir => {
+    mkdirSync(path.join(dir, '.claude'));
+    writeFileSync(settingsPath(dir), `${JSON.stringify(USER_SETTINGS, null, 2)}\n`);
+    writeFileSync(path.join(dir, '.claude/settings.json.tmp'), "the user's own notes\n");
+    const r = init(dir);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.equal(readFileSync(path.join(dir, '.claude/settings.json.tmp'), 'utf8'), "the user's own notes\n");
+    assert.deepEqual(readdirSync(path.join(dir, '.claude')).sort(), ['hooks', 'settings.json', 'settings.json.tmp'], 'no temp file of init is left');
+    assert.equal(uninstall(dir).status, 0);
+    assert.equal(readFileSync(path.join(dir, '.claude/settings.json.tmp'), 'utf8'), "the user's own notes\n");
+  });
+});
+
+test(`a failed settings.json write removes only the temp file it created (${SPEC}#ac-27)`, async () => {
+  const { replaceWholeUnique } = await import('../analyzer/install-manifest.js');
+  assert.equal(typeof replaceWholeUnique, 'function');
+  const dir = realpathSync(mkdtempSync(path.join(tmpdir(), 'claude-hooks-tmp-')));
+  try {
+    mkdirSync(path.join(dir, '.claude/settings.json'), { recursive: true });
+    writeFileSync(path.join(dir, '.claude/settings.json.tmp'), 'KEEP');
+    // A folder where the file goes makes the final rename fail after the temp file exists.
+    assert.throws(() => replaceWholeUnique(dir, '.claude/settings.json', '{}\n'));
+    assert.deepEqual(readdirSync(path.join(dir, '.claude')).sort(), ['settings.json', 'settings.json.tmp']);
+    assert.equal(readFileSync(path.join(dir, '.claude/settings.json.tmp'), 'utf8'), 'KEEP');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test(`init keeps the indentation and trailing newline of settings.json, and uses 2 spaces for a new file (${SPEC}#ac-27)`, () => {
+  for (const [indent, newline] of [['    ', '\n'], ['\t', '\n'], ['  ', ''], ['\t', '']]) {
+    withProject(dir => {
+      mkdirSync(path.join(dir, '.claude'));
+      const text = `${JSON.stringify(USER_SETTINGS, null, indent)}${newline}`;
+      writeFileSync(settingsPath(dir), text);
+      assert.equal(init(dir).status, 0, JSON.stringify(indent));
+      const after = readFileSync(settingsPath(dir), 'utf8');
+      assert.equal(after.startsWith(`{\n${indent}"permissions"`), true, `indent ${JSON.stringify(indent)} kept`);
+      assert.equal(after.endsWith('\n'), newline === '\n', 'trailing newline as it was');
+      assert.equal(uninstall(dir).status, 0);
+      assert.equal(readFileSync(settingsPath(dir), 'utf8'), text, 'uninstall writes the same text back');
+    });
+  }
+  withProject(dir => {
+    mkdirSync(path.join(dir, '.claude'));
+    writeFileSync(settingsPath(dir), '{"permissions":{"allow":["Bash(npm test)"]}}');
+    assert.equal(init(dir).status, 0);
+    assert.match(readFileSync(settingsPath(dir), 'utf8'), /^\{\n {2}"permissions": \{\n {4}"allow"/, 'no indented line: 2 spaces');
+  });
+  withProject(dir => {
+    assert.equal(init(dir).status, 0);
+    assert.match(readFileSync(settingsPath(dir), 'utf8'), /^\{\n {2}"hooks": \{\n {4}"PreToolUse"/, 'a new file: 2 spaces');
+  });
+});
+
+test(`init leaves settings.json unchanged and records nothing when an integer is above 2^53 (${SPEC}#ac-27)`, () => {
+  withProject(dir => {
+    mkdirSync(path.join(dir, '.claude'));
+    const text = '{\n  "maxTokens": 9007199254740993,\n  "label": "9007199254740993 is text"\n}\n';
+    writeFileSync(settingsPath(dir), text);
+    const r = init(dir);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.match(r.stdout, /^⚠ \.claude\/settings\.json has an integer above 2\^53/m);
+    assert.equal(readFileSync(settingsPath(dir), 'utf8'), text);
+    assert.equal(readRecord(dir).claude_hooks, undefined, 'no entry is recorded');
+  });
+});
+
+test(`an integer at or below 2^53 and a digit inside a string do not stop init (${SPEC}#ac-27)`, () => {
+  withProject(dir => {
+    mkdirSync(path.join(dir, '.claude'));
+    writeFileSync(settingsPath(dir), '{\n  "maxTokens": 9007199254740991,\n  "label": "9007199254740993"\n}\n');
+    const r = init(dir);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.match(r.stdout, /wired 10 hooks/);
+    assert.equal(readSettings(dir).maxTokens, 9007199254740991);
   });
 });

@@ -478,3 +478,53 @@ test(`a dry run names the server and the .mcp.json it would delete, and changes 
     assert.deepEqual(snapshot(dir), installed);
   });
 });
+
+// #426: settings.json is rewritten without side effects, and only what init created is removed.
+const settingsFile = dir => path.join(dir, '.claude/settings.json');
+const settingsText = dir => readFileSync(settingsFile(dir), 'utf8');
+
+test(`uninstall writes settings.json back with the tab indentation it had (${SPEC}#ac-21)`, () => {
+  withProject(dir => {
+    mkdirSync(path.join(dir, '.claude'));
+    const text = `${JSON.stringify({ permissions: { allow: ['Bash(npm test)'] }, hooks: { Stop: [] } }, null, '\t')}\n`;
+    writeFileSync(settingsFile(dir), text);
+    install(dir);
+    assert.notEqual(settingsText(dir), text, 'init wired hooks into the file');
+    const r = uninstall(dir);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.equal(settingsText(dir), text);
+  });
+});
+
+test(`uninstall keeps an empty event array or hooks object that was there before init (${SPEC}#ac-21)`, () => {
+  withProject(dir => {
+    mkdirSync(path.join(dir, '.claude'));
+    writeFileSync(settingsFile(dir), `${JSON.stringify({ hooks: { PreToolUse: [], Stop: [] } }, null, 2)}\n`);
+    install(dir);
+    assert.notDeepEqual(JSON.parse(settingsText(dir)).hooks.PreToolUse, [], 'init wrote into the user array');
+    const r = uninstall(dir);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.deepEqual(JSON.parse(settingsText(dir)), { hooks: { PreToolUse: [], Stop: [] } });
+  });
+  withProject(dir => {
+    mkdirSync(path.join(dir, '.claude'));
+    writeFileSync(settingsFile(dir), '{\n  "hooks": {}\n}\n');
+    install(dir);
+    const r = uninstall(dir);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.deepEqual(JSON.parse(settingsText(dir)), { hooks: {} });
+  });
+});
+
+test(`uninstall leaves settings.json unchanged, with its entries still recorded, when it holds an integer above 2^53 (${SPEC}#ac-21)`, () => {
+  withProject(dir => {
+    install(dir);
+    const text = settingsText(dir).replace('{\n', '{\n  "maxTokens": 9007199254740993,\n');
+    writeFileSync(settingsFile(dir), text);
+    const r = uninstall(dir);
+    assert.match(r.stdout, /^kept {6}\.claude\/settings\.json \(.*\): \.claude\/settings\.json has an integer above 2\^53/m);
+    assert.equal(settingsText(dir), text);
+    assert.ok(JSON.parse(readFileSync(path.join(dir, MANIFEST), 'utf8')).claude_hooks.length > 0, 'the entries stay recorded');
+  });
+});
+

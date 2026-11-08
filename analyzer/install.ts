@@ -26,7 +26,7 @@ import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { linkAgileGraph } from './agile-graph.js';
-import { ADOPTED_NOTICE, LOCAL_STATE_IGNORES, ignoreLines, openManifest, readRegular, replaceWhole, sha256 } from './install-manifest.js';
+import { ADOPTED_NOTICE, LOCAL_STATE_IGNORES, hasUnsafeInteger, ignoreLines, jsonText, openManifest, readRegular, replaceWholeUnique, sha256 } from './install-manifest.js';
 import { UnsafeWriteError, backupIfChanged, copyInside, freshBackupStamp, mkdirInside, present, writeInside } from './safe-write.js';
 
 // specs/release/npm-package.md REQ-2: DEVOPS_ROOT if set, else the package this file
@@ -453,14 +453,15 @@ const runsThroughRunHook = (name: string) => {
 };
 
 const SETTINGS = '.claude/settings.json';
-const SETTINGS_TEMP = '.claude/settings.json.tmp';
 const plural = (n: number) => (n === 1 ? 'hook' : 'hooks');
 
 /**
  * Merges the entries for the copied hooks `names` into .claude/settings.json. Keeps every other
  * key and hook; adds nothing already wired under the same event and matcher (and says so for each),
  * and records only what it adds. A settings.json that is a link, not a regular file, or not a JSON
- * object is left unchanged, with a line saying why. A dry run writes nothing.
+ * object is left unchanged, with a line saying why, and so is one holding an integer above 2^53
+ * (JSON.parse would round it). The file keeps its indentation and trailing newline (#426). A dry
+ * run writes nothing.
  */
 function wireClaudeHooks(root: string, names: string[], dryRun: boolean) {
   const wanted: string[] = [];
@@ -488,11 +489,16 @@ function wireClaudeHooks(root: string, names: string[], dryRun: boolean) {
   }
   const bytes = stat ? readRegular(file) : null;
   const created = bytes === null;
+  const original = bytes === null ? null : bytes.toString('utf8');
+  if (original !== null && hasUnsafeInteger(original)) {
+    console.log(`⚠ ${SETTINGS} has an integer above 2^53, which JSON would round; left unchanged, and no hook was wired into it.`);
+    return;
+  }
   let config: Record<string, unknown> = {};
-  if (bytes !== null) {
+  if (original !== null) {
     let parsed: unknown = null;
     try {
-      parsed = JSON.parse(bytes.toString('utf8'));
+      parsed = JSON.parse(original);
     } catch {
       /* not JSON: refused below */
     }
@@ -520,8 +526,11 @@ function wireClaudeHooks(root: string, names: string[], dryRun: boolean) {
   // under the same event. The same command under another event or matcher is not wired, so it is
   // added. Each hook already wired is named, and nothing is added or recorded for it.
   const added: { name: string; event: string; matcher?: string; command: string; inner: { type: string; command: string } }[] = [];
+  // The events whose array this run creates (#426): uninstall deletes only those when emptied.
+  const createdEvents: string[] = [];
   for (const name of wanted) {
     const { event, matcher, command } = CLAUDE_HOOK_WIRING[name] as WiredRow;
+    if (byEvent[event] === undefined) createdEvents.push(event);
     const groups = (byEvent[event] ?? []) as unknown[];
     // An event without a matcher has groups without one: `matcher` undefined matches only those.
     const sameMatcher = groups.filter((g): g is { matcher?: unknown; hooks: unknown[] } =>
@@ -537,7 +546,8 @@ function wireClaudeHooks(root: string, names: string[], dryRun: boolean) {
     added.push({ name, event, matcher, command, inner });
   }
   if (added.length === 0) return;
-  if (config.hooks === undefined) config.hooks = byEvent;
+  const createdObject = config.hooks === undefined;
+  if (createdObject) config.hooks = byEvent;
 
   const list = added.map(a => `${a.event} ${a.name}`).join(', ');
   if (dryRun) {
@@ -553,9 +563,9 @@ function wireClaudeHooks(root: string, names: string[], dryRun: boolean) {
     command: a.command,
     sha256: sha256(JSON.stringify(a.inner)),
   }));
-  record?.claudeHooks(entries, created);
+  record?.claudeHooks(entries, created, createdEvents, createdObject);
   try {
-    replaceWhole(root, SETTINGS, `${JSON.stringify(config, null, 2)}\n`, { temp: SETTINGS_TEMP });
+    replaceWholeUnique(root, SETTINGS, jsonText(config, original));
   } catch (error) {
     record?.forgetClaudeHooks(entries.map(e => e.command));
     console.log(`⚠ ${SETTINGS} could not be written (${(error as Error).message}); no hook was wired into it.`);
