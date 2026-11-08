@@ -10,6 +10,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- All 26 skills, including the nine stack-specific ones, are signed as new-format Sigstore bundles and listed in `governance/skill-manifest.yml`. `devops init` now installs the stack-specific skills that `analyze` recommends instead of skipping them (#347, #416).
 - Skill signing emits one new-format Sigstore bundle per skill, which the installer and the release workflow verify offline against the committed trust root (#345); skills still without a bundle are pinned in `tests/ci/unsigned-skills.txt`, which must shrink to empty (#347). The package now ships `.workflow/sigstore/trust-bundle.json`, so installs can verify new-format bundles offline.
 
 ### Fixed
