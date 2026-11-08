@@ -516,15 +516,57 @@ test(`uninstall keeps an empty event array or hooks object that was there before
   });
 });
 
-test(`uninstall leaves settings.json unchanged, with its entries still recorded, when it holds an integer above 2^53 (${SPEC}#ac-21)`, () => {
+test(`uninstall leaves settings.json unchanged, with its entries still recorded, when it holds a number JSON would not keep exactly (${SPEC}#ac-21)`, () => {
   withProject(dir => {
     install(dir);
     const text = settingsText(dir).replace('{\n', '{\n  "maxTokens": 9007199254740993,\n');
     writeFileSync(settingsFile(dir), text);
     const r = uninstall(dir);
-    assert.match(r.stdout, /^kept {6}\.claude\/settings\.json \(.*\): \.claude\/settings\.json has an integer above 2\^53/m);
+    assert.match(r.stdout, /^kept {6}\.claude\/settings\.json \(.*\): \.claude\/settings\.json has a number JSON would not keep exactly/m);
     assert.equal(settingsText(dir), text);
     assert.ok(JSON.parse(readFileSync(path.join(dir, MANIFEST), 'utf8')).claude_hooks.length > 0, 'the entries stay recorded');
   });
 });
 
+
+test(`uninstall of a 0.8.x install, whose manifest has no created_events or created_object, still deletes the file init created (${SPEC}#ac-21)`, () => {
+  withProject(dir => {
+    install(dir);
+    const manifestPath = path.join(dir, MANIFEST);
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+    assert.equal(manifest.claude_hooks_created_file, true, 'init created settings.json');
+    assert.ok(Array.isArray(manifest.claude_hooks_created_events), 'this version always records the events');
+    delete manifest.claude_hooks_created_events;
+    delete manifest.claude_hooks_created_object;
+    writeFileSync(manifestPath, JSON.stringify(manifest));
+    const r = uninstall(dir);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.ok(!existsSync(settingsFile(dir)), 'the file init created is gone, as 0.8.x left it');
+  });
+  withProject(dir => {
+    mkdirSync(path.join(dir, '.claude'));
+    writeFileSync(settingsFile(dir), `${JSON.stringify({ permissions: { allow: ['Bash(npm test)'] } }, null, 2)}\n`);
+    install(dir);
+    const manifestPath = path.join(dir, MANIFEST);
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+    delete manifest.claude_hooks_created_events;
+    delete manifest.claude_hooks_created_object;
+    writeFileSync(manifestPath, JSON.stringify(manifest));
+    const r = uninstall(dir);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.deepEqual(JSON.parse(settingsText(dir)), { permissions: { allow: ['Bash(npm test)'] } }, 'no empty hooks residue');
+  });
+});
+
+test(`uninstall keeps CRLF line ends in settings.json (${SPEC}#ac-21)`, () => {
+  withProject(dir => {
+    mkdirSync(path.join(dir, '.claude'));
+    const text = `${JSON.stringify({ permissions: { allow: ['Bash(npm test)'] } }, null, 2)}\n`.replace(/\n/g, '\r\n');
+    writeFileSync(settingsFile(dir), text);
+    install(dir);
+    assert.ok(settingsText(dir).includes('\r\n') && !/[^\r]\n/.test(settingsText(dir)), 'init kept CRLF');
+    const r = uninstall(dir);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.equal(settingsText(dir), text);
+  });
+});

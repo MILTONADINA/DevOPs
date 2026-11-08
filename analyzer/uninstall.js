@@ -221,7 +221,7 @@ function unwireHooks(base, entries, created) {
   if (bytes === null) return { ...plan, dropped: [...entries] };
   const text = bytes.toString('utf8');
   if (hasUnsafeInteger(text)) {
-    plan.kept = entries.map(entry => ({ entry, reason: `${SETTINGS_KEY} has an integer above 2^53, which JSON would round` }));
+    plan.kept = entries.map(entry => ({ entry, reason: `${SETTINGS_KEY} has a number JSON would not keep exactly (an integer above 2^53, a decimal with too many digits, or a value too large)` }));
     return plan;
   }
   let config = null;
@@ -258,11 +258,13 @@ function unwireHooks(base, entries, created) {
       continue;
     }
     // Take the entry out, then the matcher group, the event and `hooks` only when each is left empty
-    // by this removal, and only the ones init created (#426).
+    // by this removal, and only the ones init created (#426). A manifest from 0.8.x has no record of
+    // what init created, so for it every event and `hooks` this removal empties goes, as 0.8.x did.
+    const legacy = created.events === null;
     found.group.hooks.splice(found.index, 1);
     if (found.group.hooks.length === 0) groups.splice(groups.indexOf(found.group), 1);
-    if (groups.length === 0 && created.events.includes(entry.event)) delete config.hooks[entry.event];
-    if (created.object && Object.keys(config.hooks).length === 0) delete config.hooks;
+    if (groups.length === 0 && (legacy || created.events.includes(entry.event))) delete config.hooks[entry.event];
+    if ((legacy || created.object === true) && config.hooks && Object.keys(config.hooks).length === 0) delete config.hooks;
     plan.removed.push(entry);
     plan.dropped.push(entry);
   }
@@ -365,8 +367,9 @@ export function uninstall(root, { dryRun = false, log = console.log } = {}) {
   // hook it names: the files loop leaves both alone, and the kept line below names them once.
   const settingsPlan = data.claude_hooks ? unwireHooks(base, data.claude_hooks, {
     file: data.claude_hooks_created_file === true,
-    events: data.claude_hooks_created_events ?? [],
-    object: data.claude_hooks_created_object === true,
+    // null: a manifest from 0.8.x, which did not record them (see unwireHooks).
+    events: data.claude_hooks_created_events ?? null,
+    object: data.claude_hooks_created_object ?? null,
   }) : null;
   // The settings entries go before any hook file does: a run that cannot rewrite settings.json, or
   // stops part way, never leaves an active entry whose runner or hook is gone (which would block

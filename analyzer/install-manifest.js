@@ -234,19 +234,35 @@ export function replaceWholeUnique(base, target, bytes) {
  * The text to write for `config` in place of `original` (the text it was read from, or null for a
  * new file). Indented as the original is: a tab when its first indented line starts with one,
  * else that line's spaces, and 2 spaces when there is no indented line. The trailing newline is
- * kept when the original had one; a new file gets one.
+ * kept when the original had one; a new file gets one. CRLF line ends are kept when the original
+ * used them.
  */
 export function jsonText(config, original) {
   const text = original ?? null;
   const first = text === null ? null : /^([ \t]+)\S/m.exec(text);
   const indent = first === null ? '  ' : first[1].includes('\t') ? '\t' : ' '.repeat(first[1].length);
   const newline = text === null || text.endsWith('\n') ? '\n' : '';
-  return `${JSON.stringify(config, null, indent)}${newline}`;
+  const out = `${JSON.stringify(config, null, indent)}${newline}`;
+  return text !== null && text.includes('\r\n') ? out.replace(/\n/g, '\r\n') : out;
+}
+
+/** A number literal as sign, significant digits and exponent, so `1.50e1` and `15` compare equal. */
+function decimalValue(literal) {
+  const [, sign, int, frac = '', exp = '0'] = /^(-?)(\d+)(?:\.(\d+))?(?:[eE]([+-]?\d+))?$/.exec(literal);
+  let digits = (int + frac).replace(/^0+/, '');
+  if (digits === '') return '0';
+  let power = BigInt(exp) - BigInt(frac.length);
+  const trimmed = digits.replace(/0+$/, '');
+  power += BigInt(digits.length - trimmed.length);
+  digits = trimmed;
+  return `${sign}${digits}e${power}`;
 }
 
 /**
- * True when the JSON text has an integer literal outside a string whose value is not a safe
- * integer (above 2^53 in magnitude), which JSON.parse would round. Text inside strings is skipped.
+ * True when the JSON text has a number literal outside a string that JSON.parse would not keep
+ * exactly: an integer above 2^53 that rounds, a decimal with more digits than a double holds, or
+ * a value too large that becomes Infinity (written back as null). A literal that only changes
+ * spelling, such as `1.0` or `1e2`, is kept. Text inside strings is skipped.
  */
 export function hasUnsafeInteger(text) {
   const number = /-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/y;
@@ -266,7 +282,8 @@ export function hasUnsafeInteger(text) {
       continue;
     }
     const literal = match[0];
-    if (!/[.eE]/.test(literal) && !Number.isSafeInteger(Number(literal))) return true;
+    const value = Number(literal);
+    if (!Number.isFinite(value) || decimalValue(literal) !== decimalValue(String(value).replace(/^-?0$/, '0'))) return true;
     i += literal.length;
   }
   return false;
@@ -367,9 +384,10 @@ export function openManifest(root) {
       const commands = new Set(entries.map(entry => entry.command));
       data.claude_hooks = [...(data.claude_hooks ?? []).filter(entry => !commands.has(entry.command)), ...entries];
       data.claude_hooks_created_file ??= createdFile;
-      const events = [...new Set([...(data.claude_hooks_created_events ?? []), ...createdEvents])];
-      if (events.length > 0) data.claude_hooks_created_events = events;
-      if (createdObject) data.claude_hooks_created_object = true;
+      // Both are always written: a manifest without them is from 0.8.x, before they existed, and
+      // uninstall falls back to that release's cleanup for it.
+      data.claude_hooks_created_events = [...new Set([...(data.claude_hooks_created_events ?? []), ...createdEvents])];
+      data.claude_hooks_created_object = data.claude_hooks_created_object === true || createdObject;
       api.save({ keepPending: true });
     },
     /** Drops the records of settings.json hook entries whose write failed. */

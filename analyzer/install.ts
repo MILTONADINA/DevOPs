@@ -459,7 +459,7 @@ const plural = (n: number) => (n === 1 ? 'hook' : 'hooks');
  * Merges the entries for the copied hooks `names` into .claude/settings.json. Keeps every other
  * key and hook; adds nothing already wired under the same event and matcher (and says so for each),
  * and records only what it adds. A settings.json that is a link, not a regular file, or not a JSON
- * object is left unchanged, with a line saying why, and so is one holding an integer above 2^53
+ * object is left unchanged, with a line saying why, and so is one holding a number JSON would not keep exactly
  * (JSON.parse would round it). The file keeps its indentation and trailing newline (#426). A dry
  * run writes nothing.
  */
@@ -491,7 +491,7 @@ function wireClaudeHooks(root: string, names: string[], dryRun: boolean) {
   const created = bytes === null;
   const original = bytes === null ? null : bytes.toString('utf8');
   if (original !== null && hasUnsafeInteger(original)) {
-    console.log(`⚠ ${SETTINGS} has an integer above 2^53, which JSON would round; left unchanged, and no hook was wired into it.`);
+    console.log(`⚠ ${SETTINGS} has a number JSON would not keep exactly (an integer above 2^53, a decimal with too many digits, or a value too large); left unchanged, and no hook was wired into it.`);
     return;
   }
   let config: Record<string, unknown> = {};

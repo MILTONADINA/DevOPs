@@ -598,20 +598,20 @@ test(`init keeps the indentation and trailing newline of settings.json, and uses
   });
 });
 
-test(`init leaves settings.json unchanged and records nothing when an integer is above 2^53 (${SPEC}#ac-27)`, () => {
+test(`init leaves settings.json unchanged and records nothing when a number would not survive JSON exactly (${SPEC}#ac-27)`, () => {
   withProject(dir => {
     mkdirSync(path.join(dir, '.claude'));
     const text = '{\n  "maxTokens": 9007199254740993,\n  "label": "9007199254740993 is text"\n}\n';
     writeFileSync(settingsPath(dir), text);
     const r = init(dir);
     assert.equal(r.status, 0, r.stdout + r.stderr);
-    assert.match(r.stdout, /^⚠ \.claude\/settings\.json has an integer above 2\^53/m);
+    assert.match(r.stdout, /^⚠ \.claude\/settings\.json has a number JSON would not keep exactly/m);
     assert.equal(readFileSync(settingsPath(dir), 'utf8'), text);
     assert.equal(readRecord(dir).claude_hooks, undefined, 'no entry is recorded');
   });
 });
 
-test(`an integer at or below 2^53 and a digit inside a string do not stop init (${SPEC}#ac-27)`, () => {
+test(`a safe integer and a digit inside a string do not stop init (${SPEC}#ac-27)`, () => {
   withProject(dir => {
     mkdirSync(path.join(dir, '.claude'));
     writeFileSync(settingsPath(dir), '{\n  "maxTokens": 9007199254740991,\n  "label": "9007199254740993"\n}\n');
