@@ -146,6 +146,8 @@ export function openManifest(root) {
       }
       // A copy left by an earlier run (its manifest since lost) is the older truth.
       const copy = `${ORIGINALS}/${key}`;
+      // A symlinked folder above the copy would make the read below hash an outside file.
+      assertInside(base, path.join(base, copy));
       const kept = readRegular(path.join(base, copy));
       if (kept === null) writeInside(base, copy, bytes, { exclusive: true });
       data.files[key] = { original: { sha256: sha256(kept ?? bytes), copy }, written: null };

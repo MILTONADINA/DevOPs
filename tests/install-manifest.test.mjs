@@ -203,6 +203,29 @@ test(`a symlinked originals folder is refused and nothing is copied through it (
   });
 });
 
+test(`an original copy read through a symlinked originals folder is refused and its hash is not recorded (${SPEC}#ac-24)`, () => {
+  withProject(dir => {
+    const outside = realpathSync(mkdtempSync(path.join(tmpdir(), 'install-manifest-outside-')));
+    try {
+      // The outside file is what a read through the link would hash as the original.
+      const outsideBytes = 'outside rule\n';
+      writeFileSync(path.join(outside, '.gitignore'), outsideBytes);
+      mkdirSync(path.join(dir, '.workflow/state'), { recursive: true });
+      symlinkSync(outside, path.join(dir, '.workflow/state/originals'));
+      const r = devops(dir, 'analyze');
+      assert.notEqual(r.status, 0, r.stdout + r.stderr);
+      assert.match(r.stderr, /refusing to write through a symlink in the project: \.workflow\/state\/originals/);
+      assert.equal(readFileSync(path.join(dir, '.gitignore'), 'utf8'), GITIGNORE, 'nothing appended after the refusal');
+      assert.equal(readFileSync(path.join(outside, '.gitignore'), 'utf8'), outsideBytes);
+      const recorded = existsSync(path.join(dir, MANIFEST)) ? readFileSync(path.join(dir, MANIFEST), 'utf8') : '';
+      assert.equal(recorded.includes(sha(path.join(outside, '.gitignore'))), false, 'the outside hash is not recorded');
+      assert.equal(JSON.parse(recorded || '{"files":{}}').files['.gitignore'], undefined, '.gitignore is not recorded');
+    } finally {
+      rmSync(outside, { recursive: true, force: true });
+    }
+  });
+});
+
 for (const edited of ['yes', false, 1, null]) {
   test(`a manifest entry with edited ${JSON.stringify(edited)} is an unknown schema (${SPEC}#ac-23)`, () => {
     withProject(dir => {

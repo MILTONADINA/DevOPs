@@ -219,7 +219,9 @@ copy that is not its own `originals/<path>`, THEN THE SYSTEM SHALL refuse to run
 nothing. WHEN it starts the manifest in a project that already has
 `.workflow/state/install.log` (an earlier DevOPs installed there), THE SYSTEM SHALL set
 `adopted: true` and say so once, because an `original` recorded there may be that earlier
-DevOPs's copy. Backups (REQ-F11) and the `originals/` copies are DevOPs's own records and
+DevOPs's copy. IF an original copy's path leaves the project through a symlink, THEN THE
+SYSTEM SHALL refuse that copy with an error and record no `original` for the file, because a
+read through the link would hash a file outside the project. Backups (REQ-F11) and the `originals/` copies are DevOPs's own records and
 are not themselves recorded. The `.mcp.json` entry and the Agile Graph pin that linking
 writes are not recorded yet (#353).
 
@@ -492,6 +494,17 @@ is still in the file, and the entry stays in the manifest with `edited: true`. A
 edited between two DevOPs runs is still restored to its original bytes.
 
 **Verified by:** `tests/uninstall.test.mjs`.
+
+### AC-24
+
+**Given** a project whose `.workflow/state/originals` is a symlink to a folder outside it,
+holding a `.gitignore` **When** `devops analyze` runs **Then** it exits non-zero naming the
+symlink, appends nothing to `.gitignore`, and the manifest records no `original` for
+`.gitignore` (the outside file's hash is not recorded). **And** when `devops uninstall` runs
+in a project whose recorded original copy is reached through such a symlink, it keeps that
+file, names the symlink, and exits 0.
+
+**Verified by:** `tests/install-manifest.test.mjs` and `tests/uninstall.test.mjs`.
 
 ## Out of scope
 
