@@ -7,7 +7,7 @@ import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, re
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { writeStubGit } from './fixtures/stub-git.mjs';
-import { MANIFEST } from '../analyzer/install-manifest.js';
+import { HOOK_KEY, MANIFEST } from '../analyzer/install-manifest.js';
 import { ENGINE, ENGINE_VERSIONS, PIN_TARGET, SERVER_KEY, supportedNode } from '../analyzer/agile-graph.js';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
@@ -144,8 +144,60 @@ test(`a pre-commit hook that is no longer DevOPs's is kept (${SPEC}#ac-21)`, () 
     writeFileSync(hook, '#!/bin/sh\necho ours\n');
     const r = uninstall(dir);
     assert.equal(r.status, 0, r.stderr);
-    assert.match(r.stdout, /kept {6}git-hooks\/pre-commit: edited since DevOPs wrote it/);
+    assert.match(r.stdout, /kept {6}\.git\/hooks\/pre-commit: edited since DevOPs wrote it/);
+    assert.doesNotMatch(r.stdout, /git-hooks/, 'the manifest key is not shown');
     assert.equal(readFileSync(hook, 'utf8'), '#!/bin/sh\necho ours\n');
+  });
+});
+
+test(`uninstall names the pre-commit hook by its real path, not the manifest key (${SPEC}#ac-21)`, () => {
+  withProject(dir => {
+    install(dir);
+    const r = uninstall(dir);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.match(r.stdout, /remove {4}\.git\/hooks\/pre-commit\n/);
+    assert.doesNotMatch(r.stdout, /git-hooks/, 'the manifest key is not shown');
+    assert.ok(!existsSync(path.join(dir, '.git/hooks/pre-commit')));
+  });
+});
+
+test(`a removed file that Git tracks gets one closing line saying so (${SPEC}#ac-21)`, () => {
+  withProject(dir => {
+    install(dir);
+    const r = devopsWith({ STUB_GIT_TRACKED: '.gitignore' }, dir, 'uninstall');
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.match(r.stdout, /restore {3}\.gitignore/);
+    const lines = r.stdout.trimEnd().split('\n');
+    assert.equal(lines.at(-1), 'Some removed files were committed: commit the removal, or run `git checkout -- .gitignore` to keep them.');
+  });
+});
+
+test(`no closing line when the removed files are not tracked, or nothing was removed (${SPEC}#ac-21)`, () => {
+  withProject(dir => {
+    install(dir);
+    const untracked = uninstall(dir);
+    assert.equal(untracked.status, 0, untracked.stdout + untracked.stderr);
+    assert.doesNotMatch(untracked.stdout, /committed/);
+  });
+  withProject(dir => {
+    install(dir);
+    const tracked = devopsWith({ STUB_GIT_TRACKED: '.gitignore' }, dir, 'uninstall', '--dry-run');
+    assert.equal(tracked.status, 0, tracked.stdout + tracked.stderr);
+    assert.doesNotMatch(tracked.stdout, /committed/, 'a dry run changes nothing, so it names nothing');
+  });
+});
+
+test(`the closing line lists at most five tracked paths and counts the rest (${SPEC}#ac-21)`, () => {
+  withProject(dir => {
+    install(dir);
+    // The hook lives in .git, which Git does not track, so it is never asked about.
+    const tracked = Object.keys(manifestNow(dir).files).filter(key => key !== HOOK_KEY).sort();
+    assert.ok(tracked.length > 6, 'the install recorded more than six files');
+    const r = devopsWith({ STUB_GIT_TRACKED: tracked.join(',') }, dir, 'uninstall');
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    const last = r.stdout.trimEnd().split('\n').at(-1);
+    const shown = tracked.slice(0, 5);
+    assert.equal(last, `Some removed files were committed: commit the removal, or run \`git checkout -- ${shown.join(' ')}\` (and ${tracked.length - 5} more) to keep them.`);
   });
 });
 
@@ -214,7 +266,7 @@ test(`a core.hooksPath set after init does not move where uninstall looks for th
     writeFileSync(path.join(dir, '.husky/pre-commit'), '#!/bin/sh\nnpx lint-staged\n');
     const r = devopsWith({ STUB_GIT_PATH_HOOKS: '.husky', STUB_HOOKS_PATH: '.husky' }, dir, 'uninstall');
     assert.equal(r.status, 0, r.stderr);
-    assert.match(r.stdout, /remove {4}git-hooks\/pre-commit/);
+    assert.match(r.stdout, /remove {4}\.git\/hooks\/pre-commit/);
     assert.ok(!existsSync(path.join(dir, '.git/hooks/pre-commit')));
     assert.equal(readFileSync(path.join(dir, '.husky/pre-commit'), 'utf8'), '#!/bin/sh\nnpx lint-staged\n');
   });

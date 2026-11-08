@@ -34,6 +34,22 @@ The dated snapshot above is preserved. Tier1 and the whole mixed tier3 row remai
 UNENFORCED: the existing history-scan job does not establish the row's broader
 pre-release or unfunded DeepTeam claims, and no planned scanner is implied to run.
 
+### Checking that the secret scan catches a leak
+
+To check that the gitleaks gate works, write a fake AWS access key to a scratch file and
+scan it. The key is split across two pieces below so that this file carries no literal key
+for the scans to flag. Joined, the two pieces make a key that the `aws-access-token` rule flags.
+
+```bash
+printf 'aws_access_key_id = %s%s\n' AKIAQ7XK2M BVNLTRWZPD > "$TMPDIR/secret-probe.env"
+gitleaks detect --no-git --source "$TMPDIR/secret-probe.env" --config governance/gitleaks-ci.toml
+```
+
+The scan exits 1 and reports `aws-access-token`. AWS's documentation key
+`AKIAIOSFODNN7EXAMPLE` is allowlisted by gitleaks and passes, so it does not test the gate.
+Staging a file that holds a flagged key and committing it stops the pre-commit hook;
+`DEVOPS_SKIP_SECRET_SCAN=1` skips the scan for that one commit.
+
 ### Local DAST boundary (MR21 / M27)
 
 The [local DAST contract](../specs/security/local-dast.md) is implemented and

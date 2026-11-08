@@ -47,6 +47,24 @@ function hookFile(root) {
   return common ? path.join(path.resolve(root, common), 'hooks', 'pre-commit') : null;
 }
 
+// The hook's real location for a log line: a path in the project, else the absolute path.
+function hookShown(root) {
+  const at = hookFile(root);
+  if (at === null) return 'the pre-commit hook';
+  const rel = path.relative(root, at);
+  return rel.startsWith('..') || path.isAbsolute(rel) ? at : rel.split(path.sep).join('/');
+}
+
+// The one closing line for files this run removed or restored that Git tracks.
+function committedNote(base, touched) {
+  if (touched.length === 0) return null;
+  const tracked = git(base, ['ls-files', '--', ...touched]);
+  if (!tracked) return null;
+  const files = tracked.split('\n');
+  const more = files.length > 5 ? ` (and ${files.length - 5} more)` : '';
+  return `Some removed files were committed: commit the removal, or run \`git checkout -- ${files.slice(0, 5).join(' ')}\`${more} to keep them.`;
+}
+
 function hasMarker(bytes) {
   return bytes.toString('utf8').split('\n').includes(HOOK_MARKER);
 }
@@ -201,10 +219,14 @@ export function uninstall(root, { dryRun = false, log = console.log } = {}) {
     return 0;
   }
   const verb = dryRun ? 'would ' : '';
+  // Files this run removed or restored, for the committed-files note at the end.
+  const touched = [];
   let keptCount = 0;
   let handled = 0;
   for (const key of Object.keys(data.files).sort()) {
     const entry = data.files[key];
+    // The hook is shown where Git keeps it, not by its manifest key.
+    const label = key === HOOK_KEY ? hookShown(base) : key;
     try {
       let step = plan(base, key, entry, data.adopted);
       // Restored by an earlier run that stopped before it updated the manifest.
@@ -214,15 +236,17 @@ export function uninstall(root, { dryRun = false, log = console.log } = {}) {
       }
       if (step.action === 'keep') {
         keptCount++;
-        log(`kept      ${key}: ${step.reason}`);
+        log(`kept      ${label}: ${step.reason}`);
         continue;
       }
-      if (step.action === 'remove') log(`${verb}remove    ${key}`);
-      if (step.action === 'restore') log(`${verb}restore   ${key} (as it was before DevOPs)`);
+      if (step.action === 'remove') log(`${verb}remove    ${label}`);
+      if (step.action === 'restore') log(`${verb}restore   ${label} (as it was before DevOPs)`);
       handled++;
       if (dryRun) continue;
       if (step.action === 'remove') removeRegular(step.at);
       if (step.action === 'restore') writeInside(base, key, step.bytes);
+      // The hook lives in .git, which Git does not track.
+      if (step.action !== 'none' && key !== HOOK_KEY) touched.push(key);
       // The manifest stops naming the file before its copy goes, so a run that stops
       // here can always be finished by running uninstall again.
       delete data.files[key];
@@ -234,7 +258,7 @@ export function uninstall(root, { dryRun = false, log = console.log } = {}) {
       }
     } catch (error) {
       keptCount++;
-      log(`kept      ${key}: ${error.message}`);
+      log(`kept      ${label}: ${error.message}`);
     }
   }
   // REQ-15: the .mcp.json server entries init added. Only that entry goes; every other key
@@ -257,6 +281,7 @@ export function uninstall(root, { dryRun = false, log = console.log } = {}) {
       if (step.action !== 'none') {
         log(`remove    the "${name}" server from .mcp.json`);
         handled++;
+        touched.push('.mcp.json');
         if (step.action === 'delete') {
           log('remove    .mcp.json (init created it; nothing else is in it)');
           removeRegular(path.join(base, '.mcp.json'));
@@ -302,11 +327,15 @@ export function uninstall(root, { dryRun = false, log = console.log } = {}) {
     data.dirs = data.dirs.filter(d => left.includes(d));
     save(base, data);
     log(`${keptCount} file(s) kept; they stay in ${MANIFEST}. Check them, then run devops uninstall again.`);
+    const note = committedNote(base, touched);
+    if (note) log(note);
     return 0;
   }
   if (left.length) log(`Left in place (not empty): ${left.map(d => `${d}/`).join(', ')}`);
   if (data.adopted)
     log('An earlier DevOPs installed here before this manifest; a file it wrote that init never changed is not recorded, so check .claude/ and .workflow/ by hand.');
   log('DevOPs removed.');
+  const note = committedNote(base, touched);
+  if (note) log(note);
   return 0;
 }
