@@ -80,9 +80,18 @@ running the hook. The runner is Node only, with no dependencies, and runs each h
 `bash` and no shell, so the argument is never parsed by one. It runs only the hook names
 in its own allowlist.
 
+A payload with no `tool_input` (or a `null` one) is a missing field, not an empty call. For a
+`pre` hook the runner writes one line to stderr, `HOOK: warning: tool_input is missing from the
+tool call; <hook> runs without it`. A `command` or `file` hook reads `tool_input`, so for those the
+call fails closed with exit 2 and `HOOK: tool_input is missing from the tool call -- failing closed`,
+and the hook does not run. A `stdin` hook reads the raw payload itself, so it runs after the warning.
+A `tool_input` that is present but not an object fails closed in every mode. `post` hooks are not
+affected by the missing-field rule.
+
 For `pre` hooks, exit 0 passes and exit 2 blocks. Any other outcome fails closed with
 exit 2 and `failing closed` on stderr: a non-zero exit other than 2, a signal, a missing
-hook, unparseable stdin, or a project root that cannot be resolved (`CLAUDE_PROJECT_DIR`,
+hook, unparseable stdin, a missing or non-object `tool_input` (for a `command` or `file` hook),
+or a project root that cannot be resolved (`CLAUDE_PROJECT_DIR`,
 else the git top level). Each `pre` command in `.claude/settings.json` ends in `|| exit 2`,
 so a `node` missing from Claude Code's PATH, or a runner that cannot start, also blocks the
 call instead of exiting with a code Claude Code lets through. For `post` hooks the exit is always 0, and a non-zero hook exit

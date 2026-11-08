@@ -6,6 +6,37 @@
 
 set -euo pipefail
 
+# Escapes $1 for use inside a JSON string literal: backslash, quote, and control characters
+# (RFC 8259). A character loop, not ${var//pat/rep}: bash 3.2 (macOS /bin/bash) mangles quoted
+# replacements. Bytes 0x80 and above pass through unchanged, as UTF-8 (bash 3.2 reports them as
+# negative codes, hence the code >= 0 guard).
+json_escape() {
+    local s="$1" out="" i c code hex
+    for (( i = 0; i < ${#s}; i++ )); do
+        c="${s:i:1}"
+        case "$c" in
+            "\\") out+='\\' ;;
+            '"') out+='\"' ;;
+            *)
+                printf -v code '%d' "'$c"
+                if (( code >= 0 && code < 32 )); then
+                    case "$code" in
+                        8) out+='\b' ;;
+                        9) out+='\t' ;;
+                        10) out+='\n' ;;
+                        12) out+='\f' ;;
+                        13) out+='\r' ;;
+                        *) printf -v hex '\\u%04x' "$code"; out+="$hex" ;;
+                    esac
+                else
+                    out+="$c"
+                fi
+                ;;
+        esac
+    done
+    printf '%s' "$out"
+}
+
 CHANGED_FILE="${1:-}"
 
 if [[ -z "$CHANGED_FILE" || ! -f "$CHANGED_FILE" ]]; then
@@ -47,7 +78,8 @@ $(echo "$output" | head -20 | sed 's/^/║  /')
 ╚═══════════════════════════════════════════════════════════════════╝
 EOF
     mkdir -p .workflow/state
-    echo "{\"ts\":$(date -u +%s),\"event\":\"secret_detected\",\"file\":\"$CHANGED_FILE\"}" >> .workflow/state/events.jsonl
+    # The file name is caller-supplied text, so it is escaped (issue #426).
+    printf '{"ts":%s,"event":"secret_detected","file":"%s"}\n' "$(date -u +%s)" "$(json_escape "$CHANGED_FILE")" >> .workflow/state/events.jsonl
     exit 2
 fi
 
