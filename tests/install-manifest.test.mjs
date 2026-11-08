@@ -436,9 +436,9 @@ test(`a SIGTERM during signature verification keeps the records of the files alr
 
 // #426: settings.json is rewritten only when every number in it survives JSON.parse exactly.
 test(`hasUnsafeInteger flags numbers JSON.parse would change, and only those (${SPEC}#ac-27)`, () => {
-  for (const lossy of ['9007199254740993', '-9007199254740993', '9007199254740993.0', '9007199254740993e0', '1e999', '1E400', '-1e400', '12345678901234567890.5', '3.14159265358979323846'])
+  for (const lossy of ['9007199254740993', '-9007199254740993', '9007199254740993.0', '9007199254740993e0', '1e999', '1E400', '-1e400', '12345678901234567890.5', '3.14159265358979323846', '-0', '-0.0', '1e-999', '2.4703282292062328e-324'])
     assert.equal(hasUnsafeInteger(`{"a": ${lossy}}`), true, lossy);
-  for (const exact of ['9007199254740992', '100000000000000000000', '1.0', '1e2', '0.1', '-0', '0', '2.5e-7', '-17', '123'])
+  for (const exact of ['9007199254740992', '100000000000000000000', '1.0', '1e2', '0.1', '0', '0e999', '100e-2', '1.10', '0.0001000', '5e-324', '2.5e-7', '-17', '123'])
     assert.equal(hasUnsafeInteger(`{"a": ${exact}}`), false, exact);
   assert.equal(hasUnsafeInteger('{"s": "9007199254740993 \\" 1e999", "t": "\\\\"}'), false, 'digits inside strings, after escapes, are skipped');
 });
@@ -448,6 +448,7 @@ test(`jsonText keeps tab or space indentation, the trailing newline and CRLF lin
   assert.equal(jsonText({ a: 1 }, '{\n\t"a": 0\n}'), '{\n\t"a": 1\n}');
   assert.equal(jsonText({ a: 1 }, '{\n    "a": 0\n}\n'), '{\n    "a": 1\n}\n');
   assert.equal(jsonText({ a: 1 }, '{\r\n  "a": 0\r\n}\r\n'), '{\r\n  "a": 1\r\n}\r\n');
+  assert.equal(jsonText({ a: 1 }, '{\n  "a": 0,\r\n  "b": 1\n}\n'), '{\n  "a": 1\n}\n', 'an odd CRLF after an LF first line does not switch the file');
 });
 
 test(`claude_hooks_created_events and claude_hooks_created_object need a non-empty claude_hooks (${SPEC}#ac-27)`, () => {

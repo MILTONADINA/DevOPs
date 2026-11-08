@@ -570,3 +570,32 @@ test(`uninstall keeps CRLF line ends in settings.json (${SPEC}#ac-21)`, () => {
     assert.equal(settingsText(dir), text);
   });
 });
+
+test(`a 0.8.x install re-run with this version's init keeps the 0.8.x cleanup at uninstall (${SPEC}#ac-21)`, () => {
+  withProject(dir => {
+    install(dir);
+    const manifestPath = path.join(dir, MANIFEST);
+    const fresh = JSON.parse(readFileSync(manifestPath, 'utf8'));
+    assert.equal(typeof fresh.claude_hooks_created_object, 'boolean', 'this version always records created_object');
+    // Make it what 0.8.x wrote, then re-run init from this version.
+    delete fresh.claude_hooks_created_events;
+    delete fresh.claude_hooks_created_object;
+    // 0.8.x did not wire protect-gates.sh: drop its entry, so this init adds it as a new one.
+    const settings = JSON.parse(settingsText(dir));
+    for (const [event, groups] of Object.entries(settings.hooks)) {
+      settings.hooks[event] = groups
+        .map(group => ({ ...group, hooks: group.hooks.filter(hook => !hook.command.includes(' protect-gates.sh ')) }))
+        .filter(group => group.hooks.length > 0);
+    }
+    writeFileSync(settingsFile(dir), `${JSON.stringify(settings, null, 2)}\n`);
+    fresh.claude_hooks = fresh.claude_hooks.filter(entry => !entry.command.includes(' protect-gates.sh '));
+    writeFileSync(manifestPath, JSON.stringify(fresh));
+    install(dir);
+    const after = JSON.parse(readFileSync(manifestPath, 'utf8'));
+    assert.ok(after.claude_hooks.some(entry => entry.command.includes(' protect-gates.sh ')), 'init added the new entry');
+    assert.equal(after.claude_hooks_created_events, undefined, 'a 0.8.x manifest is not stamped as current');
+    const r = uninstall(dir);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.ok(!existsSync(settingsFile(dir)), 'the file 0.8.x init created is still deleted');
+  });
+});
