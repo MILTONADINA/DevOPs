@@ -179,6 +179,28 @@ function commandsIn(config) {
   return out;
 }
 
+/**
+ * The commands in .claude/settings.json as it is now, for a run with no recorded entries left (an
+ * earlier run removed them, or init wrote none): a user's own entry may still run a DevOPs hook.
+ * null when the file is there but cannot be read as an object; every hook file is then kept.
+ */
+function liveCommands(base) {
+  let bytes;
+  try {
+    bytes = readRegular(path.join(base, SETTINGS_KEY));
+  } catch {
+    return null;
+  }
+  if (bytes === null) return [];
+  let config = null;
+  try {
+    config = JSON.parse(bytes.toString('utf8'));
+  } catch {
+    return null;
+  }
+  return plain(config) ? commandsIn(config) : null;
+}
+
 function unwireHooks(base, entries, createdFile) {
   const plan = { kept: [], removed: [], dropped: [], bytes: null, deleteFile: false, remaining: null };
   let bytes;
@@ -330,15 +352,85 @@ export function uninstall(root, { dryRun = false, log = console.log } = {}) {
   // the files it still runs. A kept entry whose command runs run-hook.mjs keeps the runner and the
   // hook it names: the files loop leaves both alone, and the kept line below names them once.
   const settingsPlan = data.claude_hooks ? unwireHooks(base, data.claude_hooks, data.claude_hooks_created_file === true) : null;
+  // The settings entries go before any hook file does: a run that cannot rewrite settings.json, or
+  // stops part way, never leaves an active entry whose runner or hook is gone (which would block
+  // every matching call).
+  let settingsFailed = false;
+  // #418: the settings.json hook entries init added. Only those entries go; the file is written
+  // once, whole and with its permissions, and a record goes once its entry is gone or removed.
+  if (data.claude_hooks) {
+    const plan = settingsPlan;
+    for (const { entry, reason } of plan.kept) {
+      keptCount++;
+      log(`kept      ${SETTINGS_KEY} (${hookLabel(entry)}): ${reason}`);
+    }
+    if (dryRun) {
+      for (const entry of plan.removed) log(`would remove ${hookLabel(entry)} from ${SETTINGS_KEY}`);
+      if (plan.deleteFile) log(`would remove ${SETTINGS_KEY} (init created it; nothing else is in it)`);
+      handled += plan.removed.length;
+    } else {
+      try {
+        for (const entry of plan.removed) log(`remove    ${hookLabel(entry)} from ${SETTINGS_KEY}`);
+        if (plan.deleteFile) {
+          log(`remove    ${SETTINGS_KEY} (init created it; nothing else is in it)`);
+          removeRegular(path.join(base, SETTINGS_KEY));
+        } else if (plan.bytes !== null) {
+          // Replaced whole: the user's own settings share this file.
+          replaceWhole(base, SETTINGS_KEY, plan.bytes, { temp: SETTINGS_TEMP });
+        }
+        handled += plan.removed.length;
+        const dropped = new Set(plan.dropped);
+        data.claude_hooks = data.claude_hooks.filter(entry => !dropped.has(entry));
+        if (data.claude_hooks.length === 0) {
+          delete data.claude_hooks;
+          delete data.claude_hooks_created_file;
+        }
+        save(base, data);
+      } catch (error) {
+        keptCount++;
+        settingsFailed = true;
+        log(`kept      ${SETTINGS_KEY}: ${error.message}`);
+      }
+    }
+  }
   // Every command still in settings.json after this run (or, when the file could not be read,
   // the kept entries' commands) keeps the files under .claude/hooks/ it runs, whether DevOPs
   // recorded that command or not: a command whose runner is gone blocks every matching call.
   const keptRunnerFiles = new Map(); // command -> the manifest keys it still runs
-  const stillRun = settingsPlan === null ? [] : (settingsPlan.remaining ?? settingsPlan.kept.map(({ entry }) => entry.command));
+  const live = settingsPlan === null ? liveCommands(base) : null;
+  const stillRun = settingsPlan === null ? (live ?? []) : (settingsPlan.remaining ?? settingsPlan.kept.map(({ entry }) => entry.command));
+  // A settings.json that cannot be read may run any hook: keep them all, named once below.
+  if (settingsPlan === null && live === null) stillRun.push(...Object.keys(data.files).filter(key => key.startsWith('.claude/hooks/')));
+  // When settings.json could not be rewritten, the entries meant to go are still in it and still run.
+  if (settingsFailed) stillRun.push(...settingsPlan.removed.map(entry => entry.command));
   for (const command of stillRun) {
     const names = new Set([...command.matchAll(/\.claude\/hooks\/([A-Za-z0-9._-]+)/g)].map(m => m[1]));
     // Unanchored: a command the user extended (`... # note`, `... ; other`) still runs the hook.
     for (const m of command.matchAll(/run-hook\.mjs"? (?:pre|post) ([A-Za-z0-9._-]+)/g)) names.add(m[1]);
+    // A kept hook keeps the files it calls beside it (protect-gates.sh runs protect-gates.mjs, the
+    // gate hooks run their classifier), followed until nothing new is named.
+    const queue = [...names];
+    while (queue.length) {
+      const name = queue.pop();
+      // run-hook.mjs lists every hook it may run; the command names the one it does run.
+      if (name === 'run-hook.mjs') continue;
+      let text;
+      try {
+        const hookPath = path.join(base, '.claude/hooks', name);
+        // A linked .claude/hooks could lead out of the project: read nothing outside it.
+        assertInside(base, hookPath);
+        text = readRegular(hookPath);
+      } catch {
+        continue; // unreadable: the hook itself is kept, and its companions are judged on their own
+      }
+      if (text === null) continue;
+      for (const m of text.toString('utf8').matchAll(/[A-Za-z0-9._-]+\.(?:mjs|cjs|js|sh)\b/g)) {
+        if (data.files[`.claude/hooks/${m[0]}`] !== undefined && !names.has(m[0])) {
+          names.add(m[0]);
+          queue.push(m[0]);
+        }
+      }
+    }
     const keys = [...names].map(name => `.claude/hooks/${name}`).filter(key => data.files[key] !== undefined);
     if (keys.length) keptRunnerFiles.set(command, keys);
   }
@@ -425,42 +517,6 @@ export function uninstall(root, { dryRun = false, log = console.log } = {}) {
     } catch (error) {
       keptCount++;
       log(`kept      .mcp.json (the "${name}" server): ${error.message}`);
-    }
-  }
-  // #418: the settings.json hook entries init added. Only those entries go; the file is written
-  // once, whole and with its permissions, and a record goes once its entry is gone or removed.
-  if (data.claude_hooks) {
-    const plan = settingsPlan;
-    for (const { entry, reason } of plan.kept) {
-      keptCount++;
-      log(`kept      ${SETTINGS_KEY} (${hookLabel(entry)}): ${reason}`);
-    }
-    if (dryRun) {
-      for (const entry of plan.removed) log(`would remove ${hookLabel(entry)} from ${SETTINGS_KEY}`);
-      if (plan.deleteFile) log(`would remove ${SETTINGS_KEY} (init created it; nothing else is in it)`);
-      handled += plan.removed.length;
-    } else {
-      try {
-        for (const entry of plan.removed) log(`remove    ${hookLabel(entry)} from ${SETTINGS_KEY}`);
-        if (plan.deleteFile) {
-          log(`remove    ${SETTINGS_KEY} (init created it; nothing else is in it)`);
-          removeRegular(path.join(base, SETTINGS_KEY));
-        } else if (plan.bytes !== null) {
-          // Replaced whole: the user's own settings share this file.
-          replaceWhole(base, SETTINGS_KEY, plan.bytes, { temp: SETTINGS_TEMP });
-        }
-        handled += plan.removed.length;
-        const dropped = new Set(plan.dropped);
-        data.claude_hooks = data.claude_hooks.filter(entry => !dropped.has(entry));
-        if (data.claude_hooks.length === 0) {
-          delete data.claude_hooks;
-          delete data.claude_hooks_created_file;
-        }
-        save(base, data);
-      } catch (error) {
-        keptCount++;
-        log(`kept      ${SETTINGS_KEY}: ${error.message}`);
-      }
     }
   }
   // Recorded folders, deepest first; one that still holds anything stays.
