@@ -9,8 +9,8 @@ name: Release sign skills
 # is pushed, THE SYSTEM SHALL verify the signatures and manifest already
 # reviewed in the release PR (see REQ-E3 amendment).
 #
-# REQ-E1 (AC-E1.1): every universal SKILL.md gets a corresponding .sig
-# file alongside it.
+# REQ-E1 (AC-E1.1): every SKILL.md gets a corresponding SKILL.md.bundle
+# (a new-format Sigstore bundle) alongside it.
 #
 # REQ-E7 (AC-E7.1): cosign version pinned in this workflow + recorded
 # in the manifest's signed_with_version field per signing run for
@@ -81,7 +81,7 @@ jobs:
             exit 1
           }
 
-      - name: Sign each universal SKILL.md
+      - name: Sign each SKILL.md (new-format bundle)
         if: github.event_name == 'workflow_dispatch'
         id: sign
         env:
@@ -99,25 +99,26 @@ jobs:
             log=".workflow/sigstore/signing-logs/$(echo "${skill}" | tr '/' '_').log"
 
             echo "Signing: ${skill}"
-            # --output-signature: bare ECDSA signature (legacy/audit)
-            # --bundle: full Sigstore bundle (signature + signing certificate
-            #   + Rekor inclusion proof) -- this is the artifact required for
-            #   keyless verification via `cosign verify-blob --bundle ...`
+            # --new-bundle-format --bundle: one Sigstore bundle holding the signature,
+            #   the signing certificate and the Rekor inclusion proof. It is the format
+            #   `cosign verify-blob --trusted-root` reads offline (#345).
             cosign sign-blob --yes "${skill}" \
-              --output-signature "${sig}" \
+              --new-bundle-format \
               --bundle "${bundle}" \
               > "${log}" 2>&1 || {
                 echo "FAIL: cosign sign-blob failed for ${skill}"
                 cat "${log}" || true
                 exit 1
               }
+            # A legacy .sig signed the previous bytes; the bundle replaces it.
+            rm -f "${sig}"
             SIGNED_COUNT=$((SIGNED_COUNT + 1))
-          done < <(find skills/universal -name 'SKILL.md' -type f)
+          done < <(find skills -name 'SKILL.md' -type f | sort)
 
           echo "signed_count=${SIGNED_COUNT}" >> "$GITHUB_OUTPUT"
           echo "total_count=${TOTAL_COUNT}" >> "$GITHUB_OUTPUT"
           echo ""
-          echo "Signed ${SIGNED_COUNT} / ${TOTAL_COUNT} universal SKILL.md files."
+          echo "Signed ${SIGNED_COUNT} / ${TOTAL_COUNT} SKILL.md files."
 
       - name: Update governance/skill-manifest.yml with signature metadata
         if: github.event_name == 'workflow_dispatch'
@@ -139,15 +140,18 @@ jobs:
           with open('governance/skill-manifest.yml', 'r') as f:
               manifest = yaml.safe_load(f)
 
+          # Every SKILL.md gets an entry, including stack-specific skills not yet listed (#347).
+          listed = {entry['path'] for entry in manifest['skills']}
+          for skill in sorted(Path('skills').rglob('SKILL.md')):
+              if str(skill) not in listed:
+                  manifest['skills'].append({'name': skill.parent.name, 'path': str(skill)})
+
           for entry in manifest['skills']:
               skill_path = Path(entry['path'])
-              sig_path = Path(entry['sig_path'])
               bundle_path = Path(str(skill_path) + '.bundle')
-              if not sig_path.exists():
-                  print(f"WARN: signature missing for {skill_path}; leaving placeholders")
-                  continue
               if not bundle_path.exists():
-                  print(f"WARN: bundle missing for {skill_path}; leaving bundle_path empty")
+                  print(f"WARN: bundle missing for {skill_path}; leaving placeholders")
+                  continue
 
               # Recompute sha256 (defense against silent drift between
               # manifest-author time and signing time)
@@ -157,6 +161,8 @@ jobs:
               entry['signed_by'] = signed_by
               entry['signed_at'] = signed_at
               entry['signed_with_version'] = cosign_ver
+              # The new-format bundle replaces the legacy .sig, so the entry drops sig_path.
+              entry.pop('sig_path', None)
               # bundle_path: full Sigstore bundle (signature + certificate
               # + Rekor inclusion proof) required for `cosign verify-blob
               # --bundle ...`. The .sig file alone is insufficient for
@@ -180,15 +186,15 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email 'github-actions[bot]@users.noreply.github.com'
 
-          # Stage signatures + bundles + manifest
-          git add 'skills/universal/**/SKILL.md.sig' 'skills/universal/**/SKILL.md.bundle' governance/skill-manifest.yml
+          # Stage bundles (the removed legacy .sig files too) + manifest
+          git add --all -- 'skills/**/SKILL.md.sig' 'skills/**/SKILL.md.bundle' governance/skill-manifest.yml
 
           if git diff --staged --quiet; then
             echo "No changes to commit -- skills + manifest already in sync."
             exit 0
           fi
 
-          git commit -m "ci(sigstore): sign $(find skills/universal -name 'SKILL.md.sig' -type f | wc -l) universal skills via cosign ${COSIGN_VERSION}"
+          git commit -m "ci(sigstore): sign $(find skills -name 'SKILL.md.bundle' -type f | wc -l) skills via cosign ${COSIGN_VERSION}"
 
           git push origin "HEAD:${GITHUB_REF_NAME}"
 
@@ -206,34 +212,52 @@ jobs:
           }
           python3 - <<'PYEOF'
           import hashlib
+          import json
           import re
           import subprocess
           from pathlib import Path
           import yaml
 
-          skills = set(Path('skills/universal').rglob('SKILL.md'))
+          skills = set(Path('skills').rglob('SKILL.md'))
           manifest = yaml.safe_load(Path('governance/skill-manifest.yml').read_text())
           entries = manifest['skills']
-          assert skills, 'No universal skills found'
+          assert skills, 'No skills found'
           assert {Path(entry['path']) for entry in entries} == skills, 'Manifest skill set differs from shipped skills'
           identity_prefix = 'https://github.com/MILTONADINA/DevOPs/.github/workflows/release-sign.yml@refs/heads/'
           identity = '^' + re.escape(identity_prefix)
+          trust_root = Path('.workflow/sigstore/trust-bundle.json')
+          assert trust_root.is_file(), 'Committed trust root is missing'
+
+          def new_format(bundle):
+              # cosign --new-bundle-format bundles carry a Sigstore mediaType; legacy ones do not.
+              try:
+                  media = json.loads(bundle.read_text()).get('mediaType', '')
+              except (ValueError, AttributeError):
+                  return False
+              return isinstance(media, str) and media.startswith('application/vnd.dev.sigstore.bundle')
+
           for entry in entries:
               skill = Path(entry['path'])
-              signature = Path(entry['sig_path'])
-              bundle = Path(entry['bundle_path'])
-              assert signature == Path(str(skill) + '.sig'), f'Wrong signature path: {skill}'
+              bundle = Path(entry.get('bundle_path', ''))
               assert bundle == Path(str(skill) + '.bundle'), f'Wrong bundle path: {skill}'
-              assert signature.is_file() and bundle.is_file(), f'Missing signature or bundle: {skill}'
+              assert bundle.is_file(), f'Missing bundle: {skill}'
               assert hashlib.sha256(skill.read_bytes()).hexdigest() == entry['sha256'], f'Stale manifest hash: {skill}'
               assert entry['signed_by'].startswith(identity_prefix), f'Wrong signing identity: {skill}'
-              subprocess.run([
-                  'cosign', 'verify-blob', '--bundle', str(bundle),
+              if new_format(bundle):
+                  # Offline, against the committed trust root (#345).
+                  command = ['cosign', 'verify-blob', '--new-bundle-format', '--trusted-root', str(trust_root)]
+              else:
+                  # Legacy bundle: still needs its .sig until the skill is re-signed.
+                  signature = Path(entry.get('sig_path', ''))
+                  assert signature == Path(str(skill) + '.sig') and signature.is_file(), f'Legacy bundle without its .sig: {skill}'
+                  command = ['cosign', 'verify-blob']
+              subprocess.run(command + [
+                  '--bundle', str(bundle),
                   '--certificate-identity-regexp', identity,
                   '--certificate-oidc-issuer', 'https://token.actions.githubusercontent.com',
                   str(skill),
               ], check=True, stdout=subprocess.DEVNULL)
-          print(f'Verified {len(entries)} signed universal skills.')
+          print(f'Verified {len(entries)} signed skills.')
           PYEOF
 
       - name: Upload signing logs
