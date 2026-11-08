@@ -546,6 +546,14 @@ nothing.
 
 **Verified by:** `tests/install-claude-hooks.test.mjs`, `tests/hooks/run-hook.test.mjs`.
 
+### AC-28
+
+WHEN an agent's Write, Edit, MultiEdit or NotebookEdit call, or a Bash command, names a DevOPs gate or approval path (`.claude/settings.json`, `.claude/settings.local.json`, anything under `.claude/hooks/`, `.workflow/state/approvals.jsonl`, `.workflow/state/install-manifest.json`, or anything under `.workflow/state/originals/`), THE SYSTEM SHALL block the call with exit 2, unless a Bash command is a plain read, so that the agent cannot change its own gates or approvals.
+
+**Given** a project that `devops init` wrote **When** `protect-gates.sh` runs on a file-tool target that is one of those paths, or on a path that reaches one through a symlink, a `..` component or a leading `~` **Then** it exits 2 with `DevOPs GATE BLOCK`, and an empty path or any other path exits 0. **And** `protect-gates-bash.sh` exits 2 for a Bash command that writes one of those paths, and exits 0 for `cat`, `ls` or `git diff` of one. **And** `docs/HOOKS.md` states that the Bash check is a heuristic.
+
+**Verified by:** `tests/hooks/protect-gates.test.mjs`, `tests/install-claude-hooks.test.mjs`.
+
 ## Out of scope
 
 - Publishing `runtime/` (`@miltonadina/devops-runtime` stays `private`).

@@ -3,11 +3,23 @@
 Deterministic safety layer. Hooks fire on the tool calls Claude Code sends them, whatever the
 agent intends.
 
-Limitation: the agent's own Write and Edit tools can change `.claude/settings.json`,
-`.claude/hooks/` and `.workflow/state/approvals.jsonl`. Only `block-secrets.sh` checks file-tool
-calls among the wired hooks, and it does not guard those paths. No wired hook blocks a write to
-them, from a file tool or from Bash. A Bash `cat` of a secret file is not checked by
-`block-secrets.sh`.
+Guarded: the agent cannot change its own gates or approvals. `protect-gates.sh` blocks the
+agent's Write, Edit, MultiEdit and NotebookEdit calls on `.claude/settings.json`,
+`.claude/settings.local.json`, anything under `.claude/hooks/`, `.workflow/state/approvals.jsonl`,
+`.workflow/state/install-manifest.json` and anything under `.workflow/state/originals/`. It resolves
+the path first (a relative path from the project root, a leading `~`, symlinks, `..`, and letter
+case on macOS and Windows). `protect-gates-bash.sh` blocks a Bash command that names one of those
+paths: a relative form such as `.claude/settings.json` or `.claude/hooks`, a token that resolves to
+one, or a bare `approvals.jsonl`, `settings.json`, `settings.local.json` or `install-manifest.json`.
+It lets the command through only when it is a plain read: the first word is `cat`, `head`, `tail`,
+`less`, `grep`, `rg`, `ls`, `stat`, `wc` or `diff`, or `jq` with no `-i`, or the command is
+`git diff`, `git log`, `git show` or `git status`; and the command has no `>`, `|`, `;`, `&`,
+parentheses, backtick, `$(` or newline. Reads by a file tool are not guarded.
+
+Not guarded, and the Bash check is only a heuristic: a Bash command that builds one of these paths
+at run time (a variable, a glob, an interpreter that writes the file without naming it) gets past
+it. Any other path the agent can write is outside these hooks. Write approvals in
+`.workflow/state/approvals.jsonl` yourself, outside the agent, and keep the agent from writing it.
 
 ## Wiring into Claude Code
 
@@ -53,6 +65,8 @@ so Claude Code shows the leak.
 | `block-rm-rf.sh` | `PreToolUse` | `Bash` | command |
 | `block-new-dependency.sh` | `PreToolUse` | `Bash` | command |
 | `block-secrets.sh` | `PreToolUse` | `Read\|Write\|Edit\|MultiEdit\|NotebookEdit` | file |
+| `protect-gates.sh` | `PreToolUse` | `Write\|Edit\|MultiEdit\|NotebookEdit` | file |
+| `protect-gates-bash.sh` | `PreToolUse` | `Bash` | command |
 | `gitleaks-scan.sh` | `PostToolUse` | `Write\|Edit\|MultiEdit` | file |
 | `load-baton.sh` | `SessionStart` | none | (plain command) |
 
