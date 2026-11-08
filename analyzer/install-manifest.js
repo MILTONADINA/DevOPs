@@ -91,21 +91,38 @@ export function readManifest(root) {
     && hex(entry.sha256) && typeof entry.created_file === 'boolean');
   // REQ-15 (#418): the hook entries init added to .claude/settings.json. `sha256` is of the
   // inner hook object. `matcher` is absent for an event that has none. `command` is one of the
-  // two forms init writes: a plain hook (`cd` to the project root, then bash on the hook), or a
-  // hook run through run-hook.mjs. Each names only a file under .claude/hooks/.
-  const hookCommand = v => typeof v === 'string' && (/^cd "\$\{CLAUDE_PROJECT_DIR:-\.\}" && bash \.claude\/hooks\/[A-Za-z0-9._-]{1,128} \|\| true$/.test(v)
-    || /^node "\$\{CLAUDE_PROJECT_DIR:-\.\}\/\.claude\/hooks\/run-hook\.mjs" (pre [A-Za-z0-9._-]{1,128} (stdin|command|file) \|\| exit 2|post [A-Za-z0-9._-]{1,128} (stdin|command|file))$/.test(v));
+  // forms init writes: a plain hook (`cd` to the project root, then bash on the hook), or a
+  // hook run through run-hook.mjs (pre or post). Each names only a file under .claude/hooks/,
+  // never one whose name starts with a dot (so `.` and `..` are refused). Each command is paired with the event
+  // init wires it under: a pre command with PreToolUse, a post command with PostToolUse, a plain
+  // one with SessionStart and no matcher. The names are not checked against a list: a manifest
+  // from another DevOPs version may name a hook this one does not wire, and uninstall reads it.
+  const PLAIN_HOOK = /^cd "\$\{CLAUDE_PROJECT_DIR:-\.\}" && bash \.claude\/hooks\/(?!\.)[A-Za-z0-9._-]{1,128} \|\| true$/;
+  const PRE_HOOK = /^node "\$\{CLAUDE_PROJECT_DIR:-\.\}\/\.claude\/hooks\/run-hook\.mjs" pre (?!\.)[A-Za-z0-9._-]{1,128} (stdin|command|file) \|\| exit 2$/;
+  const POST_HOOK = /^node "\$\{CLAUDE_PROJECT_DIR:-\.\}\/\.claude\/hooks\/run-hook\.mjs" post (?!\.)[A-Za-z0-9._-]{1,128} (stdin|command|file)$/;
+  // The event a command must be wired under, or null when it is none of the three forms.
+  const hookEvent = v => {
+    if (typeof v !== 'string') return null;
+    if (PLAIN_HOOK.test(v)) return 'SessionStart';
+    if (PRE_HOOK.test(v)) return 'PreToolUse';
+    if (POST_HOOK.test(v)) return 'PostToolUse';
+    return null;
+  };
+  // No two entries may share a command: uninstall would take both away for one of them.
   const claudeHooks = v => Array.isArray(v) && v.every(entry => plain(entry)
     && ['command,event,sha256', 'command,event,matcher,sha256'].includes(Object.keys(entry).sort().join(','))
     && typeof entry.event === 'string' && /^[A-Za-z]{1,40}$/.test(entry.event)
     && (entry.matcher === undefined || (typeof entry.matcher === 'string' && entry.matcher.length <= 256))
-    && hookCommand(entry.command)
-    && hex(entry.sha256));
+    && hookEvent(entry.command) === entry.event
+    && (entry.event !== 'SessionStart' || entry.matcher === undefined)
+    && hex(entry.sha256))
+    && new Set(v.map(entry => entry.command)).size === v.length;
   const ok = plain(data) && data.schema_version === SCHEMA_VERSION && plain(data.files) && Array.isArray(data.dirs)
     && typeof data.adopted === 'boolean'
     && (data.mcp_servers === undefined || mcpServers(data.mcp_servers))
     && (data.claude_hooks === undefined || claudeHooks(data.claude_hooks))
-    && (data.claude_hooks_created_file === undefined || typeof data.claude_hooks_created_file === 'boolean')
+    && (data.claude_hooks_created_file === undefined || (typeof data.claude_hooks_created_file === 'boolean'
+      && Array.isArray(data.claude_hooks) && data.claude_hooks.length > 0))
     && Object.keys(data).every(k => ['schema_version', 'adopted', 'files', 'dirs', 'mcp_servers', 'claude_hooks', 'claude_hooks_created_file'].includes(k))
     && data.dirs.every(ownDir)
     && Object.entries(data.files).every(([key, entry]) => ownFile(key) && plain(entry)
