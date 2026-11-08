@@ -110,6 +110,7 @@
     "governance/owasp-asi-2026/",
     "governance/skill-evals/",
     "governance/skill-manifest.yml",
+    ".workflow/sigstore/trust-bundle.json",
     "scripts/devops-analyze.js",
     "scripts/devops-cli.js",
     "scripts/devops-paths.js",
