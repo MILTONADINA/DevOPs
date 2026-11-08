@@ -284,6 +284,26 @@ test(`uninstall keeps the modules a kept hook calls beside it (${SPEC}#ac-27)`, 
   });
 });
 
+test(`uninstall reads no hook file through a linked .claude/hooks (${SPEC}#ac-27)`, () => {
+  withProject(dir => {
+    assert.equal(init(dir).status, 0);
+    const settings = readSettings(dir);
+    Object.values(settings.hooks).flat().flatMap(group => group.hooks).find(h => h.command.includes(' protect-gates.sh ')).timeout = 30;
+    writeFileSync(settingsPath(dir), `${JSON.stringify(settings, null, 2)}\n`);
+    // Another tree whose protect-gates.sh names a hook this project recorded.
+    const outside = mkdtempSync(path.join(tmpdir(), 'hooks-outside-'));
+    try {
+      writeFileSync(path.join(outside, 'protect-gates.sh'), 'bash block-rm-rf.sh\n');
+      rmSync(path.join(dir, '.claude/hooks'), { recursive: true, force: true });
+      symlinkSync(outside, path.join(dir, '.claude/hooks'));
+      const r = uninstall(dir, '--dry-run');
+      assert.doesNotMatch(r.stdout, /^kept {6}[^\n]*block-rm-rf\.sh[^\n]*still runs/m, r.stdout);
+    } finally {
+      rmSync(outside, { recursive: true, force: true });
+    }
+  });
+});
+
 test(`a later uninstall still keeps a hook file a user's own entry runs (${SPEC}#ac-27)`, () => {
   withProject(dir => {
     assert.equal(init(dir).status, 0);

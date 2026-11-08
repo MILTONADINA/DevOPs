@@ -416,7 +416,10 @@ export function uninstall(root, { dryRun = false, log = console.log } = {}) {
       if (name === 'run-hook.mjs') continue;
       let text;
       try {
-        text = readRegular(path.join(base, '.claude/hooks', name));
+        const hookPath = path.join(base, '.claude/hooks', name);
+        // A linked .claude/hooks could lead out of the project: read nothing outside it.
+        assertInside(base, hookPath);
+        text = readRegular(hookPath);
       } catch {
         continue; // unreadable: the hook itself is kept, and its companions are judged on their own
       }
