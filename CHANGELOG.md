@@ -8,6 +8,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.8.0] — 2026-11-08
+
 ### Added
 
 - Hardening: the agent cannot change its own gates or approvals. `devops init` wires `protect-gates.sh` on Write, Edit, MultiEdit and NotebookEdit, and `protect-gates-bash.sh` on Bash, to block a write to `.claude/settings.json`, `.claude/settings.local.json`, `.claude/hooks/`, `.workflow/state/approvals.jsonl`, `.workflow/state/install-manifest.json` or `.workflow/state/originals/`. The file-tool check compares file identity, so symlinks, hard links, letter case and Unicode forms all reach the same decision. The Bash check is a convenience guard, not a security boundary: it reads the command text only, and `docs/HOOKS.md` lists what it does not catch (specs/release/npm-package.md AC-28).
