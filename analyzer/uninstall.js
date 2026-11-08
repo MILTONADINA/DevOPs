@@ -10,6 +10,8 @@
 //   - It existed before DevOPs: the original bytes are put back when the file still
 //     holds what DevOPs wrote (or is gone), and only when the kept copy still has
 //     the recorded sha256. An edited file is kept and reported.
+//   - An entry marked `edited` (an edit made between two DevOPs writes, REQ-15) is kept
+//     and reported whatever the file holds now; no original is restored over it.
 //   - In an `adopted` manifest an original may be an earlier DevOPs's own copy, so
 //     such a file is kept and reported for the user to check.
 //   - The pre-commit hook is removed only while it still carries the DevOPs marker
@@ -57,6 +59,7 @@ function removeRegular(file) {
  * { action: 'remove' | 'restore' | 'none' | 'keep', reason?, bytes? }.
  */
 function plan(root, key, entry, adopted) {
+  if (entry.edited === true) return { action: 'keep', reason: 'edited since DevOPs wrote it' };
   const hook = key === HOOK_KEY;
   const at = hook ? hookFile(root) : path.join(root, key);
   if (at === null) return { action: 'keep', reason: 'the Git hooks folder could not be found' };
@@ -147,7 +150,7 @@ export function uninstall(root, { dryRun = false, log = console.log } = {}) {
     try {
       let step = plan(base, key, entry, data.adopted);
       // Restored by an earlier run that stopped before it updated the manifest.
-      if (step.action === 'keep' && entry.original !== null && !data.adopted && key !== HOOK_KEY) {
+      if (step.action === 'keep' && entry.original !== null && !data.adopted && key !== HOOK_KEY && entry.edited !== true) {
         const current = readRegular(path.join(base, key));
         if (current !== null && sha256(current) === entry.original.sha256) step = { action: 'none' };
       }

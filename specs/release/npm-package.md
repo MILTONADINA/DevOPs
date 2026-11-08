@@ -206,7 +206,10 @@ run a slash command that init did not install (#352).
 WHEN `devops analyze` or `devops init` (not a dry run) writes a file in the project, or
 the DevOPs pre-commit hook, THE SYSTEM SHALL record it in
 `.workflow/state/install-manifest.json` (`schema_version: 1`) with the sha256 of what it
-wrote, and the folders it created. WHEN it first writes a file that already existed, THE
+wrote, and the folders it created. WHEN DevOPs is about to write a file whose entry is
+recorded and whose bytes no longer have the entry's `written` sha256, THE SYSTEM SHALL set
+`edited: true` on that entry and SHALL never clear it, because the edit was made between two
+DevOPs writes; `edited` is the only optional entry key, and any other value is refused. WHEN it first writes a file that already existed, THE
 SYSTEM SHALL copy the existing bytes to `.workflow/state/originals/<path>` and record their
 sha256 as the file's `original`, and SHALL NOT change that `original` on a later run. IF
 the manifest has another `schema_version`, another key set, or a path that is not one
@@ -227,7 +230,9 @@ SHALL remove each recorded file DevOPs created whose bytes still have the record
 `written` sha256, SHALL put back each recorded original whose file still holds what DevOPs
 wrote (or is gone) and whose copy still has the recorded `original` sha256, SHALL remove
 the pre-commit hook only while it carries the DevOPs marker and its recorded bytes, and
-SHALL remove the folders DevOPs created that are then empty. IF a recorded file was edited,
+SHALL remove the folders DevOPs created that are then empty. WHEN a recorded entry is marked `edited`
+(REQ-15), THE SYSTEM SHALL keep its file and name it as edited since DevOPs wrote it, and
+SHALL neither restore an original over it nor remove it, before any other decision. IF a recorded file was edited,
 is a symlink or not a regular file, has an unconfirmed write, or has an original copy that
 is missing or changed, or the manifest is `adopted` and the file has a recorded original,
 THEN THE SYSTEM SHALL leave that file unchanged, name it and the reason, and keep its
@@ -477,6 +482,16 @@ exceptions (a branch pattern, the project's `specs/`, `AGENTS.override.md`, the 
 absolute machine path; and a slash command is named only with the plugin it needs.
 
 **Verified by:** `tests/init-agent-bootstrap.test.mjs`.
+
+### AC-23
+
+**Given** a project with a `.gitignore` **When** `devops analyze` runs, the user then adds a
+`dist/` rule to `.gitignore`, `devops init` runs, and `devops uninstall` runs **Then**
+uninstall keeps `.gitignore` and names it as edited since DevOPs wrote it, the `dist/` rule
+is still in the file, and the entry stays in the manifest with `edited: true`. A file not
+edited between two DevOPs runs is still restored to its original bytes.
+
+**Verified by:** `tests/uninstall.test.mjs`.
 
 ## Out of scope
 

@@ -232,3 +232,34 @@ test(`a recorded file already gone is dropped, and a dry run names the folders (
     assert.ok(!existsSync(path.join(dir, MANIFEST)));
   });
 });
+
+const manifestNow = dir => JSON.parse(readFileSync(path.join(dir, MANIFEST), 'utf8'));
+
+test(`an edit made between two DevOPs runs keeps .gitignore and its user line (${SPEC}#ac-23)`, () => {
+  withProject(dir => {
+    const a = devops(dir, 'analyze');
+    assert.equal(a.status, 0, a.stderr);
+    appendFileSync(path.join(dir, '.gitignore'), 'dist/\n');
+    const i = devops(dir, 'init', '--no-agile-graph', ...UNSIGNED);
+    assert.equal(i.status, 0, i.stdout + i.stderr);
+    const u = uninstall(dir);
+    assert.equal(u.status, 0, u.stdout + u.stderr);
+    assert.match(u.stdout, /kept {6}\.gitignore: edited since DevOPs wrote it/);
+    assert.doesNotMatch(u.stdout, /restore {3}\.gitignore/);
+    assert.match(readFileSync(path.join(dir, '.gitignore'), 'utf8'), /^dist\/$/m, 'the user rule survives');
+    assert.equal(manifestNow(dir).files['.gitignore'].edited, true);
+  });
+});
+
+test(`a file not edited between two DevOPs runs is still restored (${SPEC}#ac-23)`, () => {
+  withProject(dir => {
+    install(dir);
+    const again = devops(dir, 'init', '--no-agile-graph', ...UNSIGNED);
+    assert.equal(again.status, 0, again.stdout + again.stderr);
+    assert.equal(manifestNow(dir).files['.gitignore'].edited, undefined, 'no edit, no mark');
+    const u = uninstall(dir);
+    assert.equal(u.status, 0, u.stdout + u.stderr);
+    assert.match(u.stdout, /restore {3}\.gitignore/);
+    assert.equal(readFileSync(path.join(dir, '.gitignore'), 'utf8'), GITIGNORE);
+  });
+});
