@@ -7,32 +7,65 @@ disabled by the agent.
 
 Claude Code runs a hook only when `.claude/settings.json` names it. `devops init`
 copies the hooks to `.claude/hooks/` and merges an entry into `.claude/settings.json`
-for each hook it can wire as a bare command (specs/release/npm-package.md REQ-15,
-AC-27). It keeps every other key and hook in that file, never adds an entry that is
-already there, and records what it added in the install manifest, so `devops uninstall`
-removes only those entries.
+for each hook it can wire (specs/release/npm-package.md REQ-15, AC-27). It keeps every
+other key and hook in that file, never adds an entry whose command is already there,
+and records what it added in the install manifest, so `devops uninstall` removes only
+those entries.
 
-| Hook | Event | Matcher |
-|------|-------|---------|
-| `load-baton.sh` | `SessionStart` | `*` |
-| `write-baton.sh` | `SessionEnd` | `*` |
+A pre or post hook is named as
+
+    node "${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/run-hook.mjs" <pre|post> <hook-file> <stdin|command|file>
+
+`run-hook.mjs` (from `hooks/claude-code/run-hook.mjs`, copied beside the hooks) reads the
+tool call that Claude Code sends on stdin and gives the hook the input it takes:
+
+- `stdin`: the hook gets `--payload-stdin` and the raw payload bytes;
+- `command`: the hook gets `tool_input.command` as one argument;
+- `file`: the hook gets `tool_input.file_path`, else `tool_input.notebook_path`, else
+  `tool_response.filePath`, as one argument.
+
+A call whose field is absent or empty has nothing to check: the runner exits 0 without
+running the hook. The runner is Node only, with no dependencies, and runs each hook with
+`bash` and no shell, so the argument is never parsed by one. It runs only the hook names
+in its own allowlist.
+
+For `pre` hooks, exit 0 passes and exit 2 blocks. Any other outcome fails closed with
+exit 2 and `failing closed` on stderr: a non-zero exit other than 2, a signal, a missing
+hook, unparseable stdin, or a project root that cannot be resolved (`CLAUDE_PROJECT_DIR`,
+else the git top level). For `post` hooks the exit is always 0, and a non-zero hook exit
+is printed to stderr; the exception is `gitleaks-scan.sh`, whose exit 2 passes through
+so Claude Code shows the leak.
+
+| Hook | Event | Matcher | Input |
+|------|-------|---------|-------|
+| `deploy-gate.sh` | `PreToolUse` | `Bash` | stdin |
+| `block-sealed-refs.sh` | `PreToolUse` | `Bash` | stdin |
+| `block-prod-write.sh` | `PreToolUse` | `Bash` | command |
+| `block-rm-rf.sh` | `PreToolUse` | `Bash` | command |
+| `block-new-dependency.sh` | `PreToolUse` | `Bash` | command |
+| `block-secrets.sh` | `PreToolUse` | `Read\|Write\|Edit\|MultiEdit\|NotebookEdit` | file |
+| `gitleaks-scan.sh` | `PostToolUse` | `Write\|Edit\|MultiEdit` | file |
+| `load-baton.sh` | `SessionStart` | none | (plain command) |
+| `write-baton.sh` | `SessionEnd` | none | (plain command) |
+
+`load-baton.sh` and `write-baton.sh` are named as `bash "${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/<hook>" || true`
+and have no matcher.
 
 Every other copied hook is named by `devops init` with its reason and is not wired:
 
-- `block-secrets.sh`, `block-prod-write.sh`, `block-rm-rf.sh`, `block-new-dependency.sh`,
-  `budget-brake.sh`, `loop-detection.sh`, `auto-format.sh`, `gitleaks-scan.sh`,
-  `sync-lr-refined-date.sh` take their input (a path, a command, a cost, a tool name or
-  a changed file) as an argument. Claude Code passes a hook no argument, so run as a bare
-  command these hooks check nothing; `loop-detection.sh` exits 2 and blocks every call.
-  Wiring them needs a wrapper or a change so the hook reads the tool call on stdin.
-- `deploy-gate.sh` and `block-sealed-refs.sh` need `--payload-stdin`.
-- `client-boundary.sh` is not registered by default.
-- `external-content-boundary.sh`, `rotate-session-key.sh` and `graph-preflight.sh` have
-  no event mapping yet.
+- `budget-brake.sh`: needs a per-call cost estimate that Claude Code does not give.
+- `loop-detection.sh`: needs a tool name and arguments; not wired until it is tested with real payloads.
+- `auto-format.sh`: opt-in: it rewrites files.
+- `sync-lr-refined-date.sh`: edits `docs/LAUNCH_READINESS.md`, which only this repository has.
+- `client-boundary.sh`: not registered by default.
+- `external-content-boundary.sh`: its HMAC check needs the session key from `rotate-session-key.sh`, which is not wired.
+- `rotate-session-key.sh`: rotates the session key that `external-content-boundary.sh` checks; not wired while that hook is not.
+- `graph-preflight.sh`: part of the Agile Graph pipeline, which the npm package excludes.
 
 To wire another hook by hand, add its entry to `.claude/settings.json` in the same
-format, and only after you have made sure the hook gets the input it needs. This
-repository's own `.claude/settings.json` is a working example.
+format, and only after you have made sure the hook gets the input it needs (for a
+pre or post hook, through `run-hook.mjs`). This repository's own `.claude/settings.json`
+is a working example.
 
 ## Universal hooks
 
