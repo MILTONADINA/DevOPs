@@ -13,7 +13,8 @@
 //   file     the hook runs once for each distinct non-empty one of tool_input.file_path,
 //            tool_input.notebook_path, tool_input.path and tool_response.filePath, with that
 //            string as its one argument.
-// An absent or empty field means the call has nothing to check: exit 0, and the hook does not run.
+// An absent or empty field inside tool_input means the call has nothing to check: exit 0, and the
+// hook does not run. A missing tool_input itself is different: a pre command or file hook fails closed.
 //
 // pre: exit 0 passes and exit 2 blocks. The first non-zero result from any run decides. Anything
 // else (a signal, a missing hook, unparseable stdin, an unresolvable root, an error thrown while
@@ -113,7 +114,15 @@ function runHook() {
     return fail('stdin is not JSON');
   }
   if (!isObject(payload)) return fail('stdin JSON is not an object');
-  const toolInput = payload.tool_input ?? {};
+  // An absent or null tool_input is a missing field. A command or file hook reads it, so the call
+  // fails closed; a stdin hook reads the raw payload itself, so it runs after a warning. Post hooks
+  // are not changed. A tool_input that is present but not an object fails below.
+  const toolInputAbsent = payload.tool_input === undefined || payload.tool_input === null;
+  if (toolInputAbsent && phase === 'pre' && input !== 'stdin') return fail('tool_input is missing from the tool call');
+  if (toolInputAbsent && phase === 'pre') {
+    process.stderr.write(`HOOK: warning: tool_input is missing from the tool call; ${hookFile} runs without it\n`);
+  }
+  const toolInput = toolInputAbsent ? {} : payload.tool_input;
   if (!isObject(toolInput)) return fail('tool_input is not an object');
   const toolResponse = isObject(payload.tool_response) ? payload.tool_response : {};
 

@@ -9,6 +9,37 @@ set -euo pipefail
 PATH_ARG="${1:-}"
 OPERATION="${2:-read}"
 
+# Escapes $1 for use inside a JSON string literal: backslash, quote, and control characters
+# (RFC 8259). A character loop, not ${var//pat/rep}: bash 3.2 (macOS /bin/bash) mangles quoted
+# replacements. Bytes 0x80 and above pass through unchanged, as UTF-8 (bash 3.2 reports them as
+# negative codes, hence the code >= 0 guard).
+json_escape() {
+    local s="$1" out="" i c code hex
+    for (( i = 0; i < ${#s}; i++ )); do
+        c="${s:i:1}"
+        case "$c" in
+            "\\") out+='\\' ;;
+            '"') out+='\"' ;;
+            *)
+                printf -v code '%d' "'$c"
+                if (( code >= 0 && code < 32 )); then
+                    case "$code" in
+                        8) out+='\b' ;;
+                        9) out+='\t' ;;
+                        10) out+='\n' ;;
+                        12) out+='\f' ;;
+                        13) out+='\r' ;;
+                        *) printf -v hex '\\u%04x' "$code"; out+="$hex" ;;
+                    esac
+                else
+                    out+="$c"
+                fi
+                ;;
+        esac
+    done
+    printf '%s' "$out"
+}
+
 # Sensitive path patterns (file basenames or path fragments)
 PATTERNS=(
     ".env"
@@ -80,9 +111,11 @@ If you legitimately need to access secrets, use a vault tool:
 
 Never commit secrets to git. Never paste them into chat. Use the vault.
 EOF
-        # Log the attempt
+        # Log the attempt. The path and operation are caller-supplied, so they are escaped: a quote,
+        # backslash or newline in them must not break the line or add keys (issue #426).
         mkdir -p .workflow/state
-        echo "{\"ts\":$(date -u +%s),\"event\":\"secret_block\",\"path\":\"$PATH_ARG\",\"operation\":\"$OPERATION\"}" >> .workflow/state/events.jsonl
+        printf '{"ts":%s,"event":"secret_block","path":"%s","operation":"%s"}\n' \
+            "$(date -u +%s)" "$(json_escape "$PATH_ARG")" "$(json_escape "$OPERATION")" >> .workflow/state/events.jsonl
         exit 2
     fi
 done

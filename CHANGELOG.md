@@ -8,6 +8,11 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- `block-secrets.sh` escapes the path and operation it writes to `.workflow/state/events.jsonl`. A path with a quote, backslash, newline or control character used to break the JSON line or add keys to it, so a log entry could be forged. Each entry is one JSON object whose `path` round-trips exactly (#426).
+- `run-hook.mjs` no longer passes a payload with no `tool_input` (or a `null` one) silently. For a pre hook it writes one stderr line naming `tool_input`. A `command` or `file` hook, which reads that field, fails closed with exit 2; a `stdin` hook runs after the warning. `docs/HOOKS.md` describes the rule (#426).
+
 ## [0.8.0] — 2026-11-08
 
 ### Added
