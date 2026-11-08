@@ -203,6 +203,20 @@ test(`a symlinked originals folder is refused and nothing is copied through it (
   });
 });
 
+for (const edited of ['yes', false, 1, null]) {
+  test(`a manifest entry with edited ${JSON.stringify(edited)} is an unknown schema (${SPEC}#ac-23)`, () => {
+    withProject(dir => {
+      mkdirSync(path.join(dir, '.workflow/state'), { recursive: true });
+      const text = JSON.stringify({ schema_version: 1, adopted: false, dirs: [], files: { '.gitignore': { original: null, written: 'a'.repeat(64), edited } } });
+      writeFileSync(path.join(dir, MANIFEST), text);
+      const a = devops(dir, 'analyze');
+      assert.equal(a.status, 1, a.stdout + a.stderr);
+      assert.match(a.stderr, /install-manifest\.json has an unknown schema or a path outside the project/);
+      assert.equal(readFileSync(path.join(dir, MANIFEST), 'utf8'), text);
+    });
+  });
+}
+
 test('validKey accepts only project-relative paths', () => {
   for (const key of ['a', '.claude/hooks/x.sh', 'git-hooks/pre-commit']) assert.ok(validKey(key), key);
   for (const key of ['', '/a', '../a', 'a/../b', 'a//b', './a', 'a/.', 'C:/a', 'a\\b', 'a\0b', 1, null])

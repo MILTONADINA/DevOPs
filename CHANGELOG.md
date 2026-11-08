@@ -19,6 +19,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- `devops uninstall` no longer restores a recorded original over edits made between two DevOPs runs: an entry whose file changed before DevOPs wrote it again is marked `edited`, and uninstall keeps that file and names it. Before this, analyze → a new `.gitignore` rule → init → uninstall deleted the rule.
 - Dependabot no longer proposes runtime updates past the held `@typescript-eslint/*` 8.55.0 (Node 22.12 floor) and `onnxruntime-node` (pinned by `@huggingface/transformers`). A test checks the ignore list against the held lockfile versions (PR #361 failed on them). Security updates still bypass ignore rules.
 - Dependabot no longer opens semver-major npm PRs: majors are deferred by the dependency-update tests (#209) and land as deliberate stories. Security updates still arrive.
 - `devops init` adds `.workflow/state/install-manifest.json` and `.workflow/state/originals/` to `.gitignore`, next to `AGENTS.override.md`, and `devops analyze` adds the same two lines, so a project that has only run analyze keeps its manifest out of Git too. Both add only the lines that are missing and keep existing bytes and line endings. A project that committed the manifest by mistake could not run `devops uninstall`, which refuses a tracked manifest. Uninstall restores the project's `.gitignore`, or removes it if DevOPs created it. Analyze, like init, now refuses a symlinked `.gitignore` with exit 1 (`specs/release/npm-package.md` REQ-10, REQ-16; #390, #391).

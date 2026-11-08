@@ -87,7 +87,8 @@ export function readManifest(root) {
     && Object.keys(data).every(k => ['schema_version', 'adopted', 'files', 'dirs'].includes(k))
     && data.dirs.every(ownDir)
     && Object.entries(data.files).every(([key, entry]) => ownFile(key) && plain(entry)
-      && Object.keys(entry).every(k => ['original', 'written'].includes(k))
+      && Object.keys(entry).every(k => ['original', 'written', 'edited'].includes(k))
+      && (entry.edited === undefined || entry.edited === true)
       && (entry.written === null || hex(entry.written))
       && (entry.original === null || (plain(entry.original) && hex(entry.original.sha256)
         && entry.original.copy === `${ORIGINALS}/${key}` && Object.keys(entry.original).length === 2)));
@@ -123,7 +124,13 @@ export function openManifest(root) {
   const api = {
     before(key, file) {
       const at = locate(key, file);
-      if (Object.hasOwn(data.files, key)) return;
+      if (Object.hasOwn(data.files, key)) {
+        // Bytes that differ from what DevOPs last wrote were edited by someone else.
+        const entry = data.files[key];
+        const now = entry.written === null ? null : readRegular(at);
+        if (now !== null && sha256(now) !== entry.written) entry.edited = true;
+        return;
+      }
       if (!file) {
         // The folders this write will create, outermost first.
         const parts = key.split('/').slice(0, -1);
