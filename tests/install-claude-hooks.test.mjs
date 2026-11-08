@@ -284,6 +284,23 @@ test(`uninstall keeps the modules a kept hook calls beside it (${SPEC}#ac-27)`, 
   });
 });
 
+test(`a later uninstall still keeps a hook file a user's own entry runs (${SPEC}#ac-27)`, () => {
+  withProject(dir => {
+    assert.equal(init(dir).status, 0);
+    const settings = readSettings(dir);
+    settings.hooks.PreToolUse.push({ matcher: BASH, hooks: [cmd('bash .claude/hooks/block-rm-rf.sh || exit 2')] });
+    writeFileSync(settingsPath(dir), `${JSON.stringify(settings, null, 2)}\n`);
+    const first = uninstall(dir);
+    assert.equal(first.status, 0, first.stdout + first.stderr);
+    assert.match(first.stdout, /^kept {6}\.claude\/hooks\/block-rm-rf\.sh: /m);
+    // The recorded entries are gone now; the second run must still read settings.json.
+    const second = uninstall(dir);
+    assert.equal(second.status, 0, second.stdout + second.stderr);
+    assert.ok(existsSync(path.join(dir, '.claude/hooks/block-rm-rf.sh')), 'the user entry still runs it');
+    assert.match(second.stdout, /^kept {6}\.claude\/hooks\/block-rm-rf\.sh: /m);
+  });
+});
+
 test(`uninstall that cannot rewrite settings.json keeps every hook file it still runs (${SPEC}#ac-27)`, () => {
   withProject(dir => {
     // A user's own key, so uninstall rewrites the file instead of deleting it.

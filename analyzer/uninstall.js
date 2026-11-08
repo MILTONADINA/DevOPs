@@ -179,6 +179,28 @@ function commandsIn(config) {
   return out;
 }
 
+/**
+ * The commands in .claude/settings.json as it is now, for a run with no recorded entries left (an
+ * earlier run removed them, or init wrote none): a user's own entry may still run a DevOPs hook.
+ * null when the file is there but cannot be read as an object; every hook file is then kept.
+ */
+function liveCommands(base) {
+  let bytes;
+  try {
+    bytes = readRegular(path.join(base, SETTINGS_KEY));
+  } catch {
+    return null;
+  }
+  if (bytes === null) return [];
+  let config = null;
+  try {
+    config = JSON.parse(bytes.toString('utf8'));
+  } catch {
+    return null;
+  }
+  return plain(config) ? commandsIn(config) : null;
+}
+
 function unwireHooks(base, entries, createdFile) {
   const plan = { kept: [], removed: [], dropped: [], bytes: null, deleteFile: false, remaining: null };
   let bytes;
@@ -375,7 +397,10 @@ export function uninstall(root, { dryRun = false, log = console.log } = {}) {
   // the kept entries' commands) keeps the files under .claude/hooks/ it runs, whether DevOPs
   // recorded that command or not: a command whose runner is gone blocks every matching call.
   const keptRunnerFiles = new Map(); // command -> the manifest keys it still runs
-  const stillRun = settingsPlan === null ? [] : (settingsPlan.remaining ?? settingsPlan.kept.map(({ entry }) => entry.command));
+  const live = settingsPlan === null ? liveCommands(base) : null;
+  const stillRun = settingsPlan === null ? (live ?? []) : (settingsPlan.remaining ?? settingsPlan.kept.map(({ entry }) => entry.command));
+  // A settings.json that cannot be read may run any hook: keep them all, named once below.
+  if (settingsPlan === null && live === null) stillRun.push(...Object.keys(data.files).filter(key => key.startsWith('.claude/hooks/')));
   // When settings.json could not be rewritten, the entries meant to go are still in it and still run.
   if (settingsFailed) stillRun.push(...settingsPlan.removed.map(entry => entry.command));
   for (const command of stillRun) {
