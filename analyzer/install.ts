@@ -609,7 +609,12 @@ function main() {
   // folder ending in /; a leading ! excludes).
   // A DevOPs root without a package.json (a partial layout) ships nothing to name.
   const packageJson = path.join(DEVOPS_ROOT, 'package.json');
-  const packageFiles: string[] = fs.existsSync(packageJson) ? JSON.parse(fs.readFileSync(packageJson, 'utf-8')).files ?? [] : [];
+  const packageMeta = fs.existsSync(packageJson) ? JSON.parse(fs.readFileSync(packageJson, 'utf-8')) : {};
+  const packageFiles: string[] = packageMeta.files ?? [];
+  // #420: every URL the closing text names is built here, pinned to this package's release
+  // tag, so a reader outside the project can open the file. `main` is only the fallback for a
+  // DevOPs root without a package.json (a partial layout; npm always ships one).
+  const docUrl = (p: string) => `https://github.com/MILTONADINA/DevOPs/blob/v${packageMeta.version ?? 'main'}/${p}`;
   const shipped = (p: string) => {
     const hit = (entry: string) => (entry.endsWith('/') ? p.startsWith(entry) : p === entry);
     return packageFiles.some(e => !e.startsWith('!') && hit(e)) && !packageFiles.some(e => e.startsWith('!') && hit(e.slice(1)));
@@ -830,19 +835,21 @@ function main() {
       ? `replaced=${backedUp.length} (skills, hooks and agents that differed from this release; the previous copies are in .workflow/state/backups/${runBackupStamp(PROJECT_ROOT)}/)`
       : 'replaced=0 (no installed skill, hook or agent differed from this release)');
     console.log('Installation complete.');
-    // specs/release/npm-package.md REQ-14 (#352): every file named here exists in
-    // the project or in this package; init installs no slash commands, so the
-    // command files are named where they ship.
-    console.log('Next steps:');
-    console.log('  1. Adjust `.workflow/state/budget.yml` for the project budget');
-    console.log(`  2. For client work, create \`.workflow/client/profile.yml\`; ${packageRef('docs/CLIENT_ONBOARDING.md')} lists its fields`);
-    console.log(`  3. At session end, write the baton as ${packageRef('slash-commands/universal/checkpoint.md')} describes (with the DevOPs Claude Code plugin installed, its /checkpoint command does this)`);
-    console.log('');
-    console.log('First steps in the agent:');
-    console.log(`  1. Read ${[...constitutionRefs.values()].join(', ')}`);
-    console.log('  2. Create specs/ and write your first spec there');
-    console.log(`  3. Convert prose to EARS as ${packageRef('slash-commands/universal/ears-spec.md')} describes (with the plugin installed, its /ears-spec command does this)`);
   }
+  // specs/release/npm-package.md REQ-14 (#352, #420): every file named here is a URL pinned to
+  // this release's tag, and the path exists in the repository. Init installs no slash
+  // commands, so the command files are named where they ship, with the plugin that provides
+  // them. A dry run prints the same text.
+  console.log('Next steps:');
+  console.log('  1. Adjust `.workflow/state/budget.yml` for the project budget');
+  console.log(`  2. For client work, create \`.workflow/client/profile.yml\`; ${docUrl('docs/CLIENT_ONBOARDING.md')} lists its fields`);
+  console.log(`  3. At session end, write the baton as ${docUrl('slash-commands/universal/checkpoint.md')} describes (with the DevOPs Claude Code plugin installed, its /checkpoint command does this)`);
+  console.log(`  4. Commit AGENTS.md, CLAUDE.md, .claude/, .workflow/profile.yml and .workflow/state/budget.yml. Keep ${LOCAL_STATE_IGNORES.join(' and ')} local: init adds them to .gitignore.`);
+  console.log('');
+  console.log('First steps in the agent:');
+  console.log(`  1. Read ${['PRINCIPLES.md', 'ANTIPATTERNS.md', 'LOOP.md'].map(file => docUrl(`constitution/${file}`)).join(', ')}`);
+  console.log('  2. Create specs/ and write your first spec there');
+  console.log(`  3. Convert prose to EARS as ${docUrl('slash-commands/universal/ears-spec.md')} describes (with the plugin installed, its /ears-spec command does this)`);
 }
 
 try {

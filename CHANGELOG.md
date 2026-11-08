@@ -14,6 +14,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- `devops init` closing text (`Next steps`, `First steps in the agent`, and the dry run, which prints the same text) names each file as a GitHub URL pinned to the installed version's tag, `https://github.com/MILTONADINA/DevOPs/blob/v<version>/<path>`, instead of a path inside the npm package. It adds one step that says what to commit (AGENTS.md, CLAUDE.md, `.claude/`, `.workflow/profile.yml`, `.workflow/state/budget.yml`) and what stays local (the install manifest and `originals/` that init adds to `.gitignore`) (#420, specs/release/npm-package.md REQ-14, AC-19).
 - All 26 skills, including the nine stack-specific ones, are signed as new-format Sigstore bundles and listed in `governance/skill-manifest.yml`. `devops init` now installs the stack-specific skills that `analyze` recommends instead of skipping them (#347, #416).
 - Skill signing emits one new-format Sigstore bundle per skill, which the installer and the release workflow verify offline against the committed trust root (#345); skills still without a bundle are pinned in `tests/ci/unsigned-skills.txt`, which must shrink to empty (#347). The package now ships `.workflow/sigstore/trust-bundle.json`, so installs can verify new-format bundles offline.
 
