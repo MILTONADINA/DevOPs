@@ -186,6 +186,10 @@ for (const [label, manifest] of [
   ['a pre command paired with PostToolUse', hookManifest([hookEntry('PostToolUse', hookCmd.pre('block-rm-rf.sh'), 'Bash')])],
   ['a post command paired with PreToolUse', hookManifest([hookEntry('PreToolUse', hookCmd.post('gitleaks-scan.sh'), 'Write')])],
   ['a plain command paired with PreToolUse', hookManifest([hookEntry('PreToolUse', hookCmd.plain('load-baton.sh'), 'Bash')])],
+  ['a plain command paired with PostToolUse', hookManifest([hookEntry('PostToolUse', hookCmd.plain('load-baton.sh'), 'Write')])],
+  ['a pre command paired with SessionStart', hookManifest([hookEntry('SessionStart', hookCmd.pre('block-rm-rf.sh'))])],
+  ['a post command paired with SessionStart', hookManifest([hookEntry('SessionStart', hookCmd.post('gitleaks-scan.sh'))])],
+  ['claude_hooks_created_file with an empty claude_hooks', { ...hookManifest([]), claude_hooks_created_file: true }],
   ['a plain command with a matcher', hookManifest([hookEntry('SessionStart', hookCmd.plain('load-baton.sh'), 'Bash')])],
   ['two entries with the same command', hookManifest([hookEntry('SessionStart', hookCmd.plain('load-baton.sh')), hookEntry('SessionStart', hookCmd.plain('load-baton.sh'))])],
   ['claude_hooks_created_file without claude_hooks', { schema_version: 1, adopted: false, files: {}, dirs: [], claude_hooks_created_file: true }],
@@ -283,7 +287,7 @@ test('validKey accepts only project-relative paths', () => {
 
 // #426: the three command forms init writes read back, with a hook this version does not wire
 // (no allowlist: uninstall must still read a manifest from another DevOPs version).
-test(`a manifest with the pre, post and SessionStart command forms reads (${SPEC}#ac-20)`, () => {
+test(`a manifest with the pre, post and SessionStart command forms reads (${SPEC}#ac-29)`, () => {
   withProject(dir => {
     mkdirSync(path.join(dir, '.workflow/state'), { recursive: true });
     const claude_hooks = [
@@ -298,7 +302,7 @@ test(`a manifest with the pre, post and SessionStart command forms reads (${SPEC
   });
 });
 
-test(`a hook file name starting with a dot is refused in every command form (${SPEC}#ac-20)`, () => {
+test(`a hook file name starting with a dot is refused in every command form (${SPEC}#ac-29)`, () => {
   withProject(dir => {
     mkdirSync(path.join(dir, '.workflow/state'), { recursive: true });
     for (const name of ['.', '..', '..foo', '.hidden']) {
