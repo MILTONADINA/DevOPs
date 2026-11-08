@@ -243,7 +243,7 @@ test(`uninstall keeps an edited run-hook entry, its runner and its hook, and nam
     writeFileSync(settingsPath(dir), `${JSON.stringify(settings, null, 2)}\n`);
     const r = uninstall(dir);
     assert.equal(r.status, 0, r.stdout + r.stderr);
-    assert.match(r.stdout, /^kept {6}\.claude\/hooks\/run-hook\.mjs and \.claude\/hooks\/block-rm-rf\.sh: a kept entry in \.claude\/settings\.json still runs them; delete that entry, then run devops uninstall again$/m);
+    assert.match(r.stdout, /^kept {6}\.claude\/hooks\/run-hook\.mjs and \.claude\/hooks\/block-rm-rf\.sh: an entry in \.claude\/settings\.json still runs them; delete that entry, then run devops uninstall again$/m);
     assert.match(r.stdout, /kept {6}\.claude\/settings\.json \(the PreToolUse hook for block-rm-rf\.sh\): edited since DevOPs wrote it/);
     assert.ok(existsSync(path.join(dir, '.claude/hooks/run-hook.mjs')), 'the runner stays');
     assert.ok(existsSync(path.join(dir, '.claude/hooks/block-rm-rf.sh')), 'the hook stays');
@@ -262,6 +262,40 @@ test(`uninstall keeps an edited run-hook entry, its runner and its hook, and nam
     assert.equal(existsSync(path.join(dir, '.claude/hooks/run-hook.mjs')), false, 'the runner is removed');
     assert.equal(existsSync(path.join(dir, '.claude/hooks/block-rm-rf.sh')), false, 'the hook is removed');
     assert.equal(existsSync(path.join(dir, MANIFEST)), false, 'nothing is left to record');
+  });
+});
+
+test(`uninstall removes its own entry, not a user's identical command in another group (${SPEC}#ac-27)`, () => {
+  withProject(dir => {
+    const inner = RUN('pre', 'block-rm-rf.sh', 'command');
+    const { command } = inner;
+    const user = { hooks: { PreToolUse: [{ hooks: [inner] }] } };
+    mkdirSync(path.join(dir, '.claude'));
+    writeFileSync(settingsPath(dir), `${JSON.stringify(user, null, 2)}\n`);
+    assert.equal(init(dir).status, 0);
+    const r = uninstall(dir);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    const after = readSettings(dir);
+    assert.deepEqual(after.hooks.PreToolUse, user.hooks.PreToolUse, "the user's matcher-less group is untouched");
+    // The user's command still runs the runner and the hook, so both stay.
+    for (const file of hookFilesNamedBy(command)) assert.ok(existsSync(path.join(dir, '.claude/hooks', file)), `${file} stays`);
+  });
+});
+
+test(`uninstall keeps the files a command still runs when its text was edited (${SPEC}#ac-27)`, () => {
+  withProject(dir => {
+    assert.equal(init(dir).status, 0);
+    const settings = readSettings(dir);
+    const group = settings.hooks.PreToolUse.find(g => g.matcher === BASH);
+    const rmRf = group.hooks.find(h => h.command.includes('block-rm-rf.sh'));
+    rmRf.command = `${rmRf.command} # mine`;
+    writeFileSync(settingsPath(dir), `${JSON.stringify(settings, null, 2)}\n`);
+    const r = uninstall(dir);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.match(r.stdout, /^kept {6}\.claude\/hooks\/(run-hook\.mjs and \.claude\/hooks\/block-rm-rf\.sh|block-rm-rf\.sh and \.claude\/hooks\/run-hook\.mjs): an entry in/m);
+    for (const command of commandsIn(readSettings(dir))) {
+      for (const file of hookFilesNamedBy(command)) assert.ok(existsSync(path.join(dir, '.claude/hooks', file)), `${file} exists for ${command}`);
+    }
   });
 });
 

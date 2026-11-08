@@ -22,8 +22,9 @@
 //   - The `.claude/settings.json` hook entries init added (REQ-15, #418) are removed only
 //     while the inner hook object still hashes to the recorded sha256. A matcher group,
 //     event or `hooks` left empty goes; a settings.json init created, left empty, is deleted.
-//     A kept entry that runs run-hook.mjs keeps that runner and the hook it names, both in the
-//     manifest, until the entry is deleted and uninstall runs again.
+//     Only the entry in the group init wrote to (same event and matcher) is taken. Any command
+//     still in the file afterwards, recorded or not, keeps the files under .claude/hooks/ it
+//     runs, in the manifest, until that command is deleted and uninstall runs again.
 // Nothing is followed through a symlink. A manifest Git tracks is refused: it came
 // with the repository, not from an install here. Folders DevOPs created are removed when
 // empty. Whatever is kept stays in the manifest, so a later uninstall can finish.
@@ -165,8 +166,21 @@ function unlinkServer(base, name, recorded) {
  * new file content (null when nothing changes), `deleteFile` when init created the file and
  * nothing else is in it.
  */
+// Every hook command string in a parsed settings object.
+function commandsIn(config) {
+  const out = [];
+  if (!plain(config) || !plain(config.hooks)) return out;
+  for (const groups of Object.values(config.hooks)) {
+    for (const group of Array.isArray(groups) ? groups : []) {
+      if (!plain(group) || !Array.isArray(group.hooks)) continue;
+      for (const hook of group.hooks) if (plain(hook) && typeof hook.command === 'string') out.push(hook.command);
+    }
+  }
+  return out;
+}
+
 function unwireHooks(base, entries, createdFile) {
-  const plan = { kept: [], removed: [], dropped: [], bytes: null, deleteFile: false };
+  const plan = { kept: [], removed: [], dropped: [], bytes: null, deleteFile: false, remaining: null };
   let bytes;
   try {
     bytes = readRegular(path.join(base, SETTINGS_KEY));
@@ -191,6 +205,9 @@ function unwireHooks(base, entries, createdFile) {
     let found = null;
     for (const group of groups ?? []) {
       if (!plain(group) || !Array.isArray(group.hooks)) continue;
+      // The group init wrote to: the same matcher, or none for an event without one. A user's
+      // identical command in another group is theirs and stays.
+      if (group.matcher !== entry.matcher) continue;
       const index = group.hooks.findIndex(hook => plain(hook) && hook.command === entry.command);
       if (index !== -1) {
         found = { group, index };
@@ -214,6 +231,7 @@ function unwireHooks(base, entries, createdFile) {
     plan.removed.push(entry);
     plan.dropped.push(entry);
   }
+  plan.remaining = commandsIn(config);
   if (plan.removed.length === 0) return plan;
   if (createdFile && Object.keys(config).length === 0) plan.deleteFile = true;
   else plan.bytes = `${JSON.stringify(config, null, 2)}\n`;
@@ -312,17 +330,25 @@ export function uninstall(root, { dryRun = false, log = console.log } = {}) {
   // the files it still runs. A kept entry whose command runs run-hook.mjs keeps the runner and the
   // hook it names: the files loop leaves both alone, and the kept line below names them once.
   const settingsPlan = data.claude_hooks ? unwireHooks(base, data.claude_hooks, data.claude_hooks_created_file === true) : null;
-  const keptRunnerFiles = new Map(); // hook name -> the manifest keys a kept entry still runs
-  for (const { entry } of settingsPlan?.kept ?? []) {
-    if (!entry.command.includes('run-hook.mjs')) continue;
-    const hook = runHookFile(entry.command);
-    keptRunnerFiles.set(hook ?? 'run-hook.mjs', ['.claude/hooks/run-hook.mjs', ...(hook === null ? [] : [`.claude/hooks/${hook}`])]);
+  // Every command still in settings.json after this run (or, when the file could not be read,
+  // the kept entries' commands) keeps the files under .claude/hooks/ it runs, whether DevOPs
+  // recorded that command or not: a command whose runner is gone blocks every matching call.
+  const keptRunnerFiles = new Map(); // command -> the manifest keys it still runs
+  const stillRun = settingsPlan === null ? [] : (settingsPlan.remaining ?? settingsPlan.kept.map(({ entry }) => entry.command));
+  for (const command of stillRun) {
+    const names = new Set([...command.matchAll(/\.claude\/hooks\/([A-Za-z0-9._-]+)/g)].map(m => m[1]));
+    // Unanchored: a command the user extended (`... # note`, `... ; other`) still runs the hook.
+    for (const m of command.matchAll(/run-hook\.mjs"? (?:pre|post) ([A-Za-z0-9._-]+)/g)) names.add(m[1]);
+    const keys = [...names].map(name => `.claude/hooks/${name}`).filter(key => data.files[key] !== undefined);
+    if (keys.length) keptRunnerFiles.set(command, keys);
   }
   const keptRunnerKeys = new Set();
   for (const keys of keptRunnerFiles.values()) {
-    for (const key of keys) keptRunnerKeys.add(key);
-    keptCount += keys.filter(key => data.files[key] !== undefined).length;
-    log(`kept      ${keys.join(' and ')}: a kept entry in ${SETTINGS_KEY} still runs them; delete that entry, then run devops uninstall again`);
+    const fresh = keys.filter(key => !keptRunnerKeys.has(key));
+    for (const key of fresh) keptRunnerKeys.add(key);
+    if (fresh.length === 0) continue;
+    keptCount += fresh.length;
+    log(`kept      ${fresh.join(' and ')}: an entry in ${SETTINGS_KEY} still runs ${fresh.length === 1 ? 'it' : 'them'}; delete that entry, then run devops uninstall again`);
   }
   for (const key of Object.keys(data.files).sort()) {
     if (keptRunnerKeys.has(key)) continue; // named with the kept entry above
