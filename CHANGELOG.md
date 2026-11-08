@@ -11,6 +11,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 ### Fixed
 
 - `readManifest` (the install manifest that `init` and `uninstall` read) rejects a malformed `claude_hooks` entry, as it already rejects any other bad manifest. Refused: a hook file name that starts with a dot (`.`, `..`, `..foo`, `.hidden`); a pre command paired with any event but PreToolUse, a post command paired with any event but PostToolUse, or a plain SessionStart command paired with another event or given a matcher; two entries with the same command; and `claude_hooks_created_file` without a non-empty `claude_hooks`. Hook names are still not checked against a list, so a manifest from another DevOPs version still reads (#426).
+- `hooks/universal/pre-tool/block-rm-rf.sh` escapes the target and command it writes to `.workflow/state/events.jsonl` with the same `json_escape` as `block-secrets.sh`, instead of `jq -R` and an unescaped fallback, so a quote, backslash or newline can no longer break the line or add keys (#437).
 
 ## [0.8.1] — 2026-11-08
 

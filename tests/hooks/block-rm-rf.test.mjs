@@ -5,7 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -21,7 +21,7 @@ function decide(command, base = FIXTURES) {
   try {
     const project = path.join(dir, 'project');
     mkdirSync(project);
-    const result = spawnSync('bash', [HOOK, command], { cwd: project, encoding: 'utf8', timeout: 30_000, env: { ...process.env, LC_ALL: 'C' } });
+    const result = spawnSync('/bin/bash', [HOOK, command], { cwd: project, encoding: 'utf8', timeout: 30_000, env: { ...process.env, LC_ALL: 'C' } });
     assert.equal(result.error, undefined, String(result.error));
     return result.status;
   } finally {
@@ -81,3 +81,45 @@ for (const command of ['rm -rf .', 'rm -rf ..', 'rm -rf /tmp', 'rm -rf /var/tmp'
     assert.equal(decide(command, tmpdir()), 2);
   });
 }
+
+// Runs the hook from a disposable project and returns its exit status and the
+// lines it appended to .workflow/state/events.jsonl.
+function runWithEvents(command) {
+  mkdirSync(FIXTURES, { recursive: true });
+  const dir = realpathSync(mkdtempSync(path.join(FIXTURES, 'block-rm-rf-')));
+  try {
+    const project = path.join(dir, 'project');
+    mkdirSync(project);
+    const result = spawnSync('/bin/bash', [HOOK, command], { cwd: project, encoding: 'utf8', timeout: 30_000, env: { ...process.env, LC_ALL: 'C' } });
+    assert.equal(result.error, undefined, String(result.error));
+    const log = path.join(project, '.workflow', 'state', 'events.jsonl');
+    const text = existsSync(log) ? readFileSync(log, 'utf8') : '';
+    return { status: result.status, lines: text.split('\n').filter((line) => line !== '') };
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+// A double quote, a backslash and a newline in the command text. None of them is
+// part of a path token, so the target stays src/old and the command is the whole string.
+const SPECIAL = 'rm -rf src/old "\\\n"\\';
+
+test('block-rm-rf escapes a destructive_in_project event line that holds quote, backslash and newline', () => {
+  const { status, lines } = runWithEvents(SPECIAL);
+  assert.equal(status, 0);
+  assert.equal(lines.length, 1);
+  const event = JSON.parse(lines[0]);
+  assert.equal(event.event, 'destructive_in_project');
+  assert.ok(event.target.endsWith('/project/src/old'), event.target);
+  assert.equal(event.command, SPECIAL);
+});
+
+test('block-rm-rf writes one parseable rm_blocked line when a blocked command holds quote, backslash and newline', () => {
+  const blocked = 'rm -rf /opt/x "\\\n"\\';
+  const { status, lines } = runWithEvents(blocked);
+  assert.equal(status, 2);
+  assert.equal(lines.length, 1);
+  const event = JSON.parse(lines[0]);
+  assert.equal(event.event, 'rm_blocked');
+  assert.equal(event.target, '/opt/x');
+});
