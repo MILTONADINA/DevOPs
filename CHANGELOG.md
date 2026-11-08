@@ -8,6 +8,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- `devops init` without cosign writes nothing to the project. It used to write `AGENTS.md`, `CLAUDE.md`, the `.gitignore` lines and `.workflow/` (the install manifest included), then report every signed skill as failed and exit 2. Now it checks for cosign before any write, prints the install hint and exits 2, and counts each skill that could not be checked as `not verified (cosign missing)`, not `failed`. `--dry-run` still reports what it would write, then stops the same way. A cosign that runs and rejects a skill is refused as before (`specs/phase-2/F-skill-provenance.md` REQ-F12, AC-F12.1; #415).
+
 ## [0.7.0] — 2026-11-08
 
 ### Added

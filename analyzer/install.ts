@@ -123,6 +123,9 @@ interface VerifyResult {
   reason: string;
   sha256: string;
   signedBy?: string;
+  // The cosign binary could not be started (not installed, or not executable): the skill
+  // is not verified for lack of a verifier, not because a check failed (REQ-F12).
+  verifierMissing?: boolean;
 }
 
 // docs/SKILL_SIGNING.md "Signing identity": only release-sign.yml in MILTONADINA/DevOPs,
@@ -130,6 +133,26 @@ interface VerifyResult {
 const SIGNER_IDENTITY_REGEXP = '^https://github\\.com/MILTONADINA/DevOPs/\\.github/workflows/release-sign\\.yml@refs/heads/.+$';
 const SIGNER_OIDC_ISSUER = 'https://token.actions.githubusercontent.com';
 const COSIGN_TIMEOUT_MS = 5000;
+
+// ENOENT: no such binary. EACCES: present but not executable. Both mean no verifier runs.
+const isMissingBinary = (code: string | undefined) => code === 'ENOENT' || code === 'EACCES';
+
+// Whether the cosign binary (COSIGN_BIN, else `cosign` on PATH) is there and executable.
+// It is looked up, not run: a run here would be a verification call to the binary.
+function cosignInstalled(): boolean {
+  const bin = process.env['COSIGN_BIN'] ?? 'cosign';
+  const candidates = bin.includes(path.sep)
+    ? [bin]
+    : (process.env.PATH ?? '').split(path.delimiter).map(dir => path.join(dir || '.', bin));
+  return candidates.some(candidate => {
+    try {
+      fs.accessSync(candidate, fs.constants.X_OK);
+      return fs.statSync(candidate).isFile();
+    } catch {
+      return false;
+    }
+  });
+}
 
 function verifySkill(skillFullPath: string, entry: ManifestEntry, allowUnsigned: boolean): VerifyResult {
   // Step 1: NFR-F3 hash check — ALWAYS run, even with --allow-unsigned.
@@ -145,9 +168,9 @@ function verifySkill(skillFullPath: string, entry: ManifestEntry, allowUnsigned:
   // Step 2: signature check — bypassable only by --allow-unsigned --rationale. The manifest
   // ships in the same package as the skill, so its hash alone cannot detect a modified
   // package: every way the signature cannot be verified fails closed.
-  const unverified = (why: string): VerifyResult => allowUnsigned
+  const unverified = (why: string, verifierMissing = false): VerifyResult => allowUnsigned
     ? { ok: true, reason: `${why}; override`, sha256: actualHash, signedBy: entry.signed_by }
-    : { ok: false, reason: why, sha256: actualHash };
+    : { ok: false, reason: why, sha256: actualHash, verifierMissing };
 
   const sigPath = entry.sig_path ? path.join(DEVOPS_ROOT, entry.sig_path) : `${skillFullPath}.sig`;
   const bundlePath = entry.bundle_path ? path.join(DEVOPS_ROOT, entry.bundle_path) : `${skillFullPath}.bundle`;
@@ -171,8 +194,9 @@ function verifySkill(skillFullPath: string, entry: ManifestEntry, allowUnsigned:
 
   if (result.error || result.status === null) {
     // cosign is missing, could not start, timed out or was killed: nothing was verified.
-    const why = result.error ? (result.error as NodeJS.ErrnoException).code ?? result.error.message : `signal ${result.signal}`;
-    return unverified(`unverified (cosign did not complete: ${why})`);
+    const code = result.error ? (result.error as NodeJS.ErrnoException).code : undefined;
+    const why = result.error ? code ?? result.error.message : `signal ${result.signal}`;
+    return unverified(`unverified (cosign did not complete: ${why})`, isMissingBinary(code));
   }
   if (result.status === 0) {
     return { ok: true, reason: 'verified (cosign + hash)', sha256: actualHash, signedBy: entry.signed_by };
@@ -288,12 +312,87 @@ function extractList(text: string, sectionKey: string): string[] {
   return items;
 }
 
+// ─── skill resolution (REQ-F12) ──────────────────────────────────────────
+
+// A skill the profile names, resolved to its source and manifest entry. Nothing is verified
+// here: verification stays in the install loop, after the project's own files are written.
+interface SkillRef {
+  skill: string;
+  kind: 'skipped' | 'unlisted' | 'candidate';
+  relPath: string;
+  entry?: ManifestEntry;
+  skillMdPath: string;
+  srcSkillDir: string;
+}
+
+function resolveSkills(skills: string[], manifestByName: Map<string, ManifestEntry>,
+                       manifestByPath: Map<string, ManifestEntry>): SkillRef[] {
+  return skills.map((s): SkillRef => {
+    // specs/phase-2/D-stack-specific-skills.md REQ-D8: every recommended skill
+    // is installed or printed as skipped with a reason, and counted.
+    // Names come from the project's profile.yml: only lowercase path segments,
+    // never '..', so a lookup stays under skills/.
+    const stackSpecific = s.startsWith('stack-specific/');
+    const srcSkillDir = path.join(DEVOPS_ROOT, 'skills', stackSpecific ? '' : 'universal', s);
+    const skillMdPath = path.join(srcSkillDir, 'SKILL.md');
+    const skipped: SkillRef = { skill: s, kind: 'skipped', relPath: '', skillMdPath, srcSkillDir };
+    if (!/^[a-z0-9][a-z0-9-]*(?:\/[a-z0-9][a-z0-9-]*)+$/.test(s)) {
+      console.log(`⚠ skipped: ${JSON.stringify(s)} (not a valid skill name)`);
+      return skipped;
+    }
+    if (!fs.existsSync(skillMdPath)) {
+      console.log(`⚠ skipped: ${s} (this DevOPs release has no SKILL.md for it)`);
+      return skipped;
+    }
+
+    // Look up by manifest path; fall back to name for universal skills only,
+    // so a stack-specific skill never borrows another skill's entry.
+    const relPath = path.relative(DEVOPS_ROOT, skillMdPath).replace(/\\/g, '/');
+    const entry = manifestByPath.get(relPath) ?? (stackSpecific ? null : manifestByName.get(path.basename(s))) ?? null;
+
+    if (!entry && stackSpecific) {
+      // Not yet signed into governance/skill-manifest.yml (#347): not installed.
+      console.log(`⚠ skipped: ${s} (not in governance/skill-manifest.yml, so it cannot be verified)`);
+      return skipped;
+    }
+    if (!entry) {
+      // REQ-F2 covers no-sig; here the skill is not in the manifest at all.
+      // Defense-in-depth: no manifest entry → cannot verify hash → reject.
+      console.error(`unsigned: ${relPath} (not in manifest)`);
+      return { skill: s, kind: 'unlisted', relPath, skillMdPath, srcSkillDir };
+    }
+    return { skill: s, kind: 'candidate', relPath, entry, skillMdPath, srcSkillDir };
+  });
+}
+
+interface Tally {
+  installed: number;
+  verified: number;
+  overridden: number;
+  skipped: number;
+  failed: number;
+  notVerified: number;
+}
+
+function summaryLine(t: Tally): string {
+  return `installed=${t.installed} verified=${t.verified} overridden=${t.overridden} skipped=${t.skipped} failed=${t.failed} not verified (cosign missing)=${t.notVerified}`;
+}
+
+// REQ-F12: skills that could not be checked because there is no verifier. Exits 2.
+function exitWithoutVerifier(t: Tally, lead: string): never {
+  console.error('');
+  console.error(summaryLine(t));
+  console.error(lead);
+  console.error('Install cosign (https://docs.sigstore.dev/cosign/system_config/installation/) or set COSIGN_BIN, then rerun.');
+  console.error('Or install them unverified with --allow-unsigned --rationale="<why>", which logs each one as overridden.');
+  process.exit(2);
+}
+
 // ─── main ────────────────────────────────────────────────────────────────
 
 function main() {
   const flags = parseFlags(process.argv.slice(2));
   const PROJECT_ROOT = flags.target;
-  if (!flags.dryRun) startRecord(PROJECT_ROOT);
   const manifest = loadManifest(flags.manifestPath);
   const manifestByName = new Map(manifest.map(e => [e.name, e]));
   const manifestByPath = new Map(manifest.map(e => [e.path, e]));
@@ -309,6 +408,19 @@ function main() {
   if (flags.dryRun) console.log('Mode:          --dry-run (no target mutation)');
   if (flags.allowUnsigned) console.log(`Override:      --allow-unsigned rationale="${flags.rationale}"`);
   console.log('');
+
+  // REQ-F12: the verifier's availability is decided before the first write. Without cosign a
+  // real run stops here, with nothing written and no manifest. A dry run goes on, reports the
+  // plan, and counts the skills it could not check.
+  const resolved = resolveSkills(skills, manifestByName, manifestByPath);
+  const count = (kind: SkillRef['kind']) => resolved.filter(r => r.kind === kind).length;
+  const gated = !flags.allowUnsigned && count('candidate') > 0 && !cosignInstalled();
+  if (gated && !flags.dryRun) {
+    exitWithoutVerifier({
+      installed: 0, verified: 0, overridden: 0, skipped: count('skipped'), failed: count('unlisted'), notVerified: count('candidate'),
+    }, `cosign is not installed or cannot be run, so ${count('candidate')} skill(s) could not be verified. Nothing was written to the project.`);
+  }
+  if (!flags.dryRun) startRecord(PROJECT_ROOT);
 
   // specs/release/npm-package.md REQ-10: keep the constitution a live dependency.
   // Compare path components, not string prefixes (a sibling is not inside target).
@@ -388,48 +500,30 @@ function main() {
   const added = ignoreLines(PROJECT_ROOT, ['AGENTS.override.md', ...LOCAL_STATE_IGNORES], { record, dryRun: flags.dryRun });
   if (added.length) console.log(flags.dryRun ? `dry-run: would add ${added.join(', ')} to .gitignore` : `✓ Added ${added.join(', ')} to .gitignore`);
 
-  // Skills with verification (F.01..F.07)
-  let verified = 0, overridden = 0, skipped = 0, failed = 0;
-  for (const s of skills) {
-    // specs/phase-2/D-stack-specific-skills.md REQ-D8: every recommended skill
-    // is installed or printed as skipped with a reason, and counted.
-    // Names come from the project's profile.yml: only lowercase path segments,
-    // never '..', so a lookup stays under skills/.
-    if (!/^[a-z0-9][a-z0-9-]*(?:\/[a-z0-9][a-z0-9-]*)+$/.test(s)) {
-      console.log(`⚠ skipped: ${JSON.stringify(s)} (not a valid skill name)`);
-      skipped++;
+  // Skills with verification (F.01..F.07). Each candidate is verified here, after the
+  // project files above are written, as before; the gate above already ruled out a missing cosign.
+  let verified = 0, overridden = 0, failed = count('unlisted'), notVerified = 0;
+  const skipped = count('skipped');
+  for (const r of resolved) {
+    if (r.kind === 'unlisted') {
+      logDecision(PROJECT_ROOT, 'fail', r.relPath, '', undefined, null, flags.dryRun);
       continue;
     }
-    const stackSpecific = s.startsWith('stack-specific/');
-    const srcSkillDir = path.join(DEVOPS_ROOT, 'skills', stackSpecific ? '' : 'universal', s);
-    const skillMdPath = path.join(srcSkillDir, 'SKILL.md');
-    if (!fs.existsSync(skillMdPath)) {
-      console.log(`⚠ skipped: ${s} (this DevOPs release has no SKILL.md for it)`);
-      skipped++;
-      continue;
-    }
+    if (r.kind !== 'candidate') continue;
+    const entry = r.entry!;
 
-    // Look up by manifest path; fall back to name for universal skills only,
-    // so a stack-specific skill never borrows another skill's entry.
-    const relPath = path.relative(DEVOPS_ROOT, skillMdPath).replace(/\\/g, '/');
-    const entry = manifestByPath.get(relPath) ?? (stackSpecific ? null : manifestByName.get(path.basename(s))) ?? null;
-
-    if (!entry && stackSpecific) {
-      // Not yet signed into governance/skill-manifest.yml (#347): not installed.
-      console.log(`⚠ skipped: ${s} (not in governance/skill-manifest.yml, so it cannot be verified)`);
-      skipped++;
+    // A dry run past the gate has no verifier to ask; the skill is counted, not verified.
+    if (gated) {
+      console.error(`not verified (cosign missing): ${entry.path}`);
+      notVerified++;
       continue;
     }
-    if (!entry) {
-      // REQ-F2 covers no-sig; here the skill is not in the manifest at all.
-      // Defense-in-depth: no manifest entry → cannot verify hash → reject.
-      console.error(`unsigned: ${relPath} (not in manifest)`);
-      logDecision(PROJECT_ROOT, 'fail', relPath, '', undefined, null, flags.dryRun);
-      failed++;
+    const verdict = verifySkill(r.skillMdPath, entry, flags.allowUnsigned);
+    if (!verdict.ok && verdict.verifierMissing) {
+      console.error(`not verified (cosign missing): ${entry.path} (${verdict.reason})`);
+      notVerified++;
       continue;
     }
-
-    const verdict = verifySkill(skillMdPath, entry, flags.allowUnsigned);
     if (!verdict.ok) {
       // F.03: reject-unsigned exits 2 distinct from generic-error 1
       console.error(`unsigned: ${entry.path} (${verdict.reason})`);
@@ -446,14 +540,23 @@ function main() {
       console.log(`would copy: ${entry.path} (${verdict.reason})`);
       continue;
     }
-    const dst = path.join(PROJECT_ROOT, '.claude/skills', path.basename(s));
-    copyDir(PROJECT_ROOT, srcSkillDir, dst);
+    const dst = path.join(PROJECT_ROOT, '.claude/skills', path.basename(r.skill));
+    copyDir(PROJECT_ROOT, r.srcSkillDir, dst);
+  }
+  const t: Tally = { installed: verified + overridden, verified, overridden, skipped, failed, notVerified };
+
+  // REQ-F12: no verifier for some skills, so the install stops. A real run gets here only if
+  // cosign stopped running mid-install; a dry run gets here with the plan printed.
+  if (notVerified > 0 && !flags.allowUnsigned) {
+    exitWithoutVerifier(t, flags.dryRun
+      ? `cosign is not installed or cannot be run, so ${notVerified} skill(s) could not be verified. dry-run: nothing was written.`
+      : `cosign could not run for ${notVerified} skill(s); the skills before them were installed.`);
   }
 
   // F.03: if any skill failed and no override, exit 2.
   if (failed > 0 && !flags.allowUnsigned) {
     console.error('');
-    console.error(`installed=${verified + overridden} verified=${verified} overridden=${overridden} skipped=${skipped} failed=${failed}`);
+    console.error(summaryLine(t));
     console.error('Skills install only once cosign verifies their signature from the DevOPs release workflow.');
     console.error('Install cosign (https://docs.sigstore.dev/cosign/system_config/installation/) and rerun, or install');
     console.error('them unverified with --allow-unsigned --rationale="<why>", which logs each one as overridden.');
@@ -532,9 +635,9 @@ function main() {
 
   console.log('');
   if (flags.dryRun) {
-    console.log(`dry-run: would copy ${verified + overridden} skills`);
+    console.log(`dry-run: would copy ${t.installed} skills`);
   } else {
-    console.log(`installed=${verified + overridden} verified=${verified} overridden=${overridden} skipped=${skipped} failed=${failed}`);
+    console.log(summaryLine(t));
     console.log(backedUp.length
       ? `replaced=${backedUp.length} (skills, hooks and agents that differed from this release; the previous copies are in .workflow/state/backups/${runBackupStamp(PROJECT_ROOT)}/)`
       : 'replaced=0 (no installed skill, hook or agent differed from this release)');

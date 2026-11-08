@@ -56,13 +56,16 @@ WHERE the installer is invoked with `--manifest <path>`, THE SYSTEM SHALL load t
 THE SYSTEM SHALL accept a skill signature only from a certificate whose identity matches `^https://github\.com/MILTONADINA/DevOPs/\.github/workflows/release-sign\.yml@refs/heads/.+$` with the issuer `https://token.actions.githubusercontent.com`, and SHALL refuse a skill whose manifest `signed_by` does not match that identity.
 
 ### REQ-F9 (Unwanted behaviour) — Unverifiable signatures fail closed
-IF a skill has a `.sig` but its signature cannot be verified, because the `.bundle` is missing or cosign is absent, fails to start, times out or is killed, THEN THE SYSTEM SHALL refuse the skill as in REQ-F2 and SHALL name the `--allow-unsigned --rationale="..."` opt-out. The manifest hash does not stand in for the signature, because the manifest ships in the same package as the skill.
+IF a skill has a `.sig` but its signature cannot be verified, because the `.bundle` is missing or cosign fails to start, times out or is killed, THEN THE SYSTEM SHALL refuse the skill as in REQ-F2 and SHALL name the `--allow-unsigned --rationale="..."` opt-out. The manifest hash does not stand in for the signature, because the manifest ships in the same package as the skill. A missing cosign is REQ-F12, not REQ-F9.
 
 ### REQ-F10 (Unwanted behaviour) — No write through a project symlink
 IF a destination that `devops init`, `devops-analyze`, `scripts/graph-blocked.sh` or `scripts/graph-preflight.mjs` writes, appends to or changes the mode of is a symlink, or has a symlinked component below the project root, THEN THE SYSTEM SHALL refuse it or replace the link, and SHALL NOT write to, append to or change the mode of the file the link points at.
 
 ### REQ-F11 (Event-driven) — Back up a differing file before replacing it
 WHEN `devops init` replaces an installed skill file, hook script, hook companion, subagent definition or the DevOPs pre-commit hook, or `devops analyze` replaces `.workflow/profile.yml`, and the existing regular file's bytes differ from the new ones (for `profile.yml`, ignoring the `detected_at` line), THE SYSTEM SHALL first copy it to `.workflow/state/backups/<UTC stamp>/<its path in the project>` (the pre-commit hook to `git-hooks/pre-commit`) and print `↻ Replaced <path>; the previous copy is in <backup>`, and `devops init` SHALL print a `replaced=<count>` line counting the replaced skills, hooks and subagents. A backup SHALL be created only, never overwritten: a run whose stamp folder already exists uses `<stamp>-2`, `<stamp>-3` and so on. IF the pre-commit hook is a symlink, THEN `devops init` SHALL leave it unchanged and say so. WHEN no file differs, THE SYSTEM SHALL create no backup and print no `↻ Replaced` line (#349).
+
+### REQ-F12 (Unwanted behaviour) — No verifier, nothing written
+IF the signature verifier (cosign) is unavailable, THEN `devops init` SHALL write nothing to the project, print what to install, and exit 2. The summary SHALL count unverified skills as "not verified (cosign missing)", not as "failed" (#415).
 
 ---
 
@@ -109,9 +112,14 @@ WHEN `devops init` replaces an installed skill file, hook script, hook companion
 **Then** it refuses the first skill with exit 2, and for the second it passes cosign the anchored identity and issuer of REQ-F8.
 
 ### AC-F9.1 (maps to REQ-F9)
-**Given** a signed skill and no cosign, a cosign that is killed before it answers, or no `.bundle`
+**Given** a signed skill and a cosign that is killed before it answers, or no `.bundle`
 **When** the installer runs without `--allow-unsigned`
 **Then** it exits 2, copies nothing and logs `decision: fail`; with `--allow-unsigned --rationale="..."` it copies the skill and logs `decision: overridden`.
+
+### AC-F12.1 (maps to REQ-F12)
+**Given** a project whose profile lists a signed skill, and no cosign on PATH (or at `COSIGN_BIN`) (`tests/init-no-cosign.test.mjs`)
+**When** `devops init` runs, with or without `--dry-run`
+**Then** it exits 2 with `installed=0 ... not verified (cosign missing)=1` and prints the cosign install hint; the project tree is unchanged (no file or folder created or edited, no `install-manifest.json`). With `--dry-run` it also prints the `would install` lines it would have written.
 
 ### AC-F10.1 (maps to REQ-F10)
 **Given** a project that commits a symlink pointing outside it at `.claude/hooks/<hook>`, `.claude`, `.gitignore`, `.workflow` or `.workflow/profile.yml`, or a dangling `AGENTS.md` link
