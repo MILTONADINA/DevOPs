@@ -523,3 +523,24 @@ test('a pin recorded before its write is dropped by the next save when no file i
     assert.deepEqual(data.files, {}, 'a write that never happened leaves no record');
   });
 });
+
+test('the server entry is recorded on disk before .mcp.json is written, and a failed write forgets it (specs/release/npm-package.md REQ-15)', () => {
+  withSetup(setup => {
+    setup.installEngine('project');
+    const real = openManifest(setup.projectRoot);
+    const onDisk = () => JSON.parse(readFileSync(path.join(setup.projectRoot, MANIFEST), 'utf8'));
+    let seen = null;
+    const record = {
+      ...real,
+      mcpServer(name, entry, createdFile) {
+        real.mcpServer(name, entry, createdFile);
+        // A run killed here has written nothing to .mcp.json yet, but the record is saved.
+        seen = { recorded: Boolean(onDisk().mcp_servers?.[name]), written: existsSync(path.join(setup.projectRoot, '.mcp.json')) };
+      },
+    };
+    assert.equal(link(setup, { record }).status, 'linked');
+    assert.deepEqual(seen, { recorded: true, written: false });
+    real.forgetMcpServer(SERVER_KEY);
+    assert.equal(onDisk().mcp_servers, undefined, 'forgetting the only server drops the field');
+  });
+});

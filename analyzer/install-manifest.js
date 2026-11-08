@@ -201,7 +201,7 @@ export function openManifest(root) {
       api.save({ keepPending: true });
     },
     /**
-     * Records the `.mcp.json` server entry `init` just wrote (REQ-15). `.mcp.json` itself is
+     * Records the `.mcp.json` server entry `init` is about to write (REQ-15). `.mcp.json` itself is
      * not a recorded file: other tools share it, so only this entry is recorded.
      */
     mcpServer(name, entry, createdFile) {
@@ -209,6 +209,13 @@ export function openManifest(root) {
         ...(data.mcp_servers ?? {}),
         [name]: { sha256: sha256(JSON.stringify(entry)), created_file: createdFile },
       };
+      api.save({ keepPending: true });
+    },
+    /** Drops the record of a server entry whose `.mcp.json` write failed. */
+    forgetMcpServer(name) {
+      if (!data.mcp_servers || !Object.hasOwn(data.mcp_servers, name)) return;
+      delete data.mcp_servers[name];
+      if (Object.keys(data.mcp_servers).length === 0) delete data.mcp_servers;
       api.save({ keepPending: true });
     },
     /** Records a folder DevOPs is about to create (with mkdir -p) when it is absent. */

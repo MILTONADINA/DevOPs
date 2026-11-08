@@ -26,7 +26,7 @@
 import { execFileSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { HOOK_KEY, MANIFEST, ORIGINALS, readManifest, readRegular, sha256 } from './install-manifest.js';
+import { HOOK_KEY, MANIFEST, ORIGINALS, readManifest, readRegular, replaceWhole, sha256 } from './install-manifest.js';
 import { assertInside, present, writeInside } from './safe-write.js';
 
 const HOOK_MARKER = '# DevOPs pre-commit hook';
@@ -175,7 +175,13 @@ function removeIfEmpty(dir) {
   return false;
 }
 
-const save = (base, data) => writeInside(base, MANIFEST, `${JSON.stringify(data, null, 2)}\n`);
+// Uninstall's temp files sit beside the manifest, not under originals/: a symlinked
+// originals folder must not stop uninstall from saving what it kept.
+const STATE = '.workflow/state';
+const MANIFEST_SAVE_TEMP = `${STATE}/.uninstall-manifest.tmp`;
+const MCP_TEMP = `${STATE}/.uninstall-mcp.tmp`;
+// Replaced whole, as install does, so an interrupted uninstall never leaves a truncated manifest.
+const save = (base, data) => replaceWhole(base, MANIFEST, `${JSON.stringify(data, null, 2)}\n`, { temp: MANIFEST_SAVE_TEMP });
 
 /** Runs the uninstall for `root`; returns the exit status. */
 export function uninstall(root, { dryRun = false, log = console.log } = {}) {
@@ -254,7 +260,10 @@ export function uninstall(root, { dryRun = false, log = console.log } = {}) {
         if (step.action === 'delete') {
           log('remove    .mcp.json (init created it; nothing else is in it)');
           removeRegular(path.join(base, '.mcp.json'));
-        } else writeInside(base, '.mcp.json', step.bytes);
+        } else {
+          // Replaced whole: a shared .mcp.json cut short would lose the user's other servers.
+          replaceWhole(base, '.mcp.json', step.bytes, { temp: MCP_TEMP });
+        }
       }
       // The record goes once the file is as it should be, so an interrupted run finishes later.
       delete data.mcp_servers[name];
@@ -276,6 +285,10 @@ export function uninstall(root, { dryRun = false, log = console.log } = {}) {
     removeRegular(path.join(base, MANIFEST));
     // Leftovers of a write interrupted between its temp file and the rename.
     for (const file of tempFilesUnder(base, path.join(base, ORIGINALS))) removeRegular(file);
+    for (const temp of [MANIFEST_SAVE_TEMP, MCP_TEMP]) {
+      const file = path.join(base, temp);
+      if (readRegular(file) !== null) removeRegular(file);
+    }
   }
   for (const dir of emptyDirsUnder(path.join(base, ORIGINALS))) removeIfEmpty(dir);
   const left = [];
