@@ -14,7 +14,7 @@ Claude Code adapter for this project. The operating contract is in `AGENTS.md`.
 - `.workflow/state/budget.yml`: the session budget. Adjust it for this project.
 - Skills, hooks and subagents that match the project profile, in the `.claude` directory, in its skills, hooks and agents subfolders.
 
-Init copies hooks into the hooks subfolder and registers the safety hooks in Claude Code's project settings (`.claude/settings.json`); `docs/HOOKS.md` in the `@miltonadina/devops` package lists which hooks are wired and which are not. Do not assume a hook that is not wired there is enforcing a rule.
+Init copies hooks into the hooks subfolder and registers the safety hooks it can wire in Claude Code's project settings; it names each hook it does not wire, with the reason. Do not assume a hook is enforcing a rule unless you have seen it wired in those settings.
 
 ## Specs
 
