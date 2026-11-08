@@ -24,12 +24,14 @@ tar -tzf "$TARBALL" | sed 's#^package/##' | sort > "$CONTENTS"
 for needed in package.json AGENTS.md templates/claude-md/CLAUDE_TEMPLATE.md LICENSE README.md \
   scripts/devops-cli.js scripts/devops-analyze.js scripts/devops-paths.js scripts/init-project.sh \
   analyzer/scan.ts analyzer/install.ts verification/claim-validator.ts governance/skill-manifest.yml \
-  hooks/universal/pre-tool/graph-command-classifier.mjs; do
+  hooks/universal/pre-tool/graph-command-classifier.mjs .workflow/sigstore/trust-bundle.json; do
   grep -qxF "$needed" "$CONTENTS" || fail "tarball is missing $needed"
 done
 # Repository records, tooling and the graph pipeline's pieces.
 EXCLUDED='^(\.workflow/|specs/|tests/|runtime/|\.github/|docs/(handoff/|LAUNCH_READINESS\.md|GAP_61_COVERAGE_MATRIX\.md|TESTING\.md|RELEASING\.md|runbooks/|threat-models/)|governance/(graph/|test-floors\.json|claim-retirements\.json|traceability-baseline\.json|required-checks\.yml|enforcement-baseline\.json|decisions/|changelog/)|hooks/universal/session-start/graph-preflight\.sh|slash-commands/universal/(sprint|sprint-approve|graph-halt|graph-resume)\.md)'
-if grep -E "$EXCLUDED" "$CONTENTS"; then
+# The committed Sigstore trust root is the one .workflow/ file that ships: installs verify
+# new-format skill bundles offline against it (#345).
+if grep -E "$EXCLUDED" "$CONTENTS" | grep -vxF '.workflow/sigstore/trust-bundle.json'; then
   fail "tarball ships repository-internal files (listed above)"
 fi
 # npm does not ignore .env files, so one inside any shipped folder would be published
@@ -62,6 +64,15 @@ import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import YAML from 'yaml';
 const root = process.argv[2];
+// cosign --new-bundle-format bundles carry a Sigstore mediaType; legacy bundles do not.
+function isNewFormat(text) {
+  try {
+    const media = JSON.parse(text).mediaType;
+    return typeof media === 'string' && media.startsWith('application/vnd.dev.sigstore.bundle');
+  } catch {
+    return false;
+  }
+}
 const manifest = YAML.parse(readFileSync(path.join(root, 'governance/skill-manifest.yml'), 'utf8'));
 const entries = manifest?.skills;
 if (!Array.isArray(entries) || entries.length === 0) throw new Error('no skills in the manifest');
@@ -71,11 +82,14 @@ for (const entry of entries) {
   const problems = [];
   if (!existsSync(skill)) problems.push('missing skill');
   else if (createHash('sha256').update(readFileSync(skill)).digest('hex') !== entry.sha256) problems.push('hash differs from the manifest');
-  for (const companion of [entry.sig_path, entry.bundle_path]) {
-    if (typeof companion !== 'string' || !existsSync(path.join(root, companion))) problems.push(`missing ${companion}`);
-  }
+  // A new-format bundle verifies alone; a legacy bundle still needs its .sig (#345).
+  const bundle = entry.bundle_path;
+  if (typeof bundle !== 'string' || !existsSync(path.join(root, bundle))) problems.push(`missing ${bundle}`);
+  else if (!isNewFormat(readFileSync(path.join(root, bundle), 'utf8')) && (typeof entry.sig_path !== 'string' || !existsSync(path.join(root, entry.sig_path)))) problems.push(`legacy bundle without ${entry.sig_path}`);
   if (problems.length) { bad++; console.error(`stale or unsigned: ${entry.path}: ${problems.join(', ')}`); }
 }
+// Offline verification of new-format bundles needs the committed trust root (#345).
+if (!existsSync(path.join(root, '.workflow/sigstore/trust-bundle.json'))) { bad++; console.error('missing .workflow/sigstore/trust-bundle.json: new-format bundles cannot be verified offline'); }
 if (bad) process.exit(1);
 console.log(`package-smoke: ${entries.length} shipped skills match their signed manifest entries`);
 NODE

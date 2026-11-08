@@ -8,6 +8,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- Skill signing emits one new-format Sigstore bundle per skill, which the installer and the release workflow verify offline against the committed trust root (#345); skills still without a bundle are pinned in `tests/ci/unsigned-skills.txt`, which must shrink to empty (#347). The package now ships `.workflow/sigstore/trust-bundle.json`, so installs can verify new-format bundles offline.
+
 ## [0.7.0] — 2026-11-08
 
 ### Added

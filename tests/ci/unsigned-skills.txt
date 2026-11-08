@@ -1,0 +1,14 @@
+# Skills under skills/ that have no SKILL.md.bundle yet (specs/phase-2/E-sigstore-signing.md
+# AC-E1.1, issue #347). release-sign.yml signs every SKILL.md; when a skill's bundle is
+# committed, delete its line in the same change. This list must shrink to empty.
+# tests/ci/skill-bundles.test.mjs fails on a listed skill that now has a bundle, and on an
+# unlisted skill that lacks one.
+skills/stack-specific/fastapi/dependency-injection/SKILL.md
+skills/stack-specific/nextjs/check-route-types/SKILL.md
+skills/stack-specific/nextjs/server-action-safety/SKILL.md
+skills/stack-specific/rust/cargo-audit/SKILL.md
+skills/stack-specific/rust/error-handling/SKILL.md
+skills/stack-specific/stripe/pci-scope-minimization/SKILL.md
+skills/stack-specific/stripe/webhook-idempotency/SKILL.md
+skills/stack-specific/supabase/rls-policies/SKILL.md
+skills/stack-specific/supabase/rpc-functions/SKILL.md

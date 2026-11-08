@@ -80,12 +80,16 @@ identity.
 To verify a SKILL.md against its signature locally:
 
 ```bash
-# Use the pinned cosign version in .github/workflows/release-sign.yml.
+# Use the pinned cosign version (v2.4.3) in .github/workflows/release-sign.yml.
 # scripts/graph-preflight.sh can install the pinned, checksum-matched release.
 
-# Verify a specific skill. The .sig file lives alongside the SKILL.md.
+# Verify a skill offline against the committed trust root. The bundle sits beside the SKILL.md.
+# cosign reads only a new-format bundle (cosign sign-blob --new-bundle-format, #345); a legacy
+# bundle is refused by this command until its skill is re-signed.
 cosign verify-blob \
-  --certificate-identity-regexp 'https://github.com/MILTONADINA/DevOPs/' \
+  --new-bundle-format \
+  --trusted-root .workflow/sigstore/trust-bundle.json \
+  --certificate-identity-regexp '^https://github\.com/MILTONADINA/DevOPs/\.github/workflows/release-sign\.yml@refs/heads/.+$' \
   --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
   --bundle skills/universal/process/proof-of-work/SKILL.md.bundle \
   skills/universal/process/proof-of-work/SKILL.md
@@ -97,12 +101,11 @@ the file.
 
 The committed Sigstore trust root is `.workflow/sigstore/trust-bundle.json`:
 the `trusted_root.json` that `cosign initialize` writes after full TUF
-verification, copied byte for byte. `cosign verify-blob` reads it through
-`--trusted-root`, but only for new-format bundles (`--new-bundle-format`;
-checked with cosign v3.1.4); the
-bundles under `skills/**/SKILL.md.bundle` are still legacy ones, so verifying
-them uses cosign's own TUF cache. Offline verification against the committed
-root comes with new-format bundles (#345).
+verification, copied byte for byte. `cosign verify-blob` reads it through `--trusted-root` with `--new-bundle-format`
+(cosign v2.4.3 refuses `--trusted-root` without it). New-format bundles, the
+ones `release-sign.yml` writes, therefore verify offline. A bundle committed
+before its skill is re-signed is legacy: it verifies through cosign's own TUF
+cache until then, and the installer still checks its `.sig` alongside it.
 
 The trust bundle is the Sigstore root-of-trust at a frozen point in
 time -- it's refreshed weekly by
@@ -227,8 +230,8 @@ project's `.claude/skills/`. Per spec F (REQ-F1 through REQ-F9):
   from any other workflow, or a manifest `signed_by` naming one, refuses the
   skill (REQ-F8).
 - A signature that cannot be verified refuses the skill too: no cosign on the
-  machine, a cosign that errors, times out or is killed, or a `.sig` without its
-  `.bundle` (REQ-F9). The manifest hash is not a fallback, because the manifest
+  machine, a cosign that errors, times out or is killed, a legacy `.sig` without its
+  `.bundle`, or a new-format bundle without the committed trust root (REQ-F9). The manifest hash is not a fallback, because the manifest
   ships in the same package as the skill and cannot detect a modified package.
   Install cosign, or use the logged `--allow-unsigned --rationale="..."` opt-out.
 
