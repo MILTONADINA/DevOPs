@@ -38,8 +38,18 @@ DESTRUCTIVE_PATTERNS=(
     "wipefs"
     "dd[[:space:]]+if=.*of=/dev/"
     "mkfs"
-    "([[:alnum:]_:]+)[[:space:]]*[(][)][[:space:]]*[{][[:space:]]*\1[[:space:]]*[|][[:space:]]*\1[[:space:]]*&[[:space:]]*[}][[:space:]]*;?[[:space:]]*\1" # fork bomb: name(){ name|name& };name, any name and spacing
 )
+
+# A fork bomb: a function that pipes itself into itself in the background, in either definition
+# form (name() { ... } or function name { ... }), with any name and spacing. The definition alone
+# is matched, so every way of invoking it is caught. Newlines are joined first, so a multi-line
+# definition matches too. Like every pattern here, this reads the command text only: a fork bomb
+# built at run time is not caught.
+FORK_BOMB='(^|[^[:alnum:]_:])(function[[:space:]]+)?([[:alnum:]_:]+)[[:space:]]*([(][[:space:]]*[)])?[[:space:]]*[{][[:space:]]*\3([[:space:]]+[^;|{}]*)?[[:space:]]*[|][[:space:]]*\3([[:space:]]+[^;|{}]*)?&'
+if printf '%s' "$COMMAND" | tr '\n' ' ' | grep -qE "$FORK_BOMB"; then
+    echo "DevOPs RM BLOCK: fork bomb signature. Refused." >&2
+    exit 2
+fi
 
 is_destructive=false
 matched=""
@@ -61,10 +71,6 @@ if echo "$COMMAND" | grep -qE "rm[[:space:]]+-[^[:space:]]*[rf].*[[:space:]]/$|r
     exit 2
 fi
 
-if echo "$COMMAND" | grep -qE "([[:alnum:]_:]+)[[:space:]]*[(][)][[:space:]]*[{][[:space:]]*\1[[:space:]]*[|][[:space:]]*\1[[:space:]]*&[[:space:]]*[}][[:space:]]*;?[[:space:]]*\1"; then
-    echo "DevOPs RM BLOCK: fork bomb signature. Refused." >&2
-    exit 2
-fi
 
 # A target this hook cannot read literally ($HOME, `cmd`, $(cmd), ~user) could name
 # any path, so a destructive command holding one is refused.

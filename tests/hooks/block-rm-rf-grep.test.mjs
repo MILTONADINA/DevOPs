@@ -30,7 +30,24 @@ test('block-rm-rf refuses rm -rf / with exit 2', () => {
 });
 
 // Any function name and any spacing: the same function piped into itself in the background.
-for (const command of [':(){ :|:& };:', 'b(){ b|b& };b', 'bomb() { bomb | bomb & }; bomb', ': () { : | : & } ; :']) {
+const FORK_BOMBS = [
+  ':(){ :|:& };:',
+  'b(){ b|b& };b',
+  'bomb() { bomb | bomb & }; bomb',
+  ': () { : | : & } ; :',
+  'f(){ f|f& }\nf',
+  'f(){ f|f&\n}; f',
+  'f( ){ f|f& };f',
+  'f ( ) { f|f& };f',
+  'function f { f|f& }; f',
+  'f(){ f|f& }&&f',
+  'f(){ f|f& }||f',
+  'f(){ f|f&disown;};f',
+  'f(){ f|f 2>&1 & };f',
+  'f(){ f|f& }; (f)',
+  'f(){ f|f& }; echo x; f',
+];
+for (const command of FORK_BOMBS) {
   test(`block-rm-rf refuses the fork bomb ${JSON.stringify(command)} with its own message`, () => {
     const result = runHook(command);
     assert.equal(result.status, 2);
@@ -40,7 +57,7 @@ for (const command of [':(){ :|:& };:', 'b(){ b|b& };b', 'bomb() { bomb | bomb &
 }
 
 // Look-alikes that are not fork bombs pass.
-for (const command of ['echo a|b&', 'f(){ g|h& };f']) {
+for (const command of ['echo a|b&', 'f(){ g|h& };f', 'find . -name x -exec echo {} \\; | sort &', 'cat a | cat > b &', 'npm test 2>&1 | tee log &', 'for i in 1 2; do echo $i | cat & done']) {
   test(`block-rm-rf allows ${JSON.stringify(command)}`, () => {
     const result = runHook(command);
     assert.equal(result.status, 0, result.stderr);
