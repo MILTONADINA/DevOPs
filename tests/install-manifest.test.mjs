@@ -122,6 +122,20 @@ test(`analyze alone adds the manifest lines to .gitignore once and uninstall res
   });
 });
 
+test(`uninstall removes the temp files of an interrupted write (${SPEC}#ac-25)`, () => {
+  withProject(dir => {
+    const r = devops(dir, 'analyze');
+    assert.equal(r.status, 0, r.stderr);
+    const originals = path.join(dir, ORIGINALS);
+    writeFileSync(path.join(originals, '.install-manifest.json.tmp'), '{"half');
+    writeFileSync(path.join(originals, '.gitignore.tmp'), 'half');
+    const u = devops(dir, 'uninstall');
+    assert.equal(u.status, 0, u.stdout + u.stderr);
+    assert.equal(readFileSync(path.join(dir, '.gitignore'), 'utf8'), GITIGNORE);
+    assert.equal(existsSync(path.join(dir, '.workflow/state')), false, u.stdout);
+  });
+});
+
 test(`analyze creates a .gitignore when there is none and uninstall removes it (${SPEC}#ac-12)`, () => {
   withProject(dir => {
     rmSync(path.join(dir, '.gitignore'));
@@ -301,7 +315,8 @@ test(`each record is on disk before the write it records, and no temp manifest i
     writeFileSync(path.join(dir, 'AGENTS.md'), 'theirs');
     record.before('AGENTS.md');
     assert.equal(manifestOf(dir).files['AGENTS.md'].original.sha256, createHash('sha256').update('theirs').digest('hex'));
-    assert.deepEqual(readdirSync(path.join(dir, '.workflow/state')).filter(n => n.endsWith('.tmp')), []);
+    const left = d => readdirSync(d, { recursive: true }).filter(n => String(n).endsWith('.tmp'));
+    assert.deepEqual(left(path.join(dir, '.workflow/state')), []);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -320,6 +335,7 @@ test('ownFile allows only the paths DevOPs writes', () => {
 test(`a SIGTERM during signature verification keeps the records of the files already written (${SPEC}#ac-25)`, async () => {
   const dir = realpathSync(mkdtempSync(path.join(tmpdir(), 'install-manifest-signal-')));
   const bin = mkdtempSync(path.join(tmpdir(), 'install-manifest-cosign-'));
+  let child;
   try {
     cpSync(path.join(ROOT, 'tests/fixtures/analyzer/nextjs-project'), dir, { recursive: true });
     mkdirSync(path.join(dir, '.git'));
@@ -330,7 +346,7 @@ test(`a SIGTERM during signature verification keeps the records of the files alr
     writeFileSync(path.join(bin, 'cosign'), `#!/bin/sh\ntouch '${marker}'\nsleep 60\n`);
     chmodSync(path.join(bin, 'cosign'), 0o755);
     // Own process group, so the signal reaches the shell, the installer and the stalled cosign.
-    const child = spawn(process.execPath, [CLI, 'init', '--no-agile-graph'], {
+    child = spawn(process.execPath, [CLI, 'init', '--no-agile-graph'], {
       cwd: dir, detached: true, stdio: 'ignore',
       env: { ...process.env, PATH: `${bin}${path.delimiter}${STUB_BIN}${path.delimiter}${process.env.PATH}` },
     });
@@ -352,6 +368,12 @@ test(`a SIGTERM during signature verification keeps the records of the files alr
     assert.equal(u.status, 0, u.stdout + u.stderr);
     assert.equal(existsSync(path.join(dir, 'AGENTS.md')), false, 'uninstall removes AGENTS.md');
   } finally {
+    // A failed wait above must not leave the installer and its cosign running.
+    try {
+      if (child?.pid) process.kill(-child.pid, 'SIGKILL');
+    } catch {
+      /* already gone */
+    }
     rmSync(dir, { recursive: true, force: true });
     rmSync(bin, { recursive: true, force: true });
   }

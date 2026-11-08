@@ -24,6 +24,7 @@ import { UnsafeWriteError, assertInside, present, writeInside } from './safe-wri
 
 export const MANIFEST = '.workflow/state/install-manifest.json';
 export const ORIGINALS = '.workflow/state/originals';
+export const MANIFEST_TEMP = `${ORIGINALS}/.install-manifest.json.tmp`;
 export const SCHEMA_VERSION = 1;
 // The DevOPs pre-commit hook lives in Git's hooks folder, not under the project
 // root; it is recorded under this name.
@@ -103,6 +104,29 @@ export function readManifest(root) {
  * recorded. `file` is the file's real location when it is not `root/key`
  * (the pre-commit hook).
  */
+/**
+ * Writes `bytes` to `target` whole: into `temp` (`target.tmp`), flushed to disk, then
+ * renamed over it (or, with `exclusive`, linked to it, which fails when the
+ * target exists). A signal or crash leaves the old file or the new one, never
+ * part of it. A leftover `.tmp` is overwritten by the next write.
+ */
+export function replaceWhole(base, target, bytes, { exclusive = false, temp = `${target}.tmp` } = {}) {
+  writeInside(base, temp, bytes);
+  const tempFile = path.join(base, temp);
+  const fd = fs.openSync(tempFile, fs.constants.O_RDONLY | NOFOLLOW);
+  try {
+    fs.fsyncSync(fd);
+  } finally {
+    fs.closeSync(fd);
+  }
+  const file = path.join(base, target);
+  assertInside(base, file);
+  if (exclusive) {
+    fs.linkSync(tempFile, file);
+    fs.unlinkSync(tempFile);
+  } else fs.renameSync(tempFile, file);
+}
+
 export const ADOPTED_NOTICE = 'Install manifest: started in a project an earlier DevOPs installed into; files that release wrote are recorded as originals.';
 
 export function openManifest(root) {
@@ -156,7 +180,8 @@ export function openManifest(root) {
       // A symlinked folder above the copy would make the read below hash an outside file.
       assertInside(base, path.join(base, copy));
       const kept = readRegular(path.join(base, copy));
-      if (kept === null) writeInside(base, copy, bytes, { exclusive: true });
+      // Written whole: a copy cut short by a signal would later be restored as the original.
+      if (kept === null) replaceWhole(base, copy, bytes, { exclusive: true });
       data.files[key] = { original: { sha256: sha256(kept ?? bytes), copy }, written: null };
       api.save({ keepPending: true });
     },
@@ -195,13 +220,10 @@ export function openManifest(root) {
           if (bytes !== null) entry.written = sha256(bytes);
           else if (entry.original === null) delete data.files[key];
         }
-      // Written aside and renamed into place, so a signal mid-save cannot leave
-      // a truncated manifest that the next run would refuse.
-      const temp = `${MANIFEST}.tmp`;
-      writeInside(base, temp, `${JSON.stringify(data, null, 2)}\n`);
-      const target = path.join(base, MANIFEST);
-      assertInside(base, target);
-      fs.renameSync(path.join(base, temp), target);
+      // Replaced whole, so an interruption cannot leave a truncated manifest
+      // that the next run would refuse.
+      // The temp file sits under originals/, which .gitignore already covers.
+      replaceWhole(base, MANIFEST, `${JSON.stringify(data, null, 2)}\n`, { temp: MANIFEST_TEMP });
     },
     data,
     /** True when this call started the manifest (none was on disk). */
