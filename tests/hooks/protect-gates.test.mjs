@@ -61,7 +61,6 @@ const allowed = (r, label) => assert.equal(r.status, 0, `${label} should pass: $
 test(`file tools: a write to a gate or approval file is blocked (${SPEC}#ac-28)`, () => {
   const dir = project();
   blocked(fileHook(dir, path.join(dir, '.workflow/state/approvals.jsonl')), 'approvals.jsonl');
-  blocked(fileHook(dir, '.workflow/state/approvals.jsonl'), 'approvals.jsonl, relative');
   blocked(fileHook(dir, path.join(dir, '.claude/settings.json')), 'settings.json');
   blocked(fileHook(dir, path.join(dir, '.claude/settings.local.json')), 'settings.local.json');
   blocked(fileHook(dir, path.join(dir, '.claude/hooks/block-rm-rf.sh')), '.claude/hooks/block-rm-rf.sh');
@@ -88,7 +87,7 @@ test(`file tools: a symlink, a dot-dot path and a dangling link to a gate file a
   rmSync(path.join(dir, '.claude/settings.local.json'));
   blocked(fileHook(dir, path.join(dir, 'link.json')), 'a symlink to settings.json');
   blocked(fileHook(dir, path.join(dir, 'alias/settings.json')), 'a path through a symlinked directory');
-  blocked(fileHook(dir, './.claude/../.claude/settings.json'), './.claude/../.claude/settings.json');
+  blocked(fileHook(dir, `${dir}/./.claude/../.claude/settings.json`), 'a dot-dot path to settings.json');
   blocked(fileHook(dir, path.join(dir, 'dangling-local.json')), 'a dangling symlink to a gate file');
 });
 
@@ -186,9 +185,17 @@ test(`a project root with an accent: the NFD spelling of a target is blocked (${
 
 test(`file tools: a path that is not a gate file passes (${SPEC}#ac-28)`, () => {
   const dir = project();
-  for (const target of ['src/app.ts', 'docs/x.md', '.claude/agents/foo.md', path.join(dir, 'src/app.ts'), 'settings.json',
-    '.workflow/state/events.jsonl', 'src/settings.json', path.join(dir, 'src/settings.json')]) {
-    allowed(fileHook(dir, target), target);
+  for (const target of ['src/app.ts', 'docs/x.md', '.claude/agents/foo.md', '.workflow/state/events.jsonl', 'src/settings.json']) {
+    allowed(fileHook(dir, path.join(dir, target)), target);
+  }
+});
+
+test(`file tools: a path that is not absolute, or starts with ~, fails closed (${SPEC}#ac-28)`, () => {
+  const dir = project();
+  for (const target of ['settings.json', '~/x', '~/.claude/settings.json', '.claude/settings.json', 'src/app.ts']) {
+    const r = fileHook(dir, target);
+    assert.equal(r.status, 2, `${target} should fail closed: ${r.stdout}${r.stderr}`);
+    assert.equal(r.stderr, `DevOPs GATE BLOCK: ${target} is not an absolute path; file tools take absolute paths -- failing closed\n`, target);
   }
 });
 
@@ -198,7 +205,7 @@ test(`file tools: an empty path passes; an internal error fails closed (${SPEC}#
   // A root that is a symbolic loop cannot be resolved, which is an internal error.
   symlinkSync('loop', path.join(dir, 'loop'));
   const env = { ...process.env, CLAUDE_PROJECT_DIR: path.join(dir, 'loop') };
-  const broken = spawnSync('bash', [FILE_HOOK, 'src/app.ts'], { cwd: dir, env, encoding: 'utf8' });
+  const broken = spawnSync('bash', [FILE_HOOK, path.join(dir, 'src/app.ts')], { cwd: dir, env, encoding: 'utf8' });
   assert.equal(broken.status, 2, broken.stderr);
   assert.match(broken.stderr, /failing closed/);
 });
@@ -210,14 +217,14 @@ test(`the project root is CLAUDE_PROJECT_DIR, else the git top level (${SPEC}#ac
   assert.equal(git.status, 0, git.stderr);
   const env = { ...process.env };
   delete env.CLAUDE_PROJECT_DIR;
-  // From src/, a relative path is taken from the git top level, so it names the protected file.
-  const r = spawnSync('bash', [FILE_HOOK, '.claude/settings.json'], { cwd: path.join(dir, 'src'), env, encoding: 'utf8' });
-  blocked(r, 'relative path from a subdirectory of the git work tree');
+  // From src/, the absolute path names the protected file, and the root is the git top level.
+  const r = spawnSync('bash', [FILE_HOOK, path.join(dir, '.claude/settings.json')], { cwd: path.join(dir, 'src'), env, encoding: 'utf8' });
+  blocked(r, 'absolute path from a subdirectory of the git work tree');
 });
 
 test(`on darwin the names match case-insensitively; elsewhere they are case-sensitive (${SPEC}#ac-28)`, () => {
   const dir = project();
-  const r = fileHook(dir, '.CLAUDE/Settings.json');
+  const r = fileHook(dir, path.join(dir, '.CLAUDE/Settings.json'));
   if (process.platform === 'darwin' || process.platform === 'win32') blocked(r, '.CLAUDE/Settings.json');
   else allowed(r, '.CLAUDE/Settings.json on a case-sensitive file system');
 });

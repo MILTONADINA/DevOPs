@@ -4,8 +4,9 @@
 // Decides whether an agent tool call may change DevOPs's gates or approvals (specs/release/
 // npm-package.md AC-28). Called by protect-gates.sh and protect-gates-bash.sh, beside it.
 //
-//   protect-gates.mjs <path>              a file tool's target path: exit 2 when it is a gate or
-//                                         approval file or directory. Judged by file identity
+//   protect-gates.mjs <path>              a file tool's absolute target path: exit 2 when it is a gate or
+//                                         approval file or directory. A relative path or one with a leading ~
+//                                         exits 2 too. Judged by file identity
 //                                         ({dev, ino}), so links, letter case and Unicode forms count.
 //   protect-gates.mjs <command> --command a Bash command: exit 2 when its text names a gate path, or
 //                                         moves a bare .claude or .workflow, and it is not a plain
@@ -16,7 +17,6 @@
 
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 
 const WINDOWS = process.platform === 'win32';
@@ -232,20 +232,17 @@ function projectRoot() {
   return root;
 }
 
-// A file tool's path as an absolute path: `~` expanded, and a relative path taken from the root.
-function absoluteInput(root, input) {
-  let text = input;
-  if (text === '~' || /^~[\\/]/.test(text)) text = os.homedir() + text.slice(1);
-  return path.isAbsolute(text) ? text : joinRaw(root, partsOf(text));
-}
-
 const under = (root, rel) => joinRaw(root, rel.split('/'));
 
-// The block message for a file tool's path, or null when the path may be changed.
+// The block message for a file tool's absolute path, or null when the path may be changed. A relative
+// path, or one that starts with ~, is refused: the file tools take absolute paths, and this check does
+// not guess where another one would land.
 function fileBlock(input) {
+  if (!path.isAbsolute(input)) {
+    return `DevOPs GATE BLOCK: ${input} is not an absolute path; file tools take absolute paths -- failing closed`;
+  }
   const root = projectRoot();
-  const abs = absoluteInput(root, input);
-  const real = realTarget(abs);
+  const real = realTarget(input);
   const target = locate(real);
   const chain = chainKeys(real);
   for (const rel of PROTECTED_FILES) {
@@ -256,7 +253,7 @@ function fileBlock(input) {
   }
   // The path with its last component left unresolved: a symbolic link that sits in a protected
   // directory is inside it, even when it points out.
-  const leaf = unresolvedLeaf(abs);
+  const leaf = unresolvedLeaf(input);
   if (leaf !== null) {
     const leafTarget = locate(leaf);
     const leafChain = chainKeys(leaf);
