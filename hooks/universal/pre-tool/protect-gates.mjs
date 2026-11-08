@@ -4,9 +4,13 @@
 // Decides whether an agent tool call may change DevOPs's gates or approvals (specs/release/
 // npm-package.md AC-28). Called by protect-gates.sh and protect-gates-bash.sh, beside it.
 //
-//   protect-gates.mjs <path>              a file tool's target path: exit 2 when protected
-//   protect-gates.mjs <command> --command a Bash command: exit 2 when it names a protected path
-//                                         and is not a plain read (a heuristic, see docs/HOOKS.md)
+//   protect-gates.mjs <path>              a file tool's target path: exit 2 when it is a gate or
+//                                         approval file or directory. Judged by file identity
+//                                         ({dev, ino}), so links, letter case and Unicode forms count.
+//   protect-gates.mjs <command> --command a Bash command: exit 2 when its text names a gate path, or
+//                                         moves a bare .claude or .workflow, and it is not a plain
+//                                         read. A convenience guard, not a security boundary: see
+//                                         docs/HOOKS.md for what it does not catch.
 //
 // Exit 0 allows. Exit 2 blocks, and so does any internal error. Node only, no dependencies.
 
@@ -15,9 +19,11 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-const FOLD_CASE = process.platform === 'darwin' || process.platform === 'win32';
-const fold = value => (FOLD_CASE ? value.toLowerCase() : value);
+const WINDOWS = process.platform === 'win32';
+// darwin and win32 volumes compare names case-insensitively; elsewhere the bytes must match.
+const FOLD_CASE = process.platform === 'darwin' || WINDOWS;
 
+// Files and directories the agent cannot change, relative to the project root.
 const PROTECTED_FILES = [
   '.claude/settings.json',
   '.claude/settings.local.json',
@@ -26,137 +32,277 @@ const PROTECTED_FILES = [
 ];
 // A directory and everything under it.
 const PROTECTED_DIRS = ['.claude/hooks', '.workflow/state/originals'];
-// Relative forms the Bash check looks for anywhere in the command text.
-const COMMAND_NAMES = [...PROTECTED_FILES, ...PROTECTED_DIRS];
-// A bare file name that names a protected file in any directory.
-const PROTECTED_BASENAMES = ['settings.json', 'settings.local.json', 'approvals.jsonl', 'install-manifest.json'];
+// The exact relative forms the Bash check looks for in the command text.
+const GATE_PATHS = [...PROTECTED_FILES, ...PROTECTED_DIRS];
+// A bare tree name: with a mover (below) it names the whole tree the command moves or copies.
+const BARE_NAMES = ['.claude', '.workflow', '.workflow/state'];
+const MOVERS = new Set(['mv', 'rm', 'cp', 'ln', 'tar', 'rsync']);
 
-const READ_COMMANDS = new Set(['cat', 'head', 'tail', 'less', 'grep', 'rg', 'ls', 'stat', 'wc', 'diff']);
-// Only `git status`: diff, log and show accept --output=<file> and can run an external diff
-// program configured in .git/config, which the agent can write.
-const GIT_READS = new Set(['status']);
-// Any of these leads into another command or a write: a redirection, a pipe, a list, a
-// background job, a subshell, a substitution or a newline.
-const CHAINS = /[>|;&()`\n\r]|\$\(/;
+// Plain reads: when a gate path is named, these pass if the command has no chain. less, though,
+// writes a log file with -o, -O or --log-file, and runs commands with +cmd or a lesskey file (-k).
+const READ_COMMANDS = new Set(['cat', 'head', 'tail', 'less', 'grep', 'ls', 'stat', 'wc', 'diff', 'jq']);
+// git steps that stage or commit the owner's own change, and the status read.
+const GIT_PLAIN = new Set(['add', 'commit', 'status']);
+// A pipe stage that only reads its input. sort takes no -o, --output or --compress-program.
+const FILTER_STAGE = /\|\s*(?:(?:head|tail|wc|grep)(?:\s+[^|;&<>()`]*)?|sort(?:\s+-[nrufbdhiMVsz]+)*)\s*$/;
 const MAX_LINKS = 40;
 
-// CLAUDE_PROJECT_DIR, else the git top level, else the current directory.
-function projectRoot() {
-  const fromEnv = process.env.CLAUDE_PROJECT_DIR;
-  if (fromEnv) return path.resolve(fromEnv);
-  const git = spawnSync('git', ['rev-parse', '--show-toplevel'], { encoding: 'utf8' });
-  if (!git.error && git.status === 0 && git.stdout.trim() !== '') return path.resolve(git.stdout.trim());
-  return process.cwd();
+// Names compare as a case-insensitive volume does: NFD, U+017F as s, then upper and lower case.
+function foldName(name) {
+  if (!FOLD_CASE) return name;
+  return name.normalize('NFD').replace(/\u017f/g, 's').toUpperCase().toLowerCase();
 }
 
-// Resolves symlinks one component at a time, as the kernel does, so `link/..` means the parent
-// of the link's target. A component that does not exist yet is kept as written. A dangling link
-// is followed to its target. `abs` is absolute and is not normalised first.
-function realish(abs) {
-  let cur = path.parse(abs).root;
-  const queue = abs.slice(cur.length).split(path.sep).filter(part => part !== '');
-  let links = 0;
-  while (queue.length > 0) {
-    const part = queue.shift();
+const isAbsent = error => error.code === 'ENOENT' || error.code === 'ENOTDIR';
+
+// The components of a path below its root. Windows takes either separator.
+const partsOf = text => text.split(WINDOWS ? /[\\/]+/ : /\/+/).filter(part => part !== '');
+
+// Joins components onto a base string without normalising, so `..` and links resolve in order.
+function joinRaw(base, parts) {
+  let out = base;
+  for (const part of parts) out = out.endsWith(path.sep) ? out + part : out + path.sep + part;
+  return out;
+}
+
+function splitParts(p) {
+  const { root } = path.parse(p);
+  return { root, parts: partsOf(p.slice(root.length)) };
+}
+
+function lstatExists(p) {
+  try {
+    fs.lstatSync(p);
+    return true;
+  } catch (error) {
+    if (isAbsent(error)) return false;
+    throw error;
+  }
+}
+
+// The stat of a path, following links, or null when the path does not exist.
+function statOrNull(p) {
+  try {
+    return fs.statSync(p, { bigint: true });
+  } catch (error) {
+    if (isAbsent(error)) return null;
+    throw error;
+  }
+}
+
+const isDirectory = p => statOrNull(p)?.isDirectory() === true;
+
+// The {dev, ino} of a path as one key, following links. null when the path does not exist.
+function identityOf(p) {
+  const st = statOrNull(p);
+  return st === null ? null : `${st.dev}:${st.ino}`;
+}
+
+// The real path the kernel reaches for an absolute path: links followed, no `.` or `..` left. The
+// deepest existing component is found with lstat and resolved with realpath (the native one, which
+// follows the kernel). The components after it do not exist yet: `.` is dropped and `..` takes off
+// the one before it, as it will once those directories are made. A dangling link is followed.
+// An absent component is ENOENT or ENOTDIR; any other error is thrown, and the caller fails closed.
+function realTarget(input, depth = 0) {
+  if (depth > MAX_LINKS) throw new Error(`too many symbolic links at ${input}`);
+  const { root, parts } = splitParts(input);
+  let k = parts.length;
+  while (k > 0 && !lstatExists(joinRaw(root, parts.slice(0, k)))) k -= 1;
+  const anchor = joinRaw(root, parts.slice(0, k));
+  let real;
+  try {
+    real = fs.realpathSync.native(anchor);
+  } catch (error) {
+    if (!isAbsent(error) || !fs.lstatSync(anchor).isSymbolicLink()) throw error;
+    // A dangling link: its target, then the components after it, is the path to resolve.
+    const link = fs.readlinkSync(anchor);
+    const next = path.isAbsolute(link) ? link : joinRaw(joinRaw(root, parts.slice(0, k - 1)), [link]);
+    return realTarget(joinRaw(next, parts.slice(k)), depth + 1);
+  }
+  if (k < parts.length && !isDirectory(real)) throw new Error(`${input}: ${real} is not a directory`);
+  let out = real;
+  let dotdot = false;
+  for (const part of parts.slice(k)) {
     if (part === '.') continue;
     if (part === '..') {
-      cur = path.dirname(cur);
-      continue;
+      dotdot = true;
+      out = path.dirname(out);
+    } else {
+      out = path.join(out, part);
     }
-    const next = path.join(cur, part);
-    let stat;
-    try {
-      stat = fs.lstatSync(next);
-    } catch (error) {
-      if (error.code === 'ENOENT' || error.code === 'ENOTDIR') {
-        cur = next;
-        continue;
-      }
-      throw error;
-    }
-    if (!stat.isSymbolicLink()) {
-      cur = next;
-      continue;
-    }
-    links += 1;
-    if (links > MAX_LINKS) throw new Error(`too many symbolic links at ${next}`);
-    const target = path.resolve(cur, fs.readlinkSync(next));
-    const targetRoot = path.parse(target).root;
-    queue.unshift(...target.slice(targetRoot.length).split(path.sep).filter(item => item !== ''));
-    cur = targetRoot;
   }
-  return cur;
+  return dotdot ? realTarget(out, depth + 1) : out;
 }
 
-// Joins `rel` onto an absolute `base` without normalising, so `..` and symlinks resolve in order.
-function under(base, rel) {
-  return `${base.endsWith(path.sep) ? base : base + path.sep}${rel}`;
+// The identity of a real path: the key of its deepest existing prefix, and the components after it.
+// An existing path has no components after it.
+function locate(real) {
+  const { root, parts } = splitParts(real);
+  for (let k = parts.length; k >= 0; k -= 1) {
+    const key = identityOf(joinRaw(root, parts.slice(0, k)));
+    if (key !== null) return { key, rest: parts.slice(k) };
+  }
+  throw new Error(`no existing ancestor of ${real}`);
 }
 
-// A file-tool path, as the real path it would write: `~` expanded, relative paths taken from root.
-function resolveTarget(root, input) {
+// The keys of every existing prefix of a real path: the path itself and each of its ancestors.
+function chainKeys(real) {
+  const { root, parts } = splitParts(real);
+  const keys = new Set();
+  for (let k = parts.length; k >= 0; k -= 1) {
+    const key = identityOf(joinRaw(root, parts.slice(0, k)));
+    if (key !== null) keys.add(key);
+  }
+  return keys;
+}
+
+// Component lists compare equal, or one starts with the other, under foldName.
+function sameParts(a, b) {
+  return a.length === b.length && startsWith(a, b);
+}
+function startsWith(a, b) {
+  return a.length >= b.length && b.every((part, i) => foldName(a[i]) === foldName(part));
+}
+
+// A protected file: the target is that file (same identity), or it is the same not-yet-existing path.
+function matchesFile(target, file) {
+  if (file.rest.length === 0) return target.rest.length === 0 && target.key === file.key;
+  return target.key === file.key && sameParts(target.rest, file.rest);
+}
+
+// A protected directory: the target is in it (it or an existing ancestor has its identity), or
+// it is under the same not-yet-existing path.
+function matchesDir(target, chain, dir) {
+  if (dir.rest.length === 0) return chain.has(dir.key);
+  return target.key === dir.key && startsWith(target.rest, dir.rest);
+}
+
+// CLAUDE_PROJECT_DIR, else the git top level, else the current directory, resolved like a path.
+function projectRoot() {
+  const fromEnv = process.env.CLAUDE_PROJECT_DIR;
+  let dir = process.cwd();
+  if (fromEnv) {
+    dir = path.isAbsolute(fromEnv) ? fromEnv : path.resolve(fromEnv);
+  } else {
+    const git = spawnSync('git', ['rev-parse', '--show-toplevel'], { encoding: 'utf8' });
+    if (!git.error && git.status === 0 && git.stdout.trim() !== '') dir = git.stdout.trim();
+  }
+  const root = realTarget(dir);
+  if (!isDirectory(root)) throw new Error(`project root ${dir} is not a directory`);
+  return root;
+}
+
+// A file tool's path as an absolute path: `~` expanded, and a relative path taken from the root.
+function absoluteInput(root, input) {
   let text = input;
   if (text === '~' || /^~[\\/]/.test(text)) text = os.homedir() + text.slice(1);
-  return realish(path.isAbsolute(text) ? text : under(root, text));
+  return path.isAbsolute(text) ? text : joinRaw(root, partsOf(text));
 }
 
-function isProtected(real, protectedFiles, protectedDirs) {
-  const value = fold(real);
-  if (protectedFiles.some(file => value === fold(file))) return true;
-  return protectedDirs.some(dir => {
-    const folded = fold(dir);
-    return value === folded || value.startsWith(folded + path.sep);
-  });
-}
-
-function protectedPaths(root) {
-  return {
-    files: PROTECTED_FILES.map(rel => realish(under(root, rel))),
-    dirs: PROTECTED_DIRS.map(rel => realish(under(root, rel))),
-  };
-}
-
-function relativeTo(root, real) {
-  const rel = path.relative(root, real);
-  return rel === '' || rel.startsWith('..') || path.isAbsolute(rel) ? real : rel.split(path.sep).join('/');
-}
+const under = (root, rel) => joinRaw(root, rel.split('/'));
 
 // The block message for a file tool's path, or null when the path may be changed.
-function fileBlock(root, input) {
-  const { files, dirs } = protectedPaths(root);
-  const real = resolveTarget(root, input);
-  if (!isProtected(real, files, dirs)) return null;
-  return `DevOPs GATE BLOCK: ${relativeTo(root, real)} holds DevOPs gates or approvals; change it yourself outside the agent`;
+function fileBlock(input) {
+  const root = projectRoot();
+  const real = realTarget(absoluteInput(root, input));
+  const target = locate(real);
+  const chain = chainKeys(real);
+  for (const rel of PROTECTED_FILES) {
+    if (matchesFile(target, locate(realTarget(under(root, rel))))) return gateMessage(rel);
+  }
+  for (const rel of PROTECTED_DIRS) {
+    if (matchesDir(target, chain, locate(realTarget(under(root, rel))))) return gateMessage(rel);
+  }
+  return null;
 }
 
-// True when the command is a plain read: a read-only first word, no chaining, no redirection.
-function isPlainRead(command) {
-  if (CHAINS.test(command)) return false;
-  const words = command.trim().split(/\s+/);
-  const [first, second] = words;
-  // rg --pre runs a program on each file it searches.
-  if (first === 'rg' && words.some(word => /^--pre(=|$)/.test(word))) return false;
-  if (READ_COMMANDS.has(first)) return true;
-  if (first === 'jq') return !words.some(word => /^-[A-Za-z]*i[A-Za-z]*$/.test(word));
-  return first === 'git' && GIT_READS.has(second);
+function gateMessage(rel) {
+  return `DevOPs GATE BLOCK: ${rel} holds DevOPs gates or approvals; change it yourself outside the agent`;
 }
 
-// The block message for a Bash command, or null when the command may run.
-function commandBlock(root, command) {
-  const folded = fold(command);
-  const named = COMMAND_NAMES.find(rel => folded.includes(fold(rel)));
-  const { files, dirs } = protectedPaths(root);
-  const pieces = command.split(/[\s;&|<>()`'"=,]+/).filter(piece => piece !== '');
-  const found = named ?? pieces.find(piece => {
-    if (PROTECTED_BASENAMES.some(name => fold(piece.split('/').pop()) === fold(name))) return true;
-    try {
-      return isProtected(resolveTarget(root, piece), files, dirs);
-    } catch {
-      return false; // a token that cannot be a path names nothing
+// Each quoted segment becomes `q`, so a quoted word is still one word and what it holds is not read
+// as an operator. An unterminated quote is left as written, so what follows it is still checked.
+function maskQuoted(text) {
+  let out = '';
+  let i = 0;
+  while (i < text.length) {
+    const ch = text[i];
+    if (ch === '\\') {
+      out += text.slice(i, i + 2);
+      i += 2;
+    } else if (ch === "'" || ch === '"') {
+      const close = closingQuote(text, i);
+      if (close === -1) return out + text.slice(i);
+      out += 'q';
+      i = close + 1;
+    } else {
+      out += ch;
+      i += 1;
     }
-  });
-  if (found === undefined || isPlainRead(command)) return null;
-  return `DevOPs GATE BLOCK: this command names ${found}, which holds DevOPs gates or approvals; change it yourself outside the agent`;
+  }
+  return out;
+}
+
+// The index of the quote that closes the one at `open`, or -1. Double quotes honour backslash.
+function closingQuote(text, open) {
+  const quote = text[open];
+  for (let j = open + 1; j < text.length; j += 1) {
+    if (quote === '"' && text[j] === '\\') {
+      j += 1;
+    } else if (text[j] === quote) {
+      return j;
+    }
+  }
+  return -1;
+}
+
+// The command with its quote and backslash characters deleted: the text the gate-path match reads.
+const deleteQuotes = text => text.replace(/['"\\]/g, '');
+
+// less writes a copy of its input with -o, -O or --log-file; it runs a command with +cmd, and reads
+// key bindings from a lesskey file with -k. Those options make it a write or a program, not a read.
+function lessReads(command) {
+  return deleteQuotes(command).trim().split(/[\s;&|()<>`]+/).slice(1)
+    .every(word => !/^\+|^--(log-file|LOG-FILE|lesskey)|^-[^-]*[oOk]/.test(word));
+}
+
+// True when the command is a plain read: a read-only first word, no chaining, no redirection other
+// than 2>&1, and any pipe only into head, tail, wc, grep or sort. git add, commit and status count too.
+function isPlainRead(command) {
+  // Command substitution is live inside double quotes, so it is checked before quotes are masked.
+  if (command.includes('$(') || command.includes('`')) return false;
+  let text = maskQuoted(command).replace(/2>&1/g, ' ');
+  let previous;
+  do {
+    previous = text;
+    text = text.replace(FILTER_STAGE, '');
+  } while (text !== previous);
+  if (/[>|;&()`\n\r]/.test(text)) return false;
+  const [first, second] = text.trim().split(/\s+/);
+  if (first === 'less') return lessReads(command);
+  if (READ_COMMANDS.has(first)) return true;
+  return first === 'git' && GIT_PLAIN.has(second);
+}
+
+// The bare tree name (.claude, .workflow or .workflow/state) that a mover command names, or undefined.
+function bareMover(command) {
+  const words = deleteQuotes(command).split(/[\s;&|()<>`]+/).filter(word => word !== '');
+  if (!words.some(word => MOVERS.has(word))) return undefined;
+  for (const word of words) {
+    const key = foldName(word.replace(/^(\.\/)+/, '').replace(/\/+$/, ''));
+    const name = BARE_NAMES.find(bare => foldName(bare) === key);
+    if (name !== undefined) return name;
+  }
+  return undefined;
+}
+
+// The block message for a Bash command, or null when the command may run. Text only: nothing on
+// disk is read, so a command that changes directory and then writes a relative path is not seen.
+function commandBlock(command) {
+  const folded = foldName(deleteQuotes(command));
+  const named = GATE_PATHS.find(gate => folded.includes(foldName(gate))) ?? bareMover(command);
+  if (named === undefined || isPlainRead(command)) return null;
+  return `DevOPs GATE BLOCK: this command names ${named}, which holds DevOPs gates or approvals; change it yourself outside the agent`;
 }
 
 function main(argv) {
@@ -167,8 +313,7 @@ function main(argv) {
   }
   if (target === '') return 0;
   try {
-    const root = realish(projectRoot());
-    const message = flag === '--command' ? commandBlock(root, target) : fileBlock(root, target);
+    const message = flag === '--command' ? commandBlock(target) : fileBlock(target);
     if (message === null) return 0;
     process.stderr.write(`${message}\n`);
     return 2;

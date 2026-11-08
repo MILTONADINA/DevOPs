@@ -2,10 +2,13 @@
 // hooks/universal/pre-tool/protect-gates.sh (file tools) and protect-gates-bash.sh (Bash) call
 // protect-gates.mjs. These cases run the real hooks against a temp project; the end-to-end case
 // runs the commands that `devops init` wrote to .claude/settings.json, through `bash -c`.
+// The file-tool check compares file identity, so links, letter case and Unicode forms reach the
+// same decision. The Bash check is text-only and is a convenience guard, not a boundary: the
+// "documented limits" case pins what it does not catch (docs/HOOKS.md).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { writeStubGit } from '../fixtures/stub-git.mjs';
@@ -23,7 +26,12 @@ process.on('exit', () => { for (const d of dirs) rmSync(d, { recursive: true, fo
 function project() {
   const dir = realpathSync(mkdtempSync(path.join(tmpdir(), 'protect-gates-')));
   dirs.push(dir);
-  mkdirSync(path.join(dir, '.git'));
+  return populate(dir);
+}
+
+/** Writes the gate layout into a directory, which is created when it does not exist. */
+function populate(dir) {
+  mkdirSync(path.join(dir, '.git'), { recursive: true });
   for (const d of ['.claude/hooks', '.claude/agents', '.workflow/state/originals', 'src', 'docs']) mkdirSync(path.join(dir, d), { recursive: true });
   for (const f of ['.claude/settings.json', '.claude/settings.local.json', '.claude/hooks/block-rm-rf.sh',
     '.workflow/state/approvals.jsonl', '.workflow/state/install-manifest.json', '.workflow/state/originals/x.md']) {
@@ -66,6 +74,10 @@ test(`file tools: a new hook or a gate file not yet on disk is blocked too (${SP
   blocked(fileHook(dir, path.join(dir, '.claude/hooks/new-hook.sh')), 'a new file under .claude/hooks');
   rmSync(path.join(dir, '.workflow/state/approvals.jsonl'));
   blocked(fileHook(dir, path.join(dir, '.workflow/state/approvals.jsonl')), 'approvals.jsonl before it exists');
+  // A directory that does not exist yet is matched by its parent and name, so a file under it is blocked too.
+  rmSync(path.join(dir, '.workflow/state/originals'), { recursive: true });
+  blocked(fileHook(dir, path.join(dir, '.workflow/state/originals/new.md')), 'a new file under originals that does not exist yet');
+  blocked(fileHook(dir, path.join(dir, '.workflow/state/originals/deeper/new.md')), 'a deeper new file under originals');
 });
 
 test(`file tools: a symlink, a dot-dot path and a dangling link to a gate file are blocked (${SPEC}#ac-28)`, () => {
@@ -80,9 +92,53 @@ test(`file tools: a symlink, a dot-dot path and a dangling link to a gate file a
   blocked(fileHook(dir, path.join(dir, 'dangling-local.json')), 'a dangling symlink to a gate file');
 });
 
+test(`file tools: a symlink chain that reaches .claude through .. is blocked (${SPEC}#ac-28)`, () => {
+  const dir = project();
+  symlinkSync('.claude/agents', path.join(dir, 'sub'));
+  symlinkSync('sub/..', path.join(dir, 'up'));
+  // The kernel reaches up/settings.json as .claude/settings.json: the same file. (The JS realpathSync
+  // collapses sub/.. lexically and cannot show this; realpathSync.native follows the kernel.)
+  assert.equal(realpathSync.native(path.join(dir, 'up/settings.json')), realpathSync.native(path.join(dir, '.claude/settings.json')));
+  blocked(fileHook(dir, path.join(dir, 'up/settings.json')), 'up/settings.json through sub/..');
+  blocked(fileHook(dir, path.join(dir, 'up/hooks/block-rm-rf.sh')), 'up/hooks/block-rm-rf.sh through sub/..');
+  allowed(fileHook(dir, path.join(dir, 'up/agents/foo.md')), 'up/agents/foo.md is an ordinary agent file');
+});
+
+test(`file tools: a hard link to a gate file is blocked (${SPEC}#ac-28)`, () => {
+  const dir = project();
+  linkSync(path.join(dir, '.claude/settings.json'), path.join(dir, 'src/hl.json'));
+  assert.equal(statSync(path.join(dir, 'src/hl.json')).ino, statSync(path.join(dir, '.claude/settings.json')).ino);
+  blocked(fileHook(dir, path.join(dir, 'src/hl.json')), 'a hard link to settings.json');
+});
+
+test(`on darwin a long s (U+017F) spelling of a gate name is blocked (${SPEC}#ac-28)`, { skip: process.platform !== 'darwin' }, () => {
+  const dir = project();
+  blocked(fileHook(dir, path.join(dir, '.claude/\u017Fettings.json')), '.claude/\u017Fettings.json');
+  blocked(fileHook(dir, path.join(dir, '.claude/hook\u017F/a.sh')), '.claude/hook\u017F/a.sh');
+  blocked(fileHook(dir, path.join(dir, '.workflow/state/in\u017Ftall-manifest.json')), 'in\u017Ftall-manifest.json');
+});
+
+test(`a project root with an accent: the NFD spelling of a target is blocked (${SPEC}#ac-28)`, t => {
+  const base = realpathSync(mkdtempSync(path.join(tmpdir(), 'protect-gates-accent-')));
+  dirs.push(base);
+  const nfc = 'Dise\u00f1o-caf\u00e9'.normalize('NFC');
+  const root = populate(path.join(base, nfc));
+  // The same directory, spelled in NFD. Where the file system keeps the two apart, there is nothing to check.
+  const viaNfd = path.join(base, nfc.normalize('NFD'));
+  if (!existsSync(path.join(viaNfd, '.claude/settings.json'))) {
+    t.skip('this file system keeps NFC and NFD names apart');
+    return;
+  }
+  const env = { ...process.env, CLAUDE_PROJECT_DIR: root };
+  const run = target => spawnSync('bash', [FILE_HOOK, target], { cwd: root, env, encoding: 'utf8' });
+  blocked(run(path.join(viaNfd, '.claude/settings.json')), 'an NFD path to settings.json under an NFC root');
+  blocked(run(path.join(viaNfd, '.workflow/state/approvals.jsonl')), 'an NFD path to approvals.jsonl under an NFC root');
+});
+
 test(`file tools: a path that is not a gate file passes (${SPEC}#ac-28)`, () => {
   const dir = project();
-  for (const target of ['src/app.ts', 'docs/x.md', '.claude/agents/foo.md', path.join(dir, 'src/app.ts'), 'settings.json', '.workflow/state/events.jsonl']) {
+  for (const target of ['src/app.ts', 'docs/x.md', '.claude/agents/foo.md', path.join(dir, 'src/app.ts'), 'settings.json',
+    '.workflow/state/events.jsonl', 'src/settings.json', path.join(dir, 'src/settings.json')]) {
     allowed(fileHook(dir, target), target);
   }
 });
@@ -121,11 +177,9 @@ test(`Bash: a command that writes a gate file is blocked; plain reads pass (${SP
   const dir = project();
   blocked(bashHook(dir, 'echo x >> .workflow/state/approvals.jsonl'), 'echo >> approvals.jsonl');
   blocked(bashHook(dir, 'echo x>.workflow/state/approvals.jsonl'), 'echo >approvals.jsonl with no space');
-  blocked(bashHook(dir, 'cd .workflow/state && echo x >> approvals.jsonl'), 'cd and append');
   blocked(bashHook(dir, 'rm .claude/settings.json'), 'rm settings.json');
   blocked(bashHook(dir, 'cp x .claude/hooks/block-rm-rf.sh'), 'cp into .claude/hooks');
   blocked(bashHook(dir, 'cat .claude/settings.json | tee x'), 'cat piped to tee');
-  blocked(bashHook(dir, 'jq -i . .claude/settings.json'), 'jq -i');
   blocked(bashHook(dir, './.claude/../.claude/settings.json'), 'a dot-dot path to settings.json');
   allowed(bashHook(dir, 'cat .claude/settings.json'), 'cat settings.json');
   allowed(bashHook(dir, 'ls'), 'ls');
@@ -136,7 +190,6 @@ test(`Bash: a command that writes a gate file is blocked; plain reads pass (${SP
   blocked(bashHook(dir, 'git diff --output=.claude/settings.json HEAD~1'), 'git diff --output writes the file');
   blocked(bashHook(dir, 'git log -p -- .claude/settings.json'), 'git log can run an external diff');
   blocked(bashHook(dir, 'rg --pre ./x.sh deny .claude/settings.json'), 'rg --pre runs a program');
-  allowed(bashHook(dir, 'rg deny .claude/settings.json'), 'plain rg');
   allowed(bashHook(dir, 'echo hello'), 'echo that names nothing protected');
   allowed(bashHook(dir, 'npm run test'), 'npm run test');
 });
@@ -149,6 +202,51 @@ test(`Bash: a read-only first word does not excuse a chained or redirected comma
   blocked(bashHook(dir, 'cat .claude/settings.json > out.txt'), 'redirection');
   blocked(bashHook(dir, 'git diff .claude/settings.json | sh'), 'git diff piped');
   blocked(bashHook(dir, 'ls $(cat .claude/settings.json)'), 'substitution');
+  blocked(bashHook(dir, 'cat ".$(touch x)" .claude/settings.json'), 'substitution inside double quotes');
+  blocked(bashHook(dir, 'cat .claude/settings.json | sort -o out.txt'), 'sort -o writes its output file');
+  blocked(bashHook(dir, 'cat .claude/settings.json | sort --compress-program=./x.sh'), 'sort runs a program');
+});
+
+test(`Bash: the plain reads and the git steps that the owner needs pass (${SPEC}#ac-28)`, () => {
+  const dir = project();
+  allowed(bashHook(dir, "echo '{}' > .vscode/settings.json"), "echo '{}' > .vscode/settings.json");
+  allowed(bashHook(dir, 'git add .claude/settings.json'), 'git add .claude/settings.json');
+  allowed(bashHook(dir, 'git commit -m "docs: explain .claude/settings.json"'), 'git commit -m with the path in the message');
+  allowed(bashHook(dir, "jq '.hooks | keys' .claude/settings.json"), 'jq with a quoted filter');
+  allowed(bashHook(dir, 'cat .claude/settings.json 2>&1 | head'), 'cat with 2>&1 piped to head');
+  allowed(bashHook(dir, "grep -E 'a|b' .claude/settings.json"), 'grep with a quoted alternation');
+  allowed(bashHook(dir, 'cat .claude/settings.json | grep -E "a|b" | wc -l'), 'a read piped to grep and wc');
+  allowed(bashHook(dir, 'cat .claude/settings.json | sort -n | head'), 'a read piped to sort and head');
+  allowed(bashHook(dir, 'less .claude/settings.json'), 'less of settings.json');
+  allowed(bashHook(dir, 'jq -i . .claude/settings.json'), 'jq has no -i; it writes nothing');
+  allowed(bashHook(dir, 'ls .claude/hooks | head'), 'ls of .claude/hooks piped to head');
+});
+
+test(`Bash: the commands that name a gate and can write or run are blocked (${SPEC}#ac-28)`, () => {
+  const dir = project();
+  blocked(bashHook(dir, 'echo x > .claude/"hooks"/a.sh'), 'a quoted .claude/"hooks" path');
+  blocked(bashHook(dir, 'mv .claude .claude.orig'), 'mv of the bare .claude directory');
+  blocked(bashHook(dir, 'mv .workflow/state st'), 'mv of .workflow/state');
+  blocked(bashHook(dir, 'tar -C .claude -xf x.tar hooks'), 'tar into the bare .claude directory');
+  blocked(bashHook(dir, 'rsync -a x/ .claude/'), 'rsync into .claude/');
+  blocked(bashHook(dir, 'ln -s .claude sub'), 'ln of the bare .claude directory');
+  blocked(bashHook(dir, 'rg --pre ./x.sh a .claude/settings.json'), 'rg --pre runs a program');
+  blocked(bashHook(dir, 'rg --hostname-bin ./x.sh deny .claude/settings.json'), 'rg --hostname-bin runs a program');
+  blocked(bashHook(dir, 'rg deny .claude/settings.json'), 'rg is not a plain read');
+  blocked(bashHook(dir, '"rm" cat .claude/settings.json'), 'a quoted command word');
+  blocked(bashHook(dir, 'less -O out.txt .claude/settings.json'), 'less -O writes a log file');
+  blocked(bashHook(dir, 'less -oout.txt .claude/settings.json'), 'less -o with the file attached');
+  blocked(bashHook(dir, 'less "-o" out.txt .claude/settings.json'), 'a quoted less -o');
+  blocked(bashHook(dir, 'less +!./x.sh .claude/settings.json'), 'less +cmd runs a command');
+  blocked(bashHook(dir, 'echo x >> .workflow/state/approvals.jsonl'), 'echo >> approvals.jsonl');
+});
+
+test(`Bash: the check is text-only, so the documented limits pass (${SPEC}#ac-28)`, () => {
+  const dir = project();
+  // Documented in docs/HOOKS.md: a cd followed by a relative write, a path built at run time.
+  allowed(bashHook(dir, 'cd .workflow/state && echo x >> approvals.jsonl'), 'a cd, then a relative append');
+  allowed(bashHook(dir, 'cd .claude && echo x > hooks/a.sh'), 'a cd into .claude, then a relative write');
+  allowed(bashHook(dir, 'D=.claude; echo x > $D/settings.json'), 'a path built at run time');
 });
 
 // The hooks under hooks/universal/ that the end-to-end case profiles.
@@ -169,8 +267,8 @@ test(`end to end: the commands init wrote block a gate-file write and pass ls ($
   });
   assert.equal(init.status, 0, init.stdout + init.stderr);
   assert.ok(existsSync(path.join(dir, '.claude/hooks/protect-gates.mjs')), 'init copies the protect-gates.mjs companion');
- const settings = JSON.parse(readFileSync(path.join(dir, '.claude/settings.json'), 'utf8'));
- const groups = settings.hooks?.PreToolUse ?? [];
+  const settings = JSON.parse(readFileSync(path.join(dir, '.claude/settings.json'), 'utf8'));
+  const groups = settings.hooks?.PreToolUse ?? [];
   const writeGate = groups.filter(g => g.matcher === 'Write|Edit|MultiEdit|NotebookEdit').flatMap(g => g.hooks.map(h => h.command))
     .find(command => command.includes('protect-gates.sh'));
   const bashGate = groups.filter(g => g.matcher === 'Bash').flatMap(g => g.hooks.map(h => h.command))
