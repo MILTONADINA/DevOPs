@@ -98,9 +98,9 @@ export function readManifest(root) {
 
 /**
  * Opens the manifest of `root` for recording. Call `before(key)` just before a
- * write, `after(key)` just after it, and `save()` once at the end. `after` and a
- * new `dir` also save at once (keepPending), so a run killed by a signal keeps
- * what it recorded. `file` is the file's real location when it is not `root/key`
+ * write, `after(key)` just after it, and `save()` once at the end. Each record
+ * also saves at once (keepPending), so a run killed by a signal keeps what it
+ * recorded. `file` is the file's real location when it is not `root/key`
  * (the pre-commit hook).
  */
 export const ADOPTED_NOTICE = 'Install manifest: started in a project an earlier DevOPs installed into; files that release wrote are recorded as originals.';
@@ -130,7 +130,10 @@ export function openManifest(root) {
         // Bytes that differ from what DevOPs last wrote were edited by someone else.
         const entry = data.files[key];
         const now = entry.written === null ? null : readRegular(at);
-        if (now !== null && sha256(now) !== entry.written) entry.edited = true;
+        if (now !== null && sha256(now) !== entry.written) {
+          entry.edited = true;
+          api.save({ keepPending: true });
+        }
         return;
       }
       if (!file) {
@@ -144,6 +147,8 @@ export function openManifest(root) {
       const bytes = readRegular(at);
       if (bytes === null) {
         data.files[key] = { original: null, written: null };
+        // Saved before the write, so a kill mid-write leaves the file recorded.
+        api.save({ keepPending: true });
         return;
       }
       // A copy left by an earlier run (its manifest since lost) is the older truth.
@@ -153,6 +158,7 @@ export function openManifest(root) {
       const kept = readRegular(path.join(base, copy));
       if (kept === null) writeInside(base, copy, bytes, { exclusive: true });
       data.files[key] = { original: { sha256: sha256(kept ?? bytes), copy }, written: null };
+      api.save({ keepPending: true });
     },
     after(key, file) {
       const bytes = readRegular(locate(key, file));
@@ -189,7 +195,13 @@ export function openManifest(root) {
           if (bytes !== null) entry.written = sha256(bytes);
           else if (entry.original === null) delete data.files[key];
         }
-      writeInside(base, MANIFEST, `${JSON.stringify(data, null, 2)}\n`);
+      // Written aside and renamed into place, so a signal mid-save cannot leave
+      // a truncated manifest that the next run would refuse.
+      const temp = `${MANIFEST}.tmp`;
+      writeInside(base, temp, `${JSON.stringify(data, null, 2)}\n`);
+      const target = path.join(base, MANIFEST);
+      assertInside(base, target);
+      fs.renameSync(path.join(base, temp), target);
     },
     data,
     /** True when this call started the manifest (none was on disk). */

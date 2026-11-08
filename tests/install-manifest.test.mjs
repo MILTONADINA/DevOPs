@@ -291,6 +291,22 @@ test(`a recorded creation stays recorded when its write fails part-way, and a st
   }
 });
 
+test(`each record is on disk before the write it records, and no temp manifest is left (${SPEC}#ac-25)`, () => {
+  const dir = realpathSync(mkdtempSync(path.join(tmpdir(), 'install-manifest-unit-')));
+  try {
+    const record = openManifest(dir);
+    record.before('.claude/hooks/x.sh');
+    // Killed here, before the write: the pending entry is already saved.
+    assert.deepEqual(manifestOf(dir).files['.claude/hooks/x.sh'], { original: null, written: null });
+    writeFileSync(path.join(dir, 'AGENTS.md'), 'theirs');
+    record.before('AGENTS.md');
+    assert.equal(manifestOf(dir).files['AGENTS.md'].original.sha256, createHash('sha256').update('theirs').digest('hex'));
+    assert.deepEqual(readdirSync(path.join(dir, '.workflow/state')).filter(n => n.endsWith('.tmp')), []);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('ownFile allows only the paths DevOPs writes', () => {
   for (const key of ['AGENTS.md', 'CLAUDE.md', '.gitignore', HOOK_KEY, '.claude/hooks/x.sh', '.claude/skills/a/SKILL.md', '.workflow/profile.yml'])
     assert.ok(ownFile(key), key);
