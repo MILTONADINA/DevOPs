@@ -146,7 +146,7 @@ test(`init --dry-run says nothing was written and never says initialized (${SPEC
     assert.equal(r.status, 0, r.stderr);
     assert.ok(!/initialized/i.test(r.stdout), r.stdout);
     assert.ok(r.stdout.includes('Dry run complete: nothing was written'), r.stdout);
-    assert.ok(!r.stdout.includes('First steps in the agent'), r.stdout);
+    assert.ok(r.stdout.includes('First steps in the agent'), r.stdout); // #420: a dry run prints the same closing text
     assert.deepEqual(listing(dir), before);
   });
 });

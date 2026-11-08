@@ -58,6 +58,11 @@ test(`every file analyze and init write is recorded with its hash (${SPEC}#ac-20
     for (const file of listFiles(dir)) {
       if (file.startsWith('.git/') || own.has(file) || file.startsWith('.workflow/state/originals/')) continue;
       if (before.has(file) && file !== '.gitignore') continue; // a fixture file init did not touch
+      // #418: .claude/settings.json is shared with the user, so its hook entries are recorded, not the file.
+      if (file === '.claude/settings.json') {
+        assert.ok(m.claude_hooks?.length, `${file} holds recorded hook entries`);
+        continue;
+      }
       assert.ok(Object.hasOwn(m.files, file), `${file} is recorded`);
       assert.equal(m.files[file].written, sha(path.join(dir, file)), `${file} hash`);
     }

@@ -18,8 +18,12 @@ const RELEASE_SIGNER = 'https://github.com/MILTONADINA/DevOPs/.github/workflows/
 const ANCHORED = '^https://github\\.com/MILTONADINA/DevOPs/\\.github/workflows/release-sign\\.yml@refs/heads/.+$';
 
 // A toy DevOPs package with one signed skill, a target project that asks for it, and a
-// cosign stub. `cosign` is the stub's shell body (null leaves no cosign at all).
-function install({ cosign = 'exit 0', bundle = true, signedBy = RELEASE_SIGNER, extra = [] } = {}) {
+// cosign stub. `cosign` is the stub's shell body (null leaves no cosign at all). `format` is
+// the bundle the skill carries: the legacy cosign bundle, or a new-format Sigstore bundle
+// (#345). `sig` adds the legacy .sig; `trustRoot` writes the committed trust root.
+const NEW_BUNDLE = `${JSON.stringify({ mediaType: 'application/vnd.dev.sigstore.bundle.v0.3+json', verificationMaterial: {}, messageSignature: {} })}\n`;
+const TRUST_ROOT = '{"mediaType":"application/vnd.dev.sigstore.trustedroot+json;version=0.1"}\n';
+function install({ cosign = 'exit 0', bundle = true, signedBy = RELEASE_SIGNER, extra = [], format = 'legacy', sig = true, trustRoot = false } = {}) {
   const dir = mkdtempSync(path.join(tmpdir(), 'install-signature-'));
   try {
     const devopsRoot = path.join(dir, 'devops');
@@ -27,8 +31,13 @@ function install({ cosign = 'exit 0', bundle = true, signedBy = RELEASE_SIGNER, 
     const skillPath = path.join(devopsRoot, SKILL);
     mkdirSync(path.dirname(skillPath), { recursive: true });
     writeFileSync(skillPath, '# Toy skill\n\nA synthetic skill for the installer tests.\n');
-    writeFileSync(`${skillPath}.sig`, 'toy-signature\n');
-    if (bundle) writeFileSync(`${skillPath}.bundle`, '{"toy":"bundle"}\n');
+    if (sig) writeFileSync(`${skillPath}.sig`, 'toy-signature\n');
+    if (bundle) writeFileSync(`${skillPath}.bundle`, format === 'new' ? NEW_BUNDLE : '{"toy":"bundle"}\n');
+    const trustRootPath = path.join(devopsRoot, '.workflow/sigstore/trust-bundle.json');
+    if (trustRoot) {
+      mkdirSync(path.dirname(trustRootPath), { recursive: true });
+      writeFileSync(trustRootPath, TRUST_ROOT);
+    }
     const sha256 = createHash('sha256').update(readFileSync(skillPath)).digest('hex');
     const manifest = path.join(devopsRoot, 'manifest.yml');
     writeFileSync(manifest, `skills:\n- name: toy-skill\n  path: ${SKILL}\n  sha256: ${sha256}\n  signed_by: ${signedBy}\n`);
@@ -51,6 +60,7 @@ function install({ cosign = 'exit 0', bundle = true, signedBy = RELEASE_SIGNER, 
     });
     const log = path.join(projectRoot, '.workflow/state/install.log');
     return {
+      trustRootPath,
       status: run.status,
       output: `${run.stdout}\n${run.stderr}`,
       copied: existsSync(path.join(projectRoot, '.claude/skills/toy-skill/SKILL.md')),
@@ -72,12 +82,12 @@ test(`a skill cosign verifies is copied, checked against the anchored release-si
   assert.deepEqual(result.decisions, ['pass']);
 });
 
-test(`a skill is refused with exit 2 when cosign is not installed (${SPEC}#req-f9)`, () => {
+test(`without cosign a skill is not verified: exit 2, nothing written, nothing logged (${SPEC}#req-f12)`, () => {
   const result = install({ cosign: null });
   assert.equal(result.status, 2, result.output);
   assert.equal(result.copied, false);
-  assert.match(result.output, /cosign did not complete/);
-  assert.deepEqual(result.decisions, ['fail']);
+  assert.match(result.output, /not verified \(cosign missing\)=1/);
+  assert.deepEqual(result.decisions, [], 'no install.log decision is written before the refusal');
 });
 
 test(`a skill is refused with exit 2 when cosign is killed before it answers (${SPEC}#req-f9)`, () => {
@@ -113,4 +123,55 @@ test(`--allow-unsigned with a rationale installs an unverifiable skill and logs 
   assert.equal(result.status, 0, result.output);
   assert.ok(result.copied);
   assert.deepEqual(result.decisions, ['overridden']);
+});
+
+test(`a new-format bundle is verified offline against the committed trust root, with no .sig (${SPEC}#req-f8, #345)`, () => {
+  const result = install({ format: 'new', sig: false, trustRoot: true });
+  assert.equal(result.status, 0, result.output);
+  assert.ok(result.copied, 'the verified skill is copied');
+  const args = result.cosignArgs;
+  assert.equal(args[args.indexOf('--trusted-root') + 1], result.trustRootPath);
+  assert.ok(args.includes('--new-bundle-format'), 'cosign is told the bundle is new-format');
+  assert.equal(args[args.indexOf('--certificate-identity-regexp') + 1], ANCHORED);
+  assert.deepEqual(result.decisions, ['pass']);
+});
+
+test(`a new-format bundle is refused with exit 2 when the committed trust root is missing (${SPEC}#req-f9)`, () => {
+  const result = install({ format: 'new', sig: false, trustRoot: false });
+  assert.equal(result.status, 2, result.output);
+  assert.equal(result.copied, false);
+  assert.match(result.output, /trust root missing/);
+  assert.equal(result.cosignArgs, null, 'cosign is not asked to verify without a trust root');
+});
+
+test(`a new-format bundle that cosign rejects is refused with exit 2 and not retried as legacy (${SPEC}#req-f2)`, () => {
+  const result = install({ format: 'new', sig: false, trustRoot: true, cosign: "echo 'bundle does not verify' >&2; exit 1" });
+  assert.equal(result.status, 2, result.output);
+  assert.equal(result.copied, false);
+  assert.deepEqual(result.decisions, ['fail']);
+});
+
+test(`a new-format bundle whose manifest names another workflow is refused before cosign runs (${SPEC}#req-f8)`, () => {
+  const result = install({ format: 'new', sig: false, trustRoot: true, signedBy: 'https://github.com/someone-else/fork/.github/workflows/release-sign.yml@refs/heads/main' });
+  assert.equal(result.status, 2, result.output);
+  assert.equal(result.copied, false);
+  assert.match(result.output, /not the DevOPs release-sign workflow/);
+  assert.equal(result.cosignArgs, null);
+});
+
+test(`a legacy .sig + .bundle pair still verifies the old way during the transition (${SPEC}#req-f2)`, () => {
+  const result = install({ format: 'legacy', sig: true, trustRoot: true });
+  assert.equal(result.status, 0, result.output);
+  assert.ok(result.copied);
+  assert.equal(result.cosignArgs.includes('--trusted-root'), false, 'legacy bundles are not checked against the trust root');
+  assert.equal(result.cosignArgs.includes('--new-bundle-format'), false);
+  assert.deepEqual(result.decisions, ['pass']);
+});
+
+test(`a skill with neither .sig nor bundle is refused with exit 2 (${SPEC}#req-f2)`, () => {
+  const result = install({ sig: false, bundle: false, trustRoot: true });
+  assert.equal(result.status, 2, result.output);
+  assert.equal(result.copied, false);
+  assert.match(result.output, /unsigned \(no \.sig present\)/);
+  assert.equal(result.cosignArgs, null);
 });

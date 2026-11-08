@@ -8,6 +8,28 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.8.0] — 2026-11-08
+
+### Added
+
+- Hardening: the agent cannot change its own gates or approvals. `devops init` wires `protect-gates.sh` on Write, Edit, MultiEdit and NotebookEdit, and `protect-gates-bash.sh` on Bash, to block a write to `.claude/settings.json`, `.claude/settings.local.json`, `.claude/hooks/`, `.workflow/state/approvals.jsonl`, `.workflow/state/install-manifest.json` or `.workflow/state/originals/`. The file-tool check compares file identity, so symlinks, hard links, letter case and Unicode forms all reach the same decision. The Bash check is a convenience guard, not a security boundary: it reads the command text only, and `docs/HOOKS.md` lists what it does not catch (specs/release/npm-package.md AC-28).
+- `devops init` wires the Claude Code hooks it can into `.claude/settings.json`. Before, it copied the hooks to `.claude/hooks/` and wrote no settings entries, so Claude Code never ran them. It wires the pre-tool hooks on Bash (`deploy-gate.sh`, `block-sealed-refs.sh`, `block-prod-write.sh`, `block-rm-rf.sh`, `block-new-dependency.sh`) and on file reads and writes (`block-secrets.sh`), the post-tool `gitleaks-scan.sh` on writes, and `load-baton.sh` at session start, run from the project root. A pre or post hook runs through `.claude/hooks/run-hook.mjs`, copied from `hooks/claude-code/`: it reads the tool call from stdin, gives the hook the input it takes, and fails closed on a pre-tool error (exit 2); each pre-tool command also ends in `|| exit 2`, so a missing `node` blocks the call. Init keeps every other key and hook in the file, never adds a duplicate, and records each entry under `claude_hooks` in the install manifest. `devops uninstall` removes only the recorded entries (deleting the file when init created it), keeps an entry edited since, and `--dry-run` changes nothing. The hooks still unwired are named with their reasons (budget-brake, loop-detection, auto-format, write-baton, which would overwrite a hand-written baton, and others; `docs/HOOKS.md` lists them) (#418, specs/release/npm-package.md REQ-15, AC-27).
+
+### Changed
+
+- `devops init` closing text (`Next steps`, `First steps in the agent`, and the dry run, which prints the same text) names each file as a GitHub URL pinned to the installed version's tag, `https://github.com/MILTONADINA/DevOPs/blob/v<version>/<path>`, instead of a path inside the npm package. It adds one step that says what to commit (AGENTS.md, CLAUDE.md, `.claude/`, `.workflow/profile.yml`, `.workflow/state/budget.yml`) and what stays local (the install manifest and `originals/` that init adds to `.gitignore`) (#420, specs/release/npm-package.md REQ-14, AC-19).
+- All 26 skills, including the nine stack-specific ones, are signed as new-format Sigstore bundles and listed in `governance/skill-manifest.yml`. `devops init` now installs the stack-specific skills that `analyze` recommends instead of skipping them (#347, #416).
+- Skill signing emits one new-format Sigstore bundle per skill, which the installer and the release workflow verify offline against the committed trust root (#345); skills still without a bundle are pinned in `tests/ci/unsigned-skills.txt`, which must shrink to empty (#347). The package now ships `.workflow/sigstore/trust-bundle.json`, so installs can verify new-format bundles offline.
+
+### Fixed
+
+- `devops uninstall` no longer leaves a hook entry in `.claude/settings.json` that blocks every matching call. It rewrites the file before it deletes any hook file, keeps every hook file the entries still run when the file cannot be rewritten, and keeps the module a kept hook calls (`protect-gates.mjs`, `graph-command-classifier.mjs`, `new-dependency-classifier.mjs`) along with the hook (specs/release/npm-package.md AC-27).
+
+- `devops init` without cosign writes nothing to the project. It used to write `AGENTS.md`, `CLAUDE.md`, the `.gitignore` lines and `.workflow/` (the install manifest included), then report every signed skill as failed and exit 2. Now it checks for cosign before any write, prints the install hint and exits 2, and counts each skill that could not be checked as `not verified (cosign missing)`, not `failed`. `--dry-run` still reports what it would write, then stops the same way. A cosign that runs and rejects a skill is refused as before (`specs/phase-2/F-skill-provenance.md` REQ-F12, AC-F12.1; #415).
+- `devops uninstall` removes the `agile-graph` entry in `.mcp.json` and the pin file `.claude/agile-graph-tool-hashes.json` that `devops init` added when it linked Agile Graph. Other servers and keys in `.mcp.json` stay, and an entry edited since is kept and named. An install made by 0.7.0 or earlier did not record them (`specs/release/npm-package.md` REQ-15, REQ-16, AC-26; #413).
+
+- `devops uninstall` names the pre-commit hook by its real path (`.git/hooks/pre-commit`) instead of the manifest key `git-hooks/pre-commit`, and ends with one line when a file it removed or restored is tracked by Git: commit the change, or run `git checkout -- <paths>` to keep the DevOPs versions. The README says that `analyze` adds two lines to `.gitignore` and that the pre-commit hook needs `gitleaks` on the PATH of whatever runs `git`; `docs/SECURITY.md` names a fake AWS key that gitleaks flags, for checking the secret scan (#419).
+
 ## [0.7.0] — 2026-11-08
 
 ### Added

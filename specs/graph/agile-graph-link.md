@@ -94,7 +94,8 @@ The installer SHALL NOT run `agile-graph init` or `index` itself. `init --cloud-
 --export` decides which files a cloud-backed client may receive, so the person makes that
 choice. Claude Code also asks each person to approve a project's `.mcp.json` server
 before it starts one. With `--dry-run` the installer SHALL write nothing and report what
-it would do.
+it would do. Uninstall removes the pin file and the server entry that this link records
+(`../release/npm-package.md` REQ-15, REQ-16 and AC-26).
 
 **Enforced by:** test:tests/agile-graph-link.test.mjs
 

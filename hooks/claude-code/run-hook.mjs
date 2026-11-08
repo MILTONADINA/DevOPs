@@ -1,0 +1,169 @@
+#!/usr/bin/env node
+// hooks/claude-code/run-hook.mjs
+//
+// Runs one DevOPs hook for one Claude Code tool call (specs/release/npm-package.md REQ-15,
+// issue #418). `devops init` copies this file to .claude/hooks/run-hook.mjs and names it in
+// .claude/settings.json:
+//
+//   node "${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/run-hook.mjs" <pre|post> <hook-file> <input>
+//
+// Claude Code sends the tool call as JSON on stdin. <input> says what the hook takes:
+//   stdin    the hook gets --payload-stdin and the raw stdin bytes;
+//   command  the hook gets tool_input.command as one argument;
+//   file     the hook runs once for each distinct non-empty one of tool_input.file_path,
+//            tool_input.notebook_path, tool_input.path and tool_response.filePath, with that
+//            string as its one argument.
+// An absent or empty field means the call has nothing to check: exit 0, and the hook does not run.
+//
+// pre: exit 0 passes and exit 2 blocks. The first non-zero result from any run decides. Anything
+// else (a signal, a missing hook, unparseable stdin, an unresolvable root, an error thrown while
+// running) fails closed: exit 2 with "failing closed" on stderr.
+// post: always exit 0, except gitleaks-scan.sh's exit 2, which passes through so Claude Code
+// shows the leak. Any other non-zero hook exit is printed to stderr.
+//
+// The hook runs with spawnSync and no shell, so its argument is never parsed by one.
+// Node only, no dependencies.
+
+import { spawnSync } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
+
+const PHASES = ['pre', 'post'];
+const INPUTS = ['stdin', 'command', 'file'];
+// The hooks init wires through this file. Any other name is refused.
+const HOOKS = [
+  'deploy-gate.sh',
+  'block-sealed-refs.sh',
+  'block-prod-write.sh',
+  'block-rm-rf.sh',
+  'block-new-dependency.sh',
+  'block-secrets.sh',
+  'protect-gates.sh',
+  'protect-gates-bash.sh',
+  'gitleaks-scan.sh',
+];
+
+const isObject = value => value !== null && typeof value === 'object' && !Array.isArray(value);
+const absent = value => value === undefined || value === null || value === '';
+const isFile = file => { try { return fs.statSync(file).isFile(); } catch { return false; } };
+const isDirectory = dir => { try { return fs.statSync(dir).isDirectory(); } catch { return false; } };
+
+// Returns the exit code. A pre refusal is 2; a post refusal is reported and is 0.
+function refuse(phase, reason) {
+  if (phase === 'pre') {
+    process.stderr.write(`HOOK: ${reason} -- failing closed\n`);
+    return 2;
+  }
+  process.stderr.write(`HOOK: ${reason}\n`);
+  return 0;
+}
+
+// CLAUDE_PROJECT_DIR when set, else the top of the git work tree the current directory is in.
+function projectRoot() {
+  const fromEnv = process.env.CLAUDE_PROJECT_DIR;
+  if (fromEnv) return path.resolve(fromEnv);
+  const git = spawnSync('git', ['rev-parse', '--show-toplevel'], { encoding: 'utf8' });
+  if (git.error || git.status !== 0 || git.stdout.trim() === '') return null;
+  return path.resolve(git.stdout.trim());
+}
+
+// Runs the hook once with one argument. Returns its exit code under the rules in the header.
+function runOnce(phase, hookFile, hookPath, root, input, raw, arg) {
+  const fail = reason => refuse(phase, reason);
+  const run = spawnSync('bash', [hookPath, arg], {
+    cwd: root,
+    input: input === 'stdin' ? raw : Buffer.alloc(0),
+    stdio: ['pipe', 'pipe', 'inherit'],
+  });
+  if (run.error) return fail(`could not run ${hookFile}: ${run.error.message}`);
+  if (run.stdout && run.stdout.length > 0) process.stdout.write(run.stdout);
+  if (run.signal) return fail(`${hookFile} was killed by ${run.signal}`);
+
+  if (run.status === 0) return 0;
+  if (phase === 'pre') {
+    return run.status === 2 ? 2 : fail(`${hookFile} exited ${run.status}`);
+  }
+  if (hookFile === 'gitleaks-scan.sh' && run.status === 2) return 2;
+  process.stderr.write(`HOOK: ${hookFile} exited ${run.status}\n`);
+  return 0;
+}
+
+function runHook() {
+  const [phase, hookFile, input, ...rest] = process.argv.slice(2);
+  if (!PHASES.includes(phase)) return refuse('pre', `unknown phase ${JSON.stringify(phase)}; expected pre or post`);
+  const fail = reason => refuse(phase, reason);
+
+  if (rest.length > 0 || !INPUTS.includes(input)) {
+    return fail('usage: run-hook.mjs <pre|post> <hook-file> <stdin|command|file>');
+  }
+  if (typeof hookFile !== 'string' || hookFile.includes('/') || hookFile.includes('..') || !HOOKS.includes(hookFile)) {
+    return fail(`hook ${JSON.stringify(hookFile)} is not one run-hook.mjs runs`);
+  }
+
+  let raw;
+  try {
+    raw = fs.readFileSync(0);
+  } catch (error) {
+    return fail(`cannot read the tool call from stdin (${error.code ?? error.message})`);
+  }
+  let payload;
+  try {
+    payload = JSON.parse(raw.toString('utf8'));
+  } catch {
+    return fail('stdin is not JSON');
+  }
+  if (!isObject(payload)) return fail('stdin JSON is not an object');
+  const toolInput = payload.tool_input ?? {};
+  if (!isObject(toolInput)) return fail('tool_input is not an object');
+  const toolResponse = isObject(payload.tool_response) ? payload.tool_response : {};
+
+  // One argument per run: the stdin payload, the command, or each distinct file field present.
+  let args;
+  if (input === 'stdin') {
+    args = ['--payload-stdin'];
+  } else {
+    const fields = input === 'command'
+      ? [toolInput.command]
+      : [toolInput.file_path, toolInput.notebook_path, toolInput.path, toolResponse.filePath];
+    const present = fields.filter(value => !absent(value));
+    if (present.length === 0) return 0; // nothing in this call for the hook to check
+    if (present.some(value => typeof value !== 'string')) {
+      return fail(`the tool call's ${input === 'command' ? 'command' : 'file path'} is not a string`);
+    }
+    args = [...new Set(present)];
+  }
+
+  const root = projectRoot();
+  if (root === null) return fail('cannot resolve the project root (CLAUDE_PROJECT_DIR is unset and this is not a git work tree)');
+  if (!isDirectory(root)) return fail(`project root ${root} is not a directory`);
+  const hookPath = path.join(root, '.claude', 'hooks', hookFile);
+  if (!isFile(hookPath)) return fail(`hook missing: ${hookPath}`);
+
+  // pre: the first non-zero result decides. post: exit 2 only when gitleaks-scan.sh reports a leak.
+  let code = 0;
+  for (const arg of args) {
+    const result = runOnce(phase, hookFile, hookPath, root, input, raw, arg);
+    if (phase === 'pre' && result !== 0) return result;
+    if (result === 2) code = 2;
+  }
+  return code;
+}
+
+// Any error thrown while running (a NUL byte in an argument, for one) fails closed in pre. In post
+// it is printed, and exits 0 except for gitleaks-scan.sh, which passes its leak through as 2.
+function main() {
+  const [phase, hookFile] = process.argv.slice(2);
+  try {
+    return runHook();
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    if (phase === 'post') {
+      process.stderr.write(`HOOK: ${reason}\n`);
+      return hookFile === 'gitleaks-scan.sh' ? 2 : 0;
+    }
+    process.stderr.write(`HOOK: ${reason} -- failing closed\n`);
+    return 2;
+  }
+}
+
+process.exitCode = main();

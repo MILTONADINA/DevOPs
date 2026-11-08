@@ -3,11 +3,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync, appendFileSync, unlinkSync } from 'node:fs';
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync, appendFileSync, unlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { writeStubGit } from './fixtures/stub-git.mjs';
-import { MANIFEST } from '../analyzer/install-manifest.js';
+import { HOOK_KEY, MANIFEST } from '../analyzer/install-manifest.js';
+import { ENGINE, ENGINE_VERSIONS, PIN_TARGET, SERVER_KEY, supportedNode } from '../analyzer/agile-graph.js';
+import { shellWord } from '../analyzer/uninstall.js';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 const CLI = path.join(ROOT, 'scripts/devops-cli.js');
@@ -143,9 +145,67 @@ test(`a pre-commit hook that is no longer DevOPs's is kept (${SPEC}#ac-21)`, () 
     writeFileSync(hook, '#!/bin/sh\necho ours\n');
     const r = uninstall(dir);
     assert.equal(r.status, 0, r.stderr);
-    assert.match(r.stdout, /kept {6}git-hooks\/pre-commit: edited since DevOPs wrote it/);
+    assert.match(r.stdout, /kept {6}\.git\/hooks\/pre-commit: edited since DevOPs wrote it/);
+    assert.doesNotMatch(r.stdout, /git-hooks/, 'the manifest key is not shown');
     assert.equal(readFileSync(hook, 'utf8'), '#!/bin/sh\necho ours\n');
   });
+});
+
+test(`uninstall names the pre-commit hook by its real path, not the manifest key (${SPEC}#ac-21)`, () => {
+  withProject(dir => {
+    install(dir);
+    const r = uninstall(dir);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.match(r.stdout, /remove {4}\.git\/hooks\/pre-commit\n/);
+    assert.doesNotMatch(r.stdout, /git-hooks/, 'the manifest key is not shown');
+    assert.ok(!existsSync(path.join(dir, '.git/hooks/pre-commit')));
+  });
+});
+
+test(`a removed file that Git tracks gets one closing line saying so (${SPEC}#ac-21)`, () => {
+  withProject(dir => {
+    install(dir);
+    const r = devopsWith({ STUB_GIT_TRACKED: '.gitignore' }, dir, 'uninstall');
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.match(r.stdout, /restore {3}\.gitignore/);
+    const lines = r.stdout.trimEnd().split('\n');
+    assert.equal(lines.at(-1), 'Some files uninstall removed or restored are committed: commit the change, or run `git checkout -- .gitignore` to keep the DevOPs versions.');
+  });
+});
+
+test(`no closing line when the removed files are not tracked, or nothing was removed (${SPEC}#ac-21)`, () => {
+  withProject(dir => {
+    install(dir);
+    const untracked = uninstall(dir);
+    assert.equal(untracked.status, 0, untracked.stdout + untracked.stderr);
+    assert.doesNotMatch(untracked.stdout, /committed/);
+  });
+  withProject(dir => {
+    install(dir);
+    const tracked = devopsWith({ STUB_GIT_TRACKED: '.gitignore' }, dir, 'uninstall', '--dry-run');
+    assert.equal(tracked.status, 0, tracked.stdout + tracked.stderr);
+    assert.doesNotMatch(tracked.stdout, /committed/, 'a dry run changes nothing, so it names nothing');
+  });
+});
+
+test(`the closing line lists at most five tracked paths and counts the rest (${SPEC}#ac-21)`, () => {
+  withProject(dir => {
+    install(dir);
+    // The hook lives in .git, which Git does not track, so it is never asked about.
+    const tracked = Object.keys(manifestNow(dir).files).filter(key => key !== HOOK_KEY).sort();
+    assert.ok(tracked.length > 6, 'the install recorded more than six files');
+    const r = devopsWith({ STUB_GIT_TRACKED: tracked.join(',') }, dir, 'uninstall');
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    const last = r.stdout.trimEnd().split('\n').at(-1);
+    const shown = tracked.slice(0, 5);
+    assert.equal(last, `Some files uninstall removed or restored are committed: commit the change, or run \`git checkout -- ${shown.join(' ')}\` (and ${tracked.length - 5} more) to keep the DevOPs versions.`);
+  });
+});
+
+test(`the closing line quotes a path the shell would split (${SPEC}#ac-21)`, () => {
+  assert.equal(shellWord('.claude/hooks/a-b.mjs'), '.claude/hooks/a-b.mjs');
+  assert.equal(shellWord('docs/my notes.md'), "'docs/my notes.md'");
+  assert.equal(shellWord("it's.md"), "'it'\\''s.md'");
 });
 
 test(`in an adopted install, files with a recorded original are kept for the user to check (${SPEC}#ac-21)`, () => {
@@ -213,7 +273,7 @@ test(`a core.hooksPath set after init does not move where uninstall looks for th
     writeFileSync(path.join(dir, '.husky/pre-commit'), '#!/bin/sh\nnpx lint-staged\n');
     const r = devopsWith({ STUB_GIT_PATH_HOOKS: '.husky', STUB_HOOKS_PATH: '.husky' }, dir, 'uninstall');
     assert.equal(r.status, 0, r.stderr);
-    assert.match(r.stdout, /remove {4}git-hooks\/pre-commit/);
+    assert.match(r.stdout, /remove {4}\.git\/hooks\/pre-commit/);
     assert.ok(!existsSync(path.join(dir, '.git/hooks/pre-commit')));
     assert.equal(readFileSync(path.join(dir, '.husky/pre-commit'), 'utf8'), '#!/bin/sh\nnpx lint-staged\n');
   });
@@ -285,5 +345,136 @@ test(`an original copy read through a symlinked originals folder is kept and nam
     } finally {
       rmSync(outside, { recursive: true, force: true });
     }
+  });
+});
+
+// specs/release/npm-package.md REQ-15, REQ-16, AC-26 (issue #413): the pin file and the
+// .mcp.json server entry that init adds when it links Agile Graph.
+const LINK_SKIP = supportedNode(process.versions.node) ? false : `the engine needs Node 24 to 26; this is ${process.versions.node}`;
+const mcpPath = dir => path.join(dir, '.mcp.json');
+const mcpNow = dir => JSON.parse(readFileSync(mcpPath(dir), 'utf8'));
+const outsideModules = snap => Object.fromEntries(Object.entries(snap).filter(([key]) => !key.startsWith('node_modules')));
+/** A stub engine in the project's node_modules: init links it and never runs it. */
+function installEngine(dir) {
+  const engineDir = path.join(dir, 'node_modules', ...ENGINE.split('/'));
+  mkdirSync(path.join(engineDir, 'dist'), { recursive: true });
+  writeFileSync(path.join(engineDir, 'package.json'), JSON.stringify({ name: ENGINE, version: ENGINE_VERSIONS.at(-1) }));
+  writeFileSync(path.join(engineDir, 'dist', 'cli.js'), '#!/usr/bin/env node\n');
+}
+function installLinked(dir) {
+  installEngine(dir);
+  const a = devops(dir, 'analyze');
+  assert.equal(a.status, 0, a.stderr);
+  const r = devops(dir, 'init', ...UNSIGNED);
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.match(r.stdout, /registered the MCP server "agile-graph" in \.mcp\.json/);
+}
+
+test(`init links Agile Graph and uninstall removes the pin and the server, and the .mcp.json init created (${SPEC}#ac-26)`, { skip: LINK_SKIP }, () => {
+  withProject(dir => {
+    const before = outsideModules(snapshot(dir));
+    installLinked(dir);
+    assert.ok(existsSync(path.join(dir, PIN_TARGET)), 'init copied the pins');
+    assert.equal(mcpNow(dir).mcpServers[SERVER_KEY].command, 'npx');
+    const recorded = manifestNow(dir);
+    assert.equal(recorded.mcp_servers[SERVER_KEY].created_file, true);
+    assert.ok(recorded.files[PIN_TARGET], 'the pin file is recorded');
+    const r = uninstall(dir);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.match(r.stdout, /remove {4}the "agile-graph" server from \.mcp\.json/);
+    assert.ok(!existsSync(path.join(dir, PIN_TARGET)), 'the pin file is gone');
+    assert.ok(!existsSync(mcpPath(dir)), '.mcp.json init created is gone');
+    assert.deepEqual(outsideModules(snapshot(dir)), before);
+  });
+});
+
+test(`a .mcp.json that was there before keeps its other server and key after uninstall (${SPEC}#ac-26)`, { skip: LINK_SKIP }, () => {
+  withProject(dir => {
+    const original = { mcpServers: { other: { type: 'stdio', command: 'other-tool', args: ['--flag'] } }, extraKey: { keep: true } };
+    writeFileSync(mcpPath(dir), `${JSON.stringify(original, null, 2)}\n`);
+    // A private .mcp.json (it can hold tokens) stays private when uninstall rewrites it.
+    chmodSync(mcpPath(dir), 0o600);
+    installLinked(dir);
+    assert.equal(manifestNow(dir).mcp_servers[SERVER_KEY].created_file, false, 'the file was there before init');
+    const r = uninstall(dir);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.deepEqual(mcpNow(dir), original, 'the other server and the extra key are unchanged');
+    assert.equal(statSync(mcpPath(dir)).mode & 0o777, 0o600, 'the rewritten .mcp.json keeps its permissions');
+    assert.ok(!existsSync(path.join(dir, PIN_TARGET)), 'the pin file is gone');
+  });
+});
+
+test(`an agile-graph entry edited after init is kept and named, and the manifest stays (${SPEC}#ac-26)`, { skip: LINK_SKIP }, () => {
+  withProject(dir => {
+    installLinked(dir);
+    const config = mcpNow(dir);
+    config.mcpServers[SERVER_KEY].args.push('--edited-by-hand');
+    writeFileSync(mcpPath(dir), `${JSON.stringify(config, null, 2)}\n`);
+    const edited = readFileSync(mcpPath(dir), 'utf8');
+    const r = uninstall(dir);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.match(r.stdout, /kept {6}\.mcp\.json \(the "agile-graph" server\): edited since DevOPs wrote it/);
+    assert.equal(readFileSync(mcpPath(dir), 'utf8'), edited, 'the edited entry is left as it is');
+    assert.ok(manifestNow(dir).mcp_servers[SERVER_KEY], 'its record stays in the manifest');
+    assert.match(r.stdout, /file\(s\) kept/);
+    assert.ok(!existsSync(path.join(dir, PIN_TARGET)), 'the unedited pin file is still removed');
+  });
+});
+
+test(`a .mcp.json that is a symlink is kept and named, and its target is not touched (${SPEC}#ac-26)`, { skip: LINK_SKIP }, () => {
+  withProject(dir => {
+    installLinked(dir);
+    const outside = realpathSync(mkdtempSync(path.join(tmpdir(), 'uninstall-outside-')));
+    try {
+      const target = path.join(outside, 'mcp.json');
+      writeFileSync(target, '{"mcpServers":{"agile-graph":{}}}\n');
+      rmSync(mcpPath(dir));
+      symlinkSync(target, mcpPath(dir));
+      const r = uninstall(dir);
+      assert.equal(r.status, 0, r.stdout + r.stderr);
+      assert.match(r.stdout, /kept {6}\.mcp\.json \(the "agile-graph" server\): refusing to read through a symlink/);
+      assert.equal(readFileSync(target, 'utf8'), '{"mcpServers":{"agile-graph":{}}}\n');
+      assert.ok(manifestNow(dir).mcp_servers[SERVER_KEY]);
+    } finally {
+      rmSync(outside, { recursive: true, force: true });
+    }
+  });
+});
+
+test(`a malformed mcp_servers value makes the manifest an unknown schema, and uninstall changes nothing (${SPEC}#ac-26)`, { skip: LINK_SKIP }, () => {
+  withProject(dir => {
+    installLinked(dir);
+    const good = manifestNow(dir);
+    const hash = 'a'.repeat(64);
+    const bad = [
+      { [SERVER_KEY]: { sha256: 'NOT-HEX', created_file: true } },
+      { [SERVER_KEY]: { sha256: hash, created_file: 'yes' } },
+      { [SERVER_KEY]: { sha256: hash, created_file: true, extra: 1 } },
+      { [SERVER_KEY]: { sha256: hash } },
+      { '': { sha256: hash, created_file: true } },
+      { [`${'x'.repeat(129)}`]: { sha256: hash, created_file: true } },
+      ['not', 'an', 'object'],
+    ];
+    for (const value of bad) {
+      writeFileSync(path.join(dir, MANIFEST), `${JSON.stringify({ ...good, mcp_servers: value }, null, 2)}\n`);
+      const installed = snapshot(dir);
+      const r = uninstall(dir);
+      assert.equal(r.status, 1, `${JSON.stringify(value)}: ${r.stdout}${r.stderr}`);
+      assert.match(r.stderr, /unknown schema/, JSON.stringify(value));
+      assert.deepEqual(snapshot(dir), installed, 'nothing changed');
+    }
+  });
+});
+
+test(`a dry run names the server and the .mcp.json it would delete, and changes nothing (${SPEC}#ac-26)`, { skip: LINK_SKIP }, () => {
+  withProject(dir => {
+    installLinked(dir);
+    const installed = snapshot(dir);
+    const r = uninstall(dir, '--dry-run');
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(r.stdout, /would remove the "agile-graph" server from \.mcp\.json/);
+    assert.match(r.stdout, /would remove \.mcp\.json/);
+    assert.match(r.stdout, /nothing changed/);
+    assert.deepEqual(snapshot(dir), installed);
   });
 });

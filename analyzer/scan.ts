@@ -235,6 +235,8 @@ function recommend(profile: Omit<Profile, 'recommended'>): Profile['recommended'
 
   const hooks: string[] = [
     'universal/pre-tool/block-secrets.sh',
+    'universal/pre-tool/protect-gates.sh',
+    'universal/pre-tool/protect-gates-bash.sh',
     'universal/pre-tool/block-prod-write.sh',
     'universal/pre-tool/block-rm-rf.sh',
     'universal/pre-tool/budget-brake.sh',

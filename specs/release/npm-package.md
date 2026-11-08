@@ -195,11 +195,7 @@ differ, THEN it SHALL fail and print the differing entries.
 
 ### REQ-14 — Init's printed steps name only files that exist
 
-WHEN `devops init` finishes, THE SYSTEM SHALL name in its "Next steps" and "First steps
-in the agent" only files that exist in the project or in the installed package, naming a
-package file by its path from the project when the package is inside it and otherwise as
-`` `<path>` in the `@miltonadina/devops` package ``. THE SYSTEM SHALL NOT tell the user to
-run a slash command that init did not install (#352).
+WHEN `devops init` finishes, or runs as a dry run, THE SYSTEM SHALL print the same "Next steps" and "First steps in the agent" text, and every file it names there SHALL be a GitHub URL of the form `https://github.com/MILTONADINA/DevOPs/blob/v<version>/<path>`, where `<version>` is the installed package's version and `<path>` exists in the repository at that release (#352, #420). THE SYSTEM SHALL NOT tell the user to run a slash command that init did not install; a command is named only with the plugin that provides it. The "Next steps" SHALL say which files to commit (AGENTS.md, CLAUDE.md, `.claude/`, `.workflow/profile.yml`, `.workflow/state/budget.yml`) and which stay local, naming the `.gitignore` entries init adds (`.workflow/state/install-manifest.json`, `.workflow/state/originals/`).
 
 ### REQ-15 — Init and analyze record what they write
 
@@ -222,8 +218,24 @@ nothing. WHEN it starts the manifest in a project that already has
 DevOPs's copy. IF an original copy's path leaves the project through a symlink, THEN THE
 SYSTEM SHALL refuse that copy with an error and record no `original` for the file, because a
 read through the link would hash a file outside the project. WHEN DevOPs records a write, before or after it, or a folder it creates, THE SYSTEM SHALL save the manifest before its next step, replacing the file whole (written to a temp file under `originals/`, flushed, then renamed) so an interrupted run keeps its records and never leaves a truncated manifest; an unconfirmed write stays pending, and uninstall keeps its file. Original copies are written whole the same way, so a copy cut short is never restored, and uninstall removes the temp files an interrupted write left. Backups (REQ-F11) and the `originals/` copies are DevOPs's own records and
-are not themselves recorded. The `.mcp.json` entry and the Agile Graph pin that linking
-writes are not recorded yet (#353).
+are not themselves recorded. WHEN `devops init` (not a dry run) links Agile Graph
+(`specs/graph/agile-graph-link.md` REQ-3), THE SYSTEM SHALL record the pin file it copies as a
+file, and SHALL record each `.mcp.json` server entry it adds under `mcp_servers`, keyed by server
+name, with the sha256 of that entry's JSON and `created_file`, which is true when `.mcp.json` did
+not exist before that run. It SHALL NOT record `.mcp.json` as a file, because other tools share
+it, and a pin file that already existed is not recorded. `mcp_servers` is an optional key: a
+name must be a non-empty string of at most 128 characters, and an entry must have exactly
+`sha256` (64 lowercase hex characters) and `created_file` (a boolean), or the manifest is refused.
+WHEN `devops uninstall` runs, THE SYSTEM SHALL remove only the recorded server entry whose JSON
+still has the recorded sha256, SHALL keep every other key and server of `.mcp.json` with the same
+content, SHALL delete `.mcp.json` only when `created_file` is true and nothing else is left in it,
+and SHALL keep and name an entry edited since DevOPs wrote it, leaving its record in the manifest.
+
+WHEN `devops init` (not a dry run) copies the Claude Code hooks from `hooks/universal/` and the hook has a row in the wiring table in `analyzer/install.ts` that names an event, a command and, for a tool event, a matcher, THE SYSTEM SHALL add an entry to `.claude/settings.json` in the Claude Code hooks format, `{"hooks": {"<event>": [{"matcher": "<matcher>", "hooks": [{"type": "command", "command": "<command>"}]}]}}` (the `matcher` key is omitted for an event that has none), keeping every other key and every other hook of the file. The command of a pre or post hook is `node "${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/run-hook.mjs" <pre|post> <hook-file> <stdin|command|file>`, which runs the hook with the input it takes from the tool call on stdin; init copies that runner from `hooks/claude-code/` beside the hooks, and IF the runner is missing from the package while a wired hook needs it, THEN init SHALL stop with exit 1. The command of a session hook is `cd "${CLAUDE_PROJECT_DIR:-.}" && bash .claude/hooks/<file> || true`. IF `.claude/settings.json` does not exist, THEN THE SYSTEM SHALL create it with only the entries init adds. THE SYSTEM SHALL NOT add an entry for a hook that is already wired, meaning its command is in a group with the same matcher (a missing matcher compared as missing) under the same event; it SHALL print `already wired: <hook> (<event>)` for each such hook, and SHALL NOT record such an entry. The same command under another event or matcher is not already wired, and is added. IF `.claude/settings.json` is a symlink, is not a regular file, or is not a JSON object, THEN THE SYSTEM SHALL leave it unchanged, say so in its output, and record no entry. A hook without a wired row, because it is opt-in or is not mapped to a Claude Code event, SHALL be named with its reason and not wired.
+
+WHEN init adds an entry, THE SYSTEM SHALL record it under `claude_hooks` in the manifest, as `{ event, matcher, command, sha256 }` (`matcher` omitted for an event that has none), where `sha256` is the sha256 of the JSON of the inner hook object, and SHALL record `claude_hooks_created_file`, which is true when `.claude/settings.json` did not exist before the first run that added an entry. `claude_hooks` is an optional key: each entry must have exactly `event`, `command` and `sha256`, plus `matcher` when it has one; an `event` of letters; a `command` of one of the forms init writes (the runner form, or the plain `cd` form for a session hook); and a `sha256` of 64 lowercase hex characters, or the manifest is refused.
+
+WHEN `devops uninstall` runs, THE SYSTEM SHALL remove only the recorded entry whose inner hook object still hashes to the recorded sha256, SHALL drop a matcher group, an event or `hooks` that is left empty, SHALL delete `.claude/settings.json` only when `claude_hooks_created_file` is true and nothing is left in it, SHALL keep and name an entry edited since DevOPs wrote it, leaving its record, and SHALL write the file whole and keep its permissions. WHEN run with `--dry-run`, init SHALL say which entries it would add and change nothing.
 
 ### REQ-16 — Uninstall removes what was recorded
 
@@ -439,11 +451,10 @@ section, and names only source files that exist. A file that is not named is rep
 
 **Given** a project with the package installed under `node_modules/@miltonadina/devops`,
 and one using a package outside the project **When** `devops init` runs **Then** every
-backticked path in its "Next steps" and "First steps in the agent" exists from the project
-or from the package root, except `.workflow/client/profile.yml`, which the steps tell the
+URL in its "Next steps" and "First steps in the agent" is a `https://github.com/MILTONADINA/DevOPs/blob/v<version>/<path>` URL whose `<path>` exists in the repository and ships in the package, and every other backticked path exists from the project, except `.workflow/client/profile.yml`, which the steps tell the
 user to create; and no step tells the user to run a command such as `/checkpoint`.
 
-**Verified by:** `tests/init-agent-bootstrap.test.mjs`.
+**Verified by:** `tests/init-agent-bootstrap.test.mjs`, `tests/init-closing-urls.test.mjs`.
 
 ### AC-20
 
@@ -516,6 +527,32 @@ already in the manifest on disk, no temporary manifest is left behind, and unins
 the temp files an interrupted write left under `originals/`.
 
 **Verified by:** `tests/install-manifest.test.mjs`.
+
+### AC-26
+
+**Given** a project with a `.mcp.json` that holds another server and an extra top-level key, or
+no `.mcp.json` at all **When** `devops init` links Agile Graph and `devops uninstall` runs
+**Then** the pin file and the `agile-graph` server are gone, the other server and the extra key
+keep their content, and `.mcp.json` is gone when init created it. **And** an `agile-graph` entry
+edited after init is kept and named, its record stays in the manifest, and a manifest whose
+`mcp_servers` is malformed makes uninstall exit 1 with nothing changed. A dry run changes
+nothing.
+
+**Verified by:** `tests/uninstall.test.mjs`.
+
+### AC-27
+
+**Given** an empty project **When** `devops init` runs **Then** `.claude/settings.json` names the SessionStart command for `load-baton.sh` and the PreToolUse Bash commands for `deploy-gate.sh`, `block-sealed-refs.sh`, `block-prod-write.sh`, `block-rm-rf.sh` and `block-new-dependency.sh` (each run through `.claude/hooks/run-hook.mjs`), copies `run-hook.mjs`, and init names each copied hook it does not wire with its reason. **And** the Bash command init wrote for `block-rm-rf.sh`, given a `rm -rf /` PreToolUse payload on stdin, exits 2, and every wired Bash command, given an `ls` payload, exits 0. **And** given a settings.json with other keys and a user's own hook, init keeps them all, a second init adds no duplicate, and a hook already wired under the same event and matcher is named as already wired and neither changed nor recorded. **And** a symlinked or non-object settings.json is left unchanged with a warning, and a dry run changes nothing. **And** `devops uninstall` removes only the recorded entries, deletes the file when init created it, keeps and names an entry edited since, takes only the entry in the group init wrote to (a user's identical command in another group stays), keeps every file under `.claude/hooks/` that a command still in the file runs, recorded or not, and every module such a hook calls beside it (such as `protect-gates.mjs` or `graph-command-classifier.mjs`), until that command is gone, rewrites the file before it deletes any hook file, and keeps every hook file the entries run when the file cannot be rewritten, and exits 1 with nothing changed when `claude_hooks` is malformed.
+
+**Verified by:** `tests/install-claude-hooks.test.mjs`, `tests/hooks/run-hook.test.mjs`.
+
+### AC-28
+
+WHEN an agent's Write, Edit, MultiEdit or NotebookEdit call targets a DevOPs gate or approval path (`.claude/settings.json`, `.claude/settings.local.json`, anything under `.claude/hooks/`, `.workflow/state/approvals.jsonl`, `.workflow/state/install-manifest.json`, or anything under `.workflow/state/originals/`), judged by file identity, THE SYSTEM SHALL block the call with exit 2, so that the agent cannot change its own gates or approvals. WHEN an agent's Bash command names one of those paths, or moves a bare `.claude`, `.workflow` or `.workflow/state`, and is not a plain read, THE SYSTEM SHALL block it with exit 2. The Bash check is a convenience guard, not a security boundary.
+
+**Given** a project that `devops init` wrote **When** `protect-gates.sh` runs on a file-tool target that is one of those paths, or on an absolute path that reaches one through a symlink, a hard link, a `..` component, or a link inside a gate directory that points out of it (including a new file under a linked directory, the missing target of a dangling link, and a hard link to a linked file; a link or hard link nested inside a linked tree is not followed), or on a letter-case or Unicode spelling of the name (folded on every platform) **Then** it exits 2 with `DevOPs GATE BLOCK`, and an empty path or any other absolute path exits 0. **And** a relative path, or one that starts with `~`, exits 2 with `is not an absolute path`. **And** a walk of a gate directory nested past 8 levels, or holding more than 5000 entries, exits 2 with `failing closed`. **And** a file or directory under a gate directory that does not exist yet is blocked too, while `src/settings.json` is allowed. **And** `protect-gates-bash.sh` exits 2 for a Bash command that names one of those paths, or moves a bare `.claude`, `.workflow` or `.workflow/state`, unless it is a plain read (`cat`, `head`, `tail`, `grep`, `ls`, `stat`, `wc`, `diff`, `jq`, `less` without `-o`, `-O`, `--log-file`, `+cmd` or `-k`, or `git add`, `git commit` or `git status`, with no chain). It exits 0 for `echo '{}' > .vscode/settings.json`, `git add .claude/settings.json`, `git commit -m "docs: explain .claude/settings.json"`, `jq '.hooks | keys' .claude/settings.json` and `cat .claude/settings.json 2>&1 | head`. **And** an internal error of either check exits 2. **And** `docs/HOOKS.md` states that the Bash check is a convenience guard and not a security boundary, and lists what it does not catch: a `cd` followed by a relative write, a path built at run time, an interpreter, and a path spelled with an extra `/` or a `.` component.
+
+**Verified by:** `tests/hooks/protect-gates.test.mjs`, `tests/install-claude-hooks.test.mjs`.
 
 ## Out of scope
 

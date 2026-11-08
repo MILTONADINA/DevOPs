@@ -20,6 +20,7 @@
 import { createHash } from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { PIN_TARGET } from './agile-graph.js';
 import { UnsafeWriteError, assertInside, present, writeInside } from './safe-write.js';
 
 export const MANIFEST = '.workflow/state/install-manifest.json';
@@ -42,7 +43,7 @@ export function validKey(key) {
 
 // Only where DevOPs writes. A committed manifest can therefore never name a
 // project source, a secret or Git's own files for a later uninstall.
-const OWN_FILES = new Set(['AGENTS.md', 'CLAUDE.md', '.gitignore', HOOK_KEY]);
+const OWN_FILES = new Set(['AGENTS.md', 'CLAUDE.md', '.gitignore', HOOK_KEY, PIN_TARGET]);
 const OWN_TREES = ['.claude/skills/', '.claude/hooks/', '.claude/agents/', '.workflow/'];
 export function ownFile(key) {
   return validKey(key) && (OWN_FILES.has(key) || OWN_TREES.some(tree => key.startsWith(tree)));
@@ -83,9 +84,29 @@ export function readManifest(root) {
   }
   const plain = v => v !== null && typeof v === 'object' && !Array.isArray(v);
   const hex = v => typeof v === 'string' && /^[0-9a-f]{64}$/.test(v);
+  // REQ-15: the server entries init added to .mcp.json, keyed by server name.
+  const mcpServers = v => plain(v) && Object.entries(v).every(([name, entry]) => typeof name === 'string'
+    && name.length > 0 && name.length <= 128 && plain(entry)
+    && Object.keys(entry).sort().join(',') === 'created_file,sha256'
+    && hex(entry.sha256) && typeof entry.created_file === 'boolean');
+  // REQ-15 (#418): the hook entries init added to .claude/settings.json. `sha256` is of the
+  // inner hook object. `matcher` is absent for an event that has none. `command` is one of the
+  // two forms init writes: a plain hook (`cd` to the project root, then bash on the hook), or a
+  // hook run through run-hook.mjs. Each names only a file under .claude/hooks/.
+  const hookCommand = v => typeof v === 'string' && (/^cd "\$\{CLAUDE_PROJECT_DIR:-\.\}" && bash \.claude\/hooks\/[A-Za-z0-9._-]{1,128} \|\| true$/.test(v)
+    || /^node "\$\{CLAUDE_PROJECT_DIR:-\.\}\/\.claude\/hooks\/run-hook\.mjs" (pre [A-Za-z0-9._-]{1,128} (stdin|command|file) \|\| exit 2|post [A-Za-z0-9._-]{1,128} (stdin|command|file))$/.test(v));
+  const claudeHooks = v => Array.isArray(v) && v.every(entry => plain(entry)
+    && ['command,event,sha256', 'command,event,matcher,sha256'].includes(Object.keys(entry).sort().join(','))
+    && typeof entry.event === 'string' && /^[A-Za-z]{1,40}$/.test(entry.event)
+    && (entry.matcher === undefined || (typeof entry.matcher === 'string' && entry.matcher.length <= 256))
+    && hookCommand(entry.command)
+    && hex(entry.sha256));
   const ok = plain(data) && data.schema_version === SCHEMA_VERSION && plain(data.files) && Array.isArray(data.dirs)
     && typeof data.adopted === 'boolean'
-    && Object.keys(data).every(k => ['schema_version', 'adopted', 'files', 'dirs'].includes(k))
+    && (data.mcp_servers === undefined || mcpServers(data.mcp_servers))
+    && (data.claude_hooks === undefined || claudeHooks(data.claude_hooks))
+    && (data.claude_hooks_created_file === undefined || typeof data.claude_hooks_created_file === 'boolean')
+    && Object.keys(data).every(k => ['schema_version', 'adopted', 'files', 'dirs', 'mcp_servers', 'claude_hooks', 'claude_hooks_created_file'].includes(k))
     && data.dirs.every(ownDir)
     && Object.entries(data.files).every(([key, entry]) => ownFile(key) && plain(entry)
       && Object.keys(entry).every(k => ['original', 'written', 'edited'].includes(k))
@@ -108,10 +129,19 @@ export function readManifest(root) {
  * Writes `bytes` to `target` whole: into `temp` (`target.tmp`), flushed to disk, then
  * renamed over it (or, with `exclusive`, linked to it, which fails when the
  * target exists). A signal or crash leaves the old file or the new one, never
- * part of it. A leftover `.tmp` is overwritten by the next write.
+ * part of it. An existing target's permissions are kept. A leftover `.tmp` is overwritten by the next write.
  */
 export function replaceWhole(base, target, bytes, { exclusive = false, temp = `${target}.tmp` } = {}) {
-  writeInside(base, temp, bytes);
+  // The new file keeps the old one's permissions: a .mcp.json a user made private (0600)
+  // must not come back readable by others.
+  let mode;
+  try {
+    const stat = fs.lstatSync(path.join(base, target));
+    if (stat.isFile()) mode = stat.mode & 0o7777;
+  } catch {
+    /* no file yet: the default mode */
+  }
+  writeInside(base, temp, bytes, mode === undefined ? {} : { mode });
   const tempFile = path.join(base, temp);
   const fd = fs.openSync(tempFile, fs.constants.O_RDONLY | NOFOLLOW);
   try {
@@ -191,6 +221,45 @@ export function openManifest(root) {
       if (!Object.hasOwn(data.files, key)) throw new UnsafeWriteError(`${key} was written without being recorded first`);
       data.files[key].written = sha256(bytes);
       // Saved now, not only at exit: a SIGINT or SIGTERM skips the exit listener.
+      api.save({ keepPending: true });
+    },
+    /**
+     * Records the `.mcp.json` server entry `init` is about to write (REQ-15). `.mcp.json` itself is
+     * not a recorded file: other tools share it, so only this entry is recorded.
+     */
+    mcpServer(name, entry, createdFile) {
+      data.mcp_servers = {
+        ...(data.mcp_servers ?? {}),
+        [name]: { sha256: sha256(JSON.stringify(entry)), created_file: createdFile },
+      };
+      api.save({ keepPending: true });
+    },
+    /** Drops the record of a server entry whose `.mcp.json` write failed. */
+    forgetMcpServer(name) {
+      if (!data.mcp_servers || !Object.hasOwn(data.mcp_servers, name)) return;
+      delete data.mcp_servers[name];
+      if (Object.keys(data.mcp_servers).length === 0) delete data.mcp_servers;
+      api.save({ keepPending: true });
+    },
+    /**
+     * Records the `.claude/settings.json` hook entries `init` is about to add (#418). The file
+     * itself is not a recorded file: the user's own settings share it. `createdFile` is kept from
+     * the first record, so a later run never claims a file an earlier run found.
+     */
+    claudeHooks(entries, createdFile) {
+      const commands = new Set(entries.map(entry => entry.command));
+      data.claude_hooks = [...(data.claude_hooks ?? []).filter(entry => !commands.has(entry.command)), ...entries];
+      data.claude_hooks_created_file ??= createdFile;
+      api.save({ keepPending: true });
+    },
+    /** Drops the records of settings.json hook entries whose write failed. */
+    forgetClaudeHooks(commands) {
+      if (!data.claude_hooks) return;
+      data.claude_hooks = data.claude_hooks.filter(entry => !commands.includes(entry.command));
+      if (data.claude_hooks.length === 0) {
+        delete data.claude_hooks;
+        delete data.claude_hooks_created_file;
+      }
       api.save({ keepPending: true });
     },
     /** Records a folder DevOPs is about to create (with mkdir -p) when it is absent. */

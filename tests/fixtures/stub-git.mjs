@@ -26,7 +26,14 @@ switch (args.join(' ')) {
   case 'config --get core.hooksPath': if (env.STUB_HOOKS_PATH) say(env.STUB_HOOKS_PATH); process.exit(1); break;
   case 'rev-parse --git-path hooks': say(env.STUB_GIT_PATH_HOOKS || '.git/hooks'); break;
   default:
-    if (args[0] === 'ls-files') { if (env.STUB_GIT_LS_FILES) say(env.STUB_GIT_LS_FILES); process.exit(0); }
+    if (args[0] === 'ls-files') {
+      // Only the paths asked for, so a query for the manifest does not see a tracked file.
+      const want = args.slice(args.indexOf('--') + 1);
+      const listed = (env.STUB_GIT_TRACKED || '').split(',').filter(p => want.includes(p));
+      if (listed.length) say(listed.join(args.includes('-z') ? '\\0' : '\\n'));
+      if (env.STUB_GIT_LS_FILES) say(env.STUB_GIT_LS_FILES);
+      process.exit(0);
+    }
     process.exit(2);
 }
 `;

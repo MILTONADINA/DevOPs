@@ -31,15 +31,15 @@ Sigstore is chosen over GPG-style key infrastructure because the keyless OIDC fl
 
 ## Functional requirements (EARS)
 
-### REQ-E1 (Ubiquitous) — Every universal skill has a Sigstore signature
-THE SYSTEM SHALL ensure every `skills/universal/**/SKILL.md` file has a corresponding `SKILL.md.sig` Sigstore signature file alongside it in the same directory.
+### REQ-E1 (Ubiquitous) — Every skill has a Sigstore bundle
+THE SYSTEM SHALL ensure every `skills/**/SKILL.md` file has a corresponding `SKILL.md.bundle` Sigstore bundle, in cosign's new format (`--new-bundle-format`), alongside it in the same directory. The only exception is a skill listed in `tests/ci/unsigned-skills.txt`, and that list SHALL shrink to empty.
 
 ### REQ-E2 (Ubiquitous) — Skill manifest with hash pinning
-THE SYSTEM SHALL maintain a manifest at `governance/skill-manifest.yml` listing every skill with: `name`, `path`, `sha256` (of `SKILL.md`), `sig_path`, `signed_by` (Sigstore identity), `signed_at` (ISO 8601), and `rekor_log_index`.
+THE SYSTEM SHALL maintain a manifest at `governance/skill-manifest.yml` listing every skill with: `name`, `path`, `sha256` (of `SKILL.md`), `bundle_path`, `signed_by` (Sigstore identity), `signed_at` (ISO 8601), and `rekor_log_index`. `sig_path` is kept only for a legacy `.sig` pair; a new-format bundle has none.
 
 ### REQ-E3 (Event-driven) — CI signs before tagging and verifies release tags
 WHEN the signing workflow is dispatched on a release branch, THE SYSTEM SHALL
-produce `.sig` and `.bundle` files for every universal skill and commit an
+produce a `.bundle` file for every skill and commit an
 updated `governance/skill-manifest.yml` to that branch for PR review. WHEN a
 release tag matching `v\d+\.\d+\.\d+` is pushed, THE SYSTEM SHALL verify
 the tagged skill bytes, bundles, and manifest without writing to protected
@@ -63,8 +63,8 @@ THE SYSTEM SHALL produce identical signatures for identical inputs (modulo Sigst
 
 ### AC-E1.1 (maps to REQ-E1)
 **Given** the post-implementation repository
-**When** `git ls-files 'skills/universal/**/SKILL.md.sig'` is executed
-**Then** the count equals the count of `git ls-files 'skills/universal/**/SKILL.md'`.
+**When** `tests/ci/skill-bundles.test.mjs` runs
+**Then** every `SKILL.md` under `skills/` has a `SKILL.md.bundle` beside it, or is listed in `tests/ci/unsigned-skills.txt`, and every listed skill still lacks a bundle. Once that list is empty, `git ls-files 'skills/**/SKILL.md.bundle'` counts one bundle per `SKILL.md`.
 
 ### AC-E2.1 (maps to REQ-E2)
 **Given** the post-implementation `governance/skill-manifest.yml`
@@ -174,3 +174,4 @@ The Phase 2 spec-authoring claim for this spec is `claim-2026-05-22-021`.
 
 - 2026-05-22 miltonadina: created (Phase 2 Step 1; Prompt 3 area E).
 - 2026-11-06: AC-E5.1 rewritten to the committed root's presence and shape (`cosign` has no `--bundle-path`); AC-E5.2 added for offline verification, open until the skill bundles use the new format (#345).
+- 2026-11-07: #345: signing emits one new-format `SKILL.md.bundle` per skill (no `.sig`); verifiers accept it against the committed trust root and keep the legacy `.sig` + `.bundle` check until re-signing. AC-E1.1 counts bundles and pins the unsigned set to `tests/ci/unsigned-skills.txt` (#347). AC-E5.2 stays open until the first release re-signs the skills.
