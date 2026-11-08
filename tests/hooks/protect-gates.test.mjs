@@ -159,7 +159,7 @@ test(`file tools: a protected directory walk fails closed past 8 levels or 5000 
   assert.match(many.stderr, /failing closed/);
 });
 
-test(`on darwin a long s (U+017F) spelling of a gate name is blocked (${SPEC}#ac-28)`, { skip: process.platform !== 'darwin' }, () => {
+test(`a long s (U+017F) spelling of a gate name is blocked on every platform (${SPEC}#ac-28)`, () => {
   const dir = project();
   blocked(fileHook(dir, path.join(dir, '.claude/\u017Fettings.json')), '.claude/\u017Fettings.json');
   blocked(fileHook(dir, path.join(dir, '.claude/hook\u017F/a.sh')), '.claude/hook\u017F/a.sh');
@@ -222,11 +222,16 @@ test(`the project root is CLAUDE_PROJECT_DIR, else the git top level (${SPEC}#ac
   blocked(r, 'absolute path from a subdirectory of the git work tree');
 });
 
-test(`on darwin the names match case-insensitively; elsewhere they are case-sensitive (${SPEC}#ac-28)`, () => {
+test(`the names match case-insensitively and by Unicode form, on every platform (${SPEC}#ac-28)`, () => {
   const dir = project();
-  const r = fileHook(dir, path.join(dir, '.CLAUDE/Settings.json'));
-  if (process.platform === 'darwin' || process.platform === 'win32') blocked(r, '.CLAUDE/Settings.json');
-  else allowed(r, '.CLAUDE/Settings.json on a case-sensitive file system');
+  // The gates named here may not exist on this file system: an absent name is compared by its folded spelling.
+  rmSync(path.join(dir, '.workflow/state/approvals.jsonl'));
+  blocked(fileHook(dir, path.join(dir, '.CLAUDE/Settings.json')), '.CLAUDE/Settings.json');
+  blocked(fileHook(dir, path.join(dir, '.workflow/state/Approvals.jsonl')), 'Approvals.jsonl, absent');
+  blocked(fileHook(dir, path.join(dir, '.claude/hook\u017F/new.sh')), '.claude/hookſ/new.sh, absent');
+  blocked(fileHook(dir, path.join(dir, '.workflow/\uFB06ate/approvals.jsonl')), 'a ligature that folds to st, absent');
+  blocked(bashHook(dir, 'echo x > .CLAUDE/SETTINGS.JSON'), 'a Bash redirect in capitals');
+  blocked(bashHook(dir, 'echo x > .workflow/state/in\u017Ftall-manifest.json'), 'a Bash redirect with a long s');
 });
 
 test(`Bash: a command that writes a gate file is blocked; plain reads pass (${SPEC}#ac-28)`, () => {

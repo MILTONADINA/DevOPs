@@ -20,8 +20,6 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const WINDOWS = process.platform === 'win32';
-// darwin and win32 volumes compare names case-insensitively; elsewhere the bytes must match.
-const FOLD_CASE = process.platform === 'darwin' || WINDOWS;
 
 // Files and directories the agent cannot change, relative to the project root.
 const PROTECTED_FILES = [
@@ -51,9 +49,9 @@ const MAX_LINKS = 40;
 const MAX_DEPTH = 8;
 const MAX_ENTRIES = 5000;
 
-// Names compare as a case-insensitive volume does: NFD, U+017F as s, then upper and lower case.
+// Names compare folded on every platform: NFD, U+017F as s, then upper and lower case. The protected
+// names are ASCII, so a name that folds to one of them is refused on any volume; the cost is small.
 function foldName(name) {
-  if (!FOLD_CASE) return name;
   return name.normalize('NFD').replace(/\u017f/g, 's').toUpperCase().toLowerCase();
 }
 
@@ -217,6 +215,22 @@ function protectedIdentities(root) {
   return holders;
 }
 
+// The protected name a real path spells under the root, compared folded. A gate that does not exist
+// yet has no identity to compare, so its spelling is what is checked.
+function protectedName(real, root) {
+  const base = partsOf(root);
+  const parts = partsOf(real);
+  if (!startsWith(parts, base)) return null;
+  const rest = parts.slice(base.length);
+  for (const rel of PROTECTED_FILES) {
+    if (sameParts(rest, rel.split('/'))) return rel;
+  }
+  for (const rel of PROTECTED_DIRS) {
+    if (startsWith(rest, rel.split('/'))) return rel;
+  }
+  return null;
+}
+
 // CLAUDE_PROJECT_DIR, else the git top level, else the current directory, resolved like a path.
 function projectRoot() {
   const fromEnv = process.env.CLAUDE_PROJECT_DIR;
@@ -251,6 +265,9 @@ function fileBlock(input) {
   for (const rel of PROTECTED_DIRS) {
     if (matchesDir(target, chain, locate(realTarget(under(root, rel))))) return gateMessage(rel);
   }
+  // A spelling of a gate that does not exist yet: it has no identity, so its folded name is compared.
+  const named = protectedName(real, root);
+  if (named !== null) return gateMessage(named);
   // The path with its last component left unresolved: a symbolic link that sits in a protected
   // directory is inside it, even when it points out.
   const leaf = unresolvedLeaf(input);
