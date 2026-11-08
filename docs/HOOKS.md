@@ -7,21 +7,26 @@ Guarded: the agent cannot change its own gates or approvals. `protect-gates.sh` 
 agent's Write, Edit, MultiEdit and NotebookEdit calls on `.claude/settings.json`,
 `.claude/settings.local.json`, anything under `.claude/hooks/`, `.workflow/state/approvals.jsonl`,
 `.workflow/state/install-manifest.json` and anything under `.workflow/state/originals/`. It compares
-file identity, not spellings. It resolves the target the way the kernel does: the deepest existing
-part of the path is resolved with `realpath`, so symlinks and `..` count, and a `~` is expanded and a
-relative path is taken from the project root. It then blocks the call when the target is one of
-those files by `{dev, ino}`, so a symlink or a hard link to one is caught too; when it is under one
-of those directories; or when it is a file or directory that does not exist yet under an existing
-directory with the same identity and name. Letter case and Unicode forms reach the same decision as
-the volume compares them: on macOS and Windows names fold case, use NFD, and map U+017F to `s`; on
-Linux the bytes must match. An error other than a missing path component exits 2.
+file identity, not spellings. Only an absolute path is accepted: a relative path, or one that starts with
+`~`, exits 2 with `is not an absolute path`, because the file tools take absolute paths. The target is
+resolved the way the kernel does: the deepest existing part of the path is resolved with `realpath`, so
+symlinks and `..` count. It then blocks the call when the target is one of those files by `{dev, ino}`,
+so a symlink or a hard link to one is caught too; when it is under one of those directories, with the
+last component left unresolved as well, so a symbolic link inside a protected directory counts as inside
+it even when it points out; when it is the same file (`{dev, ino}`) as an entry under one of those
+directories, so a hard link to a hook or an original is caught, and so is a file that a link inside the
+directory points to; or when it is a file or directory that does not exist yet under an existing
+directory with the same identity and name. The walk of a protected directory goes eight levels deep and
+no further, and stops after 5000 entries; past either limit the call exits 2. Names fold the same way on
+every platform: NFD, U+017F as `s`, and upper then lower case. The names are ASCII, so folding refuses
+little that is not a gate. An error other than a missing path component exits 2.
 
 `protect-gates-bash.sh` is a convenience guard, not a security boundary, and owner approvals must not
 rely on it. It reads the command text only, and nothing on disk. It blocks a command when the text,
 with `'`, `"` and `\` deleted, contains one of these paths: `.claude/settings.json`,
 `.claude/settings.local.json`, `.claude/hooks`, `.workflow/state/approvals.jsonl`,
-`.workflow/state/install-manifest.json` or `.workflow/state/originals` (case-insensitive on macOS and
-Windows). It also blocks a command with a `mv`, `rm`, `cp`, `ln`, `tar` or `rsync` word and a bare
+`.workflow/state/install-manifest.json` or `.workflow/state/originals` (folded on every platform, as the
+file-tool check folds them). It also blocks a command with a `mv`, `rm`, `cp`, `ln`, `tar` or `rsync` word and a bare
 `.claude`, `.workflow` or `.workflow/state` word. It lets a command through when it is a plain read:
 the first word is `cat`, `head`, `tail`, `less`, `grep`, `ls`, `stat`, `wc`, `diff` or `jq`, or the
 command is `git add`, `git commit` or `git status`; and outside quotes the command has no `>`, `|`,
@@ -33,6 +38,8 @@ write a file or run a program.
 Not caught, so the Bash check does not stop these:
 - a `cd` into `.claude` or `.workflow/state`, then a relative write such as `echo x > hooks/a.sh`,
   in the same call or a later one, since the shell keeps its directory between calls;
+- a path spelled with an extra `/` or a `.` component, such as `.claude//settings.json` or
+  `.claude/./settings.json`, since the text match looks for the plain spelling;
 - a path built at run time: a variable (`D=.claude; echo x > $D/settings.json`), a glob, or a
   command substitution in a word that names no gate;
 - an interpreter or program that writes a file without naming it (`node -e`, `python -c`, a script);
