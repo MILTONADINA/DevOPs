@@ -5,7 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -52,15 +52,28 @@ for (const file of ALLOWED) {
 // The refusal is appended to .workflow/state/events.jsonl as one JSON object per line. The path
 // and operation are caller-supplied text, so they must be escaped: a quote, backslash, newline or
 // control character in them must neither break the line nor add keys. Issue #426.
-function logged(file, operation) {
+function logged(file, operation, { shell = 'bash', locale = 'C' } = {}) {
   const dir = mkdtempSync(path.join(tmpdir(), 'block-secrets-log-'));
   try {
-    const result = spawnSync('bash', [HOOK, file, operation], { cwd: dir, encoding: 'utf8', timeout: 30_000, env: { ...process.env, LC_ALL: 'C' } });
+    const result = spawnSync(shell, [HOOK, file, operation], { cwd: dir, encoding: 'utf8', timeout: 30_000, env: { ...process.env, LC_ALL: locale } });
     assert.equal(result.error, undefined, String(result.error));
     assert.equal(result.status, 2, result.stderr);
     return readFileSync(path.join(dir, '.workflow', 'state', 'events.jsonl'), 'utf8');
   } finally {
     rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+// Bytes 0x80 and above (UTF-8) pass through unchanged in every locale, including under macOS
+// /bin/bash 3.2, which reports them as negative character codes.
+const SHELLS = ['bash', ...(existsSync('/bin/bash') ? ['/bin/bash'] : [])];
+for (const shell of SHELLS) {
+  for (const locale of ['C', 'en_US.UTF-8']) {
+    test(`block-secrets logs a non-ASCII path unchanged (${shell}, LC_ALL=${locale})`, () => {
+      const file = 'caf\u00e9/\u65e5\u672c/.env';
+      const entry = JSON.parse(logged(file, 'read', { shell, locale }).trim());
+      assert.equal(entry.path, file);
+    });
   }
 }
 

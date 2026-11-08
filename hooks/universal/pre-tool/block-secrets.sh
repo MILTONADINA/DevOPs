@@ -11,7 +11,8 @@ OPERATION="${2:-read}"
 
 # Escapes $1 for use inside a JSON string literal: backslash, quote, and control characters
 # (RFC 8259). A character loop, not ${var//pat/rep}: bash 3.2 (macOS /bin/bash) mangles quoted
-# replacements. Bytes 0x80 and above pass through unchanged, as UTF-8.
+# replacements. Bytes 0x80 and above pass through unchanged, as UTF-8 (bash 3.2 reports them as
+# negative codes, hence the code >= 0 guard).
 json_escape() {
     local s="$1" out="" i c code hex
     for (( i = 0; i < ${#s}; i++ )); do
@@ -21,7 +22,7 @@ json_escape() {
             '"') out+='\"' ;;
             *)
                 printf -v code '%d' "'$c"
-                if (( code < 32 )); then
+                if (( code >= 0 && code < 32 )); then
                     case "$code" in
                         8) out+='\b' ;;
                         9) out+='\t' ;;
