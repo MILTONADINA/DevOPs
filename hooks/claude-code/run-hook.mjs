@@ -13,7 +13,8 @@
 //   file     the hook runs once for each distinct non-empty one of tool_input.file_path,
 //            tool_input.notebook_path, tool_input.path and tool_response.filePath, with that
 //            string as its one argument.
-// An absent or empty field means the call has nothing to check: exit 0, and the hook does not run.
+// An absent or empty field inside tool_input means the call has nothing to check: exit 0, and the
+// hook does not run. A missing tool_input itself is different: a pre command or file hook fails closed.
 //
 // pre: exit 0 passes and exit 2 blocks. The first non-zero result from any run decides. Anything
 // else (a signal, a missing hook, unparseable stdin, an unresolvable root, an error thrown while
