@@ -63,9 +63,11 @@ export function shellWord(p) {
 // The one closing line for files this run removed or restored that Git tracks.
 function committedNote(base, touched) {
   if (touched.length === 0) return null;
-  const tracked = git(base, ['ls-files', '--', ...touched]);
+  // -z: Git prints each path as it is, never C-quoted, so the suggested command names real files.
+  const tracked = git(base, ['ls-files', '-z', '--', ...touched]);
   if (!tracked) return null;
-  const files = tracked.split('\n');
+  const files = tracked.split('\0').filter(Boolean);
+  if (files.length === 0) return null;
   const more = files.length > 5 ? ` (and ${files.length - 5} more)` : '';
   const shown = files.slice(0, 5).map(shellWord);
   return `Some files uninstall removed or restored are committed: commit the change, or run \`git checkout -- ${shown.join(' ')}\`${more} to keep the DevOPs versions.`;

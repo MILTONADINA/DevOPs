@@ -30,7 +30,7 @@ switch (args.join(' ')) {
       // Only the paths asked for, so a query for the manifest does not see a tracked file.
       const want = args.slice(args.indexOf('--') + 1);
       const listed = (env.STUB_GIT_TRACKED || '').split(',').filter(p => want.includes(p));
-      if (listed.length) say(listed.join('\\n'));
+      if (listed.length) say(listed.join(args.includes('-z') ? '\\0' : '\\n'));
       if (env.STUB_GIT_LS_FILES) say(env.STUB_GIT_LS_FILES);
       process.exit(0);
     }
