@@ -85,8 +85,8 @@ A payload with no `tool_input` (or a `null` one) is a missing field, not an empt
 tool call; <hook> runs without it`. A `command` or `file` hook reads `tool_input`, so for those the
 call fails closed with exit 2 and `HOOK: tool_input is missing from the tool call -- failing closed`,
 and the hook does not run. A `stdin` hook reads the raw payload itself, so it runs after the warning.
-A `tool_input` that is present but not an object fails closed in every mode. `post` hooks are not
-affected by the missing-field rule.
+A `tool_input` that is present but not an object fails closed for a `pre` hook in every input mode. A
+`post` hook always exits 0, so it never fails closed.
 
 For `pre` hooks, exit 0 passes and exit 2 blocks. Any other outcome fails closed with
 exit 2 and `failing closed` on stderr: a non-zero exit other than 2, a signal, a missing
@@ -210,5 +210,5 @@ See `CONTRIBUTING.md`. Hooks must:
 
 The `.sh` hooks under `hooks/` and `scripts/` use a Bash shebang
 (`#!/usr/bin/env bash`) and POSIX shell semantics. They require a POSIX
-shell (bash/zsh), which macOS and Linux provide natively. Configure Claude
+shell (bash), which macOS and Linux provide natively. Configure Claude
 Code (or the active agent) to invoke the hooks with `bash <hook>.sh`.

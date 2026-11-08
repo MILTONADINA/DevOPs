@@ -11,6 +11,33 @@ trap 'exit 2' ERR
 
 COMMAND="${1:-}"
 
+json_escape() {
+    local s="$1" out="" i c code hex
+    for (( i = 0; i < ${#s}; i++ )); do
+        c="${s:i:1}"
+        case "$c" in
+            "\\") out+='\\' ;;
+            '"') out+='\"' ;;
+            *)
+                printf -v code '%d' "'$c"
+                if (( code >= 0 && code < 32 )); then
+                    case "$code" in
+                        8) out+='\b' ;;
+                        9) out+='\t' ;;
+                        10) out+='\n' ;;
+                        12) out+='\f' ;;
+                        13) out+='\r' ;;
+                        *) printf -v hex '\\u%04x' "$code"; out+="$hex" ;;
+                    esac
+                else
+                    out+="$c"
+                fi
+                ;;
+        esac
+    done
+    printf '%s' "$out"
+}
+
 # Allowed deletion roots (relative or absolute paths within these are OK)
 PROJECT_ROOT="$(pwd)"
 ALLOWED_ROOTS=(
@@ -148,7 +175,7 @@ for target in $targets; do
     if [[ "$protected" == "false" && "$in_allowed" == "false" ]] && inside "$abs_target" "$PROJECT_ROOT"; then
         # Within project but outside known transient dirs — allow with logging
         mkdir -p .workflow/state
-        echo "{\"ts\":$(date -u +%s),\"event\":\"destructive_in_project\",\"target\":\"$abs_target\",\"command\":$(echo "$COMMAND" | jq -R . 2>/dev/null || echo "\"$COMMAND\"")}" >> .workflow/state/events.jsonl
+        echo "{\"ts\":$(date -u +%s),\"event\":\"destructive_in_project\",\"target\":\"$(json_escape "$abs_target")\",\"command\":\"$(json_escape "$COMMAND")\"}" >> .workflow/state/events.jsonl
         continue
     fi
 
@@ -165,7 +192,7 @@ $(printf '  %s\n' "${ALLOWED_ROOTS[@]}")
 If you need to delete this path, do it outside the agent session.
 EOF
         mkdir -p .workflow/state
-        echo "{\"ts\":$(date -u +%s),\"event\":\"rm_blocked\",\"target\":\"$abs_target\"}" >> .workflow/state/events.jsonl
+        echo "{\"ts\":$(date -u +%s),\"event\":\"rm_blocked\",\"target\":\"$(json_escape "$abs_target")\"}" >> .workflow/state/events.jsonl
         exit 2
     fi
 done
