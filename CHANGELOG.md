@@ -8,6 +8,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- `devops init` wires the Claude Code hooks it can into `.claude/settings.json`. Before, it copied the hooks to `.claude/hooks/` and wrote no settings entries, so Claude Code never ran them. It merges one entry each for `load-baton.sh` (SessionStart) and `write-baton.sh` (SessionEnd), keeps every other key and hook in the file, never adds a duplicate, and records each entry under `claude_hooks` in the install manifest. `devops uninstall` removes only the recorded entries (deleting the file when init created it), keeps an entry edited since, and `--dry-run` changes nothing. The other copied hooks are named with their reason and not wired: they take their input as an argument, which Claude Code does not pass, so run as a bare command they check nothing (#418, specs/release/npm-package.md REQ-15, AC-27).
+
 ### Changed
 
 - All 26 skills, including the nine stack-specific ones, are signed as new-format Sigstore bundles and listed in `governance/skill-manifest.yml`. `devops init` now installs the stack-specific skills that `analyze` recommends instead of skipping them (#347, #416).

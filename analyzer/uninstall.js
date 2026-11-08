@@ -19,6 +19,9 @@
 //   - The `.mcp.json` server that init added (REQ-15) is removed only while its
 //     sha256 still matches; every other key and server stays. A `.mcp.json` init
 //     created, left with nothing else in it, is deleted.
+//   - The `.claude/settings.json` hook entries init added (REQ-15, #418) are removed only
+//     while the inner hook object still hashes to the recorded sha256. A matcher group,
+//     event or `hooks` left empty goes; a settings.json init created, left empty, is deleted.
 // Nothing is followed through a symlink. A manifest Git tracks is refused: it came
 // with the repository, not from an install here. Folders DevOPs created are removed when
 // empty. Whatever is kept stays in the manifest, so a later uninstall can finish.
@@ -152,6 +155,71 @@ function unlinkServer(base, name, recorded) {
   return { action: 'remove', bytes: `${JSON.stringify(config, null, 2)}\n` };
 }
 
+/**
+ * Plans the removal of the `.claude/settings.json` hook entries init added (#418). An entry goes
+ * only while the inner object it names still hashes to the recorded sha256; anything else in the
+ * file is kept as it is. Returns { kept: [{ entry, reason }], removed: [entry], dropped: [entry],
+ * bytes, deleteFile }: `dropped` are records to forget (removed, or already gone), `bytes` is the
+ * new file content (null when nothing changes), `deleteFile` when init created the file and
+ * nothing else is in it.
+ */
+function unwireHooks(base, entries, createdFile) {
+  const plan = { kept: [], removed: [], dropped: [], bytes: null, deleteFile: false };
+  let bytes;
+  try {
+    bytes = readRegular(path.join(base, SETTINGS_KEY));
+  } catch (error) {
+    // A symlink or a non-file is kept and named; its target is not touched.
+    plan.kept = entries.map(entry => ({ entry, reason: error.message }));
+    return plan;
+  }
+  if (bytes === null) return { ...plan, dropped: [...entries] };
+  let config = null;
+  try {
+    config = JSON.parse(bytes.toString('utf8'));
+  } catch {
+    /* not JSON: kept below */
+  }
+  if (!plain(config)) {
+    plan.kept = entries.map(entry => ({ entry, reason: `${SETTINGS_KEY} is not a JSON object` }));
+    return plan;
+  }
+  for (const entry of entries) {
+    const groups = plain(config.hooks) && Array.isArray(config.hooks[entry.event]) ? config.hooks[entry.event] : null;
+    let found = null;
+    for (const group of groups ?? []) {
+      if (!plain(group) || !Array.isArray(group.hooks)) continue;
+      const index = group.hooks.findIndex(hook => plain(hook) && hook.command === entry.command);
+      if (index !== -1) {
+        found = { group, index };
+        break;
+      }
+    }
+    if (found === null) {
+      plan.dropped.push(entry);
+      continue;
+    }
+    const inner = found.group.hooks[found.index];
+    if (sha256(JSON.stringify(inner)) !== entry.sha256) {
+      plan.kept.push({ entry, reason: 'edited since DevOPs wrote it' });
+      continue;
+    }
+    // Take the entry out, then the matcher group, the event and `hooks` only when each is left empty.
+    found.group.hooks.splice(found.index, 1);
+    if (found.group.hooks.length === 0) groups.splice(groups.indexOf(found.group), 1);
+    if (groups.length === 0) delete config.hooks[entry.event];
+    if (Object.keys(config.hooks).length === 0) delete config.hooks;
+    plan.removed.push(entry);
+    plan.dropped.push(entry);
+  }
+  if (plan.removed.length === 0) return plan;
+  if (createdFile && Object.keys(config).length === 0) plan.deleteFile = true;
+  else plan.bytes = `${JSON.stringify(config, null, 2)}\n`;
+  return plan;
+}
+
+const hookLabel = entry => `the ${entry.event} hook for ${path.basename(entry.command)}`;
+
 /** Empty folders under `dir` (and `dir` itself), deepest first, without following links. */
 function emptyDirsUnder(dir) {
   const out = [];
@@ -206,6 +274,8 @@ function removeIfEmpty(dir) {
 const STATE = '.workflow/state';
 const MANIFEST_SAVE_TEMP = `${STATE}/.uninstall-manifest.tmp`;
 const MCP_TEMP = `${STATE}/.uninstall-mcp.tmp`;
+const SETTINGS_KEY = '.claude/settings.json';
+const SETTINGS_TEMP = '.claude/settings.json.tmp';
 // Replaced whole, as install does, so an interrupted uninstall never leaves a truncated manifest.
 const save = (base, data) => replaceWhole(base, MANIFEST, `${JSON.stringify(data, null, 2)}\n`, { temp: MANIFEST_SAVE_TEMP });
 
@@ -305,6 +375,42 @@ export function uninstall(root, { dryRun = false, log = console.log } = {}) {
     } catch (error) {
       keptCount++;
       log(`kept      .mcp.json (the "${name}" server): ${error.message}`);
+    }
+  }
+  // #418: the settings.json hook entries init added. Only those entries go; the file is written
+  // once, whole and with its permissions, and a record goes once its entry is gone or removed.
+  if (data.claude_hooks) {
+    const plan = unwireHooks(base, data.claude_hooks, data.claude_hooks_created_file === true);
+    for (const { entry, reason } of plan.kept) {
+      keptCount++;
+      log(`kept      ${SETTINGS_KEY} (${hookLabel(entry)}): ${reason}`);
+    }
+    if (dryRun) {
+      for (const entry of plan.removed) log(`would remove ${hookLabel(entry)} from ${SETTINGS_KEY}`);
+      if (plan.deleteFile) log(`would remove ${SETTINGS_KEY} (init created it; nothing else is in it)`);
+      handled += plan.removed.length;
+    } else {
+      try {
+        for (const entry of plan.removed) log(`remove    ${hookLabel(entry)} from ${SETTINGS_KEY}`);
+        if (plan.deleteFile) {
+          log(`remove    ${SETTINGS_KEY} (init created it; nothing else is in it)`);
+          removeRegular(path.join(base, SETTINGS_KEY));
+        } else if (plan.bytes !== null) {
+          // Replaced whole: the user's own settings share this file.
+          replaceWhole(base, SETTINGS_KEY, plan.bytes, { temp: SETTINGS_TEMP });
+        }
+        handled += plan.removed.length;
+        const dropped = new Set(plan.dropped);
+        data.claude_hooks = data.claude_hooks.filter(entry => !dropped.has(entry));
+        if (data.claude_hooks.length === 0) {
+          delete data.claude_hooks;
+          delete data.claude_hooks_created_file;
+        }
+        save(base, data);
+      } catch (error) {
+        keptCount++;
+        log(`kept      ${SETTINGS_KEY}: ${error.message}`);
+      }
     }
   }
   // Recorded folders, deepest first; one that still holds anything stays.

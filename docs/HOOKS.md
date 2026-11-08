@@ -3,6 +3,37 @@
 Deterministic safety layer. Hooks fire regardless of agent intent. Cannot be
 disabled by the agent.
 
+## Wiring into Claude Code
+
+Claude Code runs a hook only when `.claude/settings.json` names it. `devops init`
+copies the hooks to `.claude/hooks/` and merges an entry into `.claude/settings.json`
+for each hook it can wire as a bare command (specs/release/npm-package.md REQ-15,
+AC-27). It keeps every other key and hook in that file, never adds an entry that is
+already there, and records what it added in the install manifest, so `devops uninstall`
+removes only those entries.
+
+| Hook | Event | Matcher |
+|------|-------|---------|
+| `load-baton.sh` | `SessionStart` | `*` |
+| `write-baton.sh` | `SessionEnd` | `*` |
+
+Every other copied hook is named by `devops init` with its reason and is not wired:
+
+- `block-secrets.sh`, `block-prod-write.sh`, `block-rm-rf.sh`, `block-new-dependency.sh`,
+  `budget-brake.sh`, `loop-detection.sh`, `auto-format.sh`, `gitleaks-scan.sh`,
+  `sync-lr-refined-date.sh` take their input (a path, a command, a cost, a tool name or
+  a changed file) as an argument. Claude Code passes a hook no argument, so run as a bare
+  command these hooks check nothing; `loop-detection.sh` exits 2 and blocks every call.
+  Wiring them needs a wrapper or a change so the hook reads the tool call on stdin.
+- `deploy-gate.sh` and `block-sealed-refs.sh` need `--payload-stdin`.
+- `client-boundary.sh` is not registered by default.
+- `external-content-boundary.sh`, `rotate-session-key.sh` and `graph-preflight.sh` have
+  no event mapping yet.
+
+To wire another hook by hand, add its entry to `.claude/settings.json` in the same
+format, and only after you have made sure the hook gets the input it needs. This
+repository's own `.claude/settings.json` is a working example.
+
 ## Universal hooks
 
 ### Pre-tool (fire before every tool call)

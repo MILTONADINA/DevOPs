@@ -89,10 +89,20 @@ export function readManifest(root) {
     && name.length > 0 && name.length <= 128 && plain(entry)
     && Object.keys(entry).sort().join(',') === 'created_file,sha256'
     && hex(entry.sha256) && typeof entry.created_file === 'boolean');
+  // REQ-15 (#418): the hook entries init added to .claude/settings.json. `sha256` is of the
+  // inner hook object. `command` is only ever a hook init copies, so it stays under .claude/hooks/.
+  const claudeHooks = v => Array.isArray(v) && v.every(entry => plain(entry)
+    && Object.keys(entry).sort().join(',') === 'command,event,matcher,sha256'
+    && typeof entry.event === 'string' && /^[A-Za-z]{1,40}$/.test(entry.event)
+    && typeof entry.matcher === 'string' && entry.matcher.length <= 256
+    && typeof entry.command === 'string' && /^\.claude\/hooks\/[A-Za-z0-9._-]{1,128}$/.test(entry.command)
+    && hex(entry.sha256));
   const ok = plain(data) && data.schema_version === SCHEMA_VERSION && plain(data.files) && Array.isArray(data.dirs)
     && typeof data.adopted === 'boolean'
     && (data.mcp_servers === undefined || mcpServers(data.mcp_servers))
-    && Object.keys(data).every(k => ['schema_version', 'adopted', 'files', 'dirs', 'mcp_servers'].includes(k))
+    && (data.claude_hooks === undefined || claudeHooks(data.claude_hooks))
+    && (data.claude_hooks_created_file === undefined || typeof data.claude_hooks_created_file === 'boolean')
+    && Object.keys(data).every(k => ['schema_version', 'adopted', 'files', 'dirs', 'mcp_servers', 'claude_hooks', 'claude_hooks_created_file'].includes(k))
     && data.dirs.every(ownDir)
     && Object.entries(data.files).every(([key, entry]) => ownFile(key) && plain(entry)
       && Object.keys(entry).every(k => ['original', 'written', 'edited'].includes(k))
@@ -225,6 +235,27 @@ export function openManifest(root) {
       if (!data.mcp_servers || !Object.hasOwn(data.mcp_servers, name)) return;
       delete data.mcp_servers[name];
       if (Object.keys(data.mcp_servers).length === 0) delete data.mcp_servers;
+      api.save({ keepPending: true });
+    },
+    /**
+     * Records the `.claude/settings.json` hook entries `init` is about to add (#418). The file
+     * itself is not a recorded file: the user's own settings share it. `createdFile` is kept from
+     * the first record, so a later run never claims a file an earlier run found.
+     */
+    claudeHooks(entries, createdFile) {
+      const commands = new Set(entries.map(entry => entry.command));
+      data.claude_hooks = [...(data.claude_hooks ?? []).filter(entry => !commands.has(entry.command)), ...entries];
+      data.claude_hooks_created_file ??= createdFile;
+      api.save({ keepPending: true });
+    },
+    /** Drops the records of settings.json hook entries whose write failed. */
+    forgetClaudeHooks(commands) {
+      if (!data.claude_hooks) return;
+      data.claude_hooks = data.claude_hooks.filter(entry => !commands.includes(entry.command));
+      if (data.claude_hooks.length === 0) {
+        delete data.claude_hooks;
+        delete data.claude_hooks_created_file;
+      }
       api.save({ keepPending: true });
     },
     /** Records a folder DevOPs is about to create (with mkdir -p) when it is absent. */

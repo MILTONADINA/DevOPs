@@ -288,7 +288,7 @@ test(`the summary names the copied Claude Code hooks that settings.json does not
     writeFileSync(path.join(dir, '.claude', 'settings.json'), JSON.stringify({ hooks: { PreToolUse: [{ hooks: [{ type: 'command', command: 'bash .claude/hooks/block-secrets.sh' }] }] } }));
     const result = runInit(dir, [], { STUB_COPY_HOOKS: 'block-secrets.sh,budget-brake.sh' });
     assert.equal(result.status, 0, result.stderr);
-    assert.match(claudeLine(result.stdout), /2 copied to \.claude\/hooks\/; 1 not referenced by \.claude\/settings\.json, so Claude Code does not run them: budget-brake\.sh\./);
+    assert.match(claudeLine(result.stdout), /2 copied to \.claude\/hooks\/; 1 named by \.claude\/settings\.json or settings\.local\.json; 1 not named there/);
     assert.equal(gateLine(result.stdout), '  pre-commit gate: installed at .git/hooks/pre-commit');
   });
   withTempDir((dir) => {
@@ -296,7 +296,7 @@ test(`the summary names the copied Claude Code hooks that settings.json does not
     mkdirSync(path.join(dir, '.claude'), { recursive: true });
     writeFileSync(path.join(dir, '.claude', 'settings.local.json'), '{"hooks":{"x":"bash .claude/hooks/block-secrets.sh"}}');
     const result = runInit(dir, [], { STUB_COPY_HOOKS: 'block-secrets.sh' });
-    assert.match(claudeLine(result.stdout), /1 copied to \.claude\/hooks\/, and Claude Code's settings reference each/);
+    assert.match(claudeLine(result.stdout), /1 copied to \.claude\/hooks\/; 1 named by \.claude\/settings\.json or settings\.local\.json; 0 not named there/);
   });
 });
 

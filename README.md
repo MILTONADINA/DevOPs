@@ -293,13 +293,16 @@ release's file) is first copied to `.workflow/state/backups/<UTC stamp>/` and
 named on a `↻ Replaced` line, and `devops analyze` does the same for
 `.workflow/profile.yml`.
 Each skill is checked against its signed manifest entry first, and an edited
-or unsigned skill stops the install. It does not write `.claude/settings.json`,
-so the copied hook scripts run only after you wire them there (this
-repository's own `.claude/settings.json` is a working example; `docs/HOOKS.md`
-lists what each hook does). `devops init` ends with a "Safety gates" summary. It
-says where the pre-commit hook went or why there is none, and names the copied hook
-scripts that Claude Code does not run yet. Other coding agents read `AGENTS.md`; see
-the note at the top of this file about which adapters exist.
+or unsigned skill stops the install. It merges entries into `.claude/settings.json`
+for the copied hooks that Claude Code can run as a bare command (today:
+`load-baton.sh` at session start and `write-baton.sh` at session end), keeps every
+other key and hook in that file, and records what it added so `devops uninstall`
+removes only those entries. The other copied hooks take their input as an argument,
+which Claude Code does not pass, so init names each one with its reason and does not
+wire it; `docs/HOOKS.md` lists each hook and why. `devops init` ends with a "Safety
+gates" summary. It says where the pre-commit hook went or why there is none, and
+how many copied hooks are wired and how many are not. Other coding agents read
+`AGENTS.md`; see the note at the top of this file about which adapters exist.
 
 `devops init` and `devops analyze` record every file they write in
 `.workflow/state/install-manifest.json`, keeping a copy of any file that was there before

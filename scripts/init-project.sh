@@ -150,27 +150,25 @@ HOOK
     fi
 fi
 
-# Claude Code runs a hook script only when .claude/settings.json (or settings.local.json)
-# names it; init copies the scripts but does not edit those files.
+# Claude Code runs a hook script only when .claude/settings.json names it. install.ts wires the
+# hooks it can (and prints each one it did not wire, with its reason, above); this line counts them.
 claude_hooks=""
 if [[ "$DRY_RUN" != 1 ]]; then
     shopt -s nullglob
     copied=("$PROJECT"/.claude/hooks/*.sh)
     shopt -u nullglob
-    unwired=()
+    wired=0
     # ${a[@]+"${a[@]}"}: an empty array under `set -u` in macOS's bash 3.2.
     for script in ${copied[@]+"${copied[@]}"}; do
         name="$(basename "$script")"
-        if ! grep -qsF "$name" "$PROJECT/.claude/settings.json" "$PROJECT/.claude/settings.local.json"; then
-            unwired+=("$name")
+        if grep -qsF ".claude/hooks/$name\"" "$PROJECT/.claude/settings.json" "$PROJECT/.claude/settings.local.json"; then
+            wired=$((wired + 1))
         fi
     done
     if (( ${#copied[@]} == 0 )); then
         claude_hooks="none copied"
-    elif (( ${#unwired[@]} == 0 )); then
-        claude_hooks="${#copied[@]} copied to .claude/hooks/, and Claude Code's settings reference each"
     else
-        claude_hooks="${#copied[@]} copied to .claude/hooks/; ${#unwired[@]} not referenced by .claude/settings.json, so Claude Code does not run them: ${unwired[*]}. $DEVOPS_ROOT/docs/HOOKS.md shows how to wire them"
+        claude_hooks="${#copied[@]} copied to .claude/hooks/; $wired named by .claude/settings.json or settings.local.json; $(( ${#copied[@]} - wired )) not named there (listed above; $DEVOPS_ROOT/docs/HOOKS.md says why)"
     fi
 fi
 
