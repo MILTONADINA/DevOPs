@@ -161,8 +161,8 @@ EOF
 
 # Log. The session id is caller-supplied text, so it is escaped (issue #426). The two counts are
 # written as bare JSON numbers, so anything that is not digits is logged as 0.
-case "$VERIFIED_COUNT" in ''|*[!0-9]*) VERIFIED_COUNT=0 ;; esac
-case "$OPEN_BLOCKERS" in ''|*[!0-9]*) OPEN_BLOCKERS=0 ;; esac
+[[ "$VERIFIED_COUNT" =~ ^[0-9]+$ ]] || VERIFIED_COUNT=0
+[[ "$OPEN_BLOCKERS" =~ ^[0-9]+$ ]] || OPEN_BLOCKERS=0
 printf '{"ts":%s,"event":"session_end","session_id":"%s","verified_claims":%s,"open_blockers":%s}\n' \
     "$(date -u +%s)" "$(json_escape "$SESSION_ID")" "$VERIFIED_COUNT" "$OPEN_BLOCKERS" >> .workflow/state/events.jsonl
 
