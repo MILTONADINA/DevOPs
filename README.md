@@ -296,8 +296,8 @@ Each skill is checked against its signed manifest entry first, and an edited
 or unsigned skill stops the install. It merges entries into `.claude/settings.json`
 for the safety hooks it copies: the Bash gates (`deploy-gate.sh`, `block-sealed-refs.sh`,
 `block-prod-write.sh`, `block-rm-rf.sh`, `block-new-dependency.sh`), `block-secrets.sh`
-on file reads and writes, `gitleaks-scan.sh` after writes, and the baton hooks at session
-start and end. The tool-call hooks run through `.claude/hooks/run-hook.mjs`, which reads
+on file reads and writes, `gitleaks-scan.sh` after writes, and `load-baton.sh` at session
+start. The tool-call hooks run through `.claude/hooks/run-hook.mjs`, which reads
 the tool call Claude Code sends on stdin and gives each hook the input it takes; a gate
 that fails for any reason, or a `node` missing from Claude Code's PATH, blocks the call.
 Init keeps every other key and hook in that file, and records what it added so

@@ -1,7 +1,13 @@
 # Hooks Reference
 
-Deterministic safety layer. Hooks fire regardless of agent intent. Cannot be
-disabled by the agent.
+Deterministic safety layer. Hooks fire on the tool calls Claude Code sends them, whatever the
+agent intends.
+
+Limitation: the agent's own Write and Edit tools can change `.claude/settings.json`,
+`.claude/hooks/` and `.workflow/state/approvals.jsonl`. Only `block-secrets.sh` checks file-tool
+calls among the wired hooks, and it does not guard those paths. No wired hook blocks a write to
+them, from a file tool or from Bash. A Bash `cat` of a secret file is not checked by
+`block-secrets.sh`.
 
 ## Wiring into Claude Code
 
@@ -21,8 +27,9 @@ tool call that Claude Code sends on stdin and gives the hook the input it takes:
 
 - `stdin`: the hook gets `--payload-stdin` and the raw payload bytes;
 - `command`: the hook gets `tool_input.command` as one argument;
-- `file`: the hook gets `tool_input.file_path`, else `tool_input.notebook_path`, else
-  `tool_response.filePath`, as one argument.
+- `file`: the hook runs once for each distinct non-empty one of `tool_input.file_path`,
+  `tool_input.notebook_path`, `tool_input.path` and `tool_response.filePath`, with that string as
+  its one argument. For `pre`, the first non-zero result decides.
 
 A call whose field is absent or empty has nothing to check: the runner exits 0 without
 running the hook. The runner is Node only, with no dependencies, and runs each hook with
@@ -48,10 +55,9 @@ so Claude Code shows the leak.
 | `block-secrets.sh` | `PreToolUse` | `Read\|Write\|Edit\|MultiEdit\|NotebookEdit` | file |
 | `gitleaks-scan.sh` | `PostToolUse` | `Write\|Edit\|MultiEdit` | file |
 | `load-baton.sh` | `SessionStart` | none | (plain command) |
-| `write-baton.sh` | `SessionEnd` | none | (plain command) |
 
-`load-baton.sh` and `write-baton.sh` are named as `bash "${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/<hook>" || true`
-and have no matcher.
+`load-baton.sh` is named as `cd "${CLAUDE_PROJECT_DIR:-.}" && bash .claude/hooks/load-baton.sh || true`
+and has no matcher. The `cd` makes it read the project root's baton, and create `.workflow/` only there.
 
 Every other copied hook is named by `devops init` with its reason and is not wired:
 
@@ -62,6 +68,7 @@ Every other copied hook is named by `devops init` with its reason and is not wir
 - `client-boundary.sh`: not registered by default.
 - `external-content-boundary.sh`: its HMAC check needs the session key from `rotate-session-key.sh`, which is not wired.
 - `rotate-session-key.sh`: rotates the session key that `external-content-boundary.sh` checks; not wired while that hook is not.
+- `write-baton.sh`: overwrites a hand-written baton; write it with `/checkpoint` instead.
 - `graph-preflight.sh`: part of the Agile Graph pipeline, which the npm package excludes.
 
 To wire another hook by hand, add its entry to `.claude/settings.json` in the same
