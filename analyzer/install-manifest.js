@@ -17,11 +17,11 @@
 // The manifest sits in the project, so a cloned repository can commit one: every
 // path in it is checked before use, and a manifest of another schema is refused.
 
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { PIN_TARGET } from './agile-graph.js';
-import { UnsafeWriteError, assertInside, present, writeInside } from './safe-write.js';
+import { UnsafeWriteError, assertInside, mkdirInside, present, writeInside } from './safe-write.js';
 
 export const MANIFEST = '.workflow/state/install-manifest.json';
 export const ORIGINALS = '.workflow/state/originals';
@@ -123,7 +123,13 @@ export function readManifest(root) {
     && (data.claude_hooks === undefined || claudeHooks(data.claude_hooks))
     && (data.claude_hooks_created_file === undefined || (typeof data.claude_hooks_created_file === 'boolean'
       && Array.isArray(data.claude_hooks) && data.claude_hooks.length > 0))
-    && Object.keys(data).every(k => ['schema_version', 'adopted', 'files', 'dirs', 'mcp_servers', 'claude_hooks', 'claude_hooks_created_file'].includes(k))
+    // #426: the events and the `hooks` object init created, so uninstall deletes only those when emptied.
+    && (data.claude_hooks_created_events === undefined || (Array.isArray(data.claude_hooks_created_events)
+      && data.claude_hooks_created_events.every(e => typeof e === 'string' && /^[A-Za-z]{1,40}$/.test(e))
+      && Array.isArray(data.claude_hooks) && data.claude_hooks.length > 0))
+    && (data.claude_hooks_created_object === undefined || (typeof data.claude_hooks_created_object === 'boolean'
+      && Array.isArray(data.claude_hooks) && data.claude_hooks.length > 0))
+    && Object.keys(data).every(k => ['schema_version', 'adopted', 'files', 'dirs', 'mcp_servers', 'claude_hooks', 'claude_hooks_created_file', 'claude_hooks_created_events', 'claude_hooks_created_object'].includes(k))
     && data.dirs.every(ownDir)
     && Object.entries(data.files).every(([key, entry]) => ownFile(key) && plain(entry)
       && Object.keys(entry).every(k => ['original', 'written', 'edited'].includes(k))
@@ -172,6 +178,115 @@ export function replaceWhole(base, target, bytes, { exclusive = false, temp = `$
     fs.linkSync(tempFile, file);
     fs.unlinkSync(tempFile);
   } else fs.renameSync(tempFile, file);
+}
+
+/**
+ * Writes `bytes` over `target` whole, as replaceWhole does, but through a temp file this call
+ * creates exclusively (`wx`) under a name with the pid and random bytes, so a `.tmp` file that is
+ * already in the folder is never read, overwritten or removed. The new file keeps the old one's
+ * permissions. When the write fails, only the temp file this call created is removed.
+ */
+export function replaceWholeUnique(base, target, bytes) {
+  const file = path.join(base, target);
+  assertInside(base, file);
+  let mode;
+  try {
+    const stat = fs.lstatSync(file);
+    if (stat.isFile()) mode = stat.mode & 0o7777;
+  } catch {
+    /* no file yet: the default mode */
+  }
+  mkdirInside(base, path.dirname(file));
+  let temp = null;
+  let fd = null;
+  for (let attempt = 0; fd === null; attempt++) {
+    const name = path.join(path.dirname(file), `.${path.basename(file)}.${process.pid}.${randomBytes(8).toString('hex')}.tmp`);
+    try {
+      fd = fs.openSync(name, 'wx', mode ?? 0o644);
+      temp = name;
+    } catch (error) {
+      if (error.code !== 'EEXIST' || attempt >= 9) throw error;
+    }
+  }
+  let closed = false;
+  try {
+    if (!fs.fstatSync(fd).isFile()) throw new UnsafeWriteError(`refusing to write to a non-regular file: ${target}`);
+    fs.writeFileSync(fd, bytes);
+    if (mode !== undefined) fs.fchmodSync(fd, mode);
+    fs.fsyncSync(fd);
+    closed = true;
+    fs.closeSync(fd);
+    fs.renameSync(temp, file);
+    temp = null;
+  } finally {
+    if (!closed) {
+      try {
+        fs.closeSync(fd);
+      } catch {
+        /* already closed */
+      }
+    }
+    if (temp !== null) fs.rmSync(temp, { force: true });
+  }
+}
+
+/**
+ * The text to write for `config` in place of `original` (the text it was read from, or null for a
+ * new file). Indented as the original is: a tab when its first indented line starts with one,
+ * else that line's spaces, and 2 spaces when there is no indented line. The trailing newline is
+ * kept when the original had one; a new file gets one. CRLF line ends are kept when the original's
+ * first line ends in one.
+ */
+export function jsonText(config, original) {
+  const text = original ?? null;
+  const first = text === null ? null : /^([ \t]+)\S/m.exec(text);
+  const indent = first === null ? '  ' : first[1].includes('\t') ? '\t' : ' '.repeat(first[1].length);
+  const newline = text === null || text.endsWith('\n') ? '\n' : '';
+  const out = `${JSON.stringify(config, null, indent)}${newline}`;
+  return text !== null && /^[^\n]*\r\n/.test(text) ? out.replace(/\n/g, '\r\n') : out;
+}
+
+/** A number literal as sign, significant digits and exponent, so `1.50e1` and `15` compare equal. */
+function decimalValue(literal) {
+  const [, sign, int, frac = '', exp = '0'] = /^(-?)(\d+)(?:\.(\d+))?(?:[eE]([+-]?\d+))?$/.exec(literal);
+  let digits = (int + frac).replace(/^0+/, '');
+  if (digits === '') return `${sign}0`;
+  let power = BigInt(exp) - BigInt(frac.length);
+  const trimmed = digits.replace(/0+$/, '');
+  power += BigInt(digits.length - trimmed.length);
+  digits = trimmed;
+  return `${sign}${digits}e${power}`;
+}
+
+/**
+ * True when the JSON text has a number literal outside a string that JSON.parse would not keep
+ * exactly: an integer above 2^53 that rounds, a decimal with more digits than a double holds, or
+ * a value too large that becomes Infinity (written back as null), or -0 (written back as 0). A
+ * literal that only changes spelling, such as `1.0` or `1e2`, is kept. Text inside strings is skipped.
+ */
+export function hasUnsafeInteger(text) {
+  const number = /-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/y;
+  let i = 0;
+  while (i < text.length) {
+    const ch = text[i];
+    if (ch === '"') {
+      i++;
+      while (i < text.length && text[i] !== '"') i += text[i] === '\\' ? 2 : 1;
+      i++;
+      continue;
+    }
+    number.lastIndex = i;
+    const match = ch === '-' || (ch >= '0' && ch <= '9') ? number.exec(text) : null;
+    if (match === null) {
+      i++;
+      continue;
+    }
+    const literal = match[0];
+    const value = Number(literal);
+    if (!Number.isFinite(value) || decimalValue(literal) !== decimalValue(Object.is(value, -0) ? '0' : String(value))) return true;
+    i += literal.length;
+  }
+  return false;
 }
 
 export const ADOPTED_NOTICE = 'Install manifest: started in a project an earlier DevOPs installed into; files that release wrote are recorded as originals.';
@@ -261,12 +376,22 @@ export function openManifest(root) {
     /**
      * Records the `.claude/settings.json` hook entries `init` is about to add (#418). The file
      * itself is not a recorded file: the user's own settings share it. `createdFile` is kept from
-     * the first record, so a later run never claims a file an earlier run found.
+     * the first record, so a later run never claims a file an earlier run found. `createdEvents`
+     * are the events whose array this run created, and `createdObject` says it created `hooks`
+     * (#426): uninstall deletes those only once its own removal empties them.
      */
-    claudeHooks(entries, createdFile) {
+    claudeHooks(entries, createdFile, createdEvents, createdObject) {
       const commands = new Set(entries.map(entry => entry.command));
+      const legacy = data.claude_hooks_created_events === undefined && (data.claude_hooks?.length ?? 0) > 0;
       data.claude_hooks = [...(data.claude_hooks ?? []).filter(entry => !commands.has(entry.command)), ...entries];
       data.claude_hooks_created_file ??= createdFile;
+      // Both are always written for a new record. A manifest that already has entries but not these
+      // fields is from 0.8.x: it stays that way, so uninstall keeps that release's cleanup for the
+      // arrays 0.8.x created, which this run cannot know about.
+      if (!legacy) {
+        data.claude_hooks_created_events = [...new Set([...(data.claude_hooks_created_events ?? []), ...createdEvents])];
+        data.claude_hooks_created_object = data.claude_hooks_created_object === true || createdObject;
+      }
       api.save({ keepPending: true });
     },
     /** Drops the records of settings.json hook entries whose write failed. */
@@ -276,6 +401,8 @@ export function openManifest(root) {
       if (data.claude_hooks.length === 0) {
         delete data.claude_hooks;
         delete data.claude_hooks_created_file;
+        delete data.claude_hooks_created_events;
+        delete data.claude_hooks_created_object;
       }
       api.save({ keepPending: true });
     },

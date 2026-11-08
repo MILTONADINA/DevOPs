@@ -8,7 +8,7 @@ import { appendFileSync, chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, 
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { writeStubGit } from './fixtures/stub-git.mjs';
-import { HOOK_KEY, MANIFEST, ORIGINALS, openManifest, ownFile, readManifest, validKey } from '../analyzer/install-manifest.js';
+import { HOOK_KEY, MANIFEST, ORIGINALS, hasUnsafeInteger, jsonText, openManifest, ownFile, readManifest, validKey } from '../analyzer/install-manifest.js';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 const CLI = path.join(ROOT, 'scripts/devops-cli.js');
@@ -433,3 +433,31 @@ test(`a SIGTERM during signature verification keeps the records of the files alr
   }
 });
 
+
+// #426: settings.json is rewritten only when every number in it survives JSON.parse exactly.
+test(`hasUnsafeInteger flags numbers JSON.parse would change, and only those (${SPEC}#ac-27)`, () => {
+  for (const lossy of ['9007199254740993', '-9007199254740993', '9007199254740993.0', '9007199254740993e0', '1e999', '1E400', '-1e400', '12345678901234567890.5', '3.14159265358979323846', '-0', '-0.0', '1e-999', '2.4703282292062328e-324'])
+    assert.equal(hasUnsafeInteger(`{"a": ${lossy}}`), true, lossy);
+  for (const exact of ['9007199254740992', '100000000000000000000', '1.0', '1e2', '0.1', '0', '0e999', '100e-2', '1.10', '0.0001000', '5e-324', '2.5e-7', '-17', '123'])
+    assert.equal(hasUnsafeInteger(`{"a": ${exact}}`), false, exact);
+  assert.equal(hasUnsafeInteger('{"s": "9007199254740993 \\" 1e999", "t": "\\\\"}'), false, 'digits inside strings, after escapes, are skipped');
+});
+
+test(`jsonText keeps tab or space indentation, the trailing newline and CRLF line ends (${SPEC}#ac-27)`, () => {
+  assert.equal(jsonText({ a: 1 }, null), '{\n  "a": 1\n}\n');
+  assert.equal(jsonText({ a: 1 }, '{\n\t"a": 0\n}'), '{\n\t"a": 1\n}');
+  assert.equal(jsonText({ a: 1 }, '{\n    "a": 0\n}\n'), '{\n    "a": 1\n}\n');
+  assert.equal(jsonText({ a: 1 }, '{\r\n  "a": 0\r\n}\r\n'), '{\r\n  "a": 1\r\n}\r\n');
+  assert.equal(jsonText({ a: 1 }, '{\n  "a": 0,\r\n  "b": 1\n}\n'), '{\n  "a": 1\n}\n', 'an odd CRLF after an LF first line does not switch the file');
+});
+
+test(`claude_hooks_created_events and claude_hooks_created_object need a non-empty claude_hooks (${SPEC}#ac-27)`, () => {
+  withProject(dir => {
+    mkdirSync(path.join(dir, '.workflow/state'), { recursive: true });
+    for (const extra of [{ claude_hooks_created_events: [] }, { claude_hooks_created_object: false }, { claude_hooks_created_events: ['Pre Tool'] }]) {
+      const manifest = { ...hookManifest(extra.claude_hooks_created_events?.[0] === 'Pre Tool' ? [hookEntry('SessionStart', hookCmd.plain('load-baton.sh'))] : []), ...extra };
+      writeFileSync(path.join(dir, MANIFEST), JSON.stringify(manifest));
+      assert.throws(() => readManifest(dir), /has an unknown schema or a path outside the project/, JSON.stringify(extra));
+    }
+  });
+});
