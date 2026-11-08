@@ -10,6 +10,8 @@ const ROOT = path.resolve(import.meta.dirname, '..');
 const CLI = path.join(ROOT, 'scripts/devops-cli.js');
 const SPEC = 'specs/release/npm-package.md';
 const FILES = ['PRINCIPLES.md', 'ANTIPATTERNS.md', 'LOOP.md'];
+const VERSION = JSON.parse(readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version;
+const REPO_BLOB = `https://github.com/MILTONADINA/DevOPs/blob/v${VERSION}`;
 
 function withProject(fn) {
   const dir = realpathSync(mkdtempSync(path.join(tmpdir(), 'init-282-')));
@@ -61,7 +63,7 @@ for (const relative of ['node_modules/@miltonadina/devops', 'vendor/live devops'
         const expected = `${relative}/constitution/${file}`;
         assert.ok(reads.includes(expected), agents);
         assert.ok(existsSync(path.join(dir, expected)), expected);
-        assert.ok(stdout.includes(expected), stdout);
+        assert.ok(stdout.includes(`${REPO_BLOB}/constitution/${file}`), stdout); // #420: named by URL in the closing text
       }
       assert.ok(!existsSync(path.join(dir, 'constitution')));
     });
@@ -74,12 +76,13 @@ for (const targetForm of ['--target', '--target=']) {
       const stdout = init(ROOT, targetForm === '--target' ? [targetForm, dir] : [`${targetForm}${dir}`], ROOT);
       const agents = readFileSync(path.join(dir, 'AGENTS.md'), 'utf8');
       const steps = stdout.slice(stdout.indexOf('First steps in the agent:'));
-      for (const text of [agents, steps]) {
-        assert.ok(text.includes('@miltonadina/devops'), text);
-        for (const file of FILES) {
-          assert.ok(text.includes(`constitution/${file}`), text);
-          assert.ok(!text.includes(`${ROOT}/constitution/${file}`), text);
-        }
+      assert.ok(agents.includes('@miltonadina/devops'), agents);
+      for (const file of FILES) {
+        assert.ok(agents.includes(`constitution/${file}`), agents);
+        assert.ok(!agents.includes(`${ROOT}/constitution/${file}`), agents);
+        // #420: the printed steps name the constitution by its GitHub URL at the release tag.
+        assert.ok(steps.includes(`${REPO_BLOB}/constitution/${file}`), steps);
+        assert.ok(!steps.includes(`${ROOT}/constitution/${file}`), steps);
       }
       assert.ok(!existsSync(path.join(dir, 'constitution')));
     });
@@ -201,22 +204,21 @@ for (const inside of [true, false]) {
     withProject(dir => {
       if (inside) installPackage(dir, PACKAGE_DIR);
       const steps = printedSteps(init(dir, [], inside ? undefined : ROOT));
+      // #420: package files are named by GitHub URL at the release tag; each path must exist in this repository.
+      const urls = [...steps.matchAll(/https:\/\/github\.com\/\S+/g)].map(m => m[0].replace(/[.,;:)]+$/, ''));
+      assert.ok(urls.length >= 5, steps);
+      for (const u of urls) {
+        assert.ok(u.startsWith(`${REPO_BLOB}/`), u);
+        const p = u.slice(REPO_BLOB.length + 1);
+        assert.ok(existsSync(path.join(ROOT, p)) && shipped(p), `${p} ships in the package:\n${steps}`);
+      }
       const files = [...steps.matchAll(/`([^`\s]+)`/g)].map(m => m[1])
-        .filter(p => p !== '@miltonadina/devops' && (p.includes('/') || /\.(md|ya?ml|json|sh)$/.test(p)));
-      assert.ok(files.length >= 6, steps);
-      let fromPackage = 0;
+        .filter(p => p.includes('/') || /\.(md|ya?ml|json|sh)$/.test(p));
+      assert.ok(files.length >= 2, steps);
       for (const p of files) {
         if (p === '.workflow/client/profile.yml') continue; // the step says to create it
-        const inPackage = inside && p.startsWith(`${PACKAGE_DIR}/`) ? p.slice(PACKAGE_DIR.length + 1)
-          : !inside && steps.includes(`\`${p}\` in the \`@miltonadina/devops\` package`) ? p : null;
-        if (inPackage === null) {
-          assert.ok(existsSync(path.join(dir, p)), `${p} exists in the project:\n${steps}`);
-        } else {
-          fromPackage++;
-          assert.ok(existsSync(path.join(ROOT, inPackage)) && shipped(inPackage), `${inPackage} ships in the package:\n${steps}`);
-        }
+        assert.ok(existsSync(path.join(dir, p)), `${p} exists in the project:\n${steps}`);
       }
-      assert.ok(fromPackage >= 5, `the constitution and command files are named in the package:\n${steps}`);
       // Init installs no slash commands: a command is named only with the plugin it needs.
       for (const line of steps.split('\n').filter(l => /(^|[\s(])\/[a-z][a-z-]+\b/.test(l)))
         assert.match(line, /with the (DevOPs Claude Code )?plugin installed/, line);

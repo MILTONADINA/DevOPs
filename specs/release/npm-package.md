@@ -195,11 +195,7 @@ differ, THEN it SHALL fail and print the differing entries.
 
 ### REQ-14 — Init's printed steps name only files that exist
 
-WHEN `devops init` finishes, THE SYSTEM SHALL name in its "Next steps" and "First steps
-in the agent" only files that exist in the project or in the installed package, naming a
-package file by its path from the project when the package is inside it and otherwise as
-`` `<path>` in the `@miltonadina/devops` package ``. THE SYSTEM SHALL NOT tell the user to
-run a slash command that init did not install (#352).
+WHEN `devops init` finishes, or runs as a dry run, THE SYSTEM SHALL print the same "Next steps" and "First steps in the agent" text, and every file it names there SHALL be a GitHub URL of the form `https://github.com/MILTONADINA/DevOPs/blob/v<version>/<path>`, where `<version>` is the installed package's version and `<path>` exists in the repository at that release (#352, #420). THE SYSTEM SHALL NOT tell the user to run a slash command that init did not install; a command is named only with the plugin that provides it. The "Next steps" SHALL say which files to commit (AGENTS.md, CLAUDE.md, `.claude/`, `.workflow/profile.yml`) and that `.workflow/state/` stays local, naming the `.gitignore` entries init adds (`.workflow/state/install-manifest.json`, `.workflow/state/originals/`).
 
 ### REQ-15 — Init and analyze record what they write
 
@@ -455,8 +451,7 @@ section, and names only source files that exist. A file that is not named is rep
 
 **Given** a project with the package installed under `node_modules/@miltonadina/devops`,
 and one using a package outside the project **When** `devops init` runs **Then** every
-backticked path in its "Next steps" and "First steps in the agent" exists from the project
-or from the package root, except `.workflow/client/profile.yml`, which the steps tell the
+URL in its "Next steps" and "First steps in the agent" is a `https://github.com/MILTONADINA/DevOPs/blob/v<version>/<path>` URL whose `<path>` exists in the repository and ships in the package, and every other backticked path exists from the project, except `.workflow/client/profile.yml`, which the steps tell the
 user to create; and no step tells the user to run a command such as `/checkpoint`.
 
 **Verified by:** `tests/init-agent-bootstrap.test.mjs`.
