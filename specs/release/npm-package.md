@@ -454,7 +454,7 @@ and one using a package outside the project **When** `devops init` runs **Then**
 URL in its "Next steps" and "First steps in the agent" is a `https://github.com/MILTONADINA/DevOPs/blob/v<version>/<path>` URL whose `<path>` exists in the repository and ships in the package, and every other backticked path exists from the project, except `.workflow/client/profile.yml`, which the steps tell the
 user to create; and no step tells the user to run a command such as `/checkpoint`.
 
-**Verified by:** `tests/init-agent-bootstrap.test.mjs`.
+**Verified by:** `tests/init-agent-bootstrap.test.mjs`, `tests/init-closing-urls.test.mjs`.
 
 ### AC-20
 
