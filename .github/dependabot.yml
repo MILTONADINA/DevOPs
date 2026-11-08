@@ -30,6 +30,10 @@ updates:
     labels:
       - "dependencies"
     versioning-strategy: increase-if-necessary
+    # Majors are deferred (tests/dependency-updates.test.mjs, issue #209) and land as deliberate stories; security updates are not affected by ignore rules.
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
     groups:
       npm-root:
         patterns:
@@ -50,6 +54,18 @@ updates:
     labels:
       - "dependencies"
     versioning-strategy: increase-if-necessary
+    # Held versions, checked by tests/dependency-updates.test.mjs; lift a hold there first.
+    ignore:
+      # Majors are deferred (tests/dependency-updates.test.mjs, issue #209) and land as deliberate stories; security updates are not affected by ignore rules.
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+      # typescript-eslint 8.56 and later need Node ^22.13; the runtime supports >=22.12.0.
+      - dependency-name: "@typescript-eslint/eslint-plugin"
+        versions: [">8.55.0"]
+      - dependency-name: "@typescript-eslint/parser"
+        versions: [">8.55.0"]
+      # Must match the exact pin in @huggingface/transformers; it moves with transformers.
+      - dependency-name: "onnxruntime-node"
     groups:
       npm-runtime:
         patterns:

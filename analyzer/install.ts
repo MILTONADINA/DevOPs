@@ -26,7 +26,8 @@ import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { linkAgileGraph } from './agile-graph.js';
-import { UnsafeWriteError, copyInside, mkdirInside, present, writeInside } from './safe-write.js';
+import { ADOPTED_NOTICE, LOCAL_STATE_IGNORES, ignoreLines, openManifest } from './install-manifest.js';
+import { UnsafeWriteError, backupIfChanged, copyInside, freshBackupStamp, mkdirInside, present, writeInside } from './safe-write.js';
 
 // specs/release/npm-package.md REQ-2: DEVOPS_ROOT if set, else the package this file
 // ships in (analyzer/ sits directly under the package root).
@@ -194,18 +195,64 @@ function logDecision(targetRoot: string, decision: 'pass' | 'fail' | 'overridden
   };
   if (signedBy) entry.signed_by = signedBy;
   if (rationale && decision === 'overridden') entry.rationale = rationale;
-  writeInside(targetRoot, logPath, JSON.stringify(entry) + '\n', { append: true });
+  recorded(targetRoot, logPath, () => writeInside(targetRoot, logPath, JSON.stringify(entry) + '\n', { append: true }));
 }
 
 // ─── copy primitives (preserved) ─────────────────────────────────────────
 
 // specs/phase-2/F-skill-provenance.md REQ-F10: every destination is inside
 // `root`, and no write, append or mode change follows a symlink out of it.
+// REQ-F11 (#349): a destination whose bytes differ from the packaged copy (a
+// local edit, or an older release's file) is backed up before it is replaced.
+// DEVOPS_BACKUP_STAMP, when it is a valid stamp, names the run's folder.
+let backupStampOfRun: string | undefined;
+function runBackupStamp(root: string): string {
+  backupStampOfRun ??= /^[0-9TZ-]+$/.test(process.env.DEVOPS_BACKUP_STAMP ?? '')
+    ? process.env.DEVOPS_BACKUP_STAMP!
+    : freshBackupStamp(root);
+  return backupStampOfRun;
+}
+const backedUp: string[] = [];
+
+// specs/release/npm-package.md REQ-15 (#353): every file a real (not dry) run
+// writes is recorded in .workflow/state/install-manifest.json, so uninstall can
+// remove it and restore what was there. Saved when the process ends, even on an
+// early exit, so a half-finished run is still recorded.
+let record: ReturnType<typeof openManifest> | null = null;
+const keyOf = (root: string, file: string) => path.relative(root, file).split(path.sep).join('/');
+function recorded(root: string, file: string, write: () => void) {
+  record?.before(keyOf(root, file));
+  try {
+    write();
+  } finally {
+    // After a failed write, save() still hashes whatever reached the disk.
+    if (record && fs.existsSync(file)) record.after(keyOf(root, file));
+  }
+}
+function startRecord(root: string) {
+  record = openManifest(root);
+  if (record.started && record.data.adopted) console.log(ADOPTED_NOTICE);
+  process.on('exit', code => {
+    try {
+      record?.save();
+    } catch (error) {
+      console.error(`devops: could not save the install manifest: ${(error as Error).message}`);
+      if (code === 0) process.exitCode = 1;
+    }
+  });
+}
+
 function copy(root: string, src: string, dst: string, mode?: number) {
-  copyInside(root, src, dst, mode);
+  const backup = backupIfChanged(root, dst, fs.readFileSync(src), runBackupStamp(root));
+  recorded(root, dst, () => copyInside(root, src, dst, mode));
+  if (backup) {
+    backedUp.push(backup);
+    console.log(`↻ Replaced ${path.relative(root, dst).split(path.sep).join('/')}; the previous copy is in ${backup}`);
+  }
 }
 
 function copyDir(root: string, src: string, dst: string) {
+  record?.dir(keyOf(root, dst));
   mkdirInside(root, dst);
   for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
     const s = path.join(src, entry.name);
@@ -246,6 +293,7 @@ function extractList(text: string, sectionKey: string): string[] {
 function main() {
   const flags = parseFlags(process.argv.slice(2));
   const PROJECT_ROOT = flags.target;
+  if (!flags.dryRun) startRecord(PROJECT_ROOT);
   const manifest = loadManifest(flags.manifestPath);
   const manifestByName = new Map(manifest.map(e => [e.name, e]));
   const manifestByPath = new Map(manifest.map(e => [e.path, e]));
@@ -267,12 +315,32 @@ function main() {
   const packageRelative = path.relative(fs.realpathSync(PROJECT_ROOT), fs.realpathSync(DEVOPS_ROOT));
   const packageInProject = packageRelative !== '..' && !packageRelative.startsWith(`..${path.sep}`)
     && !path.isAbsolute(packageRelative);
+  // A file in this DevOPs package, named so the reader can open it from the project.
+  const packageRef = (inPackage: string) => packageInProject
+    ? `\`${path.join(packageRelative, inPackage).replace(/\\/g, '/')}\``
+    : `\`${inPackage}\` in the \`@miltonadina/devops\` package`;
+  // package.json `files`: what npm ships of this package (an entry is a file, or a
+  // folder ending in /; a leading ! excludes).
+  // A DevOPs root without a package.json (a partial layout) ships nothing to name.
+  const packageJson = path.join(DEVOPS_ROOT, 'package.json');
+  const packageFiles: string[] = fs.existsSync(packageJson) ? JSON.parse(fs.readFileSync(packageJson, 'utf-8')).files ?? [] : [];
+  const shipped = (p: string) => {
+    const hit = (entry: string) => (entry.endsWith('/') ? p.startsWith(entry) : p === entry);
+    return packageFiles.some(e => !e.startsWith('!') && hit(e)) && !packageFiles.some(e => e.startsWith('!') && hit(e.slice(1)));
+  };
+  // A package path such as `docs/MEMORY.md`, or a pattern such as
+  // `lifecycle/<phase>/PHASE.md` whose fixed part ships. Project state (`.workflow/`),
+  // slash commands and bare names are not package paths.
+  const shipsInPackage = (token: string) => {
+    if (token.startsWith('.workflow/') || token.startsWith('/') || token.includes('..') || !token.includes('/')) return false;
+    const parts = token.split('/');
+    const open = parts.findIndex(part => /[<*]/.test(part));
+    const fixed = open === -1 ? token : `${parts.slice(0, open).join('/')}/`;
+    return fixed !== '/' && shipped(fixed) && fs.existsSync(path.join(DEVOPS_ROOT, fixed));
+  };
   const constitutionRefs = new Map(['PRINCIPLES.md', 'ANTIPATTERNS.md', 'LOOP.md'].map(file => {
     const inPackage = `constitution/${file}`;
-    const reference = packageInProject
-      ? `\`${path.join(packageRelative, inPackage).replace(/\\/g, '/')}\``
-      : `\`${inPackage}\` in the \`@miltonadina/devops\` package`;
-    return [inPackage, reference];
+    return [inPackage, packageRef(inPackage)];
   }));
 
   // AGENTS.md + CLAUDE.md install (not skills, no verification).
@@ -283,11 +351,14 @@ function main() {
   const targetAgents = path.join(PROJECT_ROOT, 'AGENTS.md');
   if (!present(targetAgents) && fs.existsSync(srcAgents)) {
     if (!flags.dryRun) {
+      // specs/release/npm-package.md REQ-17 (#380): every backticked path that names
+      // a file this package ships is rewritten the way the constitution is, so the
+      // reader can open it from the project.
       const agents = fs.readFileSync(srcAgents, 'utf-8').replace(
-        /`(constitution\/(?:PRINCIPLES|ANTIPATTERNS|LOOP)\.md)`/g,
-        (_match, file) => constitutionRefs.get(file)!,
+        /`([^`\s]+)`/g,
+        (match, token: string) => (shipsInPackage(token) ? packageRef(token) : match),
       );
-      writeInside(PROJECT_ROOT, targetAgents, agents);
+      recorded(PROJECT_ROOT, targetAgents, () => writeInside(PROJECT_ROOT, targetAgents, agents));
     }
     console.log(flags.dryRun ? 'would install: AGENTS.md' : '✓ Installed AGENTS.md');
   } else if (present(targetAgents)) {
@@ -303,7 +374,7 @@ function main() {
         /\{\{(constitution\/(?:PRINCIPLES|ANTIPATTERNS|LOOP)\.md)\}\}/g,
         (_match, file) => constitutionRefs.get(file)!,
       );
-      writeInside(PROJECT_ROOT, targetClaude, claude);
+      recorded(PROJECT_ROOT, targetClaude, () => writeInside(PROJECT_ROOT, targetClaude, claude));
     }
     console.log(flags.dryRun ? 'would install: CLAUDE.md' : '✓ Installed CLAUDE.md');
   } else if (present(targetClaude)) {
@@ -312,30 +383,43 @@ function main() {
 
   // Append only: retain existing bytes, including CRLF and a missing final newline.
   // This local override is useful even before the project becomes a git repository.
-  const gitignore = path.join(PROJECT_ROOT, '.gitignore');
-  const ignored = fs.existsSync(gitignore) ? fs.readFileSync(gitignore, 'utf-8') : '';
-  if (!ignored.split(/\r?\n/).includes('AGENTS.override.md')) {
-    if (flags.dryRun) {
-      console.log('dry-run: would add AGENTS.override.md to .gitignore');
-    } else {
-      const eol = ignored.match(/\r?\n/)?.[0] ?? '\n';
-      writeInside(PROJECT_ROOT, gitignore, `${ignored && !ignored.endsWith('\n') ? eol : ''}AGENTS.override.md${eol}`, { append: true });
-      console.log('✓ Added AGENTS.override.md to .gitignore');
-    }
-  }
+  // The install manifest and its originals are this machine's record, which
+  // uninstall refuses once Git tracks them (REQ-10, REQ-16; #390).
+  const added = ignoreLines(PROJECT_ROOT, ['AGENTS.override.md', ...LOCAL_STATE_IGNORES], { record, dryRun: flags.dryRun });
+  if (added.length) console.log(flags.dryRun ? `dry-run: would add ${added.join(', ')} to .gitignore` : `✓ Added ${added.join(', ')} to .gitignore`);
 
   // Skills with verification (F.01..F.07)
   let verified = 0, overridden = 0, skipped = 0, failed = 0;
   for (const s of skills) {
-    const srcSkillDir = path.join(DEVOPS_ROOT, 'skills/universal', s);
-    if (!fs.existsSync(srcSkillDir)) continue;
+    // specs/phase-2/D-stack-specific-skills.md REQ-D8: every recommended skill
+    // is installed or printed as skipped with a reason, and counted.
+    // Names come from the project's profile.yml: only lowercase path segments,
+    // never '..', so a lookup stays under skills/.
+    if (!/^[a-z0-9][a-z0-9-]*(?:\/[a-z0-9][a-z0-9-]*)+$/.test(s)) {
+      console.log(`⚠ skipped: ${JSON.stringify(s)} (not a valid skill name)`);
+      skipped++;
+      continue;
+    }
+    const stackSpecific = s.startsWith('stack-specific/');
+    const srcSkillDir = path.join(DEVOPS_ROOT, 'skills', stackSpecific ? '' : 'universal', s);
     const skillMdPath = path.join(srcSkillDir, 'SKILL.md');
-    if (!fs.existsSync(skillMdPath)) continue;
+    if (!fs.existsSync(skillMdPath)) {
+      console.log(`⚠ skipped: ${s} (this DevOPs release has no SKILL.md for it)`);
+      skipped++;
+      continue;
+    }
 
-    // Look up by manifest path; fall back to name.
+    // Look up by manifest path; fall back to name for universal skills only,
+    // so a stack-specific skill never borrows another skill's entry.
     const relPath = path.relative(DEVOPS_ROOT, skillMdPath).replace(/\\/g, '/');
-    const entry = manifestByPath.get(relPath) ?? manifestByName.get(path.basename(s)) ?? null;
+    const entry = manifestByPath.get(relPath) ?? (stackSpecific ? null : manifestByName.get(path.basename(s))) ?? null;
 
+    if (!entry && stackSpecific) {
+      // Not yet signed into governance/skill-manifest.yml (#347): not installed.
+      console.log(`⚠ skipped: ${s} (not in governance/skill-manifest.yml, so it cannot be verified)`);
+      skipped++;
+      continue;
+    }
     if (!entry) {
       // REQ-F2 covers no-sig; here the skill is not in the manifest at all.
       // Defense-in-depth: no manifest entry → cannot verify hash → reject.
@@ -422,10 +506,10 @@ function main() {
   }
 
   if (!flags.dryRun) {
-    mkdirInside(PROJECT_ROOT, path.join(PROJECT_ROOT, '.workflow/state'));
-    mkdirInside(PROJECT_ROOT, path.join(PROJECT_ROOT, '.workflow/proofs'));
-    mkdirInside(PROJECT_ROOT, path.join(PROJECT_ROOT, '.workflow/memory'));
-    mkdirInside(PROJECT_ROOT, path.join(PROJECT_ROOT, '.workflow/client'));
+    for (const dir of ['.workflow/state', '.workflow/proofs', '.workflow/memory', '.workflow/client']) {
+      record?.dir(dir);
+      mkdirInside(PROJECT_ROOT, path.join(PROJECT_ROOT, dir));
+    }
     const srcBudget = path.join(DEVOPS_ROOT, 'cost-controls/budget.yml');
     const dstBudget = path.join(PROJECT_ROOT, '.workflow/state/budget.yml');
     if (!present(dstBudget) && fs.existsSync(srcBudget)) {
@@ -451,16 +535,22 @@ function main() {
     console.log(`dry-run: would copy ${verified + overridden} skills`);
   } else {
     console.log(`installed=${verified + overridden} verified=${verified} overridden=${overridden} skipped=${skipped} failed=${failed}`);
+    console.log(backedUp.length
+      ? `replaced=${backedUp.length} (skills, hooks and agents that differed from this release; the previous copies are in .workflow/state/backups/${runBackupStamp(PROJECT_ROOT)}/)`
+      : 'replaced=0 (no installed skill, hook or agent differed from this release)');
     console.log('Installation complete.');
+    // specs/release/npm-package.md REQ-14 (#352): every file named here exists in
+    // the project or in this package; init installs no slash commands, so the
+    // command files are named where they ship.
     console.log('Next steps:');
-    console.log('  1. Fill in .workflow/client/profile.yml with your client info');
-    console.log('  2. Adjust .workflow/state/budget.yml for project budget');
-    console.log('  3. Run /checkpoint at session end to write the baton');
+    console.log('  1. Adjust `.workflow/state/budget.yml` for the project budget');
+    console.log(`  2. For client work, create \`.workflow/client/profile.yml\`; ${packageRef('docs/CLIENT_ONBOARDING.md')} lists its fields`);
+    console.log(`  3. At session end, write the baton as ${packageRef('slash-commands/universal/checkpoint.md')} describes (with the DevOPs Claude Code plugin installed, its /checkpoint command does this)`);
     console.log('');
     console.log('First steps in the agent:');
     console.log(`  1. Read ${[...constitutionRefs.values()].join(', ')}`);
     console.log('  2. Create specs/ and write your first spec there');
-    console.log('  3. Run /ears-spec <feature-name> to convert prose to EARS');
+    console.log(`  3. Convert prose to EARS as ${packageRef('slash-commands/universal/ears-spec.md')} describes (with the plugin installed, its /ears-spec command does this)`);
   }
 }
 

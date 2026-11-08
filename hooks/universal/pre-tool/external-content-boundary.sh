@@ -43,6 +43,17 @@ if ! printf '%s' "${PAYLOAD}" | grep -qiE '<external-content|\\u[0-9a-f]{4}'; th
   exit 0
 fi
 
+# A JSON escape alone is not a marker: decode every string (values and keys)
+# and go on only if the decoded text holds one. A payload that is not JSON
+# cannot be decoded, so it still reaches the checks below (fail closed).
+if ! printf '%s' "${PAYLOAD}" | grep -qi '<external-content'; then
+  if DECODED="$(printf '%s' "${PAYLOAD}" | jq -r '.. | (strings, (objects | keys[]))' 2>/dev/null)"; then
+    if ! printf '%s' "${DECODED}" | grep -qi '<external-content'; then
+      exit 0
+    fi
+  fi
+fi
+
 # If the session key file does not exist, this is itself a violation:
 # something is presenting external-content markers without the boundary
 # layer having been initialised. Halt.

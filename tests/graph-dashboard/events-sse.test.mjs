@@ -21,17 +21,15 @@ import * as os from 'node:os';
 import * as http from 'node:http';
 import * as net from 'node:net';
 import { spawn } from 'node:child_process';
+import { freePort } from './free-port.mjs';
 
 const REPO_ROOT = path.resolve(import.meta.dirname, '..', '..');
 const SERVER_MJS = path.join(REPO_ROOT, 'scripts', 'graph-dashboard', 'server.mjs');
 
 const REQUIRED_SNAPSHOT_KEYS = ['approvals', 'cycleHistory', 'events', 'halt', 'phase', 'runs'];
 
-// Distinct base range from snapshot.test.mjs's own INTEGRATION_PORT
-// (41000 + pid%4000) so the two files' spawned servers can never collide
-// even when node's test runner runs multiple test files concurrently (each
-// in its own child process, differentiated here by that same process' pid).
-const PORT = 48000 + (process.pid % 4000);
+// A free port from the OS (#384): each file's integration server gets its own.
+const PORT = await freePort();
 
 let fixtureRoot, journalRoot, stateDir, eventsPath, haltPath, approvalsDir;
 let finishedRunJournalPath, finishedRunJournalContents, activeRunJournalPath;

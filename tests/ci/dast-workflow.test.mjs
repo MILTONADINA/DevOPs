@@ -10,9 +10,9 @@ import { parse } from 'acorn';
 const ROOT = path.resolve(import.meta.dirname, '..', '..');
 const FILE = path.join(ROOT, '.github/workflows/dast.yml');
 const PIN = {
-  checkout: 'actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd',
-  node: 'actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444',
-  upload: 'actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4',
+  checkout: 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1',
+  node: 'actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1',
+  upload: 'actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9',
 };
 function workflow() {
   assert.ok(existsSync(FILE), 'FEATURE_ABSENT: .github/workflows/dast.yml is not implemented');

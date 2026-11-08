@@ -64,6 +64,12 @@ worktree's repository or to a submodule's git dir.
 - The hook SHALL scan the staged change with `gitleaks git --pre-commit --staged
   --redact` and SHALL validate local claims with the `devops` command, not with a path
   under `~/DevOPs`.
+- IF a check's tool is missing (`gitleaks` for the scan; `devops` on PATH or in
+  `node_modules/.bin` for claims, checked only when `.workflow/proofs/*.yml` exists),
+  THEN the hook SHALL stop the commit (exit 1) with a message naming the tool and the
+  skip variable, unless that variable (`DEVOPS_SKIP_SECRET_SCAN=1` or
+  `DEVOPS_SKIP_CLAIM_CHECK=1`) is set, in which case it SHALL say the check was
+  skipped. It SHALL NOT skip a check in silence (#348).
 - WHEN `--dry-run` is given, `devops init` SHALL write nothing.
 
 ### REQ-4 — Package contents
@@ -122,6 +128,9 @@ implicit:
   by name, those that neither `.claude/settings.json` nor
   `.claude/settings.local.json` references, so Claude Code does not run them, with
   where wiring is described.
+- **secret scan** and **claim check:** when the hook is installed, whether each check
+  runs or cannot run because its tool is missing, naming the tool and the skip
+  variable (#348).
 
 ### REQ-9 — `devops-analyze` answers its flags before it scans
 
@@ -145,11 +154,17 @@ IT SHALL identify `@miltonadina/devops` and use package-relative
 WHEN init prints the first-spec step, IT SHALL tell the user to create `specs/`
 and write the first spec there, rather than imply the folder already exists.
 
-WHEN init runs, IT SHALL append the exact line `AGENTS.override.md` to the target's
-`.gitignore` if absent, creating the file if necessary, even outside git. IT SHALL
+WHEN init runs, IT SHALL append the exact lines `AGENTS.override.md`,
+`.workflow/state/install-manifest.json` and `.workflow/state/originals/` to the
+target's `.gitignore`, each only if absent (#390), creating the file if necessary, even outside git. IT SHALL
 preserve existing content and line endings and SHALL NOT duplicate an existing
 entry. WHEN `--dry-run` is given, IT SHALL write nothing and report a needed entry
 as an addition it would make.
+
+WHEN analyze runs, IT SHALL append `.workflow/state/install-manifest.json` and
+`.workflow/state/originals/` the same way and SHALL record the write, so uninstall
+restores the project's `.gitignore` or removes one DevOPs created. IF the
+`.gitignore` is a symlink, analyze SHALL refuse with exit 1, as init does (#391).
 
 ### REQ-11 — Init installs a consumer CLAUDE.md, not this repository's own
 
@@ -178,6 +193,73 @@ PIPELINE SHALL pack the package twice from the same commit into separate tempora
 directories and compare the tarball sha256 and each entry's path and sha256. IF they
 differ, THEN it SHALL fail and print the differing entries.
 
+### REQ-14 — Init's printed steps name only files that exist
+
+WHEN `devops init` finishes, THE SYSTEM SHALL name in its "Next steps" and "First steps
+in the agent" only files that exist in the project or in the installed package, naming a
+package file by its path from the project when the package is inside it and otherwise as
+`` `<path>` in the `@miltonadina/devops` package ``. THE SYSTEM SHALL NOT tell the user to
+run a slash command that init did not install (#352).
+
+### REQ-15 — Init and analyze record what they write
+
+WHEN `devops analyze` or `devops init` (not a dry run) writes a file in the project, or
+the DevOPs pre-commit hook, THE SYSTEM SHALL record it in
+`.workflow/state/install-manifest.json` (`schema_version: 1`) with the sha256 of what it
+wrote, and the folders it created. WHEN DevOPs is about to write a file whose entry is
+recorded and whose bytes no longer have the entry's `written` sha256, THE SYSTEM SHALL set
+`edited: true` on that entry and SHALL never clear it, because the edit was made between two
+DevOPs writes; `edited` is the only optional entry key, and any other value is refused. WHEN it first writes a file that already existed, THE
+SYSTEM SHALL copy the existing bytes to `.workflow/state/originals/<path>` and record their
+sha256 as the file's `original`, and SHALL NOT change that `original` on a later run. IF
+the manifest has another `schema_version`, another key set, or a path that is not one
+DevOPs writes (`AGENTS.md`, `CLAUDE.md`, `.gitignore`, the hook, or a path under
+`.claude/skills/`, `.claude/hooks/`, `.claude/agents/` or `.workflow/`), or an `original`
+copy that is not its own `originals/<path>`, THEN THE SYSTEM SHALL refuse to run and change
+nothing. WHEN it starts the manifest in a project that already has
+`.workflow/state/install.log` (an earlier DevOPs installed there), THE SYSTEM SHALL set
+`adopted: true` and say so once, because an `original` recorded there may be that earlier
+DevOPs's copy. IF an original copy's path leaves the project through a symlink, THEN THE
+SYSTEM SHALL refuse that copy with an error and record no `original` for the file, because a
+read through the link would hash a file outside the project. WHEN DevOPs records a write, before or after it, or a folder it creates, THE SYSTEM SHALL save the manifest before its next step, replacing the file whole (written to a temp file under `originals/`, flushed, then renamed) so an interrupted run keeps its records and never leaves a truncated manifest; an unconfirmed write stays pending, and uninstall keeps its file. Original copies are written whole the same way, so a copy cut short is never restored, and uninstall removes the temp files an interrupted write left. Backups (REQ-F11) and the `originals/` copies are DevOPs's own records and
+are not themselves recorded. The `.mcp.json` entry and the Agile Graph pin that linking
+writes are not recorded yet (#353).
+
+### REQ-16 — Uninstall removes what was recorded
+
+WHEN `devops uninstall` runs in a project with an install manifest (REQ-15), THE SYSTEM
+SHALL remove each recorded file DevOPs created whose bytes still have the recorded
+`written` sha256, SHALL put back each recorded original whose file still holds what DevOPs
+wrote (or is gone) and whose copy still has the recorded `original` sha256, SHALL remove
+the pre-commit hook only while it carries the DevOPs marker and its recorded bytes, and
+SHALL remove the folders DevOPs created that are then empty. WHEN a recorded entry is marked `edited`
+(REQ-15), THE SYSTEM SHALL keep its file and name it as edited since DevOPs wrote it, and
+SHALL neither restore an original over it nor remove it, before any other decision. IF a recorded file was edited,
+is a symlink or not a regular file, has an unconfirmed write, or has an original copy that
+is missing or changed, or the manifest is `adopted` and the file has a recorded original,
+THEN THE SYSTEM SHALL leave that file unchanged, name it and the reason, and keep its
+entry in the manifest. IF Git tracks the manifest or `.workflow/state/originals/`, THEN THE
+SYSTEM SHALL refuse with exit 1 and change nothing, because that record came with the
+repository rather than from an install on this machine. THE SYSTEM SHALL look for the hook
+in the repository's own hooks folder, where init writes it, whatever `core.hooksPath` says
+later. THE SYSTEM SHALL drop each file's entry from the manifest as soon as it is handled,
+before deleting its original copy, so that an uninstall that stops part-way finishes when
+run again. WHEN run with `--dry-run`, THE SYSTEM SHALL report the same plan, including the
+folders it would remove, and change nothing. WHEN the project has no manifest, THE SYSTEM
+SHALL change nothing and say so. A file edited in the instant between the check and the
+removal is not protected, and the empty `hooks` folder init may create inside Git's own
+folder is left.
+
+### REQ-17 — The installed AGENTS.md names paths the reader can open
+
+WHEN `devops init` installs `AGENTS.md`, THE SYSTEM SHALL rewrite each backticked path that
+names a file or folder the package ships (by `package.json` `files`), including a pattern
+such as `lifecycle/<phase>/PHASE.md` whose fixed part ships, the way REQ-10 names the
+constitution: by its path from the project when the package is inside it, else as
+`<path>` in the `@miltonadina/devops` package. THE SYSTEM SHALL leave paths under
+`.workflow/`, which `AGENTS.md` states are project state created when first needed, and
+the project's own `specs/`, `AGENTS.override.md` and `package.json`, as written (#380).
+
 ## Acceptance criteria
 
 ### AC-1
@@ -203,7 +285,10 @@ dependency and not a development one.
 
 **Given** a git repository **When** `devops init` runs **Then** it writes a hook that
 redacts secrets and calls `devops verify`; with a hook another tool wrote, it leaves
-that hook unchanged; with `--dry-run` it writes no hook.
+that hook unchanged; with `--dry-run` it writes no hook. Run with a PATH that lacks
+`gitleaks`, the hook exits 1 naming `DEVOPS_SKIP_SECRET_SCAN=1`, and exits 0 saying
+"skipped" when that is set; with claim files and no `devops`, it exits 1 naming
+`DEVOPS_SKIP_CLAIM_CHECK=1`; a present tool runs and its failure stops the commit.
 
 **Verified by:** `tests/npm-package.test.mjs` (`#ac-3`).
 
@@ -247,7 +332,9 @@ or copied Claude Code hooks some of which `settings.json` references **When**
 - the worktree's hook lands where Git runs it, and the summary says so;
 - `core.hooksPath` gets nothing written and a hand-wiring note;
 - outside git, the summary says "not a git repository";
-- the summary names exactly the unreferenced hooks.
+- the summary names exactly the unreferenced hooks;
+- without `gitleaks` and `devops` on PATH, the "secret scan" and "claim check" lines
+  say each cannot run and name its skip variable; with both, each says it runs.
 
 **Verified by:** `tests/npm-package.test.mjs` (`#ac-8`), with a stub `git`
 (`tests/fixtures/stub-git.mjs`); tests never run the real git.
@@ -282,12 +369,20 @@ say to create `specs/` and write the first spec there, with no auto-loaded claim
 ### AC-12
 
 **Given** no `.gitignore`, or one with LF/CRLF content, with or without a final
-newline or an existing override entry **When** init runs twice **Then** exactly
-one `AGENTS.override.md` line exists and existing bytes and line endings remain
-unchanged. This also applies outside git. A dry run with a missing file or entry
-reports the proposed addition and leaves every project file and directory unchanged.
+newline or with some of the entries already present **When** init runs twice
+**Then** exactly one line each of `AGENTS.override.md`,
+`.workflow/state/install-manifest.json` and `.workflow/state/originals/` exists,
+in that order after the existing content, and existing bytes and line endings
+remain unchanged. This also applies outside git. A dry run with a missing file or entry
+reports the proposed additions and leaves every project file and directory unchanged.
 
-**Verified by:** `tests/init-agent-bootstrap.test.mjs` (`#ac-12`).
+**Given** a project where only analyze has run **When** analyze runs twice
+**Then** the two manifest lines are added once, a `.gitignore` that already has
+them is left byte for byte, a project without one gets a new one, and uninstall
+restores the original file or removes the one DevOPs created.
+
+**Verified by:** `tests/init-agent-bootstrap.test.mjs` and
+`tests/install-manifest.test.mjs` (`#ac-12`).
 
 ### AC-13
 
@@ -339,6 +434,88 @@ field **When** the tests run **Then** `docs/STATE.md` names that file, has a "Re
 section, and names only source files that exist. A file that is not named is reported by path.
 
 **Verified by:** `tests/docs/state-doc.test.mjs`.
+
+### AC-19
+
+**Given** a project with the package installed under `node_modules/@miltonadina/devops`,
+and one using a package outside the project **When** `devops init` runs **Then** every
+backticked path in its "Next steps" and "First steps in the agent" exists from the project
+or from the package root, except `.workflow/client/profile.yml`, which the steps tell the
+user to create; and no step tells the user to run a command such as `/checkpoint`.
+
+**Verified by:** `tests/init-agent-bootstrap.test.mjs`.
+
+### AC-20
+
+**Given** a project with a `.gitignore` **When** `devops analyze` and `devops init` run, and
+run again after local edits **Then** every file they wrote is in the manifest with its
+current sha256, the `.gitignore` entry keeps the first run's `original` and its copy holds
+the original bytes, a dry run records nothing, and a committed manifest with a `..` or
+absolute path, a path DevOPs does not write, a foreign `original` copy, another schema or
+an extra key makes analyze and init exit 1 without writing. A manifest started where an
+earlier DevOPs left `install.log` is `adopted`, and a creation whose write failed after the
+file appeared stays recorded.
+
+**Verified by:** `tests/install-manifest.test.mjs`.
+
+### AC-21
+
+**Given** a project with its own `CLAUDE.md` and `.gitignore` **When** `devops analyze`,
+`devops init` and `devops uninstall` run **Then** every file and folder below the project
+is as it was before, byte for byte (Git's own folder aside), and the pre-commit hook is
+gone. A dry run reports the plan and changes nothing. An edited file, a hook that is no
+longer DevOPs's, a recorded file replaced by a symlink, a changed original copy, and in an
+`adopted` install a file with a recorded original are each left unchanged and named, and
+the edited ones stay in the manifest. A manifest Git tracks makes uninstall exit 1 without
+changes. An uninstall stopped part-way by a file it cannot remove leaves the project as it
+was before once run again. A `core.hooksPath` set after init does not stop the DevOPs hook
+being removed or cause another hook to be touched. Without a manifest uninstall changes
+nothing, and an unknown option exits 1.
+
+**Verified by:** `tests/uninstall.test.mjs`.
+
+### AC-22
+
+**Given** the package installed inside the project, or outside it, **When** `devops init`
+installs `AGENTS.md` **Then** every backticked path in it exists in the project, or names
+a file the package ships, or is project state under `.workflow/`, or is one of the named
+exceptions (a branch pattern, the project's `specs/`, `AGENTS.override.md`, the project's
+`package.json`); at least 15 package files are named from the project; it holds no
+absolute machine path; and a slash command is named only with the plugin it needs.
+
+**Verified by:** `tests/init-agent-bootstrap.test.mjs`.
+
+### AC-23
+
+**Given** a project with a `.gitignore` **When** `devops analyze` runs, the user then adds a
+`dist/` rule to `.gitignore`, `devops init` runs, and `devops uninstall` runs **Then**
+uninstall keeps `.gitignore` and names it as edited since DevOPs wrote it, the `dist/` rule
+is still in the file, and the entry stays in the manifest with `edited: true`. A file not
+edited between two DevOPs runs is still restored to its original bytes.
+
+**Verified by:** `tests/uninstall.test.mjs`.
+
+### AC-24
+
+**Given** a project whose `.workflow/state/originals` is a symlink to a folder outside it,
+holding a `.gitignore` **When** `devops analyze` runs **Then** it exits non-zero naming the
+symlink, appends nothing to `.gitignore`, and the manifest records no `original` for
+`.gitignore` (the outside file's hash is not recorded). **And** when `devops uninstall` runs
+in a project whose recorded original copy is reached through such a symlink, it keeps that
+file, names the symlink, and exits 0.
+
+**Verified by:** `tests/install-manifest.test.mjs` and `tests/uninstall.test.mjs`.
+
+### AC-25
+
+**Given** a project with a `.gitignore` **When** `devops init` runs and a SIGTERM stops it
+while signature verification (cosign) is blocked, after `AGENTS.md` and `.gitignore` were
+written **Then** the manifest on disk records both files with their sha256, and a later
+`devops uninstall` removes `AGENTS.md`. **And** a write that is recorded but not yet made is
+already in the manifest on disk, no temporary manifest is left behind, and uninstall removes
+the temp files an interrupted write left under `originals/`.
+
+**Verified by:** `tests/install-manifest.test.mjs`.
 
 ## Out of scope
 

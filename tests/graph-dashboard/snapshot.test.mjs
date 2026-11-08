@@ -40,6 +40,7 @@ import * as path from 'node:path';
 import * as os from 'node:os';
 import * as http from 'node:http';
 import { execFileSync, spawn } from 'node:child_process';
+import { freePort } from './free-port.mjs';
 
 const REPO_ROOT = path.resolve(import.meta.dirname, '..', '..');
 const SERVER_MJS = path.join(REPO_ROOT, 'scripts', 'graph-dashboard', 'server.mjs');
@@ -84,7 +85,8 @@ let reader; // the extracted PART-1 module (assembleSnapshot/serveSnapshot/reade
 let fixtureRoot;
 
 // PART 3 (integration) state.
-const INTEGRATION_PORT = 41000 + (process.pid % 4000);
+// A free port from the OS (#384): each file's integration server gets its own.
+const INTEGRATION_PORT = await freePort();
 let integrationProcess;
 let integrationStderr = '';
 let integrationJournalRoot;

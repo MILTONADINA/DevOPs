@@ -34,8 +34,10 @@ function init(cwd, args = [], root) {
 function installPackage(dir, relative) {
   const root = path.join(dir, relative);
   mkdirSync(root, { recursive: true });
-  for (const name of ['package.json', 'AGENTS.md', 'CLAUDE.md', 'templates/claude-md', 'scripts', 'analyzer', 'constitution', 'cost-controls', 'governance/skill-manifest.yml']) {
-    cpSync(path.join(ROOT, name), path.join(root, name), { recursive: true });
+  // What npm ships (package.json `files`), plus package.json and this repository's CLAUDE.md.
+  const shippedEntries = JSON.parse(readFileSync(path.join(ROOT, 'package.json'), 'utf8')).files.filter(e => !e.startsWith('!'));
+  for (const name of ['package.json', 'CLAUDE.md', ...shippedEntries]) {
+    if (existsSync(path.join(ROOT, name))) cpSync(path.join(ROOT, name), path.join(root, name), { recursive: true });
   }
   symlinkSync(path.join(ROOT, 'node_modules'), path.join(root, 'node_modules'));
   return root;
@@ -92,19 +94,24 @@ test(`first spec instructions say to create specs/ (${SPEC}#ac-11)`, () => {
   });
 });
 
-for (const before of [undefined, '', '# keep\nnode_modules/\n', '# keep\nnode_modules/', '# keep\r\nnode_modules/\r\n', '# keep\r\nnode_modules/', 'AGENTS.override.md\n# keep\n', '# keep\r\nAGENTS.override.md']) {
+// Every line init keeps out of Git: the local override, plus the install
+// manifest and its originals, which uninstall refuses once tracked (#390).
+const IGNORED = ['AGENTS.override.md', '.workflow/state/install-manifest.json', '.workflow/state/originals/'];
+
+for (const before of [undefined, '', '# keep\nnode_modules/\n', '.workflow/state/originals/\n', '# keep\r\n.workflow/state/install-manifest.json', '# keep\nnode_modules/', '# keep\r\nnode_modules/\r\n', '# keep\r\nnode_modules/', 'AGENTS.override.md\n# keep\n', '# keep\r\nAGENTS.override.md']) {
   test(`gitignore preserves bytes and adds no duplicate for ${JSON.stringify(before)} (${SPEC}#ac-12)`, () => {
     withProject(dir => {
       const file = path.join(dir, '.gitignore');
       if (before !== undefined) writeFileSync(file, before);
       const eol = before?.includes('\r\n') ? '\r\n' : '\n';
-      const expected = before?.split(/\r?\n/).includes('AGENTS.override.md') ? before
-        : (before || '') + (before && !before.endsWith('\n') ? eol : '') + 'AGENTS.override.md' + eol;
+      const lines = new Set((before ?? '').split(/\r?\n/));
+      const missing = IGNORED.filter(line => !lines.has(line));
+      const expected = (before || '') + (before && !before.endsWith('\n') ? eol : '') + missing.map(line => line + eol).join('');
       for (let i = 0; i < 2; i++) {
         init(dir, [], ROOT);
         const after = readFileSync(file, 'utf8');
         assert.equal(after, expected);
-        assert.equal(after.split(/\r?\n/).filter(l => l === 'AGENTS.override.md').length, 1);
+        for (const line of IGNORED) assert.equal(after.split(/\r?\n/).filter(l => l === line).length, 1, line);
       }
     });
   });
@@ -117,7 +124,7 @@ for (const before of [undefined, '# keep\r\nnode_modules/']) {
       const original = snapshot(dir);
       const stdout = init(dir, ['--dry-run'], ROOT);
       assert.deepEqual(snapshot(dir), original);
-      assert.match(stdout, /dry-run: would add AGENTS\.override\.md to \.gitignore/);
+      assert.match(stdout, /dry-run: would add AGENTS\.override\.md, \.workflow\/state\/install-manifest\.json, \.workflow\/state\/originals\/ to \.gitignore/);
     });
   });
 }
@@ -174,3 +181,88 @@ test(`init keeps an existing CLAUDE.md and a dry run writes nothing (${SPEC}#ac-
     assert.equal(readFileSync(path.join(dir, 'CLAUDE.md'), 'utf8'), 'mine\n');
   });
 });
+
+// specs/release/npm-package.md REQ-14, AC-19 (#352): the printed steps name only
+// files that exist, in the project or in the package as npm ships it.
+const PKG = JSON.parse(readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
+// True when package.json `files` ships `p` (an entry is a file, or a folder ending in /).
+function shipped(p) {
+  const hit = entry => entry.endsWith('/') ? p.startsWith(entry) : p === entry;
+  return PKG.files.some(e => !e.startsWith('!') && hit(e)) && !PKG.files.some(e => e.startsWith('!') && hit(e.slice(1)));
+}
+function printedSteps(stdout) {
+  const start = stdout.indexOf('Next steps:');
+  assert.ok(start >= 0, stdout);
+  return stdout.slice(start);
+}
+const PACKAGE_DIR = 'node_modules/@miltonadina/devops';
+for (const inside of [true, false]) {
+  test(`init's printed steps name only files that exist (${inside ? 'package in the project' : 'package outside the project'}) (${SPEC}#ac-19)`, () => {
+    withProject(dir => {
+      if (inside) installPackage(dir, PACKAGE_DIR);
+      const steps = printedSteps(init(dir, [], inside ? undefined : ROOT));
+      const files = [...steps.matchAll(/`([^`\s]+)`/g)].map(m => m[1])
+        .filter(p => p !== '@miltonadina/devops' && (p.includes('/') || /\.(md|ya?ml|json|sh)$/.test(p)));
+      assert.ok(files.length >= 6, steps);
+      let fromPackage = 0;
+      for (const p of files) {
+        if (p === '.workflow/client/profile.yml') continue; // the step says to create it
+        const inPackage = inside && p.startsWith(`${PACKAGE_DIR}/`) ? p.slice(PACKAGE_DIR.length + 1)
+          : !inside && steps.includes(`\`${p}\` in the \`@miltonadina/devops\` package`) ? p : null;
+        if (inPackage === null) {
+          assert.ok(existsSync(path.join(dir, p)), `${p} exists in the project:\n${steps}`);
+        } else {
+          fromPackage++;
+          assert.ok(existsSync(path.join(ROOT, inPackage)) && shipped(inPackage), `${inPackage} ships in the package:\n${steps}`);
+        }
+      }
+      assert.ok(fromPackage >= 5, `the constitution and command files are named in the package:\n${steps}`);
+      // Init installs no slash commands: a command is named only with the plugin it needs.
+      for (const line of steps.split('\n').filter(l => /(^|[\s(])\/[a-z][a-z-]+\b/.test(l)))
+        assert.match(line, /with the (DevOPs Claude Code )?plugin installed/, line);
+    });
+  });
+}
+
+// specs/release/npm-package.md REQ-17, AC-22 (#380): the installed AGENTS.md names
+// only paths a reader can open: in the project, or in the package as npm ships it.
+// Paths under `.workflow/` are project state that AGENTS.md says is created when
+// first needed; the rest of the exceptions are named here with why.
+const NOT_FILES = new Set([
+  'release/*',          // a branch pattern, next to `main` and `production`
+  'specs/',             // the project's own specs folder, which it creates
+  'AGENTS.override.md', // the local override the user may create
+  'package.json',       // "if `package.json` (or equivalent) changed": the project's own, when it has one
+  '@miltonadina/devops', // the package name, in "in the `@miltonadina/devops` package"
+]);
+for (const inside of [true, false]) {
+  test(`installed AGENTS.md names only paths that exist (${inside ? 'package in the project' : 'package outside the project'}) (${SPEC}#ac-22)`, () => {
+    withProject(dir => {
+      if (inside) installPackage(dir, PACKAGE_DIR);
+      init(dir, [], inside ? undefined : ROOT);
+      const agents = readFileSync(path.join(dir, 'AGENTS.md'), 'utf8');
+      const tokens = [...new Set([...agents.matchAll(/`([^`\s]+)`/g)].map(m => m[1]))]
+        .filter(p => (p.includes('/') || /\.(md|ya?ml|json|sh|txt|jsonl)$/.test(p)) && !/^\/[a-z-]+$/.test(p));
+      assert.ok(tokens.length >= 25, tokens.join(' '));
+      let fromPackage = 0;
+      for (const p of tokens) {
+        if (NOT_FILES.has(p) || p.startsWith('.workflow/')) continue;
+        const inPackage = inside && p.startsWith(`${PACKAGE_DIR}/`) ? p.slice(PACKAGE_DIR.length + 1)
+          : !inside && agents.includes(`\`${p}\` in the \`@miltonadina/devops\` package`) ? p : null;
+        if (inPackage === null) {
+          assert.ok(existsSync(path.join(dir, p)), `${p} exists in the project`);
+          continue;
+        }
+        fromPackage++;
+        const fixed = inPackage.split('/').findIndex(part => /[<*]/.test(part));
+        const real = fixed === -1 ? inPackage : `${inPackage.split('/').slice(0, fixed).join('/')}/`;
+        assert.ok(existsSync(path.join(ROOT, real)) && shipped(real), `${real} ships in the package`);
+      }
+      assert.ok(fromPackage >= 15, `package files are named from the project (${fromPackage})`);
+      assert.ok(agents.includes('Paths under `.workflow/` are this project\'s state'), 'the .workflow/ note is present');
+      assert.ok(!agents.includes(dir), 'no absolute machine path');
+      for (const line of agents.split('\n').filter(l => /`\/[a-z][a-z-]+`/.test(l)))
+        assert.match(line, /with the DevOPs Claude Code plugin installed/, line);
+    });
+  });
+}

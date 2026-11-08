@@ -20,7 +20,7 @@ function marker(key, { hmac } = {}) {
   return `<external-content untrusted="true" source="${SOURCE}" hmac="${mac}">${BODY}</external-content>`;
 }
 
-function boundary(payload, { key = randomBytes(16), withKey = true, events = '', path: pathOverride, escape = false } = {}) {
+function boundary(payload, { key = randomBytes(16), withKey = true, events = '', path: pathOverride, escape = false, transform = text => text } = {}) {
   const dir = mkdtempSync(path.join(tmpdir(), 'external-content-'));
   try {
     const state = path.join(dir, '.workflow', 'state');
@@ -37,7 +37,7 @@ function boundary(payload, { key = randomBytes(16), withKey = true, events = '',
       }
     }
     const input = JSON.stringify(payload(key));
-    const result = spawnSync('bash', [HOOK], { cwd: dir, input: escape ? input.replaceAll('external-content', 'external\\u002dcontent') : input, encoding: 'utf8', timeout: 30_000, env: { ...process.env, PATH, LC_ALL: 'C' } });
+    const result = spawnSync('bash', [HOOK], { cwd: dir, input: transform(escape ? input.replaceAll('external-content', 'external\\u002dcontent') : input), encoding: 'utf8', timeout: 30_000, env: { ...process.env, PATH, LC_ALL: 'C' } });
     assert.equal(result.error, undefined, String(result.error));
     return result;
   } finally {
@@ -89,4 +89,18 @@ test('an uppercase marker without an HMAC halts with exit 2 (AC-C5.1)', () => {
 
 test('a marker spelled with a JSON escape is still verified (AC-C5.1)', () => {
   assert.equal(boundary(withMarker({ hmac: 'AAAA' }), { escape: true }).status, 2);
+});
+
+test('a JSON escape without a marker is allowed with no session key (AC-C5.2)', () => {
+  const escaped = text => text.replaceAll('é', '\\u00e9');
+  assert.equal(boundary(read('café notes'), { withKey: false, transform: escaped }).status, 0);
+});
+
+test('a marker spelled with a JSON escape halts with no session key (AC-C5.1)', () => {
+  assert.equal(boundary(withMarker(), { withKey: false, escape: true }).status, 2);
+});
+
+test('a payload with a JSON escape that is not valid JSON halts with no session key (AC-C5.1)', () => {
+  const broken = text => text.replaceAll('é', '\\u00e9').slice(0, -1);
+  assert.equal(boundary(read('café notes'), { withKey: false, transform: broken }).status, 2);
 });

@@ -133,7 +133,7 @@ test('actual filter wiring and optional policy stay fixed (regression guard)', (
   const { workflow, job, step } = selectedStep();
   assert.deepEqual(workflow.permissions, { contents: 'read' });
   assert.equal(job['runs-on'], 'ubuntu-24.04'); assert.equal(job['timeout-minutes'], 20);
-  assert.equal(job.steps[0].uses, 'actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd');
+  assert.equal(job.steps[0].uses, 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1');
   assert.deepEqual(job.steps[0].with, { 'fetch-depth': 0 });
   assert.ok(step.run.includes('set -euo pipefail'));
   assert.ok(step.run.includes('git diff --name-only "${BASE_SHA}" HEAD'));
@@ -148,7 +148,7 @@ test('actual filter wiring and optional policy stay fixed (regression guard)', (
     "${{ always() && steps.path-filter.outputs.should_run == 'true' && github.event_name == 'pull_request' }}");
   const upload = job.steps.find(item => item.name === 'Upload deepteam artifacts (REQ-B6 / REQ-B5)');
   assert.equal(upload.if, "${{ always() && steps.path-filter.outputs.should_run == 'true' }}");
-  assert.equal(upload.uses, 'actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4');
+  assert.equal(upload.uses, 'actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9');
   assert.deepEqual(JSON.parse(readFileSync(path.join(ROOT, 'governance/required-checks.yml'), 'utf8')).contexts,
     ['validate', 'runtime-test', 'setup-linux', 'gitleaks', 'semgrep', 'dependency-audit']);
 });

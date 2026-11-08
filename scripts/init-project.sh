@@ -66,36 +66,83 @@ if [[ -n "$hooks_dir" && "$DRY_RUN" == 1 ]]; then
     gate="dry-run: would install $shown_dir/pre-commit"
 elif [[ -n "$hooks_dir" ]]; then
     hook="$hooks_dir/pre-commit"
-    if [[ -e "$hook" ]] && ! grep -qxF "$MARKER" "$hook"; then
+    if [[ -L "$hook" ]]; then
+        # specs/phase-2/F-skill-provenance.md REQ-F10: never write through a link.
+        echo "! Left $shown_dir/pre-commit unchanged: it is a symlink, and init does not write through one. To add the DevOPs checks by hand, run"
+        echo "  $HAND_CHECKS"
+        echo "  from the hook it points at."
+        gate="not installed: $shown_dir/pre-commit is a symlink and was left unchanged (see above)"
+    elif [[ -e "$hook" ]] && ! grep -qxF "$MARKER" "$hook"; then
         echo "! Left the existing $shown_dir/pre-commit unchanged. To add the DevOPs checks by hand, run"
         echo "  $HAND_CHECKS"
         echo "  from it, without copying the '$MARKER' line (that line lets init replace the file)."
         gate="not installed: $shown_dir/pre-commit is another tool's hook and was left unchanged (see above)"
     else
         mkdir -p "$hooks_dir"
-        cat > "$hook" <<'HOOK'
+        # read -d '' keeps the whole text, final newline included; it returns 1 at EOF.
+        IFS= read -r -d '' hook_text <<'HOOK' || true
 #!/usr/bin/env bash
 # DevOPs pre-commit hook
 
+# Each check stops the commit when its tool is missing, unless its skip variable
+# is 1; a skipped check says so (specs/release/npm-package.md REQ-3, #348).
+
 # Secret scan of the staged change. --redact keeps a found secret out of the terminal.
-if command -v gitleaks >/dev/null 2>&1; then
+if [[ "${DEVOPS_SKIP_SECRET_SCAN:-}" == 1 ]]; then
+    echo "DevOPs pre-commit: secret scan skipped (DEVOPS_SKIP_SECRET_SCAN=1)." >&2
+elif command -v gitleaks >/dev/null 2>&1; then
     gitleaks git --pre-commit --staged --redact --no-banner || exit 1
+else
+    echo "DevOPs pre-commit: the secret scan cannot run because gitleaks is not on PATH. Install gitleaks, or commit with DEVOPS_SKIP_SECRET_SCAN=1 to skip the scan." >&2
+    exit 1
 fi
 
 # Local claim metadata (the committed --all selector is a separate gate).
 shopt -s nullglob dotglob
 claim_files=(.workflow/proofs/*.yml)
 if (( ${#claim_files[@]} )); then
-    if command -v devops >/dev/null 2>&1; then
+    if [[ "${DEVOPS_SKIP_CLAIM_CHECK:-}" == 1 ]]; then
+        echo "DevOPs pre-commit: claim check skipped (DEVOPS_SKIP_CLAIM_CHECK=1)." >&2
+    elif command -v devops >/dev/null 2>&1; then
         devops verify "${claim_files[@]}" --no-rerun || exit 1
     elif [[ -x node_modules/.bin/devops ]]; then
         node_modules/.bin/devops verify "${claim_files[@]}" --no-rerun || exit 1
+    else
+        echo "DevOPs pre-commit: the claim check cannot run because the devops command is not on PATH or in node_modules/.bin. Install it with 'npm install -D @miltonadina/devops', or commit with DEVOPS_SKIP_CLAIM_CHECK=1 to skip the check." >&2
+        exit 1
     fi
 fi
 HOOK
+        # specs/phase-2/F-skill-provenance.md REQ-F11 (#349): an existing DevOPs
+        # hook that differs is backed up before it is replaced. Node runs only then.
+        hook_backup=""
+        if [[ -e "$hook" ]] && ! hook_backup="$(printf '%s' "$hook_text" | "${DEVOPS_NODE:-node}" "$DEVOPS_ROOT/analyzer/backup-file.mjs" "$PROJECT" "$hook" - git-hooks/pre-commit)"; then
+            echo "Could not back up $shown_dir/pre-commit; left it unchanged." >&2
+            exit 1
+        fi
+        # specs/release/npm-package.md REQ-15 (#353): record the hook in the install
+        # manifest. `devops init` always passes DEVOPS_NODE; without it nothing is recorded.
+        record_hook() {
+            [[ -z "${DEVOPS_NODE:-}" ]] || "$DEVOPS_NODE" "$DEVOPS_ROOT/analyzer/record-hook.mjs" "$PROJECT" "$hook" "$1"
+        }
+        record_hook before
+        printf '%s' "$hook_text" > "$hook"
+        record_hook after
+        [[ -z "$hook_backup" ]] || echo "↻ Replaced $shown_dir/pre-commit; the previous copy is in $hook_backup"
         chmod +x "$hook"
         echo "✓ Installed pre-commit hook"
         gate="installed at $shown_dir/pre-commit"
+        # specs/release/npm-package.md REQ-8: name each check whose tool is missing.
+        if command -v gitleaks >/dev/null 2>&1; then
+            secret_scan="runs: gitleaks is on this shell's PATH (a git client with another PATH needs it there too)"
+        else
+            secret_scan="cannot run: gitleaks is not on PATH, so every commit stops until it is installed or DEVOPS_SKIP_SECRET_SCAN=1 is set"
+        fi
+        if command -v devops >/dev/null 2>&1 || [[ -x "$PROJECT/node_modules/.bin/devops" ]]; then
+            claim_check="runs: the devops command is on this shell's PATH or in node_modules/.bin"
+        else
+            claim_check="cannot run: the devops command is not on PATH or in node_modules/.bin, so a commit with .workflow/proofs/*.yml claims stops until 'npm install -D @miltonadina/devops' or DEVOPS_SKIP_CLAIM_CHECK=1"
+        fi
         # A linked worktree runs the hooks of the repository it belongs to.
         if [[ "$(git -C "$PROJECT" rev-parse --git-dir)" != "$(git -C "$PROJECT" rev-parse --git-common-dir)" ]]; then
             gate="$gate (shared by every worktree of this repository)"
@@ -130,6 +177,8 @@ fi
 echo ""
 echo "Safety gates:"
 echo "  pre-commit gate: $gate"
+[[ -z "${secret_scan:-}" ]] || echo "  secret scan: $secret_scan"
+[[ -z "${claim_check:-}" ]] || echo "  claim check: $claim_check"
 [[ -z "$claude_hooks" ]] || echo "  Claude Code hooks: $claude_hooks"
 
 echo ""

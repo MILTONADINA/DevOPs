@@ -244,6 +244,11 @@ AI coding agent and ask it to follow this section.
 - `cosign`, to verify skill signatures during install. Without it, `devops init`
   installs no skills and exits 2; `devops init --allow-unsigned --rationale="..."`
   installs them unverified and logs each one as overridden.
+- `gitleaks`, for the secret scan in the pre-commit hook that `devops init` writes.
+  Without it every commit stops, unless you set `DEVOPS_SKIP_SECRET_SCAN=1`. The
+  hook's claim check also needs the `devops` command on PATH or in
+  `node_modules/.bin` when `.workflow/proofs/*.yml` exists
+  (`npm install -D @miltonadina/devops`, or `DEVOPS_SKIP_CLAIM_CHECK=1`).
 
 **From npm** (version 0.4.0 and later):
 
@@ -254,6 +259,8 @@ cd ~/my-project
 devops analyze                          # detects the stack, writes .workflow/profile.yml
 devops init                             # installs the recommended config
 devops init --dry-run                   # shows what init would do, and changes nothing
+devops uninstall --dry-run              # shows what uninstall would remove or put back
+devops uninstall                        # removes what init and analyze wrote
 ```
 
 The package carries its own `tsx` for the TypeScript tools, so you need
@@ -277,6 +284,11 @@ scripts and subagents into the project's `.claude/` directory. In a git reposito
 writes a `pre-commit` hook where Git runs hooks, which also covers worktrees and
 submodules. It never replaces a pre-commit hook it did not write, and never writes into
 a `core.hooksPath` folder; in both cases it tells you which checks to add by hand.
+On a re-run it replaces the skills, hooks, subagents and its own pre-commit hook
+with this release's copies; a file that differs (a local edit, or an older
+release's file) is first copied to `.workflow/state/backups/<UTC stamp>/` and
+named on a `↻ Replaced` line, and `devops analyze` does the same for
+`.workflow/profile.yml`.
 Each skill is checked against its signed manifest entry first, and an edited
 or unsigned skill stops the install. It does not write `.claude/settings.json`,
 so the copied hook scripts run only after you wire them there (this
@@ -286,17 +298,25 @@ says where the pre-commit hook went or why there is none, and names the copied h
 scripts that Claude Code does not run yet. Other coding agents read `AGENTS.md`; see
 the note at the top of this file about which adapters exist.
 
+`devops init` and `devops analyze` record every file they write in
+`.workflow/state/install-manifest.json`, keeping a copy of any file that was there before
+under `.workflow/state/originals/`. `devops uninstall` uses that record: it removes the
+files DevOPs created, puts back the ones it changed, and removes the folders it created
+once they are empty. A file edited since DevOPs wrote it, a symlink, or a file whose kept
+original changed is left as it is and named, and it stays in the manifest. The
+`.mcp.json` entry and the Agile Graph pin are not recorded yet; remove them by hand.
+
 See `docs/PLAYBOOK.md` for the full operational guide.
 
 ### Agile Graph (optional)
 
 DevOps links to Agile Graph (MIT, https://github.com/MILTONADINA/agile-graph) when it
 is installed. Agile Graph indexes your project for an AI client and keeps engineering
-memory. Install the engine version whose tools DevOps pins (0.4.0 today) on
+memory. Install the engine version whose tools DevOps pins (0.6.0 today) on
 Node 24 to 26, then run `devops init`:
 
 ```bash
-npm install -g @agile-graph/engine@0.4.0      # or as a devDependency of the project
+npm install -g @agile-graph/engine@0.6.0      # or as a devDependency of the project
 devops init                                   # registers the MCP server in .mcp.json
 GRAPH_ENGINE_NO_FEEDBACK=1 agile-graph -C . init --cloud-mcp --export 'src/**'
 GRAPH_ENGINE_NO_FEEDBACK=1 agile-graph -C . index --lexical

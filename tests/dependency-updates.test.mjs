@@ -91,6 +91,56 @@ test('runtime lockfile holds onnxruntime-node at the version @huggingface/transf
   assert.deepEqual(nested, [], 'no second onnxruntime-node tree is installed');
 });
 
+// Reads the ignore block of one npm entry in .github/dependabot.yml, skipping comments, and returns
+// its rules. Fails closed on any line it does not recognise.
+function dependabotNpmIgnore(directory) {
+  const config = readFileSync(path.join(ROOT, '.github/dependabot.yml'), 'utf8');
+  const entry = config
+    .split(/\n  - package-ecosystem: /)
+    .find((part) => part.startsWith('npm\n') && part.includes(`\n    directory: ${directory}\n`));
+  assert.ok(entry, `dependabot.yml has an npm entry for directory ${directory}`);
+  const lines = entry.split('\n').filter((line) => !/^\s*#/.test(line));
+  const start = lines.indexOf('    ignore:');
+  assert.ok(start >= 0, `the npm entry for ${directory} has an ignore block`);
+  const block = [];
+  for (const line of lines.slice(start + 1)) {
+    if (!line.startsWith('      ')) break;
+    block.push(line);
+  }
+  const list = (value) => value.split(',').map((v) => v.trim().replace(/^"|"$/g, ''));
+  const ignored = [];
+  for (const line of block) {
+    const name = line.match(/^      - dependency-name: "([^"]+)"$/);
+    const versions = line.match(/^        versions: \[(.*)\]$/);
+    const updateTypes = line.match(/^        update-types: \[(.*)\]$/);
+    if (name) ignored.push({ name: name[1], versions: null, updateTypes: null });
+    else if (versions && ignored.length) ignored.at(-1).versions = list(versions[1]);
+    else if (updateTypes && ignored.length) ignored.at(-1).updateTypes = list(updateTypes[1]);
+    else assert.fail(`unexpected line in the ignore block: ${line}`);
+  }
+  return ignored;
+}
+
+// Dependabot must not propose version updates past the holds above, or each weekly run opens a
+// PR that fails these tests (as PR #361 did). Derives each expected range from the lockfile.
+// Security updates are not covered by ignore rules; a security fix past a hold needs the hold lifted.
+test('.github/dependabot.yml ignores the held runtime packages', () => {
+  const held = (name) => [`>${locked('runtime', name)}`];
+  assert.deepEqual(dependabotNpmIgnore('/runtime'), [
+    { name: '*', versions: null, updateTypes: ['version-update:semver-major'] },
+    { name: '@typescript-eslint/eslint-plugin', versions: held('@typescript-eslint/eslint-plugin'), updateTypes: null },
+    { name: '@typescript-eslint/parser', versions: held('@typescript-eslint/parser'), updateTypes: null },
+    { name: 'onnxruntime-node', versions: null, updateTypes: null },
+  ]);
+});
+
+// Majors are deferred for the root package too: its npm entry ignores every semver-major update.
+test('.github/dependabot.yml ignores semver-major updates for the root npm entry', () => {
+  assert.deepEqual(dependabotNpmIgnore('/'), [
+    { name: '*', versions: null, updateTypes: ['version-update:semver-major'] },
+  ]);
+});
+
 // scripts/prepare-dast.mjs asserts the tsx version its staged runtime install resolves; it must
 // match the runtime lockfile or the DAST preparation fails.
 test('scripts/prepare-dast.mjs asserts the tsx version that runtime/package-lock.json resolves', () => {
