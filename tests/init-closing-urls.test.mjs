@@ -89,8 +89,9 @@ test(`init's closing text says what to commit and what stays local (${SPEC}#ac-1
   withProject(dir => {
     const commit = init(dir, [], ROOT).split('\n').find(line => line.includes('Commit AGENTS.md'));
     assert.ok(commit, 'a Commit line is printed');
-    assert.ok(commit.includes('Commit AGENTS.md, CLAUDE.md, .claude/ and .workflow/profile.yml'), commit);
-    assert.ok(commit.includes('Keep .workflow/state/ local'), commit);
+    assert.ok(commit.includes('Commit AGENTS.md, CLAUDE.md, .claude/, .workflow/profile.yml and .workflow/state/budget.yml'), commit);
+    // Only what init ignores is called local: budget.yml is project configuration.
+    assert.ok(!commit.includes('Keep .workflow/state/ local'), commit);
     // The entries init adds to .gitignore are named exactly as written there.
     for (const entry of LOCAL_STATE_IGNORES) assert.ok(commit.includes(entry), `${entry} in ${commit}`);
   });

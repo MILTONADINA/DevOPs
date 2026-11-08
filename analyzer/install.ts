@@ -844,7 +844,7 @@ function main() {
   console.log('  1. Adjust `.workflow/state/budget.yml` for the project budget');
   console.log(`  2. For client work, create \`.workflow/client/profile.yml\`; ${docUrl('docs/CLIENT_ONBOARDING.md')} lists its fields`);
   console.log(`  3. At session end, write the baton as ${docUrl('slash-commands/universal/checkpoint.md')} describes (with the DevOPs Claude Code plugin installed, its /checkpoint command does this)`);
-  console.log(`  4. Commit AGENTS.md, CLAUDE.md, .claude/ and .workflow/profile.yml. Keep .workflow/state/ local: init adds ${LOCAL_STATE_IGNORES.join(' and ')} to .gitignore.`);
+  console.log(`  4. Commit AGENTS.md, CLAUDE.md, .claude/, .workflow/profile.yml and .workflow/state/budget.yml. Keep ${LOCAL_STATE_IGNORES.join(' and ')} local: init adds them to .gitignore.`);
   console.log('');
   console.log('First steps in the agent:');
   console.log(`  1. Read ${['PRINCIPLES.md', 'ANTIPATTERNS.md', 'LOOP.md'].map(file => docUrl(`constitution/${file}`)).join(', ')}`);

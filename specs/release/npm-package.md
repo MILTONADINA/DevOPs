@@ -195,7 +195,7 @@ differ, THEN it SHALL fail and print the differing entries.
 
 ### REQ-14 — Init's printed steps name only files that exist
 
-WHEN `devops init` finishes, or runs as a dry run, THE SYSTEM SHALL print the same "Next steps" and "First steps in the agent" text, and every file it names there SHALL be a GitHub URL of the form `https://github.com/MILTONADINA/DevOPs/blob/v<version>/<path>`, where `<version>` is the installed package's version and `<path>` exists in the repository at that release (#352, #420). THE SYSTEM SHALL NOT tell the user to run a slash command that init did not install; a command is named only with the plugin that provides it. The "Next steps" SHALL say which files to commit (AGENTS.md, CLAUDE.md, `.claude/`, `.workflow/profile.yml`) and that `.workflow/state/` stays local, naming the `.gitignore` entries init adds (`.workflow/state/install-manifest.json`, `.workflow/state/originals/`).
+WHEN `devops init` finishes, or runs as a dry run, THE SYSTEM SHALL print the same "Next steps" and "First steps in the agent" text, and every file it names there SHALL be a GitHub URL of the form `https://github.com/MILTONADINA/DevOPs/blob/v<version>/<path>`, where `<version>` is the installed package's version and `<path>` exists in the repository at that release (#352, #420). THE SYSTEM SHALL NOT tell the user to run a slash command that init did not install; a command is named only with the plugin that provides it. The "Next steps" SHALL say which files to commit (AGENTS.md, CLAUDE.md, `.claude/`, `.workflow/profile.yml`, `.workflow/state/budget.yml`) and which stay local, naming the `.gitignore` entries init adds (`.workflow/state/install-manifest.json`, `.workflow/state/originals/`).
 
 ### REQ-15 — Init and analyze record what they write
 
