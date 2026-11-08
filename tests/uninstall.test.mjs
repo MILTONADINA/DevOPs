@@ -3,7 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync, appendFileSync, unlinkSync } from 'node:fs';
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync, appendFileSync, unlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { writeStubGit } from './fixtures/stub-git.mjs';
@@ -333,11 +333,14 @@ test(`a .mcp.json that was there before keeps its other server and key after uni
   withProject(dir => {
     const original = { mcpServers: { other: { type: 'stdio', command: 'other-tool', args: ['--flag'] } }, extraKey: { keep: true } };
     writeFileSync(mcpPath(dir), `${JSON.stringify(original, null, 2)}\n`);
+    // A private .mcp.json (it can hold tokens) stays private when uninstall rewrites it.
+    chmodSync(mcpPath(dir), 0o600);
     installLinked(dir);
     assert.equal(manifestNow(dir).mcp_servers[SERVER_KEY].created_file, false, 'the file was there before init');
     const r = uninstall(dir);
     assert.equal(r.status, 0, r.stdout + r.stderr);
     assert.deepEqual(mcpNow(dir), original, 'the other server and the extra key are unchanged');
+    assert.equal(statSync(mcpPath(dir)).mode & 0o777, 0o600, 'the rewritten .mcp.json keeps its permissions');
     assert.ok(!existsSync(path.join(dir, PIN_TARGET)), 'the pin file is gone');
   });
 });

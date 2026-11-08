@@ -115,10 +115,19 @@ export function readManifest(root) {
  * Writes `bytes` to `target` whole: into `temp` (`target.tmp`), flushed to disk, then
  * renamed over it (or, with `exclusive`, linked to it, which fails when the
  * target exists). A signal or crash leaves the old file or the new one, never
- * part of it. A leftover `.tmp` is overwritten by the next write.
+ * part of it. An existing target's permissions are kept. A leftover `.tmp` is overwritten by the next write.
  */
 export function replaceWhole(base, target, bytes, { exclusive = false, temp = `${target}.tmp` } = {}) {
-  writeInside(base, temp, bytes);
+  // The new file keeps the old one's permissions: a .mcp.json a user made private (0600)
+  // must not come back readable by others.
+  let mode;
+  try {
+    const stat = fs.lstatSync(path.join(base, target));
+    if (stat.isFile()) mode = stat.mode & 0o7777;
+  } catch {
+    /* no file yet: the default mode */
+  }
+  writeInside(base, temp, bytes, mode === undefined ? {} : { mode });
   const tempFile = path.join(base, temp);
   const fd = fs.openSync(tempFile, fs.constants.O_RDONLY | NOFOLLOW);
   try {
