@@ -12,6 +12,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 - `block-secrets.sh` escapes the path and operation it writes to `.workflow/state/events.jsonl`. A path with a quote, backslash, newline or control character used to break the JSON line or add keys to it, so a log entry could be forged. Each entry is one JSON object whose `path` round-trips exactly (#426).
 - `run-hook.mjs` no longer passes a payload with no `tool_input` (or a `null` one) silently. For a pre hook it writes one stderr line naming `tool_input`. A `command` or `file` hook, which reads that field, fails closed with exit 2; a `stdin` hook runs after the warning. `docs/HOOKS.md` describes the rule (#426).
+- `hooks/universal/pre-tool/block-rm-rf.sh` no longer prints `grep: parentheses not balanced` on every Bash call. The fork-bomb signature pattern had an unescaped `(`, so grep rejected it and the fork-bomb check never ran. The pattern now uses bracket expressions that compile on BSD and GNU grep, and the hook still refuses the fork-bomb signature (#425).
 
 ## [0.8.0] — 2026-11-08
 
