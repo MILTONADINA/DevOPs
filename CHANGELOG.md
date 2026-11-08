@@ -18,6 +18,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - `devops init` without cosign writes nothing to the project. It used to write `AGENTS.md`, `CLAUDE.md`, the `.gitignore` lines and `.workflow/` (the install manifest included), then report every signed skill as failed and exit 2. Now it checks for cosign before any write, prints the install hint and exits 2, and counts each skill that could not be checked as `not verified (cosign missing)`, not `failed`. `--dry-run` still reports what it would write, then stops the same way. A cosign that runs and rejects a skill is refused as before (`specs/phase-2/F-skill-provenance.md` REQ-F12, AC-F12.1; #415).
 - `devops uninstall` removes the `agile-graph` entry in `.mcp.json` and the pin file `.claude/agile-graph-tool-hashes.json` that `devops init` added when it linked Agile Graph. Other servers and keys in `.mcp.json` stay, and an entry edited since is kept and named. An install made by 0.7.0 or earlier did not record them (`specs/release/npm-package.md` REQ-15, REQ-16, AC-26; #413).
 
+- `devops uninstall` names the pre-commit hook by its real path (`.git/hooks/pre-commit`) instead of the manifest key `git-hooks/pre-commit`, and ends with one line when a file it removed or restored is tracked by Git: commit the change, or run `git checkout -- <paths>` to keep the DevOPs versions. The README says that `analyze` adds two lines to `.gitignore` and that the pre-commit hook needs `gitleaks` on the PATH of whatever runs `git`; `docs/SECURITY.md` names a fake AWS key that gitleaks flags, for checking the secret scan (#419).
+
 ## [0.7.0] — 2026-11-08
 
 ### Added

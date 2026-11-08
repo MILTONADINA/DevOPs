@@ -246,8 +246,10 @@ AI coding agent and ask it to follow this section.
   profile lists a signed skill); `devops init --allow-unsigned --rationale="..."`
   installs them unverified and logs each one as overridden.
 - `gitleaks`, for the secret scan in the pre-commit hook that `devops init` writes.
-  Without it every commit stops, unless you set `DEVOPS_SKIP_SECRET_SCAN=1`. The
-  hook's claim check also needs the `devops` command on PATH or in
+  Without it every commit stops, unless you set `DEVOPS_SKIP_SECRET_SCAN=1`, which
+  skips the scan for one commit. The hook looks for `gitleaks` on the PATH of
+  whatever runs `git`, GUI clients included, so install it where those see it.
+  The hook's claim check also needs the `devops` command on PATH or in
   `node_modules/.bin` when `.workflow/proofs/*.yml` exists
   (`npm install -D @miltonadina/devops`, or `DEVOPS_SKIP_CLAIM_CHECK=1`).
 
@@ -301,7 +303,8 @@ the note at the top of this file about which adapters exist.
 
 `devops init` and `devops analyze` record every file they write in
 `.workflow/state/install-manifest.json`, keeping a copy of any file that was there before
-under `.workflow/state/originals/`. `devops uninstall` uses that record: it removes the
+under `.workflow/state/originals/`. `analyze` adds `.workflow/state/install-manifest.json` and `.workflow/state/originals/` to `.gitignore`.
+`devops uninstall` uses that record: it removes the
 files DevOPs created, puts back the ones it changed, and removes the folders it created
 once they are empty. A file edited since DevOPs wrote it, a symlink, or a file whose kept
 original changed is left as it is and named, and it stays in the manifest.
