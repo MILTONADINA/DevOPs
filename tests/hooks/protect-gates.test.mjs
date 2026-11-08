@@ -147,6 +147,11 @@ test(`file tools: a link in a protected directory to a directory or a missing fi
   blocked(fileHook(dir, path.join(dir, 'src/future.sh')), 'the missing target of a dangling hooks link');
   blocked(fileHook(dir, path.join(dir, 'src/out/new.md')), 'a new file in a directory an originals link points to');
   allowed(fileHook(dir, path.join(dir, 'src/other.js')), 'a file no link reaches');
+  // A hard link elsewhere to a file a hooks link points to has that file's identity.
+  writeFileSync(path.join(dir, 'src/linked.sh'), '#!/bin/sh\n');
+  symlinkSync(path.join(dir, 'src/linked.sh'), path.join(dir, '.claude/hooks/linked.sh'));
+  linkSync(path.join(dir, 'src/linked.sh'), path.join(dir, 'docs/hl.sh'));
+  blocked(fileHook(dir, path.join(dir, 'docs/hl.sh')), 'a hard link to the target of a hooks link');
 });
 
 test(`file tools: a symlinked tree in a protected directory is one entry, not walked (${SPEC}#ac-28)`, () => {

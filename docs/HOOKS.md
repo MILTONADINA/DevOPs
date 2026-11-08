@@ -19,7 +19,7 @@ symbolic link inside one of those directories points to, existing or not, so a l
 protects files not yet made there and a dangling link protects its missing target; or when it is a file
 or directory that does not exist yet under an existing directory with the same identity and name. The
 walk of a protected directory follows real directories only (a symbolic link is one entry, so a linked
-tree or a loop costs nothing), goes eight levels deep and no further, and stops after 5000 entries;
+tree or a loop costs nothing; links nested inside a linked tree are not followed), goes eight levels deep and no further, and stops after 5000 entries;
 past either limit the call exits 2, and the message says what to move out. Names fold the same way on
 every platform: NFD, U+017F as `s`, and upper then lower case. The names are ASCII, so folding refuses
 little that is not a gate. An error other than a missing path component exits 2.

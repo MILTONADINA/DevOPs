@@ -208,6 +208,10 @@ function protectedContents(root) {
       const st = fs.lstatSync(full);
       if (st.isSymbolicLink()) {
         linkRoots.push({ parts: partsOf(realTarget(full)), rel });
+        // The link's target by identity too, so a hard link to a linked file is caught. A linked
+        // directory is not walked: links nested inside a linked tree are not followed.
+        const target = statOrNull(full);
+        if (target !== null && !holders.has(`${target.dev}:${target.ino}`)) holders.set(`${target.dev}:${target.ino}`, rel);
         continue;
       }
       const key = `${st.dev}:${st.ino}`;
