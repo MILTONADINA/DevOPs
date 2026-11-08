@@ -22,6 +22,8 @@
 //   - The `.claude/settings.json` hook entries init added (REQ-15, #418) are removed only
 //     while the inner hook object still hashes to the recorded sha256. A matcher group,
 //     event or `hooks` left empty goes; a settings.json init created, left empty, is deleted.
+//     A kept entry that runs run-hook.mjs keeps that runner and the hook it names, both in the
+//     manifest, until the entry is deleted and uninstall runs again.
 // Nothing is followed through a symlink. A manifest Git tracks is refused: it came
 // with the repository, not from an install here. Folders DevOPs created are removed when
 // empty. Whatever is kept stays in the manifest, so a later uninstall can finish.
@@ -218,8 +220,11 @@ function unwireHooks(base, entries, createdFile) {
   return plan;
 }
 
-const hookNameOf = command => (/ (?:pre|post) ([A-Za-z0-9._-]+) (?:stdin|command|file)$/.exec(command)
-  ?? /\.claude\/hooks\/([A-Za-z0-9._-]+)/.exec(command))?.[1] ?? command;
+// The hook a run-hook.mjs command runs (its <hook-file>), or null for any other command. The
+// command may end in `|| exit 2` (a pre hook).
+const RUN_HOOK_NAME = / (?:pre|post) ([A-Za-z0-9._-]+) (?:stdin|command|file)(?: \|\| exit 2)?$/;
+const runHookFile = command => RUN_HOOK_NAME.exec(command)?.[1] ?? null;
+const hookNameOf = command => runHookFile(command) ?? /\.claude\/hooks\/([A-Za-z0-9._-]+)/.exec(command)?.[1] ?? command;
 const hookLabel = entry => `the ${entry.event} hook for ${hookNameOf(entry.command)}`;
 
 /** Empty folders under `dir` (and `dir` itself), deepest first, without following links. */
@@ -303,7 +308,24 @@ export function uninstall(root, { dryRun = false, log = console.log } = {}) {
   const touched = [];
   let keptCount = 0;
   let handled = 0;
+  // #418: the settings.json hook entries are planned before the files, so a kept entry can keep
+  // the files it still runs. A kept entry whose command runs run-hook.mjs keeps the runner and the
+  // hook it names: the files loop leaves both alone, and the kept line below names them once.
+  const settingsPlan = data.claude_hooks ? unwireHooks(base, data.claude_hooks, data.claude_hooks_created_file === true) : null;
+  const keptRunnerFiles = new Map(); // hook name -> the manifest keys a kept entry still runs
+  for (const { entry } of settingsPlan?.kept ?? []) {
+    if (!entry.command.includes('run-hook.mjs')) continue;
+    const hook = runHookFile(entry.command);
+    keptRunnerFiles.set(hook ?? 'run-hook.mjs', ['.claude/hooks/run-hook.mjs', ...(hook === null ? [] : [`.claude/hooks/${hook}`])]);
+  }
+  const keptRunnerKeys = new Set();
+  for (const keys of keptRunnerFiles.values()) {
+    for (const key of keys) keptRunnerKeys.add(key);
+    keptCount += keys.filter(key => data.files[key] !== undefined).length;
+    log(`kept      ${keys.join(' and ')}: a kept entry in ${SETTINGS_KEY} still runs them; delete that entry, then run devops uninstall again`);
+  }
   for (const key of Object.keys(data.files).sort()) {
+    if (keptRunnerKeys.has(key)) continue; // named with the kept entry above
     const entry = data.files[key];
     // The hook is shown where Git keeps it, not by its manifest key.
     const label = key === HOOK_KEY ? hookShown(base) : key;
@@ -382,7 +404,7 @@ export function uninstall(root, { dryRun = false, log = console.log } = {}) {
   // #418: the settings.json hook entries init added. Only those entries go; the file is written
   // once, whole and with its permissions, and a record goes once its entry is gone or removed.
   if (data.claude_hooks) {
-    const plan = unwireHooks(base, data.claude_hooks, data.claude_hooks_created_file === true);
+    const plan = settingsPlan;
     for (const { entry, reason } of plan.kept) {
       keptCount++;
       log(`kept      ${SETTINGS_KEY} (${hookLabel(entry)}): ${reason}`);

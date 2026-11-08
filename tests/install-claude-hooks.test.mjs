@@ -39,7 +39,7 @@ const ALL_HOOKS = [
 ];
 const cmd = command => ({ type: 'command', command });
 const RUN = (phase, name, input) => cmd(`node "\${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/run-hook.mjs" ${phase} ${name} ${input}${phase === 'pre' ? ' || exit 2' : ''}`);
-const PLAIN = name => cmd(`bash "\${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/${name}" || true`);
+const PLAIN = name => cmd(`cd "\${CLAUDE_PROJECT_DIR:-.}" && bash .claude/hooks/${name} || true`);
 const BASH = 'Bash';
 const READ_WRITE = 'Read|Write|Edit|MultiEdit|NotebookEdit';
 const WRITES = 'Write|Edit|MultiEdit';
@@ -57,11 +57,10 @@ const EXPECTED_HOOKS = {
   ],
   PostToolUse: [{ matcher: WRITES, hooks: [RUN('post', 'gitleaks-scan.sh', 'file')] }],
   SessionStart: [{ hooks: [PLAIN('load-baton.sh')] }],
-  SessionEnd: [{ hooks: [PLAIN('write-baton.sh')] }],
 };
 const WIRED_COMMANDS = Object.values(EXPECTED_HOOKS).flatMap(groups => groups.flatMap(g => g.hooks.map(h => h.command)));
 const WIRED_FILES = ['block-new-dependency.sh', 'block-prod-write.sh', 'block-rm-rf.sh', 'block-sealed-refs.sh',
-  'block-secrets.sh', 'deploy-gate.sh', 'gitleaks-scan.sh', 'load-baton.sh', 'write-baton.sh', 'run-hook.mjs'];
+  'block-secrets.sh', 'deploy-gate.sh', 'gitleaks-scan.sh', 'load-baton.sh', 'run-hook.mjs'];
 
 function withProject(fn) {
   const dir = realpathSync(mkdtempSync(path.join(tmpdir(), 'claude-hooks-418-')));
@@ -112,7 +111,7 @@ test(`init wires the hooks it can wire into an empty project's settings.json (${
     // Every copied hook is either wired or named with its reason; none is unmapped.
     assert.doesNotMatch(r.stdout, /no mapping/);
     for (const name of ALL_HOOKS.map(h => path.basename(h))) assert.match(r.stdout, new RegExp(name.replace(/\./g, '\\.')));
-    assert.match(r.stdout, /wired 9 hooks/);
+    assert.match(r.stdout, /wired 8 hooks/);
     assert.doesNotMatch(r.stdout, /do it by hand|wire them/);
   });
 });
@@ -129,6 +128,7 @@ test(`init names each hook it does not wire with its reason (${SPEC}#ac-27)`, ()
       'client-boundary.sh': 'not registered by default',
       'external-content-boundary.sh': 'rotate-session-key.sh',
       'rotate-session-key.sh': 'external-content-boundary.sh',
+      'write-baton.sh': 'overwrites a hand-written baton',
       'graph-preflight.sh': 'Agile Graph pipeline',
     };
     for (const [name, reason] of Object.entries(reasons)) {
@@ -168,12 +168,112 @@ test(`running init twice adds no duplicate entry (${SPEC}#ac-27)`, () => {
   });
 });
 
+// The hook files a settings.json command runs: the hooks under .claude/hooks it names, and the hook
+// that a run-hook.mjs command names.
+function hookFilesNamedBy(command) {
+  const names = [...command.matchAll(/\.claude\/hooks\/([\w.-]+)/g)].map(m => m[1]);
+  const hook = / (?:pre|post) ([\w.-]+) (?:stdin|command|file)/.exec(command);
+  return hook ? [...names, hook[1]] : names;
+}
+
+test(`the load-baton command reads the root's baton from a subdirectory and creates no .workflow there (${SPEC}#ac-27)`, () => {
+  withProject(dir => {
+    assert.equal(init(dir).status, 0);
+    writeFileSync(path.join(dir, '.workflow/state/baton.md'), '# baton\n');
+    const sub = path.join(dir, 'packages', 'app');
+    mkdirSync(sub, { recursive: true });
+    const command = readSettings(dir).hooks.SessionStart[0].hooks[0].command;
+    const r = spawnSync('bash', ['-c', command], { cwd: sub, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: dir } });
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.match(r.stdout, /BATON FOUND/);
+    assert.equal(existsSync(path.join(sub, '.workflow')), false, 'no .workflow in the subdirectory');
+  });
+});
+
+test(`a block-rm-rf command under PostToolUse does not stop init wiring the PreToolUse gate (${SPEC}#ac-27)`, () => {
+  withProject(dir => {
+    mkdirSync(path.join(dir, '.claude'));
+    const user = { hooks: { PostToolUse: [{ matcher: WRITES, hooks: [RUN('pre', 'block-rm-rf.sh', 'command')] }] } };
+    writeFileSync(settingsPath(dir), `${JSON.stringify(user, null, 2)}\n`);
+    const r = init(dir);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.doesNotMatch(r.stdout, /already wired: block-rm-rf/);
+    const settings = readSettings(dir);
+    const bash = settings.hooks.PreToolUse.find(group => group.matcher === BASH);
+    assert.ok(bash.hooks.some(h => h.command === RUN('pre', 'block-rm-rf.sh', 'command').command), 'the PreToolUse gate is wired');
+    assert.deepEqual(settings.hooks.PostToolUse[0].hooks[0], user.hooks.PostToolUse[0].hooks[0], "the user's entry is kept");
+  });
+});
+
+test(`the same command under the same event but with no matcher does not count as wired (${SPEC}#ac-27)`, () => {
+  withProject(dir => {
+    mkdirSync(path.join(dir, '.claude'));
+    const user = { hooks: { PreToolUse: [{ hooks: [RUN('pre', 'block-rm-rf.sh', 'command')] }] } };
+    writeFileSync(settingsPath(dir), `${JSON.stringify(user, null, 2)}\n`);
+    const r = init(dir);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.doesNotMatch(r.stdout, /already wired: block-rm-rf/);
+    const pre = readSettings(dir).hooks.PreToolUse;
+    assert.deepEqual(pre[0], user.hooks.PreToolUse[0], "the user's group is unchanged");
+    assert.ok(pre.find(group => group.matcher === BASH).hooks.some(h => h.command === RUN('pre', 'block-rm-rf.sh', 'command').command));
+  });
+});
+
+test(`a hook already wired is printed as "already wired" and is not added again (${SPEC}#ac-27)`, () => {
+  withProject(dir => {
+    assert.equal(init(dir).status, 0);
+    const before = readFileSync(settingsPath(dir), 'utf8');
+    const r = init(dir);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    const lines = r.stdout.split('\n').filter(line => line.startsWith('  already wired: '));
+    assert.equal(lines.length, WIRED_COMMANDS.length, r.stdout);
+    for (const [name, event] of [['block-rm-rf.sh', 'PreToolUse'], ['block-secrets.sh', 'PreToolUse'], ['gitleaks-scan.sh', 'PostToolUse'], ['load-baton.sh', 'SessionStart']]) {
+      assert.ok(lines.includes(`  already wired: ${name} (${event})`), `${name} (${event}): ${r.stdout}`);
+    }
+    assert.equal(readFileSync(settingsPath(dir), 'utf8'), before, 'nothing was added');
+  });
+});
+
+test(`uninstall keeps an edited run-hook entry, its runner and its hook, and names them (${SPEC}#ac-27)`, () => {
+  withProject(dir => {
+    assert.equal(init(dir).status, 0);
+    const settings = readSettings(dir);
+    const rmRf = settings.hooks.PreToolUse.find(group => group.matcher === BASH).hooks.find(h => h.command.includes('block-rm-rf.sh'));
+    rmRf.timeout = 30;
+    writeFileSync(settingsPath(dir), `${JSON.stringify(settings, null, 2)}\n`);
+    const r = uninstall(dir);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.match(r.stdout, /^kept {6}\.claude\/hooks\/run-hook\.mjs and \.claude\/hooks\/block-rm-rf\.sh: a kept entry in \.claude\/settings\.json still runs them; delete that entry, then run devops uninstall again$/m);
+    assert.match(r.stdout, /kept {6}\.claude\/settings\.json \(the PreToolUse hook for block-rm-rf\.sh\): edited since DevOPs wrote it/);
+    assert.ok(existsSync(path.join(dir, '.claude/hooks/run-hook.mjs')), 'the runner stays');
+    assert.ok(existsSync(path.join(dir, '.claude/hooks/block-rm-rf.sh')), 'the hook stays');
+    // The kept entry is the only one left, and every file a command names is still there.
+    const commands = commandsIn(readSettings(dir));
+    assert.deepEqual(commands, [rmRf.command]);
+    for (const command of commands) {
+      for (const file of hookFilesNamedBy(command)) assert.ok(existsSync(path.join(dir, '.claude/hooks', file)), `${file} exists for ${command}`);
+    }
+    const record = readRecord(dir);
+    assert.ok(record.files['.claude/hooks/run-hook.mjs'] && record.files['.claude/hooks/block-rm-rf.sh'], 'both stay in the manifest');
+    // Once the user deletes that entry, the next uninstall removes both.
+    writeFileSync(settingsPath(dir), '{}\n');
+    const again = uninstall(dir);
+    assert.equal(again.status, 0, again.stdout + again.stderr);
+    assert.equal(existsSync(path.join(dir, '.claude/hooks/run-hook.mjs')), false, 'the runner is removed');
+    assert.equal(existsSync(path.join(dir, '.claude/hooks/block-rm-rf.sh')), false, 'the hook is removed');
+    assert.equal(existsSync(path.join(dir, MANIFEST)), false, 'nothing is left to record');
+  });
+});
+
 test(`a command already in settings.json is left alone and not recorded (${SPEC}#ac-27)`, () => {
   withProject(dir => {
     const user = { hooks: { SessionStart: [{ hooks: [PLAIN('load-baton.sh')] }] } };
     mkdirSync(path.join(dir, '.claude'));
     writeFileSync(settingsPath(dir), `${JSON.stringify(user, null, 2)}\n`);
-    assert.equal(init(dir).status, 0);
+    const r = init(dir);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.match(r.stdout, /^  already wired: load-baton\.sh \(SessionStart\)$/m);
+    assert.match(r.stdout, /wired 7 hooks/, 'the other hooks are still added');
     const record = readRecord(dir).claude_hooks;
     assert.deepEqual(record.map(e => e.command).sort(), WIRED_COMMANDS.filter(c => c !== PLAIN('load-baton.sh').command).sort(),
       'only the entries init added are recorded');
@@ -211,15 +311,15 @@ test(`uninstall keeps an edited entry, names it, and leaves the manifest record 
   withProject(dir => {
     assert.equal(init(dir).status, 0);
     const settings = readSettings(dir);
-    settings.hooks.SessionEnd[0].hooks[0].timeout = 30;
+    settings.hooks.SessionStart[0].hooks[0].timeout = 30;
     writeFileSync(settingsPath(dir), `${JSON.stringify(settings, null, 2)}\n`);
     const r = uninstall(dir);
     assert.equal(r.status, 0, r.stdout + r.stderr);
-    assert.match(r.stdout, /kept {6}\.claude\/settings\.json \(the SessionEnd hook for write-baton\.sh\): edited since DevOPs wrote it/);
+    assert.match(r.stdout, /kept {6}\.claude\/settings\.json \(the SessionStart hook for load-baton\.sh\): edited since DevOPs wrote it/);
     // The edited entry is left as the user edited it; the unedited entries are removed.
-    assert.deepEqual(readSettings(dir), { hooks: { SessionEnd: settings.hooks.SessionEnd } });
+    assert.deepEqual(readSettings(dir), { hooks: { SessionStart: settings.hooks.SessionStart } });
     const left = readRecord(dir).claude_hooks.map(e => e.command);
-    assert.deepEqual(left, [PLAIN('write-baton.sh').command], 'the edited entry keeps its record');
+    assert.deepEqual(left, [PLAIN('load-baton.sh').command], 'the edited entry keeps its record');
   });
 });
 
@@ -227,17 +327,19 @@ test(`a malformed claude_hooks field is refused and uninstall changes nothing ($
   withProject(dir => {
     assert.equal(init(dir).status, 0);
     const good = readRecord(dir);
-    const entry = { event: 'SessionEnd', command: PLAIN('write-baton.sh').command, sha256: 'a'.repeat(64) };
+    const entry = { event: 'SessionStart', command: PLAIN('load-baton.sh').command, sha256: 'a'.repeat(64) };
     const bad = [
       'write-baton.sh',
       [{ ...entry, sha256: 'NOT-HEX' }],
       [{ ...entry, extra: 1 }],
-      [{ event: 'SessionEnd', command: PLAIN('write-baton.sh').command }],
+      [{ event: 'SessionStart', command: PLAIN('load-baton.sh').command }],
       [{ ...entry, command: '../../evil.sh' }],
       [{ ...entry, command: 'sh -c evil' }],
       [{ ...entry, command: 'bash "${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/x.sh" ; touch pwned' }],
       [{ ...entry, event: '' }],
       [{ ...entry, matcher: 5 }],
+      [{ ...entry, command: 'bash "${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/load-baton.sh" || true' }],
+      [{ ...entry, command: '.claude/hooks/load-baton.sh' }],
     ];
     for (const value of bad) {
       writeFileSync(path.join(dir, MANIFEST), `${JSON.stringify({ ...good, claude_hooks: value }, null, 2)}\n`);
@@ -290,7 +392,7 @@ test(`a dry run says what it would wire and changes nothing (${SPEC}#ac-27)`, ()
     const before = snapshot(dir);
     const r = init(dir, '--dry-run');
     assert.equal(r.status, 0, r.stdout + r.stderr);
-    assert.match(r.stdout, /would wire 9 hooks/);
+    assert.match(r.stdout, /would wire 8 hooks/);
     assert.match(r.stdout, /would add .*SessionStart.*load-baton\.sh/);
     assert.deepEqual(snapshot(dir), before, 'nothing was written');
   });

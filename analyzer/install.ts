@@ -424,7 +424,7 @@ const RUN_HOOK_FILE = 'run-hook.mjs';
 // cannot start would otherwise exit with a code Claude Code does not treat as a block.
 const runHook = (phase: 'pre' | 'post', name: string, input: 'stdin' | 'command' | 'file') =>
   `node "\${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/${RUN_HOOK_FILE}" ${phase} ${name} ${input}${phase === 'pre' ? ' || exit 2' : ''}`;
-const plainHook = (name: string) => `bash "\${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/${name}" || true`;
+const plainHook = (name: string) => `cd "\${CLAUDE_PROJECT_DIR:-.}" && bash .claude/hooks/${name} || true`;
 const CLAUDE_HOOK_WIRING: Record<string, HookWiring> = {
   'deploy-gate.sh': { event: 'PreToolUse', matcher: 'Bash', command: runHook('pre', 'deploy-gate.sh', 'stdin') },
   'block-sealed-refs.sh': { event: 'PreToolUse', matcher: 'Bash', command: runHook('pre', 'block-sealed-refs.sh', 'stdin') },
@@ -434,7 +434,7 @@ const CLAUDE_HOOK_WIRING: Record<string, HookWiring> = {
   'block-secrets.sh': { event: 'PreToolUse', matcher: 'Read|Write|Edit|MultiEdit|NotebookEdit', command: runHook('pre', 'block-secrets.sh', 'file') },
   'gitleaks-scan.sh': { event: 'PostToolUse', matcher: 'Write|Edit|MultiEdit', command: runHook('post', 'gitleaks-scan.sh', 'file') },
   'load-baton.sh': { event: 'SessionStart', command: plainHook('load-baton.sh') },
-  'write-baton.sh': { event: 'SessionEnd', command: plainHook('write-baton.sh') },
+  'write-baton.sh': { unwired: 'overwrites a hand-written baton; write it with /checkpoint instead' },
   'budget-brake.sh': { unwired: 'needs a per-call cost estimate that Claude Code does not give' },
   'loop-detection.sh': { unwired: 'needs a tool name and arguments; not wired until it is tested with real payloads' },
   'auto-format.sh': { unwired: 'opt-in: it rewrites files' },
@@ -456,9 +456,9 @@ const plural = (n: number) => (n === 1 ? 'hook' : 'hooks');
 
 /**
  * Merges the entries for the copied hooks `names` into .claude/settings.json. Keeps every other
- * key and hook; adds nothing whose command is already in the file (any event), and records only
- * what it adds. A settings.json that is a link, not a regular file, or not a JSON object is left
- * unchanged, with a line saying why. A dry run writes nothing.
+ * key and hook; adds nothing already wired under the same event and matcher (and says so for each),
+ * and records only what it adds. A settings.json that is a link, not a regular file, or not a JSON
+ * object is left unchanged, with a line saying why. A dry run writes nothing.
  */
 function wireClaudeHooks(root: string, names: string[], dryRun: boolean) {
   const wanted: string[] = [];
@@ -514,36 +514,27 @@ function wireClaudeHooks(root: string, names: string[], dryRun: boolean) {
     }
   }
 
-  // A command already in any event of the file is left alone and not recorded.
-  const present = new Set<string>();
-  for (const groups of Object.values(byEvent)) {
-    for (const group of Array.isArray(groups) ? groups : []) {
-      if (!isObject(group) || !Array.isArray(group.hooks)) continue;
-      for (const hook of group.hooks) if (isObject(hook) && typeof hook.command === 'string') present.add(hook.command);
-    }
-  }
+  // A wanted hook is already wired only when its command sits in a group with the same matcher
+  // under the same event. The same command under another event or matcher is not wired, so it is
+  // added. Each hook already wired is named, and nothing is added or recorded for it.
   const added: { name: string; event: string; matcher?: string; command: string; inner: { type: string; command: string } }[] = [];
-  const already: string[] = [];
   for (const name of wanted) {
     const { event, matcher, command } = CLAUDE_HOOK_WIRING[name] as WiredRow;
-    if (present.has(command)) {
-      already.push(name);
+    const groups = (byEvent[event] ?? []) as unknown[];
+    // An event without a matcher has groups without one: `matcher` undefined matches only those.
+    const sameMatcher = groups.filter((g): g is { matcher?: unknown; hooks: unknown[] } =>
+      isObject(g) && g.matcher === matcher && Array.isArray(g.hooks));
+    if (sameMatcher.some(g => g.hooks.some(h => isObject(h) && h.command === command))) {
+      console.log(`  already wired: ${name} (${event})`);
       continue;
     }
     const inner = { type: 'command', command };
-    const groups = (byEvent[event] ?? []) as unknown[];
-    // An event without a matcher has groups without one: `matcher` undefined matches only those.
-    const group = groups.find((g): g is { matcher?: unknown; hooks: unknown[] } =>
-      isObject(g) && g.matcher === matcher && Array.isArray(g.hooks));
-    if (group) group.hooks.push(inner);
+    if (sameMatcher.length > 0) sameMatcher[0].hooks.push(inner);
     else groups.push(matcher === undefined ? { hooks: [inner] } : { matcher, hooks: [inner] });
     byEvent[event] = groups;
     added.push({ name, event, matcher, command, inner });
   }
-  if (added.length === 0) {
-    if (already.length) console.log(`✓ Claude Code hooks: already in ${SETTINGS}: ${already.join(', ')}`);
-    return;
-  }
+  if (added.length === 0) return;
   if (config.hooks === undefined) config.hooks = byEvent;
 
   const list = added.map(a => `${a.event} ${a.name}`).join(', ');
