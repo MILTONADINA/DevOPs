@@ -38,7 +38,7 @@ DESTRUCTIVE_PATTERNS=(
     "wipefs"
     "dd[[:space:]]+if=.*of=/dev/"
     "mkfs"
-    ":[(][)][{][[:space:]]*:[|]:&[[:space:]]*[}];:" # fork bomb
+    "([[:alnum:]_:]+)[[:space:]]*[(][)][[:space:]]*[{][[:space:]]*\1[[:space:]]*[|][[:space:]]*\1[[:space:]]*&[[:space:]]*[}][[:space:]]*;?[[:space:]]*\1" # fork bomb: name(){ name|name& };name, any name and spacing
 )
 
 is_destructive=false
@@ -61,7 +61,7 @@ if echo "$COMMAND" | grep -qE "rm[[:space:]]+-[^[:space:]]*[rf].*[[:space:]]/$|r
     exit 2
 fi
 
-if echo "$COMMAND" | grep -qE ":[(][)][{][[:space:]]*:[|]:&[[:space:]]*[}];:"; then
+if echo "$COMMAND" | grep -qE "([[:alnum:]_:]+)[[:space:]]*[(][)][[:space:]]*[{][[:space:]]*\1[[:space:]]*[|][[:space:]]*\1[[:space:]]*&[[:space:]]*[}][[:space:]]*;?[[:space:]]*\1"; then
     echo "DevOPs RM BLOCK: fork bomb signature. Refused." >&2
     exit 2
 fi

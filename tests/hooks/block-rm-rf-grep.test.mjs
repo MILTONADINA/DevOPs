@@ -29,9 +29,21 @@ test('block-rm-rf refuses rm -rf / with exit 2', () => {
   assert.match(result.stderr, /DevOPs RM BLOCK/);
 });
 
-test('block-rm-rf refuses the fork-bomb signature with its own message', () => {
-  const result = runHook(':(){ :|:& };:');
-  assert.equal(result.status, 2);
-  assert.match(result.stderr, /fork bomb signature/);
-  assert.doesNotMatch(result.stderr, /grep:/);
-});
+// Any function name and any spacing: the same function piped into itself in the background.
+for (const command of [':(){ :|:& };:', 'b(){ b|b& };b', 'bomb() { bomb | bomb & }; bomb', ': () { : | : & } ; :']) {
+  test(`block-rm-rf refuses the fork bomb ${JSON.stringify(command)} with its own message`, () => {
+    const result = runHook(command);
+    assert.equal(result.status, 2);
+    assert.match(result.stderr, /fork bomb signature/);
+    assert.doesNotMatch(result.stderr, /grep:/);
+  });
+}
+
+// Look-alikes that are not fork bombs pass.
+for (const command of ['echo a|b&', 'f(){ g|h& };f']) {
+  test(`block-rm-rf allows ${JSON.stringify(command)}`, () => {
+    const result = runHook(command);
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stderr, '');
+  });
+}
