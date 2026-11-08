@@ -100,12 +100,20 @@ function writable(file) {
 }
 
 /**
+ * The part of the install manifest (install-manifest.js openManifest) that linking records.
+ * @typedef {{ before(key: string): void, after(key: string): void, mcpServer(name: string, entry: object, createdFile: boolean): void, forgetMcpServer(name: string): void }} Recorder
+ */
+
+/**
  * Register the engine for one project. Returns { status, lines }: status is "linked",
  * "kept" (something already there was left alone, or could not be written) or
  * "skipped"; lines are for the user. It never throws for a project it cannot change.
+ * `record` (the install manifest, null in a dry run) records the pin file it copies and
+ * the .mcp.json entry it adds, so uninstall can take them back (REQ-15).
  */
 export function linkAgileGraph({
   projectRoot, devopsRoot, dryRun = false, skip = false, nodeVersion = process.versions.node, pathEnv = process.env.PATH,
+  record = /** @type {Recorder | null} */ (null),
 }) {
   const done = (status, ...lines) => ({ status, lines });
   if (skip) return done('skipped', 'Agile Graph: skipped (--no-agile-graph).');
@@ -160,17 +168,25 @@ export function linkAgileGraph({
   }
 
   // Pins first, then .mcp.json; if .mcp.json cannot be written, take back the pins this
-  // run copied, so a project never holds one half of the link.
+  // run copied, so a project never holds one half of the link. Each write is recorded
+  // before it is made (REQ-15), so a run killed at any point leaves uninstall a record of
+  // what may be on disk; a record of an entry that never reached .mcp.json is harmless,
+  // because uninstall finds nothing to remove.
+  const createdFile = !fs.existsSync(mcpFile);
   const next = { ...config, mcpServers: { ...(config.mcpServers ?? {}), [SERVER_KEY]: entry } };
   try {
     if (copyPins) {
+      record?.before(PIN_TARGET);
       // Create-only, never through a link (REQ-F10).
       writeInside(projectRoot, pinTarget, fs.readFileSync(pinSource), { exclusive: true });
+      record?.after(PIN_TARGET);
     }
+    record?.mcpServer(SERVER_KEY, entry, createdFile);
     try {
       writeInside(projectRoot, mcpFile, `${JSON.stringify(next, null, 2)}\n`);
     } catch (error) {
       if (copyPins) fs.rmSync(pinTarget, { force: true });
+      record?.forgetMcpServer(SERVER_KEY);
       throw error;
     }
   } catch (error) {

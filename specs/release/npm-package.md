@@ -222,8 +222,18 @@ nothing. WHEN it starts the manifest in a project that already has
 DevOPs's copy. IF an original copy's path leaves the project through a symlink, THEN THE
 SYSTEM SHALL refuse that copy with an error and record no `original` for the file, because a
 read through the link would hash a file outside the project. WHEN DevOPs records a write, before or after it, or a folder it creates, THE SYSTEM SHALL save the manifest before its next step, replacing the file whole (written to a temp file under `originals/`, flushed, then renamed) so an interrupted run keeps its records and never leaves a truncated manifest; an unconfirmed write stays pending, and uninstall keeps its file. Original copies are written whole the same way, so a copy cut short is never restored, and uninstall removes the temp files an interrupted write left. Backups (REQ-F11) and the `originals/` copies are DevOPs's own records and
-are not themselves recorded. The `.mcp.json` entry and the Agile Graph pin that linking
-writes are not recorded yet (#353).
+are not themselves recorded. WHEN `devops init` (not a dry run) links Agile Graph
+(`specs/graph/agile-graph-link.md` REQ-3), THE SYSTEM SHALL record the pin file it copies as a
+file, and SHALL record each `.mcp.json` server entry it adds under `mcp_servers`, keyed by server
+name, with the sha256 of that entry's JSON and `created_file`, which is true when `.mcp.json` did
+not exist before that run. It SHALL NOT record `.mcp.json` as a file, because other tools share
+it, and a pin file that already existed is not recorded. `mcp_servers` is an optional key: a
+name must be a non-empty string of at most 128 characters, and an entry must have exactly
+`sha256` (64 lowercase hex characters) and `created_file` (a boolean), or the manifest is refused.
+WHEN `devops uninstall` runs, THE SYSTEM SHALL remove only the recorded server entry whose JSON
+still has the recorded sha256, SHALL keep every other key and server of `.mcp.json` with the same
+content, SHALL delete `.mcp.json` only when `created_file` is true and nothing else is left in it,
+and SHALL keep and name an entry edited since DevOPs wrote it, leaving its record in the manifest.
 
 ### REQ-16 — Uninstall removes what was recorded
 
@@ -516,6 +526,18 @@ already in the manifest on disk, no temporary manifest is left behind, and unins
 the temp files an interrupted write left under `originals/`.
 
 **Verified by:** `tests/install-manifest.test.mjs`.
+
+### AC-26
+
+**Given** a project with a `.mcp.json` that holds another server and an extra top-level key, or
+no `.mcp.json` at all **When** `devops init` links Agile Graph and `devops uninstall` runs
+**Then** the pin file and the `agile-graph` server are gone, the other server and the extra key
+keep their content, and `.mcp.json` is gone when init created it. **And** an `agile-graph` entry
+edited after init is kept and named, its record stays in the manifest, and a manifest whose
+`mcp_servers` is malformed makes uninstall exit 1 with nothing changed. A dry run changes
+nothing.
+
+**Verified by:** `tests/uninstall.test.mjs`.
 
 ## Out of scope
 

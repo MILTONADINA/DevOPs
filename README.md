@@ -303,8 +303,7 @@ the note at the top of this file about which adapters exist.
 under `.workflow/state/originals/`. `devops uninstall` uses that record: it removes the
 files DevOPs created, puts back the ones it changed, and removes the folders it created
 once they are empty. A file edited since DevOPs wrote it, a symlink, or a file whose kept
-original changed is left as it is and named, and it stays in the manifest. The
-`.mcp.json` entry and the Agile Graph pin are not recorded yet; remove them by hand.
+original changed is left as it is and named, and it stays in the manifest.
 
 See `docs/PLAYBOOK.md` for the full operational guide.
 

@@ -12,6 +12,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 - Skill signing emits one new-format Sigstore bundle per skill, which the installer and the release workflow verify offline against the committed trust root (#345); skills still without a bundle are pinned in `tests/ci/unsigned-skills.txt`, which must shrink to empty (#347). The package now ships `.workflow/sigstore/trust-bundle.json`, so installs can verify new-format bundles offline.
 
+### Fixed
+
+- `devops uninstall` removes the `agile-graph` entry in `.mcp.json` and the pin file `.claude/agile-graph-tool-hashes.json` that `devops init` added when it linked Agile Graph. Other servers and keys in `.mcp.json` stay, and an entry edited since is kept and named. An install made by 0.7.0 or earlier did not record them (`specs/release/npm-package.md` REQ-15, REQ-16, AC-26; #413).
+
 ## [0.7.0] — 2026-11-08
 
 ### Added

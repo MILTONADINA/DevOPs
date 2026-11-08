@@ -16,6 +16,9 @@
 //     such a file is kept and reported for the user to check.
 //   - The pre-commit hook is removed only while it still carries the DevOPs marker
 //     and its recorded bytes.
+//   - The `.mcp.json` server that init added (REQ-15) is removed only while its
+//     sha256 still matches; every other key and server stays. A `.mcp.json` init
+//     created, left with nothing else in it, is deleted.
 // Nothing is followed through a symlink. A manifest Git tracks is refused: it came
 // with the repository, not from an install here. Folders DevOPs created are removed when
 // empty. Whatever is kept stays in the manifest, so a later uninstall can finish.
@@ -23,10 +26,11 @@
 import { execFileSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { HOOK_KEY, MANIFEST, ORIGINALS, readManifest, readRegular, sha256 } from './install-manifest.js';
+import { HOOK_KEY, MANIFEST, ORIGINALS, readManifest, readRegular, replaceWhole, sha256 } from './install-manifest.js';
 import { assertInside, present, writeInside } from './safe-write.js';
 
 const HOOK_MARKER = '# DevOPs pre-commit hook';
+const plain = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 
 function git(root, args) {
   try {
@@ -96,6 +100,32 @@ function plan(root, key, entry, adopted) {
   return { action: 'restore', at, bytes: copy };
 }
 
+/**
+ * Decides what to do with one `.mcp.json` server that init added (REQ-15). Returns
+ * { action: 'none' | 'keep' | 'remove' | 'delete', reason?, bytes? }: 'delete' removes the
+ * file (init created it and nothing else is in it), 'remove' writes `bytes` back.
+ */
+function unlinkServer(base, name, recorded) {
+  const file = path.join(base, '.mcp.json');
+  // Read without following a link: a symlink or a non-file is kept and named.
+  const bytes = readRegular(file);
+  if (bytes === null) return { action: 'none' };
+  let config = null;
+  try {
+    config = JSON.parse(bytes.toString('utf8'));
+  } catch {
+    /* not JSON: kept below */
+  }
+  if (!plain(config)) return { action: 'keep', reason: '.mcp.json is not a JSON object' };
+  if (config.mcpServers !== undefined && !plain(config.mcpServers)) return { action: 'keep', reason: '.mcp.json has no mcpServers object' };
+  if (config.mcpServers === undefined || !Object.hasOwn(config.mcpServers, name)) return { action: 'none' };
+  if (sha256(JSON.stringify(config.mcpServers[name])) !== recorded.sha256) return { action: 'keep', reason: 'edited since DevOPs wrote it' };
+  delete config.mcpServers[name];
+  if (Object.keys(config.mcpServers).length === 0) delete config.mcpServers;
+  if (recorded.created_file && Object.keys(config).length === 0) return { action: 'delete' };
+  return { action: 'remove', bytes: `${JSON.stringify(config, null, 2)}\n` };
+}
+
 /** Empty folders under `dir` (and `dir` itself), deepest first, without following links. */
 function emptyDirsUnder(dir) {
   const out = [];
@@ -145,7 +175,13 @@ function removeIfEmpty(dir) {
   return false;
 }
 
-const save = (base, data) => writeInside(base, MANIFEST, `${JSON.stringify(data, null, 2)}\n`);
+// Uninstall's temp files sit beside the manifest, not under originals/: a symlinked
+// originals folder must not stop uninstall from saving what it kept.
+const STATE = '.workflow/state';
+const MANIFEST_SAVE_TEMP = `${STATE}/.uninstall-manifest.tmp`;
+const MCP_TEMP = `${STATE}/.uninstall-mcp.tmp`;
+// Replaced whole, as install does, so an interrupted uninstall never leaves a truncated manifest.
+const save = (base, data) => replaceWhole(base, MANIFEST, `${JSON.stringify(data, null, 2)}\n`, { temp: MANIFEST_SAVE_TEMP });
 
 /** Runs the uninstall for `root`; returns the exit status. */
 export function uninstall(root, { dryRun = false, log = console.log } = {}) {
@@ -201,6 +237,43 @@ export function uninstall(root, { dryRun = false, log = console.log } = {}) {
       log(`kept      ${key}: ${error.message}`);
     }
   }
+  // REQ-15: the .mcp.json server entries init added. Only that entry goes; every other key
+  // and server stays. A server edited since, or a .mcp.json that is not an object, is kept.
+  for (const name of Object.keys(data.mcp_servers ?? {}).sort()) {
+    const recorded = data.mcp_servers[name];
+    try {
+      const step = unlinkServer(base, name, recorded);
+      if (step.action === 'keep') {
+        keptCount++;
+        log(`kept      .mcp.json (the "${name}" server): ${step.reason}`);
+        continue;
+      }
+      if (dryRun) {
+        if (step.action !== 'none') log(`would remove the "${name}" server from .mcp.json`);
+        if (step.action === 'delete') log('would remove .mcp.json (init created it; nothing else is in it)');
+        if (step.action !== 'none') handled++;
+        continue;
+      }
+      if (step.action !== 'none') {
+        log(`remove    the "${name}" server from .mcp.json`);
+        handled++;
+        if (step.action === 'delete') {
+          log('remove    .mcp.json (init created it; nothing else is in it)');
+          removeRegular(path.join(base, '.mcp.json'));
+        } else {
+          // Replaced whole: a shared .mcp.json cut short would lose the user's other servers.
+          replaceWhole(base, '.mcp.json', step.bytes, { temp: MCP_TEMP });
+        }
+      }
+      // The record goes once the file is as it should be, so an interrupted run finishes later.
+      delete data.mcp_servers[name];
+      if (Object.keys(data.mcp_servers).length === 0) delete data.mcp_servers;
+      if (!dryRun) save(base, data);
+    } catch (error) {
+      keptCount++;
+      log(`kept      .mcp.json (the "${name}" server): ${error.message}`);
+    }
+  }
   // Recorded folders, deepest first; one that still holds anything stays.
   const dirs = [...data.dirs].sort((a, b) => b.split('/').length - a.split('/').length);
   if (dryRun) {
@@ -212,6 +285,10 @@ export function uninstall(root, { dryRun = false, log = console.log } = {}) {
     removeRegular(path.join(base, MANIFEST));
     // Leftovers of a write interrupted between its temp file and the rename.
     for (const file of tempFilesUnder(base, path.join(base, ORIGINALS))) removeRegular(file);
+    for (const temp of [MANIFEST_SAVE_TEMP, MCP_TEMP]) {
+      const file = path.join(base, temp);
+      if (readRegular(file) !== null) removeRegular(file);
+    }
   }
   for (const dir of emptyDirsUnder(path.join(base, ORIGINALS))) removeIfEmpty(dir);
   const left = [];
