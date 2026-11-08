@@ -1,5 +1,17 @@
 # Upgrading DevOPs
 
+## Upgrading from 0.8.0 to 0.8.1
+
+A patch release of hook fixes. Refresh the project so `.claude/hooks/` gets the fixed copies:
+
+```sh
+npx @miltonadina/devops@0.8.1 version
+npx @miltonadina/devops@0.8.1 init --dry-run
+npx @miltonadina/devops@0.8.1 init
+```
+
+Nothing to change by hand. The fork-bomb check in `block-rm-rf.sh` runs again (before, grep rejected its pattern and printed an error on every Bash call). The hooks escape the text they write to `.workflow/state/events.jsonl`. A pre-tool `command` or `file` hook now blocks a payload with no `tool_input` instead of passing it.
+
 ## Upgrading from 0.7.0 to 0.8.0
 
 Install the new version in the scope you used, then refresh the project:
