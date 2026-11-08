@@ -5,7 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -47,4 +47,40 @@ for (const file of BLOCKED) {
 }
 for (const file of ALLOWED) {
   test(`block-secrets allows: ${file}`, () => assert.equal(decide(file), 0));
+}
+
+// The refusal is appended to .workflow/state/events.jsonl as one JSON object per line. The path
+// and operation are caller-supplied text, so they must be escaped: a quote, backslash, newline or
+// control character in them must neither break the line nor add keys. Issue #426.
+function logged(file, operation) {
+  const dir = mkdtempSync(path.join(tmpdir(), 'block-secrets-log-'));
+  try {
+    const result = spawnSync('bash', [HOOK, file, operation], { cwd: dir, encoding: 'utf8', timeout: 30_000, env: { ...process.env, LC_ALL: 'C' } });
+    assert.equal(result.error, undefined, String(result.error));
+    assert.equal(result.status, 2, result.stderr);
+    return readFileSync(path.join(dir, '.workflow', 'state', 'events.jsonl'), 'utf8');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+const LOG_CASES = [
+  ['secrets/.env"quoted', 'read'],
+  ['back\\slash/.env\\n\\"x', 'write'],
+  ['multi/.env\nline two\r\ttab\u0001ctl', 'read'],
+  ['.env","event":"forged","path":"x', 'write'],
+  ['trailing-backslash.env\\', 'read'],
+];
+for (const [file, operation] of LOG_CASES) {
+  test(`block-secrets logs one JSON object that round-trips the path: ${JSON.stringify(file)}`, () => {
+    const text = logged(file, operation);
+    assert.equal(text.endsWith('\n'), true, 'the entry ends with a newline');
+    const lines = text.slice(0, -1).split('\n');
+    assert.equal(lines.length, 1, `exactly one line, got ${lines.length}`);
+    const entry = JSON.parse(lines[0]);
+    assert.deepEqual(Object.keys(entry), ['ts', 'event', 'path', 'operation']);
+    assert.equal(entry.event, 'secret_block');
+    assert.equal(entry.path, file);
+    assert.equal(entry.operation, operation);
+  });
 }

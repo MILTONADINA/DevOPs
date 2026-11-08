@@ -111,7 +111,6 @@ test(`an empty or absent field exits 0 and the hook does not run (${SPEC}#ac-27)
   const cases = [
     ['pre', 'block-rm-rf.sh', 'command', payload({ command: '' })],
     ['pre', 'block-rm-rf.sh', 'command', payload({})],
-    ['pre', 'block-rm-rf.sh', 'command', JSON.stringify({ tool_name: 'Read' })],
     ['pre', 'block-secrets.sh', 'file', JSON.stringify({ tool_name: 'Read', tool_input: { file_path: '' } })],
   ];
   for (const [phase, hook, input, body] of cases) {
@@ -120,6 +119,43 @@ test(`an empty or absent field exits 0 and the hook does not run (${SPEC}#ac-27)
   }
   assert.equal(existsSync(path.join(dir, 'ran-command')), false, 'the command hook did not run');
   assert.equal(existsSync(path.join(dir, 'ran-file')), false, 'the file hook did not run');
+});
+
+test(`pre: a payload with no tool_input fails closed for a hook that reads it, and names the field (${SPEC}#ac-27)`, () => {
+  const dir = project({ 'block-rm-rf.sh': 'touch ran-command; exit 0', 'block-secrets.sh': 'touch ran-file; exit 0' });
+  const cases = [
+    ['block-rm-rf.sh', 'command', JSON.stringify({ tool_name: 'Bash' })],
+    ['block-rm-rf.sh', 'command', JSON.stringify({ tool_name: 'Bash', tool_input: null })],
+    ['block-secrets.sh', 'file', JSON.stringify({ tool_name: 'Read' })],
+    ['block-secrets.sh', 'file', JSON.stringify({ tool_name: 'Read', tool_input: null })],
+  ];
+  for (const [hook, input, body] of cases) {
+    const r = runner(['pre', hook, input], { root: dir, input: body });
+    assert.equal(r.status, 2, `${hook} ${input} ${body}`);
+    assert.equal(r.stderr, 'HOOK: tool_input is missing from the tool call -- failing closed\n');
+  }
+  assert.equal(existsSync(path.join(dir, 'ran-command')), false, 'the command hook did not run');
+  assert.equal(existsSync(path.join(dir, 'ran-file')), false, 'the file hook did not run');
+});
+
+test(`pre: a payload with no tool_input warns on one stderr line and the stdin hook still runs (${SPEC}#ac-27)`, () => {
+  const dir = project({ 'deploy-gate.sh': 'touch ran; exit 0' });
+  for (const body of [JSON.stringify({ tool_name: 'Bash' }), JSON.stringify({ tool_name: 'Bash', tool_input: null })]) {
+    rmSync(path.join(dir, 'ran'), { force: true });
+    const r = runner(['pre', 'deploy-gate.sh', 'stdin'], { root: dir, input: body });
+    assert.equal(r.status, 0, r.stderr);
+    assert.equal(r.stderr, 'HOOK: warning: tool_input is missing from the tool call; deploy-gate.sh runs without it\n');
+    assert.equal(existsSync(path.join(dir, 'ran')), true, 'the stdin hook ran');
+  }
+});
+
+test(`pre: a tool_input that is not an object fails closed in every input mode (${SPEC}#ac-27)`, () => {
+  const dir = project({ 'deploy-gate.sh': 'exit 0', 'block-rm-rf.sh': 'exit 0' });
+  for (const [hook, input] of [['deploy-gate.sh', 'stdin'], ['block-rm-rf.sh', 'command']]) {
+    const r = runner(['pre', hook, input], { root: dir, input: JSON.stringify({ tool_input: 'ls' }) });
+    assert.equal(r.status, 2, hook);
+    assert.match(r.stderr, /tool_input is not an object -- failing closed/);
+  }
 });
 
 test(`stdin mode hands the hook --payload-stdin and the exact payload bytes (${SPEC}#ac-27)`, () => {
