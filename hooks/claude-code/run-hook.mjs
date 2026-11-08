@@ -10,12 +10,14 @@
 // Claude Code sends the tool call as JSON on stdin. <input> says what the hook takes:
 //   stdin    the hook gets --payload-stdin and the raw stdin bytes;
 //   command  the hook gets tool_input.command as one argument;
-//   file     the hook gets tool_input.file_path, else tool_input.notebook_path, else
-//            tool_response.filePath, as one argument.
+//   file     the hook runs once for each distinct non-empty one of tool_input.file_path,
+//            tool_input.notebook_path, tool_input.path and tool_response.filePath, with that
+//            string as its one argument.
 // An absent or empty field means the call has nothing to check: exit 0, and the hook does not run.
 //
-// pre: exit 0 passes and exit 2 blocks. Anything else (a signal, a missing hook, unparseable
-// stdin, an unresolvable root) fails closed: exit 2 with "failing closed" on stderr.
+// pre: exit 0 passes and exit 2 blocks. The first non-zero result from any run decides. Anything
+// else (a signal, a missing hook, unparseable stdin, an unresolvable root, an error thrown while
+// running) fails closed: exit 2 with "failing closed" on stderr.
 // post: always exit 0, except gitleaks-scan.sh's exit 2, which passes through so Claude Code
 // shows the leak. Any other non-zero hook exit is printed to stderr.
 //
@@ -63,7 +65,28 @@ function projectRoot() {
   return path.resolve(git.stdout.trim());
 }
 
-function main() {
+// Runs the hook once with one argument. Returns its exit code under the rules in the header.
+function runOnce(phase, hookFile, hookPath, root, input, raw, arg) {
+  const fail = reason => refuse(phase, reason);
+  const run = spawnSync('bash', [hookPath, arg], {
+    cwd: root,
+    input: input === 'stdin' ? raw : Buffer.alloc(0),
+    stdio: ['pipe', 'pipe', 'inherit'],
+  });
+  if (run.error) return fail(`could not run ${hookFile}: ${run.error.message}`);
+  if (run.stdout && run.stdout.length > 0) process.stdout.write(run.stdout);
+  if (run.signal) return fail(`${hookFile} was killed by ${run.signal}`);
+
+  if (run.status === 0) return 0;
+  if (phase === 'pre') {
+    return run.status === 2 ? 2 : fail(`${hookFile} exited ${run.status}`);
+  }
+  if (hookFile === 'gitleaks-scan.sh' && run.status === 2) return 2;
+  process.stderr.write(`HOOK: ${hookFile} exited ${run.status}\n`);
+  return 0;
+}
+
+function runHook() {
   const [phase, hookFile, input, ...rest] = process.argv.slice(2);
   if (!PHASES.includes(phase)) return refuse('pre', `unknown phase ${JSON.stringify(phase)}; expected pre or post`);
   const fail = reason => refuse(phase, reason);
@@ -92,17 +115,20 @@ function main() {
   if (!isObject(toolInput)) return fail('tool_input is not an object');
   const toolResponse = isObject(payload.tool_response) ? payload.tool_response : {};
 
-  let arg;
+  // One argument per run: the stdin payload, the command, or each distinct file field present.
+  let args;
   if (input === 'stdin') {
-    arg = '--payload-stdin';
+    args = ['--payload-stdin'];
   } else {
-    const candidates = input === 'command'
+    const fields = input === 'command'
       ? [toolInput.command]
-      : [toolInput.file_path, toolInput.notebook_path, toolResponse.filePath];
-    const first = candidates.find(value => !absent(value));
-    if (first === undefined) return 0; // nothing in this call for the hook to check
-    if (typeof first !== 'string') return fail(`the tool call's ${input === 'command' ? 'command' : 'file path'} is not a string`);
-    arg = first;
+      : [toolInput.file_path, toolInput.notebook_path, toolInput.path, toolResponse.filePath];
+    const present = fields.filter(value => !absent(value));
+    if (present.length === 0) return 0; // nothing in this call for the hook to check
+    if (present.some(value => typeof value !== 'string')) {
+      return fail(`the tool call's ${input === 'command' ? 'command' : 'file path'} is not a string`);
+    }
+    args = [...new Set(present)];
   }
 
   const root = projectRoot();
@@ -111,22 +137,31 @@ function main() {
   const hookPath = path.join(root, '.claude', 'hooks', hookFile);
   if (!isFile(hookPath)) return fail(`hook missing: ${hookPath}`);
 
-  const run = spawnSync('bash', [hookPath, arg], {
-    cwd: root,
-    input: input === 'stdin' ? raw : Buffer.alloc(0),
-    stdio: ['pipe', 'pipe', 'inherit'],
-  });
-  if (run.error) return fail(`could not run ${hookFile}: ${run.error.message}`);
-  if (run.stdout && run.stdout.length > 0) process.stdout.write(run.stdout);
-  if (run.signal) return fail(`${hookFile} was killed by ${run.signal}`);
-
-  if (run.status === 0) return 0;
-  if (phase === 'pre') {
-    return run.status === 2 ? 2 : fail(`${hookFile} exited ${run.status}`);
+  // pre: the first non-zero result decides. post: exit 2 only when gitleaks-scan.sh reports a leak.
+  let code = 0;
+  for (const arg of args) {
+    const result = runOnce(phase, hookFile, hookPath, root, input, raw, arg);
+    if (phase === 'pre' && result !== 0) return result;
+    if (result === 2) code = 2;
   }
-  if (hookFile === 'gitleaks-scan.sh' && run.status === 2) return 2;
-  process.stderr.write(`HOOK: ${hookFile} exited ${run.status}\n`);
-  return 0;
+  return code;
+}
+
+// Any error thrown while running (a NUL byte in an argument, for one) fails closed in pre. In post
+// it is printed, and exits 0 except for gitleaks-scan.sh, which passes its leak through as 2.
+function main() {
+  const [phase, hookFile] = process.argv.slice(2);
+  try {
+    return runHook();
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    if (phase === 'post') {
+      process.stderr.write(`HOOK: ${reason}\n`);
+      return hookFile === 'gitleaks-scan.sh' ? 2 : 0;
+    }
+    process.stderr.write(`HOOK: ${reason} -- failing closed\n`);
+    return 2;
+  }
 }
 
 process.exitCode = main();

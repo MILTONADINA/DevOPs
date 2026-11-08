@@ -141,24 +141,68 @@ test(`command mode passes the command as one argument, and nothing in it runs ($
   for (const marker of ['semi', 'subst', 'tick']) assert.equal(existsSync(path.join(dir, marker)), false, `${marker} was not run`);
 });
 
-test(`file mode takes file_path, then notebook_path, then tool_response.filePath (${SPEC}#ac-27)`, () => {
+test(`file mode runs the hook once per distinct file field, in order (${SPEC}#ac-27)`, () => {
   const dir = project({
-    'block-secrets.sh': 'printf %s "$1" > arg.txt; exit 0',
-    'gitleaks-scan.sh': 'printf %s "$1" > arg.txt; exit 0',
+    'block-secrets.sh': 'printf "%s\\n" "$1" >> args.txt; exit 0',
+    'gitleaks-scan.sh': 'printf "%s\\n" "$1" >> args.txt; exit 0',
   });
+  const argsFile = path.join(dir, 'args.txt');
   const cases = [
-    [{ tool_input: { file_path: '/p/a.env', notebook_path: '/p/n.ipynb' } }, '/p/a.env'],
-    [{ tool_input: { file_path: '', notebook_path: '/p/n.ipynb' } }, '/p/n.ipynb'],
-    [{ tool_input: {}, tool_response: { filePath: '/p/r.ts' } }, '/p/r.ts'],
+    [{ tool_input: { file_path: '/p/a.env', notebook_path: '/p/n.ipynb' } }, ['/p/a.env', '/p/n.ipynb']],
+    [{ tool_input: { file_path: '', notebook_path: '/p/n.ipynb' } }, ['/p/n.ipynb']],
+    [{ tool_input: {}, tool_response: { filePath: '/p/r.ts' } }, ['/p/r.ts']],
+    [{ tool_input: { file_path: '/p/a.ts', path: '/p/a.ts' } }, ['/p/a.ts']],
+    [{ tool_input: { path: '/p/dir/x.ts' } }, ['/p/dir/x.ts']],
   ];
   for (const [body, expected] of cases) {
+    rmSync(argsFile, { force: true });
     const r = runner(['pre', 'block-secrets.sh', 'file'], { root: dir, input: JSON.stringify(body) });
     assert.equal(r.status, 0, r.stderr);
-    assert.equal(readFileSync(path.join(dir, 'arg.txt'), 'utf8'), expected);
+    assert.deepEqual(readFileSync(argsFile, 'utf8').split('\n').filter(Boolean), expected, JSON.stringify(body));
   }
+  rmSync(argsFile, { force: true });
   const post = runner(['post', 'gitleaks-scan.sh', 'file'], { root: dir, input: JSON.stringify({ tool_input: {}, tool_response: { filePath: '/p/r.ts' } }) });
   assert.equal(post.status, 0, post.stderr);
-  assert.equal(readFileSync(path.join(dir, 'arg.txt'), 'utf8'), '/p/r.ts');
+  assert.deepEqual(readFileSync(argsFile, 'utf8').split('\n').filter(Boolean), ['/p/r.ts']);
+});
+
+test(`pre: a blocked notebook_path blocks even when file_path is benign (${SPEC}#ac-27)`, () => {
+  const dir = project({ 'block-secrets.sh': 'case "$1" in *.env) echo "blocked: $1" >&2; exit 2;; esac; exit 0' });
+  const r = runner(['pre', 'block-secrets.sh', 'file'], {
+    root: dir,
+    input: JSON.stringify({ tool_name: 'NotebookEdit', tool_input: { file_path: '/p/benign.txt', notebook_path: '/p/secret.env' } }),
+  });
+  assert.equal(r.status, 2, r.stderr);
+  assert.match(r.stderr, /blocked: \/p\/secret\.env/);
+});
+
+test(`pre: a non-zero exit on any file field fails closed, even when another field passes (${SPEC}#ac-27)`, () => {
+  const dir = project({ 'block-secrets.sh': 'case "$1" in *.broken) exit 1;; esac; exit 0' });
+  const r = runner(['pre', 'block-secrets.sh', 'file'], {
+    root: dir,
+    input: JSON.stringify({ tool_input: { file_path: '/p/ok.txt', notebook_path: '/p/x.broken' } }),
+  });
+  assert.equal(r.status, 2, r.stderr);
+  assert.match(r.stderr, /HOOK: block-secrets\.sh exited 1 -- failing closed/);
+});
+
+test(`pre: a NUL byte in the command fails closed from the runner, with no stack trace (${SPEC}#ac-27)`, () => {
+  const dir = project({ 'block-rm-rf.sh': 'exit 0' });
+  const r = runner(['pre', 'block-rm-rf.sh', 'command'], { root: dir, input: payload({ command: 'ls\u0000 -la' }) });
+  assert.equal(r.status, 2, r.stderr);
+  assert.match(r.stderr, /^HOOK: .+ -- failing closed\n/);
+  assert.doesNotMatch(r.stderr, /\n\s+at /, 'no uncaught exception');
+});
+
+test(`post: an error in the runner is printed and exits 0, except for gitleaks-scan.sh, which exits 2 (${SPEC}#ac-27)`, () => {
+  const dir = project({ 'block-secrets.sh': 'exit 0', 'gitleaks-scan.sh': 'exit 0' });
+  const body = JSON.stringify({ tool_input: { file_path: '/p/a\u0000.ts' } });
+  const other = runner(['post', 'block-secrets.sh', 'file'], { root: dir, input: body });
+  assert.equal(other.status, 0, other.stderr);
+  assert.match(other.stderr, /^HOOK: .+/);
+  assert.doesNotMatch(other.stderr, /failing closed/);
+  const leak = runner(['post', 'gitleaks-scan.sh', 'file'], { root: dir, input: body });
+  assert.equal(leak.status, 2, leak.stderr);
 });
 
 test(`a hook name outside the allowlist, or with a path part, is refused (${SPEC}#ac-27)`, () => {
