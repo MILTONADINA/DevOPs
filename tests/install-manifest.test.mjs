@@ -2,9 +2,9 @@
 // record every file they write in .workflow/state/install-manifest.json.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { appendFileSync, chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { writeStubGit } from './fixtures/stub-git.mjs';
@@ -297,3 +297,47 @@ test('ownFile allows only the paths DevOPs writes', () => {
   for (const key of ['src/a.js', '.env', '.git/config', '.claude/settings.json', '.mcp.json', 'README.md', '.claude/hooks'])
     assert.ok(!ownFile(key), key);
 });
+
+// specs/release/npm-package.md REQ-15, AC-25 (issue #353): each recorded write is saved as
+// it completes. Node runs no exit listener on SIGTERM, so the manifest must already be on
+// disk when cosign blocks. The real `devops init` runs here, with a cosign that never returns.
+test(`a SIGTERM during signature verification keeps the records of the files already written (${SPEC}#ac-25)`, async () => {
+  const dir = realpathSync(mkdtempSync(path.join(tmpdir(), 'install-manifest-signal-')));
+  const bin = mkdtempSync(path.join(tmpdir(), 'install-manifest-cosign-'));
+  try {
+    cpSync(path.join(ROOT, 'tests/fixtures/analyzer/nextjs-project'), dir, { recursive: true });
+    mkdirSync(path.join(dir, '.git'));
+    writeFileSync(path.join(dir, '.gitignore'), GITIGNORE);
+    const a = devops(dir, 'analyze');
+    assert.equal(a.status, 0, a.stderr);
+    const marker = path.join(bin, 'verifying');
+    writeFileSync(path.join(bin, 'cosign'), `#!/bin/sh\ntouch '${marker}'\nsleep 60\n`);
+    chmodSync(path.join(bin, 'cosign'), 0o755);
+    // Own process group, so the signal reaches the shell, the installer and the stalled cosign.
+    const child = spawn(process.execPath, [CLI, 'init', '--no-agile-graph'], {
+      cwd: dir, detached: true, stdio: 'ignore',
+      env: { ...process.env, PATH: `${bin}${path.delimiter}${STUB_BIN}${path.delimiter}${process.env.PATH}` },
+    });
+    const exited = new Promise(resolve => child.once('exit', resolve));
+    const deadline = Date.now() + 60_000;
+    while (!existsSync(marker)) {
+      assert.ok(Date.now() < deadline, 'init never reached signature verification');
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
+    assert.ok(existsSync(path.join(dir, 'AGENTS.md')), 'AGENTS.md was written before verification');
+    process.kill(-child.pid, 'SIGTERM');
+    await exited;
+    const m = manifestOf(dir);
+    assert.equal(m.files['AGENTS.md'].original, null);
+    assert.equal(m.files['AGENTS.md'].written, sha(path.join(dir, 'AGENTS.md')), 'AGENTS.md is recorded with its hash');
+    assert.equal(m.files['.gitignore'].written, sha(path.join(dir, '.gitignore')), '.gitignore is recorded with its hash');
+    // What the interrupted run recorded is enough for uninstall to remove it.
+    const u = devops(dir, 'uninstall');
+    assert.equal(u.status, 0, u.stdout + u.stderr);
+    assert.equal(existsSync(path.join(dir, 'AGENTS.md')), false, 'uninstall removes AGENTS.md');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+    rmSync(bin, { recursive: true, force: true });
+  }
+});
+

@@ -221,7 +221,7 @@ nothing. WHEN it starts the manifest in a project that already has
 `adopted: true` and say so once, because an `original` recorded there may be that earlier
 DevOPs's copy. IF an original copy's path leaves the project through a symlink, THEN THE
 SYSTEM SHALL refuse that copy with an error and record no `original` for the file, because a
-read through the link would hash a file outside the project. Backups (REQ-F11) and the `originals/` copies are DevOPs's own records and
+read through the link would hash a file outside the project. WHEN DevOPs completes a recorded write or creates a recorded folder, THE SYSTEM SHALL save the manifest before its next step, so an interrupted run keeps its records; an unconfirmed write stays pending for a later run to confirm. Backups (REQ-F11) and the `originals/` copies are DevOPs's own records and
 are not themselves recorded. The `.mcp.json` entry and the Agile Graph pin that linking
 writes are not recorded yet (#353).
 
@@ -505,6 +505,15 @@ in a project whose recorded original copy is reached through such a symlink, it 
 file, names the symlink, and exits 0.
 
 **Verified by:** `tests/install-manifest.test.mjs` and `tests/uninstall.test.mjs`.
+
+### AC-25
+
+**Given** a project with a `.gitignore` **When** `devops init` runs and a SIGTERM stops it
+while signature verification (cosign) is blocked, after `AGENTS.md` and `.gitignore` were
+written **Then** the manifest on disk records both files with their sha256, and a later
+`devops uninstall` removes `AGENTS.md`.
+
+**Verified by:** `tests/install-manifest.test.mjs`.
 
 ## Out of scope
 

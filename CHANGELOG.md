@@ -20,6 +20,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 ### Fixed
 
 - `devops analyze` and `devops init` refuse an original copy whose path under `.workflow/state/originals/` leaves the project through a symlink. Before this they read through the link and recorded the hash of the outside file as the original. Uninstall keeps such a file and names the symlink (`specs/release/npm-package.md` REQ-15, AC-24).
+- `devops init` and `devops analyze` save the install manifest as each recorded write completes, not only at exit. A SIGINT or SIGTERM during signature verification used to lose every record, so a later init skipped the existing agent files and uninstall could not remove them (`specs/release/npm-package.md` REQ-15, AC-25).
 - `devops uninstall` no longer restores a recorded original over edits made between two DevOPs runs: an entry whose file changed before DevOPs wrote it again is marked `edited`, and uninstall keeps that file and names it. Before this, analyze → a new `.gitignore` rule → init → uninstall deleted the rule.
 - Dependabot no longer proposes runtime updates past the held `@typescript-eslint/*` 8.55.0 (Node 22.12 floor) and `onnxruntime-node` (pinned by `@huggingface/transformers`). A test checks the ignore list against the held lockfile versions (PR #361 failed on them). Security updates still bypass ignore rules.
 - Dependabot no longer opens semver-major npm PRs: majors are deferred by the dependency-update tests (#209) and land as deliberate stories. Security updates still arrive.

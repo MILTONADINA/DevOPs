@@ -98,8 +98,10 @@ export function readManifest(root) {
 
 /**
  * Opens the manifest of `root` for recording. Call `before(key)` just before a
- * write, `after(key)` just after it, and `save()` once at the end. `file` is the
- * file's real location when it is not `root/key` (the pre-commit hook).
+ * write, `after(key)` just after it, and `save()` once at the end. `after` and a
+ * new `dir` also save at once (keepPending), so a run killed by a signal keeps
+ * what it recorded. `file` is the file's real location when it is not `root/key`
+ * (the pre-commit hook).
  */
 export const ADOPTED_NOTICE = 'Install manifest: started in a project an earlier DevOPs installed into; files that release wrote are recorded as originals.';
 
@@ -157,16 +159,23 @@ export function openManifest(root) {
       if (bytes === null) throw new UnsafeWriteError(`${key} was not written`);
       if (!Object.hasOwn(data.files, key)) throw new UnsafeWriteError(`${key} was written without being recorded first`);
       data.files[key].written = sha256(bytes);
+      // Saved now, not only at exit: a SIGINT or SIGTERM skips the exit listener.
+      api.save({ keepPending: true });
     },
     /** Records a folder DevOPs is about to create (with mkdir -p) when it is absent. */
     dir(key) {
       if (!ownDir(key)) throw new UnsafeWriteError(`not a folder DevOPs creates: ${key}`);
       assertInside(base, path.join(base, key));
       const parts = key.split('/');
+      let added = false;
       for (let i = 1; i <= parts.length; i++) {
         const dir = parts.slice(0, i).join('/');
-        if (!present(path.join(base, dir)) && !data.dirs.includes(dir)) data.dirs.push(dir);
+        if (!present(path.join(base, dir)) && !data.dirs.includes(dir)) {
+          data.dirs.push(dir);
+          added = true;
+        }
       }
+      if (added) api.save({ keepPending: true });
     },
     // An entry whose write was never confirmed is dropped, unless `keepPending`
     // (a writer in another process confirms it later).
