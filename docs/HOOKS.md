@@ -1,7 +1,80 @@
 # Hooks Reference
 
-Deterministic safety layer. Hooks fire regardless of agent intent. Cannot be
-disabled by the agent.
+Deterministic safety layer. Hooks fire on the tool calls Claude Code sends them, whatever the
+agent intends.
+
+Limitation: the agent's own Write and Edit tools can change `.claude/settings.json`,
+`.claude/hooks/` and `.workflow/state/approvals.jsonl`. Only `block-secrets.sh` checks file-tool
+calls among the wired hooks, and it does not guard those paths. No wired hook blocks a write to
+them, from a file tool or from Bash. A Bash `cat` of a secret file is not checked by
+`block-secrets.sh`.
+
+## Wiring into Claude Code
+
+Claude Code runs a hook only when `.claude/settings.json` names it. `devops init`
+copies the hooks to `.claude/hooks/` and merges an entry into `.claude/settings.json`
+for each hook it can wire (specs/release/npm-package.md REQ-15, AC-27). It keeps every
+other key and hook in that file, never adds an entry whose command is already there,
+and records what it added in the install manifest, so `devops uninstall` removes only
+those entries.
+
+A pre or post hook is named as
+
+    node "${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/run-hook.mjs" <pre|post> <hook-file> <stdin|command|file>
+
+`run-hook.mjs` (from `hooks/claude-code/run-hook.mjs`, copied beside the hooks) reads the
+tool call that Claude Code sends on stdin and gives the hook the input it takes:
+
+- `stdin`: the hook gets `--payload-stdin` and the raw payload bytes;
+- `command`: the hook gets `tool_input.command` as one argument;
+- `file`: the hook runs once for each distinct non-empty one of `tool_input.file_path`,
+  `tool_input.notebook_path`, `tool_input.path` and `tool_response.filePath`, with that string as
+  its one argument. For `pre`, the first non-zero result decides.
+
+A call whose field is absent or empty has nothing to check: the runner exits 0 without
+running the hook. The runner is Node only, with no dependencies, and runs each hook with
+`bash` and no shell, so the argument is never parsed by one. It runs only the hook names
+in its own allowlist.
+
+For `pre` hooks, exit 0 passes and exit 2 blocks. Any other outcome fails closed with
+exit 2 and `failing closed` on stderr: a non-zero exit other than 2, a signal, a missing
+hook, unparseable stdin, or a project root that cannot be resolved (`CLAUDE_PROJECT_DIR`,
+else the git top level). Each `pre` command in `.claude/settings.json` ends in `|| exit 2`,
+so a `node` missing from Claude Code's PATH, or a runner that cannot start, also blocks the
+call instead of exiting with a code Claude Code lets through. For `post` hooks the exit is always 0, and a non-zero hook exit
+is printed to stderr; the exception is `gitleaks-scan.sh`, whose exit 2 passes through
+so Claude Code shows the leak.
+
+| Hook | Event | Matcher | Input |
+|------|-------|---------|-------|
+| `deploy-gate.sh` | `PreToolUse` | `Bash` | stdin |
+| `block-sealed-refs.sh` | `PreToolUse` | `Bash` | stdin |
+| `block-prod-write.sh` | `PreToolUse` | `Bash` | command |
+| `block-rm-rf.sh` | `PreToolUse` | `Bash` | command |
+| `block-new-dependency.sh` | `PreToolUse` | `Bash` | command |
+| `block-secrets.sh` | `PreToolUse` | `Read\|Write\|Edit\|MultiEdit\|NotebookEdit` | file |
+| `gitleaks-scan.sh` | `PostToolUse` | `Write\|Edit\|MultiEdit` | file |
+| `load-baton.sh` | `SessionStart` | none | (plain command) |
+
+`load-baton.sh` is named as `cd "${CLAUDE_PROJECT_DIR:-.}" && bash .claude/hooks/load-baton.sh || true`
+and has no matcher. The `cd` makes it read the project root's baton, and create `.workflow/` only there.
+
+Every other copied hook is named by `devops init` with its reason and is not wired:
+
+- `budget-brake.sh`: needs a per-call cost estimate that Claude Code does not give.
+- `loop-detection.sh`: needs a tool name and arguments; not wired until it is tested with real payloads.
+- `auto-format.sh`: opt-in: it rewrites files.
+- `sync-lr-refined-date.sh`: edits `docs/LAUNCH_READINESS.md`, which only this repository has.
+- `client-boundary.sh`: not registered by default.
+- `external-content-boundary.sh`: its HMAC check needs the session key from `rotate-session-key.sh`, which is not wired.
+- `rotate-session-key.sh`: rotates the session key that `external-content-boundary.sh` checks; not wired while that hook is not.
+- `write-baton.sh`: overwrites a hand-written baton; write it with `/checkpoint` instead.
+- `graph-preflight.sh`: part of the Agile Graph pipeline, which the npm package excludes.
+
+To wire another hook by hand, add its entry to `.claude/settings.json` in the same
+format, and only after you have made sure the hook gets the input it needs (for a
+pre or post hook, through `run-hook.mjs`). This repository's own `.claude/settings.json`
+is a working example.
 
 ## Universal hooks
 

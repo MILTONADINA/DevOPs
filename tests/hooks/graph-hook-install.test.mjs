@@ -8,6 +8,7 @@ import path from 'node:path';
 
 const ROOT = path.resolve(import.meta.dirname, '..', '..');
 const CLASSIFIER = 'graph-command-classifier.mjs';
+const RUN_HOOK = 'run-hook.mjs';
 const ACTUAL_CLASSIFIER = path.join(ROOT, 'hooks/universal/pre-tool', CLASSIFIER);
 const BASE_ENV = { ...process.env };
 for (const key of Object.keys(BASE_ENV)) if (key.startsWith('GIT_') || key.startsWith('BASH_FUNC_') || ['BASH_ENV', 'ENV', 'DEVOPS_GRAPH_CYCLE_ID'].includes(key)) delete BASE_ENV[key];
@@ -30,6 +31,9 @@ function withInstall(hookNames, fn, { companion = true } = {}) {
       if (existsSync(ACTUAL_CLASSIFIER)) copyFileSync(ACTUAL_CLASSIFIER, path.join(hooks, CLASSIFIER));
       else writeFileSync(path.join(hooks, CLASSIFIER), PLACEHOLDER);
     }
+    // The runner that a hook wired through run-hook.mjs needs (#418), staged as the package ships it.
+    mkdirSync(path.join(source, 'hooks/claude-code'), { recursive: true });
+    copyFileSync(path.join(ROOT, 'hooks/claude-code', RUN_HOOK), path.join(source, 'hooks/claude-code', RUN_HOOK));
     for (const file of ['AGENTS.md', 'CLAUDE.md']) copyFileSync(path.join(ROOT, file), path.join(source, file));
     const manifest = path.join(source, 'empty-manifest.yml'); writeFileSync(manifest, 'skills:\n');
     writeFileSync(path.join(target, '.workflow/profile.yml'), `skills:\nhooks:\n${hookNames.map((name) => `  - universal/pre-tool/${name}\n`).join('')}subagents:\n`);
@@ -45,7 +49,7 @@ for (const names of [['deploy-gate.sh'], ['block-sealed-refs.sh'], ['deploy-gate
     withInstall(names, ({ target, hooks, run }) => {
       const result = run(); assertProcess(result); assert.equal(result.status, 0, result.stderr);
       const destination = path.join(target, '.claude/hooks');
-      assert.deepEqual(readdirSync(destination).sort(), [...names, CLASSIFIER].sort());
+      assert.deepEqual(readdirSync(destination).sort(), [...names, CLASSIFIER, RUN_HOOK].sort());
       assert.deepEqual(readFileSync(path.join(destination, CLASSIFIER)), readFileSync(path.join(hooks, CLASSIFIER)));
       assert.ok(existsSync(ACTUAL_CLASSIFIER), 'functional GREEN must use the actual shipped classifier, never the packaging placeholder');
       for (const hookName of names) {

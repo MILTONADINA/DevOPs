@@ -19,6 +19,12 @@
 //   - The `.mcp.json` server that init added (REQ-15) is removed only while its
 //     sha256 still matches; every other key and server stays. A `.mcp.json` init
 //     created, left with nothing else in it, is deleted.
+//   - The `.claude/settings.json` hook entries init added (REQ-15, #418) are removed only
+//     while the inner hook object still hashes to the recorded sha256. A matcher group,
+//     event or `hooks` left empty goes; a settings.json init created, left empty, is deleted.
+//     Only the entry in the group init wrote to (same event and matcher) is taken. Any command
+//     still in the file afterwards, recorded or not, keeps the files under .claude/hooks/ it
+//     runs, in the manifest, until that command is deleted and uninstall runs again.
 // Nothing is followed through a symlink. A manifest Git tracks is refused: it came
 // with the repository, not from an install here. Folders DevOPs created are removed when
 // empty. Whatever is kept stays in the manifest, so a later uninstall can finish.
@@ -152,6 +158,93 @@ function unlinkServer(base, name, recorded) {
   return { action: 'remove', bytes: `${JSON.stringify(config, null, 2)}\n` };
 }
 
+/**
+ * Plans the removal of the `.claude/settings.json` hook entries init added (#418). An entry goes
+ * only while the inner object it names still hashes to the recorded sha256; anything else in the
+ * file is kept as it is. Returns { kept: [{ entry, reason }], removed: [entry], dropped: [entry],
+ * bytes, deleteFile }: `dropped` are records to forget (removed, or already gone), `bytes` is the
+ * new file content (null when nothing changes), `deleteFile` when init created the file and
+ * nothing else is in it.
+ */
+// Every hook command string in a parsed settings object.
+function commandsIn(config) {
+  const out = [];
+  if (!plain(config) || !plain(config.hooks)) return out;
+  for (const groups of Object.values(config.hooks)) {
+    for (const group of Array.isArray(groups) ? groups : []) {
+      if (!plain(group) || !Array.isArray(group.hooks)) continue;
+      for (const hook of group.hooks) if (plain(hook) && typeof hook.command === 'string') out.push(hook.command);
+    }
+  }
+  return out;
+}
+
+function unwireHooks(base, entries, createdFile) {
+  const plan = { kept: [], removed: [], dropped: [], bytes: null, deleteFile: false, remaining: null };
+  let bytes;
+  try {
+    bytes = readRegular(path.join(base, SETTINGS_KEY));
+  } catch (error) {
+    // A symlink or a non-file is kept and named; its target is not touched.
+    plan.kept = entries.map(entry => ({ entry, reason: error.message }));
+    return plan;
+  }
+  if (bytes === null) return { ...plan, dropped: [...entries] };
+  let config = null;
+  try {
+    config = JSON.parse(bytes.toString('utf8'));
+  } catch {
+    /* not JSON: kept below */
+  }
+  if (!plain(config)) {
+    plan.kept = entries.map(entry => ({ entry, reason: `${SETTINGS_KEY} is not a JSON object` }));
+    return plan;
+  }
+  for (const entry of entries) {
+    const groups = plain(config.hooks) && Array.isArray(config.hooks[entry.event]) ? config.hooks[entry.event] : null;
+    let found = null;
+    for (const group of groups ?? []) {
+      if (!plain(group) || !Array.isArray(group.hooks)) continue;
+      // The group init wrote to: the same matcher, or none for an event without one. A user's
+      // identical command in another group is theirs and stays.
+      if (group.matcher !== entry.matcher) continue;
+      const index = group.hooks.findIndex(hook => plain(hook) && hook.command === entry.command);
+      if (index !== -1) {
+        found = { group, index };
+        break;
+      }
+    }
+    if (found === null) {
+      plan.dropped.push(entry);
+      continue;
+    }
+    const inner = found.group.hooks[found.index];
+    if (sha256(JSON.stringify(inner)) !== entry.sha256) {
+      plan.kept.push({ entry, reason: 'edited since DevOPs wrote it' });
+      continue;
+    }
+    // Take the entry out, then the matcher group, the event and `hooks` only when each is left empty.
+    found.group.hooks.splice(found.index, 1);
+    if (found.group.hooks.length === 0) groups.splice(groups.indexOf(found.group), 1);
+    if (groups.length === 0) delete config.hooks[entry.event];
+    if (Object.keys(config.hooks).length === 0) delete config.hooks;
+    plan.removed.push(entry);
+    plan.dropped.push(entry);
+  }
+  plan.remaining = commandsIn(config);
+  if (plan.removed.length === 0) return plan;
+  if (createdFile && Object.keys(config).length === 0) plan.deleteFile = true;
+  else plan.bytes = `${JSON.stringify(config, null, 2)}\n`;
+  return plan;
+}
+
+// The hook a run-hook.mjs command runs (its <hook-file>), or null for any other command. The
+// command may end in `|| exit 2` (a pre hook).
+const RUN_HOOK_NAME = / (?:pre|post) ([A-Za-z0-9._-]+) (?:stdin|command|file)(?: \|\| exit 2)?$/;
+const runHookFile = command => RUN_HOOK_NAME.exec(command)?.[1] ?? null;
+const hookNameOf = command => runHookFile(command) ?? /\.claude\/hooks\/([A-Za-z0-9._-]+)/.exec(command)?.[1] ?? command;
+const hookLabel = entry => `the ${entry.event} hook for ${hookNameOf(entry.command)}`;
+
 /** Empty folders under `dir` (and `dir` itself), deepest first, without following links. */
 function emptyDirsUnder(dir) {
   const out = [];
@@ -206,6 +299,8 @@ function removeIfEmpty(dir) {
 const STATE = '.workflow/state';
 const MANIFEST_SAVE_TEMP = `${STATE}/.uninstall-manifest.tmp`;
 const MCP_TEMP = `${STATE}/.uninstall-mcp.tmp`;
+const SETTINGS_KEY = '.claude/settings.json';
+const SETTINGS_TEMP = '.claude/settings.json.tmp';
 // Replaced whole, as install does, so an interrupted uninstall never leaves a truncated manifest.
 const save = (base, data) => replaceWhole(base, MANIFEST, `${JSON.stringify(data, null, 2)}\n`, { temp: MANIFEST_SAVE_TEMP });
 
@@ -231,7 +326,32 @@ export function uninstall(root, { dryRun = false, log = console.log } = {}) {
   const touched = [];
   let keptCount = 0;
   let handled = 0;
+  // #418: the settings.json hook entries are planned before the files, so a kept entry can keep
+  // the files it still runs. A kept entry whose command runs run-hook.mjs keeps the runner and the
+  // hook it names: the files loop leaves both alone, and the kept line below names them once.
+  const settingsPlan = data.claude_hooks ? unwireHooks(base, data.claude_hooks, data.claude_hooks_created_file === true) : null;
+  // Every command still in settings.json after this run (or, when the file could not be read,
+  // the kept entries' commands) keeps the files under .claude/hooks/ it runs, whether DevOPs
+  // recorded that command or not: a command whose runner is gone blocks every matching call.
+  const keptRunnerFiles = new Map(); // command -> the manifest keys it still runs
+  const stillRun = settingsPlan === null ? [] : (settingsPlan.remaining ?? settingsPlan.kept.map(({ entry }) => entry.command));
+  for (const command of stillRun) {
+    const names = new Set([...command.matchAll(/\.claude\/hooks\/([A-Za-z0-9._-]+)/g)].map(m => m[1]));
+    // Unanchored: a command the user extended (`... # note`, `... ; other`) still runs the hook.
+    for (const m of command.matchAll(/run-hook\.mjs"? (?:pre|post) ([A-Za-z0-9._-]+)/g)) names.add(m[1]);
+    const keys = [...names].map(name => `.claude/hooks/${name}`).filter(key => data.files[key] !== undefined);
+    if (keys.length) keptRunnerFiles.set(command, keys);
+  }
+  const keptRunnerKeys = new Set();
+  for (const keys of keptRunnerFiles.values()) {
+    const fresh = keys.filter(key => !keptRunnerKeys.has(key));
+    for (const key of fresh) keptRunnerKeys.add(key);
+    if (fresh.length === 0) continue;
+    keptCount += fresh.length;
+    log(`kept      ${fresh.join(' and ')}: an entry in ${SETTINGS_KEY} still runs ${fresh.length === 1 ? 'it' : 'them'}; delete that entry, then run devops uninstall again`);
+  }
   for (const key of Object.keys(data.files).sort()) {
+    if (keptRunnerKeys.has(key)) continue; // named with the kept entry above
     const entry = data.files[key];
     // The hook is shown where Git keeps it, not by its manifest key.
     const label = key === HOOK_KEY ? hookShown(base) : key;
@@ -305,6 +425,42 @@ export function uninstall(root, { dryRun = false, log = console.log } = {}) {
     } catch (error) {
       keptCount++;
       log(`kept      .mcp.json (the "${name}" server): ${error.message}`);
+    }
+  }
+  // #418: the settings.json hook entries init added. Only those entries go; the file is written
+  // once, whole and with its permissions, and a record goes once its entry is gone or removed.
+  if (data.claude_hooks) {
+    const plan = settingsPlan;
+    for (const { entry, reason } of plan.kept) {
+      keptCount++;
+      log(`kept      ${SETTINGS_KEY} (${hookLabel(entry)}): ${reason}`);
+    }
+    if (dryRun) {
+      for (const entry of plan.removed) log(`would remove ${hookLabel(entry)} from ${SETTINGS_KEY}`);
+      if (plan.deleteFile) log(`would remove ${SETTINGS_KEY} (init created it; nothing else is in it)`);
+      handled += plan.removed.length;
+    } else {
+      try {
+        for (const entry of plan.removed) log(`remove    ${hookLabel(entry)} from ${SETTINGS_KEY}`);
+        if (plan.deleteFile) {
+          log(`remove    ${SETTINGS_KEY} (init created it; nothing else is in it)`);
+          removeRegular(path.join(base, SETTINGS_KEY));
+        } else if (plan.bytes !== null) {
+          // Replaced whole: the user's own settings share this file.
+          replaceWhole(base, SETTINGS_KEY, plan.bytes, { temp: SETTINGS_TEMP });
+        }
+        handled += plan.removed.length;
+        const dropped = new Set(plan.dropped);
+        data.claude_hooks = data.claude_hooks.filter(entry => !dropped.has(entry));
+        if (data.claude_hooks.length === 0) {
+          delete data.claude_hooks;
+          delete data.claude_hooks_created_file;
+        }
+        save(base, data);
+      } catch (error) {
+        keptCount++;
+        log(`kept      ${SETTINGS_KEY}: ${error.message}`);
+      }
     }
   }
   // Recorded folders, deepest first; one that still holds anything stays.

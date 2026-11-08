@@ -26,7 +26,7 @@ import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { linkAgileGraph } from './agile-graph.js';
-import { ADOPTED_NOTICE, LOCAL_STATE_IGNORES, ignoreLines, openManifest } from './install-manifest.js';
+import { ADOPTED_NOTICE, LOCAL_STATE_IGNORES, ignoreLines, openManifest, readRegular, replaceWhole, sha256 } from './install-manifest.js';
 import { UnsafeWriteError, backupIfChanged, copyInside, freshBackupStamp, mkdirInside, present, writeInside } from './safe-write.js';
 
 // specs/release/npm-package.md REQ-2: DEVOPS_ROOT if set, else the package this file
@@ -409,6 +409,159 @@ function exitWithoutVerifier(t: Tally, lead: string): never {
   process.exit(2);
 }
 
+// ─── Claude Code hook wiring (#418, REQ-15) ──────────────────────────────
+
+// Claude Code runs a hook only when .claude/settings.json names it (docs/HOOKS.md). Every hook
+// init copies is either wired here, with its event, matcher (omitted for an event without one)
+// and command, or listed as not wired with its reason. A pre or post hook runs through
+// .claude/hooks/run-hook.mjs, which reads the tool call from stdin and gives the hook the input
+// it takes (<input>: stdin, command or file). Changing a row changes what runs on every call.
+type WiredRow = { event: string; matcher?: string; command: string };
+type HookWiring = WiredRow | { unwired: string };
+const isWired = (wiring: HookWiring | undefined): wiring is WiredRow => wiring !== undefined && 'command' in wiring;
+const RUN_HOOK_FILE = 'run-hook.mjs';
+// A pre command ends in `|| exit 2`: a node missing from Claude Code's PATH (127) or a runner that
+// cannot start would otherwise exit with a code Claude Code does not treat as a block.
+const runHook = (phase: 'pre' | 'post', name: string, input: 'stdin' | 'command' | 'file') =>
+  `node "\${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/${RUN_HOOK_FILE}" ${phase} ${name} ${input}${phase === 'pre' ? ' || exit 2' : ''}`;
+const plainHook = (name: string) => `cd "\${CLAUDE_PROJECT_DIR:-.}" && bash .claude/hooks/${name} || true`;
+const CLAUDE_HOOK_WIRING: Record<string, HookWiring> = {
+  'deploy-gate.sh': { event: 'PreToolUse', matcher: 'Bash', command: runHook('pre', 'deploy-gate.sh', 'stdin') },
+  'block-sealed-refs.sh': { event: 'PreToolUse', matcher: 'Bash', command: runHook('pre', 'block-sealed-refs.sh', 'stdin') },
+  'block-prod-write.sh': { event: 'PreToolUse', matcher: 'Bash', command: runHook('pre', 'block-prod-write.sh', 'command') },
+  'block-rm-rf.sh': { event: 'PreToolUse', matcher: 'Bash', command: runHook('pre', 'block-rm-rf.sh', 'command') },
+  'block-new-dependency.sh': { event: 'PreToolUse', matcher: 'Bash', command: runHook('pre', 'block-new-dependency.sh', 'command') },
+  'block-secrets.sh': { event: 'PreToolUse', matcher: 'Read|Write|Edit|MultiEdit|NotebookEdit', command: runHook('pre', 'block-secrets.sh', 'file') },
+  'gitleaks-scan.sh': { event: 'PostToolUse', matcher: 'Write|Edit|MultiEdit', command: runHook('post', 'gitleaks-scan.sh', 'file') },
+  'load-baton.sh': { event: 'SessionStart', command: plainHook('load-baton.sh') },
+  'write-baton.sh': { unwired: 'overwrites a hand-written baton; write it with /checkpoint instead' },
+  'budget-brake.sh': { unwired: 'needs a per-call cost estimate that Claude Code does not give' },
+  'loop-detection.sh': { unwired: 'needs a tool name and arguments; not wired until it is tested with real payloads' },
+  'auto-format.sh': { unwired: 'opt-in: it rewrites files' },
+  'sync-lr-refined-date.sh': { unwired: 'edits docs/LAUNCH_READINESS.md, which only this repository has' },
+  'client-boundary.sh': { unwired: 'not registered by default (docs/HOOKS.md)' },
+  'external-content-boundary.sh': { unwired: 'its HMAC check needs the session key from rotate-session-key.sh, which is not wired' },
+  'rotate-session-key.sh': { unwired: 'rotates the session key that external-content-boundary.sh checks; not wired while that hook is not' },
+  'graph-preflight.sh': { unwired: 'part of the Agile Graph pipeline, which the npm package excludes' },
+};
+// A hook whose wired command runs through run-hook.mjs, so init must copy that runner too.
+const runsThroughRunHook = (name: string) => {
+  const wiring = CLAUDE_HOOK_WIRING[name];
+  return isWired(wiring) && wiring.command.includes(`/${RUN_HOOK_FILE}" `);
+};
+
+const SETTINGS = '.claude/settings.json';
+const SETTINGS_TEMP = '.claude/settings.json.tmp';
+const plural = (n: number) => (n === 1 ? 'hook' : 'hooks');
+
+/**
+ * Merges the entries for the copied hooks `names` into .claude/settings.json. Keeps every other
+ * key and hook; adds nothing already wired under the same event and matcher (and says so for each),
+ * and records only what it adds. A settings.json that is a link, not a regular file, or not a JSON
+ * object is left unchanged, with a line saying why. A dry run writes nothing.
+ */
+function wireClaudeHooks(root: string, names: string[], dryRun: boolean) {
+  const wanted: string[] = [];
+  for (const name of names) {
+    const wiring = CLAUDE_HOOK_WIRING[name];
+    if (isWired(wiring)) wanted.push(name);
+    else console.log(`  not wired: ${name} (${wiring ? wiring.unwired : 'no mapping in analyzer/install.ts'})`);
+  }
+  if (wanted.length === 0) return;
+
+  const file = path.join(root, SETTINGS);
+  let stat: fs.Stats | null = null;
+  try {
+    stat = fs.lstatSync(file);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+  }
+  if (stat?.isSymbolicLink()) {
+    console.log(`⚠ ${SETTINGS} is a symlink; left unchanged, and no hook was wired into it.`);
+    return;
+  }
+  if (stat && !stat.isFile()) {
+    console.log(`⚠ ${SETTINGS} is not a regular file; left unchanged, and no hook was wired into it.`);
+    return;
+  }
+  const bytes = stat ? readRegular(file) : null;
+  const created = bytes === null;
+  let config: Record<string, unknown> = {};
+  if (bytes !== null) {
+    let parsed: unknown = null;
+    try {
+      parsed = JSON.parse(bytes.toString('utf8'));
+    } catch {
+      /* not JSON: refused below */
+    }
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      console.log(`⚠ ${SETTINGS} is not a JSON object; left unchanged, and no hook was wired into it.`);
+      return;
+    }
+    config = parsed as Record<string, unknown>;
+  }
+  const isObject = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === 'object' && !Array.isArray(v);
+  if (config.hooks !== undefined && !isObject(config.hooks)) {
+    console.log(`⚠ ${SETTINGS} has a "hooks" value that is not an object; left unchanged, and no hook was wired into it.`);
+    return;
+  }
+  const byEvent: Record<string, unknown> = isObject(config.hooks) ? config.hooks : {};
+  for (const name of wanted) {
+    const { event } = CLAUDE_HOOK_WIRING[name] as WiredRow;
+    if (byEvent[event] !== undefined && !Array.isArray(byEvent[event])) {
+      console.log(`⚠ ${SETTINGS}: "${event}" is not a list; left unchanged, and no hook was wired into it.`);
+      return;
+    }
+  }
+
+  // A wanted hook is already wired only when its command sits in a group with the same matcher
+  // under the same event. The same command under another event or matcher is not wired, so it is
+  // added. Each hook already wired is named, and nothing is added or recorded for it.
+  const added: { name: string; event: string; matcher?: string; command: string; inner: { type: string; command: string } }[] = [];
+  for (const name of wanted) {
+    const { event, matcher, command } = CLAUDE_HOOK_WIRING[name] as WiredRow;
+    const groups = (byEvent[event] ?? []) as unknown[];
+    // An event without a matcher has groups without one: `matcher` undefined matches only those.
+    const sameMatcher = groups.filter((g): g is { matcher?: unknown; hooks: unknown[] } =>
+      isObject(g) && g.matcher === matcher && Array.isArray(g.hooks));
+    if (sameMatcher.some(g => g.hooks.some(h => isObject(h) && h.command === command))) {
+      console.log(`  already wired: ${name} (${event})`);
+      continue;
+    }
+    const inner = { type: 'command', command };
+    if (sameMatcher.length > 0) sameMatcher[0].hooks.push(inner);
+    else groups.push(matcher === undefined ? { hooks: [inner] } : { matcher, hooks: [inner] });
+    byEvent[event] = groups;
+    added.push({ name, event, matcher, command, inner });
+  }
+  if (added.length === 0) return;
+  if (config.hooks === undefined) config.hooks = byEvent;
+
+  const list = added.map(a => `${a.event} ${a.name}`).join(', ');
+  if (dryRun) {
+    if (created) console.log(`would create ${SETTINGS}`);
+    console.log(`would wire ${added.length} ${plural(added.length)} in ${SETTINGS}:`);
+    for (const a of added) console.log(`  would add ${a.event}: ${a.name}${a.matcher === undefined ? '' : ` (matcher ${a.matcher})`}`);
+    return;
+  }
+  // Recorded before the write (REQ-15): a run stopped here leaves uninstall a record it can check.
+  const entries = added.map(a => ({
+    event: a.event,
+    ...(a.matcher === undefined ? {} : { matcher: a.matcher }),
+    command: a.command,
+    sha256: sha256(JSON.stringify(a.inner)),
+  }));
+  record?.claudeHooks(entries, created);
+  try {
+    replaceWhole(root, SETTINGS, `${JSON.stringify(config, null, 2)}\n`, { temp: SETTINGS_TEMP });
+  } catch (error) {
+    record?.forgetClaudeHooks(entries.map(e => e.command));
+    console.log(`⚠ ${SETTINGS} could not be written (${(error as Error).message}); no hook was wired into it.`);
+    return;
+  }
+  console.log(`✓ Claude Code hooks: wired ${added.length} ${plural(added.length)} in ${SETTINGS} (${list}).`);
+}
+
 // ─── main ────────────────────────────────────────────────────────────────
 
 function main() {
@@ -608,7 +761,18 @@ function main() {
     }
     if (!flags.dryRun) copy(PROJECT_ROOT, src, path.join(PROJECT_ROOT, '.claude/hooks', companion));
   }
+  // #418: a hook wired through run-hook.mjs needs that runner beside it. Without it the
+  // wired command would fail on every call, so a missing runner stops the install.
+  if (hooks.some(h => fs.existsSync(path.join(DEVOPS_ROOT, 'hooks', h)) && runsThroughRunHook(path.basename(h)))) {
+    const src = path.join(DEVOPS_ROOT, 'hooks/claude-code', RUN_HOOK_FILE);
+    if (!fs.existsSync(src) || !fs.statSync(src).isFile()) {
+      console.error(`required hook companion missing: ${RUN_HOOK_FILE}`);
+      process.exit(1);
+    }
+    if (!flags.dryRun) copy(PROJECT_ROOT, src, path.join(PROJECT_ROOT, '.claude/hooks', RUN_HOOK_FILE), 0o755);
+  }
   let hooksInstalled = 0;
+  const copiedHooks: string[] = [];
   for (const h of hooks) {
     const src = path.join(DEVOPS_ROOT, 'hooks', h);
     if (!fs.existsSync(src)) continue;
@@ -616,8 +780,11 @@ function main() {
       const dst = path.join(PROJECT_ROOT, '.claude/hooks', path.basename(h));
       copy(PROJECT_ROOT, src, dst, 0o755);
     }
+    copiedHooks.push(path.basename(h));
     hooksInstalled++;
   }
+  // #418: Claude Code runs a copied hook only once .claude/settings.json names it.
+  wireClaudeHooks(PROJECT_ROOT, copiedHooks, flags.dryRun);
   let subagentsInstalled = 0;
   for (const a of subagents) {
     const src = path.join(DEVOPS_ROOT, `subagents/universal/${a}.md`);

@@ -8,6 +8,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- `devops init` wires the Claude Code hooks it can into `.claude/settings.json`. Before, it copied the hooks to `.claude/hooks/` and wrote no settings entries, so Claude Code never ran them. It wires the pre-tool hooks on Bash (`deploy-gate.sh`, `block-sealed-refs.sh`, `block-prod-write.sh`, `block-rm-rf.sh`, `block-new-dependency.sh`) and on file reads and writes (`block-secrets.sh`), the post-tool `gitleaks-scan.sh` on writes, and `load-baton.sh` at session start, run from the project root. A pre or post hook runs through `.claude/hooks/run-hook.mjs`, copied from `hooks/claude-code/`: it reads the tool call from stdin, gives the hook the input it takes, and fails closed on a pre-tool error (exit 2); each pre-tool command also ends in `|| exit 2`, so a missing `node` blocks the call. Init keeps every other key and hook in the file, never adds a duplicate, and records each entry under `claude_hooks` in the install manifest. `devops uninstall` removes only the recorded entries (deleting the file when init created it), keeps an entry edited since, and `--dry-run` changes nothing. The hooks still unwired are named with their reasons (budget-brake, loop-detection, auto-format, write-baton, which would overwrite a hand-written baton, and others; `docs/HOOKS.md` lists them) (#418, specs/release/npm-package.md REQ-15, AC-27).
+
 ### Changed
 
 - All 26 skills, including the nine stack-specific ones, are signed as new-format Sigstore bundles and listed in `governance/skill-manifest.yml`. `devops init` now installs the stack-specific skills that `analyze` recommends instead of skipping them (#347, #416).
