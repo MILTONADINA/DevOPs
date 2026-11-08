@@ -8,6 +8,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- `devops uninstall` removes the `agile-graph` entry in `.mcp.json` and the pin file `.claude/agile-graph-tool-hashes.json` that `devops init` added when it linked Agile Graph. Other servers and keys in `.mcp.json` stay, and an entry edited since is kept and named. An install made by 0.7.0 or earlier did not record them (`specs/release/npm-package.md` REQ-15, REQ-16, AC-26; #413).
+
 ## [0.7.0] — 2026-11-08
 
 ### Added

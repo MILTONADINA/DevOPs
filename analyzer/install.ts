@@ -522,7 +522,7 @@ function main() {
   let agileGraphLines: string[];
   try {
     agileGraphLines = linkAgileGraph({
-      projectRoot: PROJECT_ROOT, devopsRoot: DEVOPS_ROOT, dryRun: flags.dryRun, skip: flags.noAgileGraph,
+      projectRoot: PROJECT_ROOT, devopsRoot: DEVOPS_ROOT, dryRun: flags.dryRun, skip: flags.noAgileGraph, record,
     }).lines;
   } catch (error) {
     agileGraphLines = [`Agile Graph: not linked (${error instanceof Error ? error.message : String(error)}).`];

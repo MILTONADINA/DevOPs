@@ -8,6 +8,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { writeStubGit } from './fixtures/stub-git.mjs';
 import { MANIFEST } from '../analyzer/install-manifest.js';
+import { ENGINE, ENGINE_VERSIONS, PIN_TARGET, SERVER_KEY, supportedNode } from '../analyzer/agile-graph.js';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 const CLI = path.join(ROOT, 'scripts/devops-cli.js');
@@ -285,5 +286,133 @@ test(`an original copy read through a symlinked originals folder is kept and nam
     } finally {
       rmSync(outside, { recursive: true, force: true });
     }
+  });
+});
+
+// specs/release/npm-package.md REQ-15, REQ-16, AC-26 (issue #413): the pin file and the
+// .mcp.json server entry that init adds when it links Agile Graph.
+const LINK_SKIP = supportedNode(process.versions.node) ? false : `the engine needs Node 24 to 26; this is ${process.versions.node}`;
+const mcpPath = dir => path.join(dir, '.mcp.json');
+const mcpNow = dir => JSON.parse(readFileSync(mcpPath(dir), 'utf8'));
+const outsideModules = snap => Object.fromEntries(Object.entries(snap).filter(([key]) => !key.startsWith('node_modules')));
+/** A stub engine in the project's node_modules: init links it and never runs it. */
+function installEngine(dir) {
+  const engineDir = path.join(dir, 'node_modules', ...ENGINE.split('/'));
+  mkdirSync(path.join(engineDir, 'dist'), { recursive: true });
+  writeFileSync(path.join(engineDir, 'package.json'), JSON.stringify({ name: ENGINE, version: ENGINE_VERSIONS.at(-1) }));
+  writeFileSync(path.join(engineDir, 'dist', 'cli.js'), '#!/usr/bin/env node\n');
+}
+function installLinked(dir) {
+  installEngine(dir);
+  const a = devops(dir, 'analyze');
+  assert.equal(a.status, 0, a.stderr);
+  const r = devops(dir, 'init', ...UNSIGNED);
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.match(r.stdout, /registered the MCP server "agile-graph" in \.mcp\.json/);
+}
+
+test(`init links Agile Graph and uninstall removes the pin and the server, and the .mcp.json init created (${SPEC}#ac-26)`, { skip: LINK_SKIP }, () => {
+  withProject(dir => {
+    const before = outsideModules(snapshot(dir));
+    installLinked(dir);
+    assert.ok(existsSync(path.join(dir, PIN_TARGET)), 'init copied the pins');
+    assert.equal(mcpNow(dir).mcpServers[SERVER_KEY].command, 'npx');
+    const recorded = manifestNow(dir);
+    assert.equal(recorded.mcp_servers[SERVER_KEY].created_file, true);
+    assert.ok(recorded.files[PIN_TARGET], 'the pin file is recorded');
+    const r = uninstall(dir);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.match(r.stdout, /remove {4}the "agile-graph" server from \.mcp\.json/);
+    assert.ok(!existsSync(path.join(dir, PIN_TARGET)), 'the pin file is gone');
+    assert.ok(!existsSync(mcpPath(dir)), '.mcp.json init created is gone');
+    assert.deepEqual(outsideModules(snapshot(dir)), before);
+  });
+});
+
+test(`a .mcp.json that was there before keeps its other server and key after uninstall (${SPEC}#ac-26)`, { skip: LINK_SKIP }, () => {
+  withProject(dir => {
+    const original = { mcpServers: { other: { type: 'stdio', command: 'other-tool', args: ['--flag'] } }, extraKey: { keep: true } };
+    writeFileSync(mcpPath(dir), `${JSON.stringify(original, null, 2)}\n`);
+    installLinked(dir);
+    assert.equal(manifestNow(dir).mcp_servers[SERVER_KEY].created_file, false, 'the file was there before init');
+    const r = uninstall(dir);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.deepEqual(mcpNow(dir), original, 'the other server and the extra key are unchanged');
+    assert.ok(!existsSync(path.join(dir, PIN_TARGET)), 'the pin file is gone');
+  });
+});
+
+test(`an agile-graph entry edited after init is kept and named, and the manifest stays (${SPEC}#ac-26)`, { skip: LINK_SKIP }, () => {
+  withProject(dir => {
+    installLinked(dir);
+    const config = mcpNow(dir);
+    config.mcpServers[SERVER_KEY].args.push('--edited-by-hand');
+    writeFileSync(mcpPath(dir), `${JSON.stringify(config, null, 2)}\n`);
+    const edited = readFileSync(mcpPath(dir), 'utf8');
+    const r = uninstall(dir);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.match(r.stdout, /kept {6}\.mcp\.json \(the "agile-graph" server\): edited since DevOPs wrote it/);
+    assert.equal(readFileSync(mcpPath(dir), 'utf8'), edited, 'the edited entry is left as it is');
+    assert.ok(manifestNow(dir).mcp_servers[SERVER_KEY], 'its record stays in the manifest');
+    assert.match(r.stdout, /file\(s\) kept/);
+    assert.ok(!existsSync(path.join(dir, PIN_TARGET)), 'the unedited pin file is still removed');
+  });
+});
+
+test(`a .mcp.json that is a symlink is kept and named, and its target is not touched (${SPEC}#ac-26)`, { skip: LINK_SKIP }, () => {
+  withProject(dir => {
+    installLinked(dir);
+    const outside = realpathSync(mkdtempSync(path.join(tmpdir(), 'uninstall-outside-')));
+    try {
+      const target = path.join(outside, 'mcp.json');
+      writeFileSync(target, '{"mcpServers":{"agile-graph":{}}}\n');
+      rmSync(mcpPath(dir));
+      symlinkSync(target, mcpPath(dir));
+      const r = uninstall(dir);
+      assert.equal(r.status, 0, r.stdout + r.stderr);
+      assert.match(r.stdout, /kept {6}\.mcp\.json \(the "agile-graph" server\): refusing to read through a symlink/);
+      assert.equal(readFileSync(target, 'utf8'), '{"mcpServers":{"agile-graph":{}}}\n');
+      assert.ok(manifestNow(dir).mcp_servers[SERVER_KEY]);
+    } finally {
+      rmSync(outside, { recursive: true, force: true });
+    }
+  });
+});
+
+test(`a malformed mcp_servers value makes the manifest an unknown schema, and uninstall changes nothing (${SPEC}#ac-26)`, { skip: LINK_SKIP }, () => {
+  withProject(dir => {
+    installLinked(dir);
+    const good = manifestNow(dir);
+    const hash = 'a'.repeat(64);
+    const bad = [
+      { [SERVER_KEY]: { sha256: 'NOT-HEX', created_file: true } },
+      { [SERVER_KEY]: { sha256: hash, created_file: 'yes' } },
+      { [SERVER_KEY]: { sha256: hash, created_file: true, extra: 1 } },
+      { [SERVER_KEY]: { sha256: hash } },
+      { '': { sha256: hash, created_file: true } },
+      { [`${'x'.repeat(129)}`]: { sha256: hash, created_file: true } },
+      ['not', 'an', 'object'],
+    ];
+    for (const value of bad) {
+      writeFileSync(path.join(dir, MANIFEST), `${JSON.stringify({ ...good, mcp_servers: value }, null, 2)}\n`);
+      const installed = snapshot(dir);
+      const r = uninstall(dir);
+      assert.equal(r.status, 1, `${JSON.stringify(value)}: ${r.stdout}${r.stderr}`);
+      assert.match(r.stderr, /unknown schema/, JSON.stringify(value));
+      assert.deepEqual(snapshot(dir), installed, 'nothing changed');
+    }
+  });
+});
+
+test(`a dry run names the server and the .mcp.json it would delete, and changes nothing (${SPEC}#ac-26)`, { skip: LINK_SKIP }, () => {
+  withProject(dir => {
+    installLinked(dir);
+    const installed = snapshot(dir);
+    const r = uninstall(dir, '--dry-run');
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(r.stdout, /would remove the "agile-graph" server from \.mcp\.json/);
+    assert.match(r.stdout, /would remove \.mcp\.json/);
+    assert.match(r.stdout, /nothing changed/);
+    assert.deepEqual(snapshot(dir), installed);
   });
 });

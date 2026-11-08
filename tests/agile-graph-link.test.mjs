@@ -12,6 +12,7 @@ import path from 'node:path';
 import {
   ENGINE, ENGINE_VERSIONS, PIN_SOURCE, PIN_TARGET, SERVER_KEY, linkAgileGraph, serverEntry, supportedNode,
 } from '../analyzer/agile-graph.js';
+import { MANIFEST, openManifest, sha256 } from '../analyzer/install-manifest.js';
 
 const NEWEST = ENGINE_VERSIONS[ENGINE_VERSIONS.length - 1];
 
@@ -478,5 +479,47 @@ test('a directory at .mcp.json or at the pin path is left alone without throwing
       assert.match(result.lines.join('\n'), /is not a regular file; left unchanged, not linked/);
     }
     assert.ok(!existsSync(path.join(setup.projectRoot, '.mcp.json')));
+  });
+});
+
+// specs/release/npm-package.md REQ-15 (issue #413): what linking records in the install manifest.
+test('a link records the pin it copies and the server entry, never .mcp.json as a file (specs/release/npm-package.md REQ-15)', () => {
+  withSetup(setup => {
+    setup.installEngine('project');
+    const record = openManifest(setup.projectRoot);
+    const result = link(setup, { record });
+    assert.equal(result.status, 'linked', result.lines.join('\n'));
+    const data = JSON.parse(readFileSync(path.join(setup.projectRoot, MANIFEST), 'utf8'));
+    assert.deepEqual(Object.keys(data.files), [PIN_TARGET]);
+    assert.equal(data.files[PIN_TARGET].original, null);
+    assert.equal(data.files[PIN_TARGET].written, sha256(readFileSync(path.join(setup.projectRoot, PIN_TARGET))));
+    const server = mcpJson(setup.projectRoot).mcpServers[SERVER_KEY];
+    assert.deepEqual(data.mcp_servers, {
+      [SERVER_KEY]: { sha256: sha256(JSON.stringify(server)), created_file: true },
+    });
+  });
+});
+
+test('an existing pin file and an existing .mcp.json are not recorded as created (specs/release/npm-package.md REQ-15)', () => {
+  withSetup(setup => {
+    setup.installEngine('project');
+    mkdirSync(path.join(setup.projectRoot, '.claude'), { recursive: true });
+    writeFileSync(path.join(setup.projectRoot, PIN_TARGET), '{}\n');
+    writeFileSync(path.join(setup.projectRoot, '.mcp.json'), '{}\n');
+    const record = openManifest(setup.projectRoot);
+    assert.equal(link(setup, { record }).status, 'linked');
+    const data = JSON.parse(readFileSync(path.join(setup.projectRoot, MANIFEST), 'utf8'));
+    assert.deepEqual(Object.keys(data.files), [], 'the pin was there before, so it is not recorded');
+    assert.equal(data.mcp_servers[SERVER_KEY].created_file, false);
+  });
+});
+
+test('a pin recorded before its write is dropped by the next save when no file is there (specs/release/npm-package.md REQ-15)', () => {
+  withSetup(setup => {
+    const record = openManifest(setup.projectRoot);
+    record.before(PIN_TARGET);
+    record.save();
+    const data = JSON.parse(readFileSync(path.join(setup.projectRoot, MANIFEST), 'utf8'));
+    assert.deepEqual(data.files, {}, 'a write that never happened leaves no record');
   });
 });

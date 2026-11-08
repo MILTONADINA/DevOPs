@@ -100,12 +100,20 @@ function writable(file) {
 }
 
 /**
+ * The part of the install manifest (install-manifest.js openManifest) that linking records.
+ * @typedef {{ before(key: string): void, after(key: string): void, mcpServer(name: string, entry: object, createdFile: boolean): void }} Recorder
+ */
+
+/**
  * Register the engine for one project. Returns { status, lines }: status is "linked",
  * "kept" (something already there was left alone, or could not be written) or
  * "skipped"; lines are for the user. It never throws for a project it cannot change.
+ * `record` (the install manifest, null in a dry run) records the pin file it copies and
+ * the .mcp.json entry it adds, so uninstall can take them back (REQ-15).
  */
 export function linkAgileGraph({
   projectRoot, devopsRoot, dryRun = false, skip = false, nodeVersion = process.versions.node, pathEnv = process.env.PATH,
+  record = /** @type {Recorder | null} */ (null),
 }) {
   const done = (status, ...lines) => ({ status, lines });
   if (skip) return done('skipped', 'Agile Graph: skipped (--no-agile-graph).');
@@ -161,9 +169,12 @@ export function linkAgileGraph({
 
   // Pins first, then .mcp.json; if .mcp.json cannot be written, take back the pins this
   // run copied, so a project never holds one half of the link.
+  const createdFile = !fs.existsSync(mcpFile);
   const next = { ...config, mcpServers: { ...(config.mcpServers ?? {}), [SERVER_KEY]: entry } };
   try {
     if (copyPins) {
+      // Recorded before the create-only write, so a run killed mid-write keeps the record.
+      record?.before(PIN_TARGET);
       // Create-only, never through a link (REQ-F10).
       writeInside(projectRoot, pinTarget, fs.readFileSync(pinSource), { exclusive: true });
     }
@@ -173,6 +184,10 @@ export function linkAgileGraph({
       if (copyPins) fs.rmSync(pinTarget, { force: true });
       throw error;
     }
+    // The pin is recorded only once .mcp.json is written too. If .mcp.json failed, the pin
+    // is gone and its pending record is dropped by the next save (install-manifest.js).
+    if (copyPins) record?.after(PIN_TARGET);
+    record?.mcpServer(SERVER_KEY, entry, createdFile);
   } catch (error) {
     return done('kept', `Agile Graph: could not write the link (${error.code ?? error.message}); not linked. Check .mcp.json.`);
   }

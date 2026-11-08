@@ -1,5 +1,13 @@
 # Upgrading DevOPs
 
+## Unreleased (dev)
+
+### `devops uninstall` removes the Agile Graph link
+
+`devops uninstall` now also removes what `devops init` added when it linked Agile Graph: the `agile-graph` entry under `mcpServers` in `.mcp.json`, and the pin file `.claude/agile-graph-tool-hashes.json`. Every other server and key in `.mcp.json` stays as it was. If you edited the `agile-graph` entry after init wrote it, uninstall keeps it and names it, and the manifest stays so you can finish by hand. `devops uninstall --dry-run` shows the removal first.
+
+An install made by 0.7.0 or earlier did not record either of them, so for that install remove the `agile-graph` entry and the pin file by hand.
+
 ## Upgrading from 0.4.0 to 0.5.0
 
 Match the scope you installed with. The commands below use `npx` so they work for a global, a project or a one-shot install; with a global install you can drop the `npx @miltonadina/devops` prefix and type `devops`.
@@ -188,7 +196,7 @@ When `devops init` or `devops analyze` replaces an installed skill, hook, subage
 
 `devops analyze` and `devops init` now record every file they write in `.workflow/state/install-manifest.json`, with a copy of any file that was there before under `.workflow/state/originals/`. `devops uninstall --dry-run` shows what `devops uninstall` would remove or put back. A file you edited since is left in place and named.
 
-Init and analyze add `.workflow/state/install-manifest.json` and `.workflow/state/originals/` to `.gitignore`, so the manifest stays out of Git. If you already committed them, run `git rm --cached -r --ignore-unmatch .workflow/state/install-manifest.json .workflow/state/originals` and commit that before uninstalling. Uninstall refuses a manifest or originals folder that Git tracks, because it did not come from an install on this machine. The `.mcp.json` entry and Agile Graph pin that linking writes are not recorded yet; remove them by hand.
+Init and analyze add `.workflow/state/install-manifest.json` and `.workflow/state/originals/` to `.gitignore`, so the manifest stays out of Git. If you already committed them, run `git rm --cached -r --ignore-unmatch .workflow/state/install-manifest.json .workflow/state/originals` and commit that before uninstalling. Uninstall refuses a manifest or originals folder that Git tracks, because it did not come from an install on this machine.
 
 A project installed by an earlier release has no manifest. If that install verified at least one skill, it left `.workflow/state/install.log`, and the first `analyze` or `init` after you upgrade starts the manifest marked `adopted`. In an adopted install:
 
