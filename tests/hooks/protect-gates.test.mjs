@@ -111,6 +111,55 @@ test(`file tools: a hard link to a gate file is blocked (${SPEC}#ac-28)`, () => 
   blocked(fileHook(dir, path.join(dir, 'src/hl.json')), 'a hard link to settings.json');
 });
 
+test(`file tools: a hard link to a file inside a protected directory is blocked (${SPEC}#ac-28)`, () => {
+  const dir = project();
+  linkSync(path.join(dir, '.claude/hooks/block-rm-rf.sh'), path.join(dir, 'src/hl.sh'));
+  linkSync(path.join(dir, '.workflow/state/originals/x.md'), path.join(dir, 'src/hl.md'));
+  assert.equal(statSync(path.join(dir, 'src/hl.sh')).ino, statSync(path.join(dir, '.claude/hooks/block-rm-rf.sh')).ino);
+  blocked(fileHook(dir, path.join(dir, 'src/hl.sh')), 'a hard link to .claude/hooks/block-rm-rf.sh');
+  blocked(fileHook(dir, path.join(dir, 'src/hl.md')), 'a hard link to .workflow/state/originals/x.md');
+  writeFileSync(path.join(dir, 'src/app.ts'), 'export {};\n');
+  allowed(fileHook(dir, path.join(dir, 'src/app.ts')), 'an ordinary file beside them');
+});
+
+test(`file tools: a symlink inside a protected directory that points out of it is blocked, and so is its target (${SPEC}#ac-28)`, () => {
+  const dir = project();
+  writeFileSync(path.join(dir, 'src/real.sh'), '#!/bin/sh\n');
+  writeFileSync(path.join(dir, 'src/real.md'), '# real\n');
+  symlinkSync(path.join(dir, 'src/real.sh'), path.join(dir, '.claude/hooks/a.sh'));
+  symlinkSync(path.join(dir, 'src/real.md'), path.join(dir, '.workflow/state/originals/a.md'));
+  blocked(fileHook(dir, path.join(dir, '.claude/hooks/a.sh')), 'the symlink .claude/hooks/a.sh');
+  blocked(fileHook(dir, path.join(dir, 'src/real.sh')), 'src/real.sh, the target of that symlink');
+  blocked(fileHook(dir, path.join(dir, '.workflow/state/originals/a.md')), 'the symlink .workflow/state/originals/a.md');
+  blocked(fileHook(dir, path.join(dir, 'src/real.md')), 'src/real.md, the target of that symlink');
+});
+
+test(`file tools: a protected directory walk fails closed past 8 levels or 5000 entries (${SPEC}#ac-28)`, () => {
+  const dir = project();
+  writeFileSync(path.join(dir, 'src/app.ts'), 'export {};\n');
+  // Eight nested levels under .claude/hooks: an entry at depth 8 is walked, and nothing deeper exists.
+  const seven = path.join(dir, '.claude/hooks', ...Array.from({ length: 7 }, (_, i) => `l${i + 1}`));
+  mkdirSync(seven, { recursive: true });
+  writeFileSync(path.join(seven, 'ok.txt'), 'ok\n');
+  allowed(fileHook(dir, path.join(dir, 'src/app.ts')), 'a walk within 8 levels');
+  // One level more: an entry at depth 9 is past the limit, so the check fails closed.
+  mkdirSync(path.join(seven, 'l8'));
+  writeFileSync(path.join(seven, 'l8', 'deep.txt'), 'deep\n');
+  const deep = fileHook(dir, path.join(dir, 'src/app.ts'));
+  assert.equal(deep.status, 2, `a walk past 8 levels: ${deep.stdout}${deep.stderr}`);
+  assert.match(deep.stderr, /failing closed/);
+  // 5000 entries: a directory with 5000 files and the existing hook, past the limit.
+  const wide = realpathSync(mkdtempSync(path.join(tmpdir(), 'protect-gates-wide-')));
+  dirs.push(wide);
+  populate(wide);
+  mkdirSync(path.join(wide, '.claude/hooks/bulk'));
+  for (let i = 0; i < 5000; i += 1) writeFileSync(path.join(wide, '.claude/hooks/bulk', `f${i}.txt`), '');
+  writeFileSync(path.join(wide, 'src/app.ts'), 'export {};\n');
+  const many = fileHook(wide, path.join(wide, 'src/app.ts'));
+  assert.equal(many.status, 2, `a walk past 5000 entries: ${many.stdout}${many.stderr}`);
+  assert.match(many.stderr, /failing closed/);
+});
+
 test(`on darwin a long s (U+017F) spelling of a gate name is blocked (${SPEC}#ac-28)`, { skip: process.platform !== 'darwin' }, () => {
   const dir = project();
   blocked(fileHook(dir, path.join(dir, '.claude/\u017Fettings.json')), '.claude/\u017Fettings.json');

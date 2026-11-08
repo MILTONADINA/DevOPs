@@ -46,6 +46,10 @@ const GIT_PLAIN = new Set(['add', 'commit', 'status']);
 // A pipe stage that only reads its input. sort takes no -o, --output or --compress-program.
 const FILTER_STAGE = /\|\s*(?:(?:head|tail|wc|grep)(?:\s+[^|;&<>()`]*)?|sort(?:\s+-[nrufbdhiMVsz]+)*)\s*$/;
 const MAX_LINKS = 40;
+// The walk of a protected directory: entries up to this many levels below it, and at most this many
+// entries in all. Past either limit the check fails closed.
+const MAX_DEPTH = 8;
+const MAX_ENTRIES = 5000;
 
 // Names compare as a case-insensitive volume does: NFD, U+017F as s, then upper and lower case.
 function foldName(name) {
@@ -177,6 +181,42 @@ function matchesDir(target, chain, dir) {
   return target.key === dir.key && startsWith(target.rest, dir.rest);
 }
 
+// The real path of a target with its last component left unresolved: the parent is resolved and the
+// basename appended, so a symbolic link is the path itself. null when the path ends in . or .., which
+// names a directory that realTarget has already resolved.
+function unresolvedLeaf(abs) {
+  const { root, parts } = splitParts(abs);
+  const last = parts[parts.length - 1];
+  if (last === undefined || last === '.' || last === '..') return null;
+  return path.join(realTarget(joinRaw(root, parts.slice(0, -1))), last);
+}
+
+// The identity of every entry under the protected directories, each mapped to the directory it is in.
+// Links are followed (statSync), so an entry that is a link has its target's identity. A tree nested
+// past MAX_DEPTH levels, or with more than MAX_ENTRIES entries, throws, and the caller fails closed.
+function protectedIdentities(root) {
+  const holders = new Map();
+  let count = 0;
+  const visit = (dir, rel, depth) => {
+    for (const name of fs.readdirSync(dir)) {
+      if (depth + 1 > MAX_DEPTH) throw new Error(`${rel} is nested more than ${MAX_DEPTH} levels deep`);
+      count += 1;
+      if (count > MAX_ENTRIES) throw new Error(`${rel} holds more than ${MAX_ENTRIES} entries`);
+      const full = path.join(dir, name);
+      const st = statOrNull(full);
+      if (st === null) continue;
+      const key = `${st.dev}:${st.ino}`;
+      if (!holders.has(key)) holders.set(key, rel);
+      if (st.isDirectory()) visit(full, rel, depth + 1);
+    }
+  };
+  for (const rel of PROTECTED_DIRS) {
+    const dir = realTarget(under(root, rel));
+    if (isDirectory(dir)) visit(dir, rel, 0);
+  }
+  return holders;
+}
+
 // CLAUDE_PROJECT_DIR, else the git top level, else the current directory, resolved like a path.
 function projectRoot() {
   const fromEnv = process.env.CLAUDE_PROJECT_DIR;
@@ -204,7 +244,8 @@ const under = (root, rel) => joinRaw(root, rel.split('/'));
 // The block message for a file tool's path, or null when the path may be changed.
 function fileBlock(input) {
   const root = projectRoot();
-  const real = realTarget(absoluteInput(root, input));
+  const abs = absoluteInput(root, input);
+  const real = realTarget(abs);
   const target = locate(real);
   const chain = chainKeys(real);
   for (const rel of PROTECTED_FILES) {
@@ -212,6 +253,22 @@ function fileBlock(input) {
   }
   for (const rel of PROTECTED_DIRS) {
     if (matchesDir(target, chain, locate(realTarget(under(root, rel))))) return gateMessage(rel);
+  }
+  // The path with its last component left unresolved: a symbolic link that sits in a protected
+  // directory is inside it, even when it points out.
+  const leaf = unresolvedLeaf(abs);
+  if (leaf !== null) {
+    const leafTarget = locate(leaf);
+    const leafChain = chainKeys(leaf);
+    for (const rel of PROTECTED_DIRS) {
+      if (matchesDir(leafTarget, leafChain, locate(realTarget(under(root, rel))))) return gateMessage(rel);
+    }
+  }
+  // An existing target is compared by identity with every entry under the protected directories,
+  // so a hard link to one of them, or a link to one from outside, is blocked too.
+  if (target.rest.length === 0) {
+    const holder = protectedIdentities(root).get(target.key);
+    if (holder !== undefined) return gateMessage(holder);
   }
   return null;
 }
