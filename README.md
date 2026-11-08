@@ -242,7 +242,8 @@ AI coding agent and ask it to follow this section.
 - Optional, only for the local DevOps database and proxy: Docker with
   Compose, and a running Docker engine
 - `cosign`, to verify skill signatures during install. Without it, `devops init`
-  installs no skills and exits 2; `devops init --allow-unsigned --rationale="..."`
+  writes nothing to the project, prints what to install, and exits 2 (when the
+  profile lists a signed skill); `devops init --allow-unsigned --rationale="..."`
   installs them unverified and logs each one as overridden.
 - `gitleaks`, for the secret scan in the pre-commit hook that `devops init` writes.
   Without it every commit stops, unless you set `DEVOPS_SKIP_SECRET_SCAN=1`. The

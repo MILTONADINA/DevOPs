@@ -82,12 +82,12 @@ test(`a skill cosign verifies is copied, checked against the anchored release-si
   assert.deepEqual(result.decisions, ['pass']);
 });
 
-test(`a skill is refused with exit 2 when cosign is not installed (${SPEC}#req-f9)`, () => {
+test(`without cosign a skill is not verified: exit 2, nothing written, nothing logged (${SPEC}#req-f12)`, () => {
   const result = install({ cosign: null });
   assert.equal(result.status, 2, result.output);
   assert.equal(result.copied, false);
-  assert.match(result.output, /cosign did not complete/);
-  assert.deepEqual(result.decisions, ['fail']);
+  assert.match(result.output, /not verified \(cosign missing\)=1/);
+  assert.deepEqual(result.decisions, [], 'no install.log decision is written before the refusal');
 });
 
 test(`a skill is refused with exit 2 when cosign is killed before it answers (${SPEC}#req-f9)`, () => {
