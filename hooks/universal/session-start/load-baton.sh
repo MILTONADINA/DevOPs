@@ -8,6 +8,37 @@
 
 set -euo pipefail
 
+# Escapes $1 for use inside a JSON string literal: backslash, quote, and control characters
+# (RFC 8259). A character loop, not ${var//pat/rep}: bash 3.2 (macOS /bin/bash) mangles quoted
+# replacements. Bytes 0x80 and above pass through unchanged, as UTF-8 (bash 3.2 reports them as
+# negative codes, hence the code >= 0 guard).
+json_escape() {
+    local s="$1" out="" i c code hex
+    for (( i = 0; i < ${#s}; i++ )); do
+        c="${s:i:1}"
+        case "$c" in
+            "\\") out+='\\' ;;
+            '"') out+='\"' ;;
+            *)
+                printf -v code '%d' "'$c"
+                if (( code >= 0 && code < 32 )); then
+                    case "$code" in
+                        8) out+='\b' ;;
+                        9) out+='\t' ;;
+                        10) out+='\n' ;;
+                        12) out+='\f' ;;
+                        13) out+='\r' ;;
+                        *) printf -v hex '\\u%04x' "$code"; out+="$hex" ;;
+                    esac
+                else
+                    out+="$c"
+                fi
+                ;;
+        esac
+    done
+    printf '%s' "$out"
+}
+
 BATON="${DEVOPS_BATON:-.workflow/state/baton.md}"
 PROFILE="${DEVOPS_PROFILE:-.workflow/profile.yml}"
 MAX_AGE_HOURS=24
@@ -107,7 +138,9 @@ fi
 
 # ─── Log session start ──────────────────────────────────────────────────────
 session_id="${DEVOPS_SESSION_ID:-$(date -u +%s)-$(echo $$)}"
-echo "{\"ts\":$(date -u +%s),\"event\":\"session_start\",\"session_id\":\"$session_id\",\"tool\":\"${DEVOPS_TOOL:-unknown}\"}" >> .workflow/state/events.jsonl
+# Session id and tool are caller-supplied text, so both are escaped (issue #426).
+printf '{"ts":%s,"event":"session_start","session_id":"%s","tool":"%s"}\n' \
+    "$(date -u +%s)" "$(json_escape "$session_id")" "$(json_escape "${DEVOPS_TOOL:-unknown}")" >> .workflow/state/events.jsonl
 
 echo "═══════════════════════════════════════════════════════════════════"
 echo ""

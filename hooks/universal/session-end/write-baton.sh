@@ -8,6 +8,37 @@
 
 set -euo pipefail
 
+# Escapes $1 for use inside a JSON string literal: backslash, quote, and control characters
+# (RFC 8259). A character loop, not ${var//pat/rep}: bash 3.2 (macOS /bin/bash) mangles quoted
+# replacements. Bytes 0x80 and above pass through unchanged, as UTF-8 (bash 3.2 reports them as
+# negative codes, hence the code >= 0 guard).
+json_escape() {
+    local s="$1" out="" i c code hex
+    for (( i = 0; i < ${#s}; i++ )); do
+        c="${s:i:1}"
+        case "$c" in
+            "\\") out+='\\' ;;
+            '"') out+='\"' ;;
+            *)
+                printf -v code '%d' "'$c"
+                if (( code >= 0 && code < 32 )); then
+                    case "$code" in
+                        8) out+='\b' ;;
+                        9) out+='\t' ;;
+                        10) out+='\n' ;;
+                        12) out+='\f' ;;
+                        13) out+='\r' ;;
+                        *) printf -v hex '\\u%04x' "$code"; out+="$hex" ;;
+                    esac
+                else
+                    out+="$c"
+                fi
+                ;;
+        esac
+    done
+    printf '%s' "$out"
+}
+
 BATON="${DEVOPS_BATON:-.workflow/state/baton.md}"
 SESSION_ID="${DEVOPS_SESSION_ID:-unknown}"
 TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
@@ -31,7 +62,8 @@ fi
 BLOCKERS_FILE=".workflow/state/blockers.md"
 OPEN_BLOCKERS=0
 if [[ -f "$BLOCKERS_FILE" ]]; then
-    OPEN_BLOCKERS=$(grep -c "^## Blocker" "$BLOCKERS_FILE" 2>/dev/null || echo 0)
+    # grep -c prints 0 and exits 1 when nothing matches, so the fallback must not print again.
+    OPEN_BLOCKERS=$(grep -c "^## Blocker" "$BLOCKERS_FILE" 2>/dev/null) || OPEN_BLOCKERS=0
 fi
 
 # Read the active mode and lifecycle
@@ -127,8 +159,12 @@ The next session should:
 5. If anything in this baton is unclear, ask the user before proceeding
 EOF
 
-# Log
-echo "{\"ts\":$(date -u +%s),\"event\":\"session_end\",\"session_id\":\"$SESSION_ID\",\"verified_claims\":$VERIFIED_COUNT,\"open_blockers\":$OPEN_BLOCKERS}" >> .workflow/state/events.jsonl
+# Log. The session id is caller-supplied text, so it is escaped (issue #426). The two counts are
+# written as bare JSON numbers, so anything that is not digits is logged as 0.
+[[ "$VERIFIED_COUNT" =~ ^[0-9]+$ ]] || VERIFIED_COUNT=0
+[[ "$OPEN_BLOCKERS" =~ ^[0-9]+$ ]] || OPEN_BLOCKERS=0
+printf '{"ts":%s,"event":"session_end","session_id":"%s","verified_claims":%s,"open_blockers":%s}\n' \
+    "$(date -u +%s)" "$(json_escape "$SESSION_ID")" "$VERIFIED_COUNT" "$OPEN_BLOCKERS" >> .workflow/state/events.jsonl
 
 echo "✓ Baton written to $BATON"
 echo "  Verified claims: $VERIFIED_COUNT"

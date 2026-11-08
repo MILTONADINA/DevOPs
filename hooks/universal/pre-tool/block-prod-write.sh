@@ -10,6 +10,37 @@
 
 set -euo pipefail
 
+# Escapes $1 for use inside a JSON string literal: backslash, quote, and control characters
+# (RFC 8259). A character loop, not ${var//pat/rep}: bash 3.2 (macOS /bin/bash) mangles quoted
+# replacements. Bytes 0x80 and above pass through unchanged, as UTF-8 (bash 3.2 reports them as
+# negative codes, hence the code >= 0 guard).
+json_escape() {
+    local s="$1" out="" i c code hex
+    for (( i = 0; i < ${#s}; i++ )); do
+        c="${s:i:1}"
+        case "$c" in
+            "\\") out+='\\' ;;
+            '"') out+='\"' ;;
+            *)
+                printf -v code '%d' "'$c"
+                if (( code >= 0 && code < 32 )); then
+                    case "$code" in
+                        8) out+='\b' ;;
+                        9) out+='\t' ;;
+                        10) out+='\n' ;;
+                        12) out+='\f' ;;
+                        13) out+='\r' ;;
+                        *) printf -v hex '\\u%04x' "$code"; out+="$hex" ;;
+                    esac
+                else
+                    out+="$c"
+                fi
+                ;;
+        esac
+    done
+    printf '%s' "$out"
+}
+
 COMMAND="${1:-}"
 APPROVALS="${DEVOPS_APPROVALS:-.workflow/state/approvals.jsonl}"
 
@@ -68,7 +99,9 @@ if [[ -f "$APPROVALS" ]]; then
                   and .command == $command)]
         | length > 0' < "$APPROVALS" > /dev/null 2>&1; then
         mkdir -p .workflow/state
-        echo "{\"ts\":$now,\"event\":\"prod_action_approved\",\"command\":$(echo "$COMMAND" | jq -R . 2>/dev/null || echo "\"$COMMAND\"")}" >> .workflow/state/events.jsonl
+        # The command is escaped by json_escape, not jq: jq -R reads per line (a newline splits the
+        # value into two JSON strings), and the fallback used to pass the text through unescaped (#426).
+        printf '{"ts":%s,"event":"prod_action_approved","command":"%s"}\n' "$now" "$(json_escape "$COMMAND")" >> .workflow/state/events.jsonl
         exit 0
     fi
 fi
@@ -97,6 +130,7 @@ EOF
 
 # Log the block
 mkdir -p .workflow/state
-echo "{\"ts\":$(date -u +%s),\"event\":\"prod_write_blocked\",\"command\":$(echo "$COMMAND" | jq -R . 2>/dev/null || echo "\"$COMMAND\""),\"pattern\":\"$matched\"}" >> .workflow/state/events.jsonl
+printf '{"ts":%s,"event":"prod_write_blocked","command":"%s","pattern":"%s"}\n' \
+    "$(date -u +%s)" "$(json_escape "$COMMAND")" "$(json_escape "$matched")" >> .workflow/state/events.jsonl
 
 exit 2

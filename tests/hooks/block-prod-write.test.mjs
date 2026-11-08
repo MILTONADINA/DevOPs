@@ -5,7 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -52,4 +52,60 @@ for (const [name, approvals] of Object.entries(REFUSED)) {
 test('block-prod-write matches production SQL whatever its case', () => {
   assert.equal(decide('psql -c "drop table users"'), 2);
   assert.equal(decide('echo hello'), 0);
+});
+
+// The events.jsonl line for a blocked or approved command carries the command text, which is
+// caller-supplied. A quote, backslash, newline or non-ASCII character in it must round-trip, and
+// the line must stay one JSON object. The escape must not depend on jq: a jq that fails or is
+// missing must not change the line. Issue #426. A stub jq that always fails stands in for both.
+const LOG_COMMAND = 'terraform apply -var "x=\\y" # caf\u00e9\nline two';
+
+function runLogged(approvals, { failingJq = false } = {}) {
+  const dir = mkdtempSync(path.join(tmpdir(), 'block-prod-write-log-'));
+  try {
+    mkdirSync(path.join(dir, '.workflow', 'state'), { recursive: true });
+    if (approvals !== undefined) writeFileSync(path.join(dir, '.workflow', 'state', 'approvals.jsonl'), approvals.map(line => JSON.stringify(line)).join('\n') + '\n');
+    const env = { ...process.env, LC_ALL: 'C' };
+    if (failingJq) {
+      const bin = path.join(dir, 'bin');
+      mkdirSync(bin);
+      writeFileSync(path.join(bin, 'jq'), '#!/bin/sh\nexit 1\n');
+      chmodSync(path.join(bin, 'jq'), 0o755);
+      env.PATH = `${bin}:${process.env.PATH}`;
+    }
+    const result = spawnSync('bash', [HOOK, LOG_COMMAND], { cwd: dir, encoding: 'utf8', timeout: 30_000, env });
+    assert.equal(result.error, undefined, String(result.error));
+    const events = readFileSync(path.join(dir, '.workflow', 'state', 'events.jsonl'), 'utf8');
+    assert.equal(events.endsWith('\n'), true, 'the entry ends with a newline');
+    const lines = events.slice(0, -1).split('\n');
+    assert.equal(lines.length, 1, `exactly one line, got ${lines.length}: ${JSON.stringify(events)}`);
+    return { status: result.status, entry: JSON.parse(lines[0]) };
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+test('block-prod-write logs a refused command that round-trips as one JSON object', () => {
+  const { status, entry } = runLogged(undefined);
+  assert.equal(status, 2);
+  assert.deepEqual(Object.keys(entry), ['ts', 'event', 'command', 'pattern']);
+  assert.equal(entry.event, 'prod_write_blocked');
+  assert.equal(entry.command, LOG_COMMAND);
+  assert.equal(entry.pattern, 'terraform apply');
+});
+
+test('block-prod-write logs an approved command that round-trips as one JSON object', () => {
+  const { status, entry } = runLogged([{ ts: now(), command: LOG_COMMAND }]);
+  assert.equal(status, 0);
+  assert.deepEqual(Object.keys(entry), ['ts', 'event', 'command']);
+  assert.equal(entry.event, 'prod_action_approved');
+  assert.equal(entry.command, LOG_COMMAND);
+});
+
+test('block-prod-write logs a refused command round-trip when jq fails', () => {
+  const { status, entry } = runLogged([{ ts: now(), command: LOG_COMMAND }], { failingJq: true });
+  assert.equal(status, 2);
+  assert.equal(entry.event, 'prod_write_blocked');
+  assert.equal(entry.command, LOG_COMMAND);
+  assert.equal(entry.pattern, 'terraform apply');
 });

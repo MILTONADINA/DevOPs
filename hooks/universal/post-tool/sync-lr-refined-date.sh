@@ -20,6 +20,37 @@
 
 set -euo pipefail
 
+# Escapes $1 for use inside a JSON string literal: backslash, quote, and control characters
+# (RFC 8259). A character loop, not ${var//pat/rep}: bash 3.2 (macOS /bin/bash) mangles quoted
+# replacements. Bytes 0x80 and above pass through unchanged, as UTF-8 (bash 3.2 reports them as
+# negative codes, hence the code >= 0 guard).
+json_escape() {
+    local s="$1" out="" i c code hex
+    for (( i = 0; i < ${#s}; i++ )); do
+        c="${s:i:1}"
+        case "$c" in
+            "\\") out+='\\' ;;
+            '"') out+='\"' ;;
+            *)
+                printf -v code '%d' "'$c"
+                if (( code >= 0 && code < 32 )); then
+                    case "$code" in
+                        8) out+='\b' ;;
+                        9) out+='\t' ;;
+                        10) out+='\n' ;;
+                        12) out+='\f' ;;
+                        13) out+='\r' ;;
+                        *) printf -v hex '\\u%04x' "$code"; out+="$hex" ;;
+                    esac
+                else
+                    out+="$c"
+                fi
+                ;;
+        esac
+    done
+    printf '%s' "$out"
+}
+
 FILE_EDITED="${1:-}"
 
 # Only act on plan.md edits
@@ -83,7 +114,9 @@ mv "$tmpfile" "$LR_PATH"
 
 # Log the event
 mkdir -p .workflow/state
-echo "{\"ts\":$(date -u +%s),\"event\":\"lr_refined_date_synced\",\"old\":\"$existing_date\",\"new\":\"$TODAY\",\"trigger\":\"$FILE_EDITED\"}" >> .workflow/state/events.jsonl
+# The edited path is caller-supplied text, so every string field is escaped (issue #426).
+printf '{"ts":%s,"event":"lr_refined_date_synced","old":"%s","new":"%s","trigger":"%s"}\n' \
+    "$(date -u +%s)" "$(json_escape "$existing_date")" "$(json_escape "$TODAY")" "$(json_escape "$FILE_EDITED")" >> .workflow/state/events.jsonl
 
 # Optional: emit a one-line note to stderr so the agent surfaces this to the user
 echo "DevOPs sync-lr-refined-date: bumped LR.\"Last refined\" $existing_date → $TODAY (plan.md edit)" >&2
