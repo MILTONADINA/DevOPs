@@ -161,7 +161,7 @@ if [[ "$DRY_RUN" != 1 ]]; then
     # ${a[@]+"${a[@]}"}: an empty array under `set -u` in macOS's bash 3.2.
     for script in ${copied[@]+"${copied[@]}"}; do
         name="$(basename "$script")"
-        if grep -qsF ".claude/hooks/$name\"" "$PROJECT/.claude/settings.json" "$PROJECT/.claude/settings.local.json"; then
+        if grep -qsE "[ /]${name//./\\.}([\\\" ]|\$)" "$PROJECT/.claude/settings.json" "$PROJECT/.claude/settings.local.json"; then
             wired=$((wired + 1))
         fi
     done

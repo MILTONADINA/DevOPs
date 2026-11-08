@@ -90,12 +90,17 @@ export function readManifest(root) {
     && Object.keys(entry).sort().join(',') === 'created_file,sha256'
     && hex(entry.sha256) && typeof entry.created_file === 'boolean');
   // REQ-15 (#418): the hook entries init added to .claude/settings.json. `sha256` is of the
-  // inner hook object. `command` is only ever a hook init copies, so it stays under .claude/hooks/.
+  // inner hook object. `matcher` is absent for an event that has none. `command` is one of the
+  // forms init writes (a plain hook, or a hook run through run-hook.mjs) or the bare path an
+  // earlier build wrote; each names only a file under .claude/hooks/.
+  const hookCommand = v => typeof v === 'string' && (/^\.claude\/hooks\/[A-Za-z0-9._-]{1,128}$/.test(v)
+    || /^bash "\$\{CLAUDE_PROJECT_DIR:-\.\}\/\.claude\/hooks\/[A-Za-z0-9._-]{1,128}" \|\| true$/.test(v)
+    || /^node "\$\{CLAUDE_PROJECT_DIR:-\.\}\/\.claude\/hooks\/run-hook\.mjs" (pre|post) [A-Za-z0-9._-]{1,128} (stdin|command|file)$/.test(v));
   const claudeHooks = v => Array.isArray(v) && v.every(entry => plain(entry)
-    && Object.keys(entry).sort().join(',') === 'command,event,matcher,sha256'
+    && ['command,event,sha256', 'command,event,matcher,sha256'].includes(Object.keys(entry).sort().join(','))
     && typeof entry.event === 'string' && /^[A-Za-z]{1,40}$/.test(entry.event)
-    && typeof entry.matcher === 'string' && entry.matcher.length <= 256
-    && typeof entry.command === 'string' && /^\.claude\/hooks\/[A-Za-z0-9._-]{1,128}$/.test(entry.command)
+    && (entry.matcher === undefined || (typeof entry.matcher === 'string' && entry.matcher.length <= 256))
+    && hookCommand(entry.command)
     && hex(entry.sha256));
   const ok = plain(data) && data.schema_version === SCHEMA_VERSION && plain(data.files) && Array.isArray(data.dirs)
     && typeof data.adopted === 'boolean'

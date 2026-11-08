@@ -37,8 +37,31 @@ const ALL_HOOKS = [
   'universal/session-end/write-baton.sh', 'universal/session-start/graph-preflight.sh',
   'universal/session-start/load-baton.sh',
 ];
-const WIRED_TODAY = { 'load-baton.sh': ['SessionStart', '*'], 'write-baton.sh': ['SessionEnd', '*'] };
-const CMD = name => `.claude/hooks/${name}`;
+const cmd = command => ({ type: 'command', command });
+const RUN = (phase, name, input) => cmd(`node "\${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/run-hook.mjs" ${phase} ${name} ${input}`);
+const PLAIN = name => cmd(`bash "\${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/${name}" || true`);
+const BASH = 'Bash';
+const READ_WRITE = 'Read|Write|Edit|MultiEdit|NotebookEdit';
+const WRITES = 'Write|Edit|MultiEdit';
+// What init writes into an empty project: each group in the order the profile lists its hooks.
+const EXPECTED_HOOKS = {
+  PreToolUse: [
+    { matcher: BASH, hooks: [
+      RUN('pre', 'block-new-dependency.sh', 'command'),
+      RUN('pre', 'block-prod-write.sh', 'command'),
+      RUN('pre', 'block-rm-rf.sh', 'command'),
+      RUN('pre', 'block-sealed-refs.sh', 'stdin'),
+      RUN('pre', 'deploy-gate.sh', 'stdin'),
+    ] },
+    { matcher: READ_WRITE, hooks: [RUN('pre', 'block-secrets.sh', 'file')] },
+  ],
+  PostToolUse: [{ matcher: WRITES, hooks: [RUN('post', 'gitleaks-scan.sh', 'file')] }],
+  SessionStart: [{ hooks: [PLAIN('load-baton.sh')] }],
+  SessionEnd: [{ hooks: [PLAIN('write-baton.sh')] }],
+};
+const WIRED_COMMANDS = Object.values(EXPECTED_HOOKS).flatMap(groups => groups.flatMap(g => g.hooks.map(h => h.command)));
+const WIRED_FILES = ['block-new-dependency.sh', 'block-prod-write.sh', 'block-rm-rf.sh', 'block-sealed-refs.sh',
+  'block-secrets.sh', 'deploy-gate.sh', 'gitleaks-scan.sh', 'load-baton.sh', 'write-baton.sh', 'run-hook.mjs'];
 
 function withProject(fn) {
   const dir = realpathSync(mkdtempSync(path.join(tmpdir(), 'claude-hooks-418-')));
@@ -82,20 +105,35 @@ test(`init wires the hooks it can wire into an empty project's settings.json (${
   withProject(dir => {
     const r = init(dir);
     assert.equal(r.status, 0, r.stdout + r.stderr);
-    assert.deepEqual(readSettings(dir), {
-      hooks: {
-        SessionStart: [{ matcher: '*', hooks: [{ type: 'command', command: CMD('load-baton.sh') }] }],
-        SessionEnd: [{ matcher: '*', hooks: [{ type: 'command', command: CMD('write-baton.sh') }] }],
-      },
-    });
+    assert.deepEqual(readSettings(dir), { hooks: EXPECTED_HOOKS });
     const record = readRecord(dir).claude_hooks;
-    assert.equal(record.length, 2);
+    assert.equal(record.length, WIRED_COMMANDS.length);
     assert.equal(readRecord(dir).claude_hooks_created_file, true, 'init created settings.json');
     // Every copied hook is either wired or named with its reason; none is unmapped.
     assert.doesNotMatch(r.stdout, /no mapping/);
     for (const name of ALL_HOOKS.map(h => path.basename(h))) assert.match(r.stdout, new RegExp(name.replace(/\./g, '\\.')));
-    assert.match(r.stdout, /wired 2 hook/);
+    assert.match(r.stdout, /wired 9 hooks/);
     assert.doesNotMatch(r.stdout, /do it by hand|wire them/);
+  });
+});
+
+test(`init names each hook it does not wire with its reason (${SPEC}#ac-27)`, () => {
+  withProject(dir => {
+    const r = init(dir);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    const reasons = {
+      'budget-brake.sh': 'needs a per-call cost estimate',
+      'loop-detection.sh': 'needs a tool name and arguments',
+      'auto-format.sh': 'opt-in: it rewrites files',
+      'sync-lr-refined-date.sh': 'edits docs/LAUNCH_READINESS.md',
+      'client-boundary.sh': 'not registered by default',
+      'external-content-boundary.sh': 'rotate-session-key.sh',
+      'rotate-session-key.sh': 'external-content-boundary.sh',
+      'graph-preflight.sh': 'Agile Graph pipeline',
+    };
+    for (const [name, reason] of Object.entries(reasons)) {
+      assert.match(r.stdout, new RegExp(`not wired: ${name.replace(/\./g, '\\.')} \\(.*${reason.replace(/[.]/g, '\\.')}`), name);
+    }
   });
 });
 
@@ -108,9 +146,11 @@ test(`init keeps every other key and hook of an existing settings.json (${SPEC}#
     const after = readSettings(dir);
     assert.deepEqual(after.permissions, USER_SETTINGS.permissions);
     assert.deepEqual(after.env, USER_SETTINGS.env);
-    assert.deepEqual(after.hooks.PreToolUse, USER_SETTINGS.hooks.PreToolUse);
-    assert.deepEqual(after.hooks.SessionStart.slice(0, 1), USER_SETTINGS.hooks.SessionStart);
-    assert.deepEqual(after.hooks.SessionStart[1], { matcher: '*', hooks: [{ type: 'command', command: CMD('load-baton.sh') }] });
+    // The user's Bash hook stays first in its group; init's Bash hooks follow it.
+    assert.deepEqual(after.hooks.PreToolUse[0].hooks[0], USER_SETTINGS.hooks.PreToolUse[0].hooks[0]);
+    assert.deepEqual(after.hooks.PreToolUse[0].hooks.slice(1), EXPECTED_HOOKS.PreToolUse[0].hooks);
+    assert.deepEqual(after.hooks.PreToolUse[1], EXPECTED_HOOKS.PreToolUse[1]);
+    assert.deepEqual(after.hooks.SessionStart, [USER_SETTINGS.hooks.SessionStart[0], EXPECTED_HOOKS.SessionStart[0]]);
     assert.equal(readRecord(dir).claude_hooks_created_file, false, 'settings.json was there before');
   });
 });
@@ -124,18 +164,19 @@ test(`running init twice adds no duplicate entry (${SPEC}#ac-27)`, () => {
     assert.equal(r.status, 0, r.stdout + r.stderr);
     assert.equal(readFileSync(settingsPath(dir), 'utf8'), first);
     assert.deepEqual(readRecord(dir).claude_hooks, firstRecord);
-    assert.deepEqual(commandsIn(readSettings(dir)).sort(), [CMD('load-baton.sh'), CMD('write-baton.sh')]);
+    assert.deepEqual(commandsIn(readSettings(dir)).sort(), [...WIRED_COMMANDS].sort());
   });
 });
 
 test(`a command already in settings.json is left alone and not recorded (${SPEC}#ac-27)`, () => {
   withProject(dir => {
-    const user = { hooks: { SessionStart: [{ matcher: '*', hooks: [{ type: 'command', command: CMD('load-baton.sh') }] }] } };
+    const user = { hooks: { SessionStart: [{ hooks: [PLAIN('load-baton.sh')] }] } };
     mkdirSync(path.join(dir, '.claude'));
     writeFileSync(settingsPath(dir), `${JSON.stringify(user, null, 2)}\n`);
     assert.equal(init(dir).status, 0);
     const record = readRecord(dir).claude_hooks;
-    assert.deepEqual(record.map(e => e.command), [CMD('write-baton.sh')], 'only the entry init added is recorded');
+    assert.deepEqual(record.map(e => e.command).sort(), WIRED_COMMANDS.filter(c => c !== PLAIN('load-baton.sh').command).sort(),
+      'only the entries init added are recorded');
     assert.deepEqual(readSettings(dir).hooks.SessionStart, user.hooks.SessionStart);
     assert.equal(uninstall(dir).status, 0);
     assert.deepEqual(readSettings(dir), user, 'the user entry survives uninstall');
@@ -175,10 +216,10 @@ test(`uninstall keeps an edited entry, names it, and leaves the manifest record 
     const r = uninstall(dir);
     assert.equal(r.status, 0, r.stdout + r.stderr);
     assert.match(r.stdout, /kept {6}\.claude\/settings\.json \(the SessionEnd hook for write-baton\.sh\): edited since DevOPs wrote it/);
-    // The edited entry is left as the user edited it; the unedited SessionStart entry is removed.
+    // The edited entry is left as the user edited it; the unedited entries are removed.
     assert.deepEqual(readSettings(dir), { hooks: { SessionEnd: settings.hooks.SessionEnd } });
     const left = readRecord(dir).claude_hooks.map(e => e.command);
-    assert.deepEqual(left, [CMD('write-baton.sh')], 'the edited entry keeps its record');
+    assert.deepEqual(left, [PLAIN('write-baton.sh').command], 'the edited entry keeps its record');
   });
 });
 
@@ -186,15 +227,17 @@ test(`a malformed claude_hooks field is refused and uninstall changes nothing ($
   withProject(dir => {
     assert.equal(init(dir).status, 0);
     const good = readRecord(dir);
-    const entry = { event: 'SessionEnd', matcher: '*', command: CMD('write-baton.sh'), sha256: 'a'.repeat(64) };
+    const entry = { event: 'SessionEnd', command: PLAIN('write-baton.sh').command, sha256: 'a'.repeat(64) };
     const bad = [
       'write-baton.sh',
       [{ ...entry, sha256: 'NOT-HEX' }],
       [{ ...entry, extra: 1 }],
-      [{ event: 'SessionEnd', matcher: '*', command: CMD('write-baton.sh') }],
+      [{ event: 'SessionEnd', command: PLAIN('write-baton.sh').command }],
       [{ ...entry, command: '../../evil.sh' }],
       [{ ...entry, command: 'sh -c evil' }],
+      [{ ...entry, command: 'bash "${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/x.sh" ; touch pwned' }],
       [{ ...entry, event: '' }],
+      [{ ...entry, matcher: 5 }],
     ];
     for (const value of bad) {
       writeFileSync(path.join(dir, MANIFEST), `${JSON.stringify({ ...good, claude_hooks: value }, null, 2)}\n`);
@@ -247,7 +290,7 @@ test(`a dry run says what it would wire and changes nothing (${SPEC}#ac-27)`, ()
     const before = snapshot(dir);
     const r = init(dir, '--dry-run');
     assert.equal(r.status, 0, r.stdout + r.stderr);
-    assert.match(r.stdout, /would wire 2 hook/);
+    assert.match(r.stdout, /would wire 9 hooks/);
     assert.match(r.stdout, /would add .*SessionStart.*load-baton\.sh/);
     assert.deepEqual(snapshot(dir), before, 'nothing was written');
   });
@@ -256,17 +299,26 @@ test(`a dry run says what it would wire and changes nothing (${SPEC}#ac-27)`, ()
 test(`the recorded sha256 is the hash of the inner hook object (${SPEC}#ac-27)`, () => {
   withProject(dir => {
     assert.equal(init(dir).status, 0);
-    const [record] = readRecord(dir).claude_hooks.filter(e => e.command === CMD('load-baton.sh'));
+    const [record] = readRecord(dir).claude_hooks.filter(e => e.command === PLAIN('load-baton.sh').command);
     const inner = readSettings(dir).hooks.SessionStart[0].hooks[0];
     assert.equal(record.sha256, createHash('sha256').update(JSON.stringify(inner)).digest('hex'));
   });
 });
 
-test(`wired hooks are copied executable into .claude/hooks (${SPEC}#ac-27)`, () => {
+test(`wired hooks and the run-hook.mjs runner are copied executable into .claude/hooks (${SPEC}#ac-27)`, () => {
   withProject(dir => {
     assert.equal(init(dir).status, 0);
-    for (const name of Object.keys(WIRED_TODAY)) {
+    for (const name of WIRED_FILES) {
       assert.ok((statSync(path.join(dir, '.claude/hooks', name)).mode & 0o111) !== 0, `${name} is executable`);
     }
+  });
+});
+
+test(`the run-hook.mjs runner is recorded in the manifest with the hooks (${SPEC}#ac-27)`, () => {
+  withProject(dir => {
+    assert.equal(init(dir).status, 0);
+    assert.ok(readRecord(dir).files['.claude/hooks/run-hook.mjs'], 'run-hook.mjs is in the manifest files');
+    assert.equal(uninstall(dir).status, 0);
+    assert.equal(existsSync(path.join(dir, '.claude/hooks/run-hook.mjs')), false, 'uninstall removes the runner');
   });
 });

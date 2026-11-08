@@ -218,7 +218,9 @@ function unwireHooks(base, entries, createdFile) {
   return plan;
 }
 
-const hookLabel = entry => `the ${entry.event} hook for ${path.basename(entry.command)}`;
+const hookNameOf = command => (/ (?:pre|post) ([A-Za-z0-9._-]+) (?:stdin|command|file)$/.exec(command)
+  ?? /\.claude\/hooks\/([A-Za-z0-9._-]+)/.exec(command))?.[1] ?? command;
+const hookLabel = entry => `the ${entry.event} hook for ${hookNameOf(entry.command)}`;
 
 /** Empty folders under `dir` (and `dir` itself), deepest first, without following links. */
 function emptyDirsUnder(dir) {

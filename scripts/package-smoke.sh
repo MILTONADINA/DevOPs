@@ -24,7 +24,7 @@ tar -tzf "$TARBALL" | sed 's#^package/##' | sort > "$CONTENTS"
 for needed in package.json AGENTS.md templates/claude-md/CLAUDE_TEMPLATE.md LICENSE README.md \
   scripts/devops-cli.js scripts/devops-analyze.js scripts/devops-paths.js scripts/init-project.sh \
   analyzer/scan.ts analyzer/install.ts verification/claim-validator.ts governance/skill-manifest.yml \
-  hooks/universal/pre-tool/graph-command-classifier.mjs .workflow/sigstore/trust-bundle.json; do
+  hooks/universal/pre-tool/graph-command-classifier.mjs hooks/claude-code/run-hook.mjs .workflow/sigstore/trust-bundle.json; do
   grep -qxF "$needed" "$CONTENTS" || fail "tarball is missing $needed"
 done
 # Repository records, tooling and the graph pipeline's pieces.

@@ -179,6 +179,8 @@ test('the installer copies the classifier next to the hook when the hook is sele
     const hooks = path.join(source, 'hooks/universal/pre-tool');
     mkdirSync(hooks, { recursive: true }); mkdirSync(path.join(target, '.workflow'), { recursive: true });
     for (const f of ['block-new-dependency.sh', 'new-dependency-classifier.mjs']) copyFileSync(path.join(ROOT, 'hooks/universal/pre-tool', f), path.join(hooks, f));
+    mkdirSync(path.join(source, 'hooks/claude-code'), { recursive: true });
+    copyFileSync(path.join(ROOT, 'hooks/claude-code/run-hook.mjs'), path.join(source, 'hooks/claude-code/run-hook.mjs'));
     for (const f of ['AGENTS.md', 'CLAUDE.md']) copyFileSync(path.join(ROOT, f), path.join(source, f));
     const manifest = path.join(source, 'empty-manifest.yml'); writeFileSync(manifest, 'skills:\n');
     writeFileSync(path.join(target, '.workflow/profile.yml'), 'skills:\nhooks:\n  - universal/pre-tool/block-new-dependency.sh\nsubagents:\n');
