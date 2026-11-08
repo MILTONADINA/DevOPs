@@ -1,6 +1,30 @@
 # Upgrading DevOPs
 
-## Unreleased (dev)
+## Upgrading from 0.7.0 to 0.8.0
+
+Install the new version in the scope you used, then refresh the project:
+
+```sh
+npx @miltonadina/devops@0.8.0 version
+npx @miltonadina/devops@0.8.0 init --dry-run
+npx @miltonadina/devops@0.8.0 init
+```
+
+### Hooks now run
+
+`init` now wires its Claude Code hooks into `.claude/settings.json`, so Claude Code runs them from the next session. The pre-tool hooks block a call they reject (exit 2). Each pre-tool entry needs `node` on the PATH; without it the call is blocked. Your other settings and hooks are kept. `docs/HOOKS.md` lists what is wired and what is not, with reasons. To undo, run `devops uninstall` (it removes only the entries init recorded).
+
+### The agent cannot change its own gates
+
+A new pre-tool hook, `protect-gates`, blocks file-tool writes to `.claude/settings.json`, `.claude/settings.local.json`, `.claude/hooks/`, `.workflow/state/approvals.jsonl`, `.workflow/state/install-manifest.json` and `.workflow/state/originals/`. Edit those yourself, outside the agent. Its Bash check is a convenience guard, not a security boundary.
+
+### init needs cosign before it writes
+
+Without `cosign` on the PATH, `init` now writes nothing and exits 2 with the install hint. Install cosign first.
+
+### Closing text
+
+`init` now links each document as a GitHub URL pinned to the installed version, and says what to commit and what stays local.
 
 ### `devops uninstall` removes the Agile Graph link
 
