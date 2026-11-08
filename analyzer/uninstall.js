@@ -55,6 +55,11 @@ function hookShown(root) {
   return rel.startsWith('..') || path.isAbsolute(rel) ? at : rel.split(path.sep).join('/');
 }
 
+// A path as one shell word: plain paths as they are, any other in single quotes.
+export function shellWord(p) {
+  return /^[\w./@+-]+$/.test(p) ? p : `'${p.replace(/'/g, `'\\''`)}'`;
+}
+
 // The one closing line for files this run removed or restored that Git tracks.
 function committedNote(base, touched) {
   if (touched.length === 0) return null;
@@ -62,7 +67,8 @@ function committedNote(base, touched) {
   if (!tracked) return null;
   const files = tracked.split('\n');
   const more = files.length > 5 ? ` (and ${files.length - 5} more)` : '';
-  return `Some removed files were committed: commit the removal, or run \`git checkout -- ${files.slice(0, 5).join(' ')}\`${more} to keep them.`;
+  const shown = files.slice(0, 5).map(shellWord);
+  return `Some files uninstall removed or restored are committed: commit the change, or run \`git checkout -- ${shown.join(' ')}\`${more} to keep the DevOPs versions.`;
 }
 
 function hasMarker(bytes) {

@@ -9,6 +9,7 @@ import path from 'node:path';
 import { writeStubGit } from './fixtures/stub-git.mjs';
 import { HOOK_KEY, MANIFEST } from '../analyzer/install-manifest.js';
 import { ENGINE, ENGINE_VERSIONS, PIN_TARGET, SERVER_KEY, supportedNode } from '../analyzer/agile-graph.js';
+import { shellWord } from '../analyzer/uninstall.js';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 const CLI = path.join(ROOT, 'scripts/devops-cli.js');
@@ -168,7 +169,7 @@ test(`a removed file that Git tracks gets one closing line saying so (${SPEC}#ac
     assert.equal(r.status, 0, r.stdout + r.stderr);
     assert.match(r.stdout, /restore {3}\.gitignore/);
     const lines = r.stdout.trimEnd().split('\n');
-    assert.equal(lines.at(-1), 'Some removed files were committed: commit the removal, or run `git checkout -- .gitignore` to keep them.');
+    assert.equal(lines.at(-1), 'Some files uninstall removed or restored are committed: commit the change, or run `git checkout -- .gitignore` to keep the DevOPs versions.');
   });
 });
 
@@ -197,8 +198,14 @@ test(`the closing line lists at most five tracked paths and counts the rest (${S
     assert.equal(r.status, 0, r.stdout + r.stderr);
     const last = r.stdout.trimEnd().split('\n').at(-1);
     const shown = tracked.slice(0, 5);
-    assert.equal(last, `Some removed files were committed: commit the removal, or run \`git checkout -- ${shown.join(' ')}\` (and ${tracked.length - 5} more) to keep them.`);
+    assert.equal(last, `Some files uninstall removed or restored are committed: commit the change, or run \`git checkout -- ${shown.join(' ')}\` (and ${tracked.length - 5} more) to keep the DevOPs versions.`);
   });
+});
+
+test(`the closing line quotes a path the shell would split (${SPEC}#ac-21)`, () => {
+  assert.equal(shellWord('.claude/hooks/a-b.mjs'), '.claude/hooks/a-b.mjs');
+  assert.equal(shellWord('docs/my notes.md'), "'docs/my notes.md'");
+  assert.equal(shellWord("it's.md"), "'it'\\''s.md'");
 });
 
 test(`in an adopted install, files with a recorded original are kept for the user to check (${SPEC}#ac-21)`, () => {
