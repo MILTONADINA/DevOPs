@@ -184,12 +184,18 @@ export function linkAgileGraph({
       if (copyPins) fs.rmSync(pinTarget, { force: true });
       throw error;
     }
-    // The pin is recorded only once .mcp.json is written too. If .mcp.json failed, the pin
-    // is gone and its pending record is dropped by the next save (install-manifest.js).
+  } catch (error) {
+    // If .mcp.json failed, the pin is gone and its pending record is dropped by the next
+    // save (install-manifest.js).
+    return done('kept', `Agile Graph: could not write the link (${error.code ?? error.message}); not linked. Check .mcp.json.`);
+  }
+  // Recorded only once both writes are done. The link is in place even if recording fails,
+  // so that case says so instead of reporting it as not linked.
+  try {
     if (copyPins) record?.after(PIN_TARGET);
     record?.mcpServer(SERVER_KEY, entry, createdFile);
   } catch (error) {
-    return done('kept', `Agile Graph: could not write the link (${error.code ?? error.message}); not linked. Check .mcp.json.`);
+    lines.push(`Agile Graph: linked, but the install manifest could not record it (${error.code ?? error.message}); devops uninstall will not remove the link.`);
   }
   if (copyPins) lines.push(`Agile Graph: copied the pinned tool definitions to ${PIN_TARGET}.`);
   const run = engine.via === 'project' ? 'npx --no-install agile-graph' : 'agile-graph';
