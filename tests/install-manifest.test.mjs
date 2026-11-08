@@ -8,7 +8,7 @@ import { appendFileSync, chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, 
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { writeStubGit } from './fixtures/stub-git.mjs';
-import { HOOK_KEY, MANIFEST, ORIGINALS, openManifest, ownFile, validKey } from '../analyzer/install-manifest.js';
+import { HOOK_KEY, MANIFEST, ORIGINALS, openManifest, ownFile, readManifest, validKey } from '../analyzer/install-manifest.js';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 const CLI = path.join(ROOT, 'scripts/devops-cli.js');
@@ -164,6 +164,14 @@ test(`analyze leaves an already-ignoring .gitignore byte for byte (${SPEC}#ac-12
   });
 });
 
+const hookCmd = {
+  plain: name => `cd "\${CLAUDE_PROJECT_DIR:-.}" && bash .claude/hooks/${name} || true`,
+  pre: name => `node "\${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/run-hook.mjs" pre ${name} command || exit 2`,
+  post: name => `node "\${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/run-hook.mjs" post ${name} file`,
+};
+const hookEntry = (event, command, matcher) => ({ event, ...(matcher === undefined ? {} : { matcher }), command, sha256: 'a'.repeat(64) });
+const hookManifest = claude_hooks => ({ schema_version: 1, adopted: false, files: {}, dirs: [], claude_hooks });
+
 for (const [label, manifest] of [
   ['a path with ..', { schema_version: 1, files: { '../outside': { original: null, written: 'a'.repeat(64) } }, dirs: [] }],
   ['an absolute path', { schema_version: 1, adopted: false, files: {}, dirs: ['/tmp'] }],
@@ -174,6 +182,18 @@ for (const [label, manifest] of [
   ['a folder DevOPs does not create', { schema_version: 1, adopted: false, files: {}, dirs: ['src'] }],
   ['another schema', { schema_version: 2, adopted: false, files: {}, dirs: [] }],
   ['an extra key', { schema_version: 1, adopted: false, files: {}, dirs: [], run: 'x' }],
+  ['a dot-named hook in the plain form', hookManifest([hookEntry('SessionStart', hookCmd.plain('.hidden'))])],
+  ['a pre command paired with PostToolUse', hookManifest([hookEntry('PostToolUse', hookCmd.pre('block-rm-rf.sh'), 'Bash')])],
+  ['a post command paired with PreToolUse', hookManifest([hookEntry('PreToolUse', hookCmd.post('gitleaks-scan.sh'), 'Write')])],
+  ['a plain command paired with PreToolUse', hookManifest([hookEntry('PreToolUse', hookCmd.plain('load-baton.sh'), 'Bash')])],
+  ['a plain command paired with PostToolUse', hookManifest([hookEntry('PostToolUse', hookCmd.plain('load-baton.sh'), 'Write')])],
+  ['a pre command paired with SessionStart', hookManifest([hookEntry('SessionStart', hookCmd.pre('block-rm-rf.sh'))])],
+  ['a post command paired with SessionStart', hookManifest([hookEntry('SessionStart', hookCmd.post('gitleaks-scan.sh'))])],
+  ['claude_hooks_created_file with an empty claude_hooks', { ...hookManifest([]), claude_hooks_created_file: true }],
+  ['a plain command with a matcher', hookManifest([hookEntry('SessionStart', hookCmd.plain('load-baton.sh'), 'Bash')])],
+  ['two entries with the same command', hookManifest([hookEntry('SessionStart', hookCmd.plain('load-baton.sh')), hookEntry('SessionStart', hookCmd.plain('load-baton.sh'))])],
+  ['claude_hooks_created_file without claude_hooks', { schema_version: 1, adopted: false, files: {}, dirs: [], claude_hooks_created_file: true }],
+  ['claude_hooks_created_file with an empty claude_hooks', { ...hookManifest([]), claude_hooks_created_file: true }],
 ]) {
   test(`init refuses a committed manifest with ${label} and changes nothing (${SPEC}#ac-20)`, () => {
     withProject(dir => {
@@ -263,6 +283,35 @@ test('validKey accepts only project-relative paths', () => {
   for (const key of ['a', '.claude/hooks/x.sh', 'git-hooks/pre-commit']) assert.ok(validKey(key), key);
   for (const key of ['', '/a', '../a', 'a/../b', 'a//b', './a', 'a/.', 'C:/a', 'a\\b', 'a\0b', 1, null])
     assert.ok(!validKey(key), String(key));
+});
+
+// #426: the three command forms init writes read back, with a hook this version does not wire
+// (no allowlist: uninstall must still read a manifest from another DevOPs version).
+test(`a manifest with the pre, post and SessionStart command forms reads (${SPEC}#ac-29)`, () => {
+  withProject(dir => {
+    mkdirSync(path.join(dir, '.workflow/state'), { recursive: true });
+    const claude_hooks = [
+      hookEntry('SessionStart', hookCmd.plain('load-baton.sh')),
+      hookEntry('PreToolUse', hookCmd.pre('block-rm-rf.sh'), 'Bash'),
+      hookEntry('PostToolUse', hookCmd.post('gitleaks-scan.sh'), 'Write|Edit'),
+      hookEntry('PreToolUse', hookCmd.pre('future-hook.sh'), 'Bash'),
+    ];
+    writeFileSync(path.join(dir, MANIFEST), JSON.stringify({ ...hookManifest(claude_hooks), claude_hooks_created_file: true }));
+    assert.deepEqual(readManifest(dir).claude_hooks, claude_hooks);
+    assert.equal(readManifest(dir).claude_hooks_created_file, true);
+  });
+});
+
+test(`a hook file name starting with a dot is refused in every command form (${SPEC}#ac-29)`, () => {
+  withProject(dir => {
+    mkdirSync(path.join(dir, '.workflow/state'), { recursive: true });
+    for (const name of ['.', '..', '..foo', '.hidden']) {
+      for (const [event, command] of [['SessionStart', hookCmd.plain(name)], ['PreToolUse', hookCmd.pre(name)], ['PostToolUse', hookCmd.post(name)]]) {
+        writeFileSync(path.join(dir, MANIFEST), JSON.stringify(hookManifest([hookEntry(event, command)])));
+        assert.throws(() => readManifest(dir), /has an unknown schema or a path outside the project/, `${event} ${name}`);
+      }
+    }
+  });
 });
 
 test(`a manifest started where an earlier DevOPs installed is marked adopted (${SPEC}#req-15)`, () => {

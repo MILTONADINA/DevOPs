@@ -554,6 +554,14 @@ WHEN an agent's Write, Edit, MultiEdit or NotebookEdit call targets a DevOPs gat
 
 **Verified by:** `tests/hooks/protect-gates.test.mjs`, `tests/install-claude-hooks.test.mjs`.
 
+### AC-29
+
+IF the install manifest's `claude_hooks` names a hook file whose name starts with a dot, pairs a run-hook `pre` command with an event other than `PreToolUse`, a run-hook `post` command with an event other than `PostToolUse`, or the plain `cd … && bash` command with an event other than `SessionStart` or with a matcher, or lists the same command twice, or the manifest has `claude_hooks_created_file` without a non-empty `claude_hooks`, THEN THE SYSTEM SHALL refuse the manifest as it refuses any other malformed manifest (REQ-15) and change nothing. THE SYSTEM SHALL NOT check hook names against a list, so a manifest written by another DevOPs version that names a hook this version does not wire still reads.
+
+**Given** a manifest with each of those defects **When** `devops analyze`, `devops init` or `readManifest` reads it **Then** it is refused with the malformed-manifest error. **And** a manifest with the plain, pre and post forms under their own events, plus a pre command for a hook this version does not wire, reads unchanged.
+
+**Verified by:** `tests/install-manifest.test.mjs`.
+
 ## Out of scope
 
 - Publishing `runtime/` (`@miltonadina/devops-runtime` stays `private`).
