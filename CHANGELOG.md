@@ -8,6 +8,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.8.1] — 2026-11-08
+
 ### Fixed
 
 - `block-secrets.sh` escapes the path and operation it writes to `.workflow/state/events.jsonl`. A path with a quote, backslash, newline or control character used to break the JSON line or add keys to it, so a log entry could be forged. Each entry is one JSON object whose `path` round-trips exactly (#426).
