@@ -8,6 +8,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.7.0] — 2026-11-07
+
 ### Added
 
 - `devops analyze` and `devops init` record every file they write, the DevOPs pre-commit hook and the folders they create in `.workflow/state/install-manifest.json`, with a copy of any file that existed before DevOPs first wrote it under `.workflow/state/originals/`. This is the record `devops uninstall` uses. A committed manifest naming any path outside the files and folders DevOPs writes is refused. In a project an earlier DevOPs installed into, the manifest is marked `adopted`: what that release wrote is recorded as the original. The `.mcp.json` entry and Agile Graph pin are not recorded yet (`specs/release/npm-package.md` REQ-15; #353).
