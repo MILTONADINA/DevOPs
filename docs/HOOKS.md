@@ -32,7 +32,9 @@ in its own allowlist.
 For `pre` hooks, exit 0 passes and exit 2 blocks. Any other outcome fails closed with
 exit 2 and `failing closed` on stderr: a non-zero exit other than 2, a signal, a missing
 hook, unparseable stdin, or a project root that cannot be resolved (`CLAUDE_PROJECT_DIR`,
-else the git top level). For `post` hooks the exit is always 0, and a non-zero hook exit
+else the git top level). Each `pre` command in `.claude/settings.json` ends in `|| exit 2`,
+so a `node` missing from Claude Code's PATH, or a runner that cannot start, also blocks the
+call instead of exiting with a code Claude Code lets through. For `post` hooks the exit is always 0, and a non-zero hook exit
 is printed to stderr; the exception is `gitleaks-scan.sh`, whose exit 2 passes through
 so Claude Code shows the leak.
 

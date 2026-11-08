@@ -420,8 +420,10 @@ type WiredRow = { event: string; matcher?: string; command: string };
 type HookWiring = WiredRow | { unwired: string };
 const isWired = (wiring: HookWiring | undefined): wiring is WiredRow => wiring !== undefined && 'command' in wiring;
 const RUN_HOOK_FILE = 'run-hook.mjs';
+// A pre command ends in `|| exit 2`: a node missing from Claude Code's PATH (127) or a runner that
+// cannot start would otherwise exit with a code Claude Code does not treat as a block.
 const runHook = (phase: 'pre' | 'post', name: string, input: 'stdin' | 'command' | 'file') =>
-  `node "\${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/${RUN_HOOK_FILE}" ${phase} ${name} ${input}`;
+  `node "\${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/${RUN_HOOK_FILE}" ${phase} ${name} ${input}${phase === 'pre' ? ' || exit 2' : ''}`;
 const plainHook = (name: string) => `bash "\${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/${name}" || true`;
 const CLAUDE_HOOK_WIRING: Record<string, HookWiring> = {
   'deploy-gate.sh': { event: 'PreToolUse', matcher: 'Bash', command: runHook('pre', 'deploy-gate.sh', 'stdin') },

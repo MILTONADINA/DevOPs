@@ -248,4 +248,10 @@ test(`end to end: the command init wrote blocks rm -rf / and passes ls (${SPEC}#
     const r = through(command, 'ls');
     assert.equal(r.status, 0, `ls through ${command}: ${r.stdout}${r.stderr}`);
   }
+  // node missing from Claude Code's PATH exits 127, which Claude Code does not treat as a block.
+  const noNode = spawnSync('/bin/bash', ['-c', rmRf], {
+    cwd: dir, encoding: 'utf8', env: { PATH: path.join(dir, 'no-such-bin'), CLAUDE_PROJECT_DIR: dir },
+    input: JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: 'ls' } }),
+  });
+  assert.equal(noNode.status, 2, `without node on PATH: ${noNode.stdout}${noNode.stderr}`);
 });

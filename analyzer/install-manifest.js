@@ -95,7 +95,7 @@ export function readManifest(root) {
   // earlier build wrote; each names only a file under .claude/hooks/.
   const hookCommand = v => typeof v === 'string' && (/^\.claude\/hooks\/[A-Za-z0-9._-]{1,128}$/.test(v)
     || /^bash "\$\{CLAUDE_PROJECT_DIR:-\.\}\/\.claude\/hooks\/[A-Za-z0-9._-]{1,128}" \|\| true$/.test(v)
-    || /^node "\$\{CLAUDE_PROJECT_DIR:-\.\}\/\.claude\/hooks\/run-hook\.mjs" (pre|post) [A-Za-z0-9._-]{1,128} (stdin|command|file)$/.test(v));
+    || /^node "\$\{CLAUDE_PROJECT_DIR:-\.\}\/\.claude\/hooks\/run-hook\.mjs" (pre [A-Za-z0-9._-]{1,128} (stdin|command|file) \|\| exit 2|post [A-Za-z0-9._-]{1,128} (stdin|command|file))$/.test(v));
   const claudeHooks = v => Array.isArray(v) && v.every(entry => plain(entry)
     && ['command,event,sha256', 'command,event,matcher,sha256'].includes(Object.keys(entry).sort().join(','))
     && typeof entry.event === 'string' && /^[A-Za-z]{1,40}$/.test(entry.event)

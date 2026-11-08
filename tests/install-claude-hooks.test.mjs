@@ -38,7 +38,7 @@ const ALL_HOOKS = [
   'universal/session-start/load-baton.sh',
 ];
 const cmd = command => ({ type: 'command', command });
-const RUN = (phase, name, input) => cmd(`node "\${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/run-hook.mjs" ${phase} ${name} ${input}`);
+const RUN = (phase, name, input) => cmd(`node "\${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/run-hook.mjs" ${phase} ${name} ${input}${phase === 'pre' ? ' || exit 2' : ''}`);
 const PLAIN = name => cmd(`bash "\${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/${name}" || true`);
 const BASH = 'Bash';
 const READ_WRITE = 'Read|Write|Edit|MultiEdit|NotebookEdit';
