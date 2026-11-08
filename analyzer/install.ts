@@ -133,6 +133,22 @@ interface VerifyResult {
 const SIGNER_IDENTITY_REGEXP = '^https://github\\.com/MILTONADINA/DevOPs/\\.github/workflows/release-sign\\.yml@refs/heads/.+$';
 const SIGNER_OIDC_ISSUER = 'https://token.actions.githubusercontent.com';
 const COSIGN_TIMEOUT_MS = 5000;
+// The committed Sigstore trust root (AC-E5.1), read offline by cosign --trusted-root for
+// new-format bundles. .workflow/ is not in the npm package, so an installed copy lacks it.
+const TRUST_ROOT = path.join(DEVOPS_ROOT, '.workflow/sigstore/trust-bundle.json');
+// cosign --new-bundle-format writes a Sigstore bundle with a mediaType; the legacy bundle
+// (base64Signature, cert, rekorBundle) has none.
+const NEW_BUNDLE_MEDIA_TYPE = 'application/vnd.dev.sigstore.bundle';
+
+function isNewFormatBundle(bundlePath: string): boolean {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(bundlePath, 'utf-8')) as { mediaType?: unknown };
+    return typeof parsed.mediaType === 'string' && parsed.mediaType.startsWith(NEW_BUNDLE_MEDIA_TYPE);
+  } catch {
+    // Unreadable JSON takes the legacy path, which fails closed when cosign rejects it.
+    return false;
+  }
+}
 
 // ENOENT: no such binary. EACCES: present but not executable. Both mean no verifier runs.
 const isMissingBinary = (code: string | undefined) => code === 'ENOENT' || code === 'EACCES';
@@ -175,17 +191,22 @@ function verifySkill(skillFullPath: string, entry: ManifestEntry, allowUnsigned:
   const sigPath = entry.sig_path ? path.join(DEVOPS_ROOT, entry.sig_path) : `${skillFullPath}.sig`;
   const bundlePath = entry.bundle_path ? path.join(DEVOPS_ROOT, entry.bundle_path) : `${skillFullPath}.bundle`;
 
-  if (!fs.existsSync(sigPath)) return unverified('unsigned (no .sig present)');
+  // A new-format bundle is checked offline against the committed trust root and needs no .sig.
+  // A legacy .sig + .bundle pair keeps the cosign-cache check until its skill is re-signed (#345).
+  const newFormat = fs.existsSync(bundlePath) && isNewFormatBundle(bundlePath);
+  if (!newFormat && !fs.existsSync(sigPath)) return unverified('unsigned (no .sig present)');
   if (entry.signed_by && !new RegExp(SIGNER_IDENTITY_REGEXP).test(entry.signed_by)) {
     return unverified(`manifest signer is not the DevOPs release-sign workflow: ${entry.signed_by.slice(0, 120)}`);
   }
-  if (!fs.existsSync(bundlePath)) return unverified('unverified (.sig present but no .bundle)');
+  if (!newFormat && !fs.existsSync(bundlePath)) return unverified('unverified (.sig present but no .bundle)');
+  if (newFormat && !fs.existsSync(TRUST_ROOT)) return unverified(`unverified (trust root missing: ${TRUST_ROOT})`);
 
   // Per NFR-F1: ≤ 200 ms per skill. Local-only call; no network dep beyond
   // cosign's Sigstore trust-root cache.
   const cosign = process.env['COSIGN_BIN'] ?? 'cosign';
   const result = spawnSync(cosign, [
     'verify-blob',
+    ...(newFormat ? ['--new-bundle-format', '--trusted-root', TRUST_ROOT] : []),
     '--bundle', bundlePath,
     '--certificate-identity-regexp', SIGNER_IDENTITY_REGEXP,
     '--certificate-oidc-issuer', SIGNER_OIDC_ISSUER,
@@ -625,7 +646,7 @@ function main() {
   let agileGraphLines: string[];
   try {
     agileGraphLines = linkAgileGraph({
-      projectRoot: PROJECT_ROOT, devopsRoot: DEVOPS_ROOT, dryRun: flags.dryRun, skip: flags.noAgileGraph,
+      projectRoot: PROJECT_ROOT, devopsRoot: DEVOPS_ROOT, dryRun: flags.dryRun, skip: flags.noAgileGraph, record,
     }).lines;
   } catch (error) {
     agileGraphLines = [`Agile Graph: not linked (${error instanceof Error ? error.message : String(error)}).`];

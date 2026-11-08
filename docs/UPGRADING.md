@@ -1,5 +1,13 @@
 # Upgrading DevOPs
 
+## Unreleased (dev)
+
+### `devops uninstall` removes the Agile Graph link
+
+`devops uninstall` now also removes what `devops init` added when it linked Agile Graph: the `agile-graph` entry under `mcpServers` in `.mcp.json`, and the pin file `.claude/agile-graph-tool-hashes.json`. Every other server and key in `.mcp.json` stays as it was. If you edited the `agile-graph` entry after init wrote it, uninstall keeps it and names it, and the manifest stays so you can finish by hand. `devops uninstall --dry-run` shows the removal first.
+
+An install made by 0.7.0 or earlier did not record either of them, so for that install remove the `agile-graph` entry and the pin file by hand.
+
 ## Upgrading from 0.4.0 to 0.5.0
 
 Match the scope you installed with. The commands below use `npx` so they work for a global, a project or a one-shot install; with a global install you can drop the `npx @miltonadina/devops` prefix and type `devops`.
