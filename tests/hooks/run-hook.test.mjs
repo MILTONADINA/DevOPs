@@ -252,7 +252,7 @@ test(`the root is CLAUDE_PROJECT_DIR, else the git top level, and an unresolvabl
 const PROFILE_HOOKS = [
   'universal/pre-tool/block-new-dependency.sh', 'universal/pre-tool/block-prod-write.sh',
   'universal/pre-tool/block-rm-rf.sh', 'universal/pre-tool/block-sealed-refs.sh',
-  'universal/pre-tool/block-secrets.sh', 'universal/pre-tool/budget-brake.sh',
+  'universal/pre-tool/block-secrets.sh', 'universal/pre-tool/protect-gates.sh', 'universal/pre-tool/protect-gates-bash.sh', 'universal/pre-tool/budget-brake.sh',
   'universal/pre-tool/client-boundary.sh', 'universal/pre-tool/deploy-gate.sh',
   'universal/pre-tool/external-content-boundary.sh', 'universal/pre-tool/loop-detection.sh',
   'universal/post-tool/auto-format.sh', 'universal/post-tool/gitleaks-scan.sh',

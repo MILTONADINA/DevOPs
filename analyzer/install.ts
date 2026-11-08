@@ -432,6 +432,8 @@ const CLAUDE_HOOK_WIRING: Record<string, HookWiring> = {
   'block-rm-rf.sh': { event: 'PreToolUse', matcher: 'Bash', command: runHook('pre', 'block-rm-rf.sh', 'command') },
   'block-new-dependency.sh': { event: 'PreToolUse', matcher: 'Bash', command: runHook('pre', 'block-new-dependency.sh', 'command') },
   'block-secrets.sh': { event: 'PreToolUse', matcher: 'Read|Write|Edit|MultiEdit|NotebookEdit', command: runHook('pre', 'block-secrets.sh', 'file') },
+  'protect-gates.sh': { event: 'PreToolUse', matcher: 'Write|Edit|MultiEdit|NotebookEdit', command: runHook('pre', 'protect-gates.sh', 'file') },
+  'protect-gates-bash.sh': { event: 'PreToolUse', matcher: 'Bash', command: runHook('pre', 'protect-gates-bash.sh', 'command') },
   'gitleaks-scan.sh': { event: 'PostToolUse', matcher: 'Write|Edit|MultiEdit', command: runHook('post', 'gitleaks-scan.sh', 'file') },
   'load-baton.sh': { event: 'SessionStart', command: plainHook('load-baton.sh') },
   'write-baton.sh': { unwired: 'overwrites a hand-written baton; write it with /checkpoint instead' },
@@ -759,6 +761,16 @@ function main() {
   // REQ-M30: the new-dependency hook also invokes a fixed sibling companion.
   if (hooks.includes('universal/pre-tool/block-new-dependency.sh')) {
     const companion = 'new-dependency-classifier.mjs';
+    const src = path.join(DEVOPS_ROOT, 'hooks/universal/pre-tool', companion);
+    if (!fs.existsSync(src) || !fs.statSync(src).isFile()) {
+      console.error(`required hook companion missing: ${companion}`);
+      process.exit(1);
+    }
+    if (!flags.dryRun) copy(PROJECT_ROOT, src, path.join(PROJECT_ROOT, '.claude/hooks', companion));
+  }
+  // AC-28: both gate-protection hooks call protect-gates.mjs beside them.
+  if (hooks.some(h => h === 'universal/pre-tool/protect-gates.sh' || h === 'universal/pre-tool/protect-gates-bash.sh')) {
+    const companion = 'protect-gates.mjs';
     const src = path.join(DEVOPS_ROOT, 'hooks/universal/pre-tool', companion);
     if (!fs.existsSync(src) || !fs.statSync(src).isFile()) {
       console.error(`required hook companion missing: ${companion}`);
