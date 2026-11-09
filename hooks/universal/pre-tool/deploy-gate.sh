@@ -83,10 +83,11 @@ if [[ "$DECISION" == block ]]; then
 EOF
     if [[ "$LOG_ALLOWED" == true ]]; then
         # The classifier checks the state/event path before permitting a write.
-        # jq --arg keeps a multiline command in one escaped JSONL event.
+        # jq keeps a multiline command in one escaped JSONL event. The command comes on stdin (-R -s),
+        # not argv, so a command longer than an argument is still logged (AC-31).
         mkdir -p .workflow/state &&
-        jq -cn --arg ts "$(date -u +%s)" --argjson cycle "$CYCLE_JSON" --arg reason "$REASON" --arg command "$COMMAND" \
-            '{ts:($ts|tonumber),event:"deploy_gate_block",cycle:$cycle,reason:$reason,command:$command}' \
+        printf '%s' "$COMMAND" | jq -cRs --arg ts "$(date -u +%s)" --argjson cycle "$CYCLE_JSON" --arg reason "$REASON" \
+            '. as $command | {ts:($ts|tonumber),event:"deploy_gate_block",cycle:$cycle,reason:$reason,command:$command}' \
             >> .workflow/state/events.jsonl 2>/dev/null || true
     fi
     exit 2

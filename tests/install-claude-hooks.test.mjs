@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, chmodSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { writeStubGit } from './fixtures/stub-git.mjs';
@@ -29,7 +29,7 @@ const uninstall = (dir, ...args) => devops(dir, 'uninstall', ...args);
 const ALL_HOOKS = [
   'universal/pre-tool/block-new-dependency.sh', 'universal/pre-tool/block-prod-write.sh',
   'universal/pre-tool/block-rm-rf.sh', 'universal/pre-tool/block-sealed-refs.sh',
-  'universal/pre-tool/block-secrets.sh', 'universal/pre-tool/protect-gates.sh', 'universal/pre-tool/protect-gates-bash.sh', 'universal/pre-tool/budget-brake.sh',
+  'universal/pre-tool/block-secrets.sh', 'universal/pre-tool/block-secrets-bash.sh', 'universal/pre-tool/protect-gates.sh', 'universal/pre-tool/protect-gates-bash.sh', 'universal/pre-tool/budget-brake.sh',
   'universal/pre-tool/client-boundary.sh', 'universal/pre-tool/deploy-gate.sh',
   'universal/pre-tool/external-content-boundary.sh', 'universal/pre-tool/loop-detection.sh',
   'universal/post-tool/auto-format.sh', 'universal/post-tool/gitleaks-scan.sh',
@@ -41,7 +41,7 @@ const cmd = command => ({ type: 'command', command });
 const RUN = (phase, name, input) => cmd(`node "\${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/run-hook.mjs" ${phase} ${name} ${input}${phase === 'pre' ? ' || exit 2' : ''}`);
 const PLAIN = name => cmd(`cd "\${CLAUDE_PROJECT_DIR:-.}" && bash .claude/hooks/${name} || true`);
 const BASH = 'Bash';
-const READ_WRITE = 'Read|Write|Edit|MultiEdit|NotebookEdit';
+const READ_WRITE = 'Read|Write|Edit|MultiEdit|NotebookEdit|Grep|Glob';
 const WRITES = 'Write|Edit|MultiEdit';
 const WRITE_GATES = 'Write|Edit|MultiEdit|NotebookEdit';
 // What init writes into an empty project: each group in the order the profile lists its hooks.
@@ -52,6 +52,7 @@ const EXPECTED_HOOKS = {
       RUN('pre', 'block-prod-write.sh', 'command'),
       RUN('pre', 'block-rm-rf.sh', 'command'),
       RUN('pre', 'block-sealed-refs.sh', 'stdin'),
+      RUN('pre', 'block-secrets-bash.sh', 'command'),
       RUN('pre', 'protect-gates-bash.sh', 'command'),
       RUN('pre', 'deploy-gate.sh', 'stdin'),
     ] },
@@ -63,7 +64,7 @@ const EXPECTED_HOOKS = {
 };
 const WIRED_COMMANDS = Object.values(EXPECTED_HOOKS).flatMap(groups => groups.flatMap(g => g.hooks.map(h => h.command)));
 const WIRED_FILES = ['block-new-dependency.sh', 'block-prod-write.sh', 'block-rm-rf.sh', 'block-sealed-refs.sh',
-  'block-secrets.sh', 'deploy-gate.sh', 'gitleaks-scan.sh', 'load-baton.sh', 'protect-gates-bash.sh', 'protect-gates.sh', 'run-hook.mjs'];
+  'block-secrets.sh', 'block-secrets-bash.sh', 'deploy-gate.sh', 'gitleaks-scan.sh', 'load-baton.sh', 'protect-gates-bash.sh', 'protect-gates.sh', 'run-hook.mjs'];
 
 function withProject(fn) {
   const dir = realpathSync(mkdtempSync(path.join(tmpdir(), 'claude-hooks-418-')));
@@ -114,7 +115,7 @@ test(`init wires the hooks it can wire into an empty project's settings.json (${
     // Every copied hook is either wired or named with its reason; none is unmapped.
     assert.doesNotMatch(r.stdout, /no mapping/);
     for (const name of ALL_HOOKS.map(h => path.basename(h))) assert.match(r.stdout, new RegExp(name.replace(/\./g, '\\.')));
-    assert.match(r.stdout, /wired 10 hooks/);
+    assert.match(r.stdout, /wired 11 hooks/);
     assert.doesNotMatch(r.stdout, /do it by hand|wire them/);
   });
 });
@@ -321,15 +322,20 @@ test(`a later uninstall still keeps a hook file a user's own entry runs (${SPEC}
   });
 });
 
-test(`uninstall that cannot rewrite settings.json keeps every hook file it still runs (${SPEC}#ac-27)`, () => {
+test(`uninstall that cannot rewrite settings.json keeps every hook file it still runs (${SPEC}#ac-27)`, { skip: process.getuid?.() === 0 && 'root writes into a read-only folder' }, () => {
   withProject(dir => {
     // A user's own key, so uninstall rewrites the file instead of deleting it.
     mkdirSync(path.join(dir, '.claude'));
     writeFileSync(settingsPath(dir), '{ "model": "user-choice" }\n');
     assert.equal(init(dir).status, 0);
-    // A directory where the temporary copy goes makes the whole-file replacement fail.
-    mkdirSync(path.join(dir, '.claude/settings.json.tmp'));
-    const r = uninstall(dir);
+    // A read-only folder makes the temporary copy impossible to create, so the whole-file replacement fails.
+    chmodSync(path.join(dir, '.claude'), 0o555);
+    let r;
+    try {
+      r = uninstall(dir);
+    } finally {
+      chmodSync(path.join(dir, '.claude'), 0o755);
+    }
     assert.match(r.stdout, /^kept {6}\.claude\/settings\.json: /m);
     const commands = commandsIn(readSettings(dir));
     assert.ok(commands.length > 0, 'the entries are still in settings.json');
@@ -384,7 +390,7 @@ test(`a command already in settings.json is left alone and not recorded (${SPEC}
     const r = init(dir);
     assert.equal(r.status, 0, r.stdout + r.stderr);
     assert.match(r.stdout, /^  already wired: load-baton\.sh \(SessionStart\)$/m);
-    assert.match(r.stdout, /wired 9 hooks/, 'the other hooks are still added');
+    assert.match(r.stdout, /wired 10 hooks/, 'the other hooks are still added');
     const record = readRecord(dir).claude_hooks;
     assert.deepEqual(record.map(e => e.command).sort(), WIRED_COMMANDS.filter(c => c !== PLAIN('load-baton.sh').command).sort(),
       'only the entries init added are recorded');
@@ -503,7 +509,7 @@ test(`a dry run says what it would wire and changes nothing (${SPEC}#ac-27)`, ()
     const before = snapshot(dir);
     const r = init(dir, '--dry-run');
     assert.equal(r.status, 0, r.stdout + r.stderr);
-    assert.match(r.stdout, /would wire 10 hooks/);
+    assert.match(r.stdout, /would wire 11 hooks/);
     assert.match(r.stdout, /would add .*SessionStart.*load-baton\.sh/);
     assert.deepEqual(snapshot(dir), before, 'nothing was written');
   });
@@ -533,5 +539,103 @@ test(`the run-hook.mjs runner is recorded in the manifest with the hooks (${SPEC
     assert.ok(readRecord(dir).files['.claude/hooks/run-hook.mjs'], 'run-hook.mjs is in the manifest files');
     assert.equal(uninstall(dir).status, 0);
     assert.equal(existsSync(path.join(dir, '.claude/hooks/run-hook.mjs')), false, 'uninstall removes the runner');
+  });
+});
+
+// #426: the side effects of rewriting settings.json.
+test(`a pre-existing .claude/settings.json.tmp is never read, overwritten or removed (${SPEC}#ac-27)`, () => {
+  withProject(dir => {
+    mkdirSync(path.join(dir, '.claude'));
+    writeFileSync(settingsPath(dir), `${JSON.stringify(USER_SETTINGS, null, 2)}\n`);
+    writeFileSync(path.join(dir, '.claude/settings.json.tmp'), "the user's own notes\n");
+    const r = init(dir);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.equal(readFileSync(path.join(dir, '.claude/settings.json.tmp'), 'utf8'), "the user's own notes\n");
+    assert.deepEqual(readdirSync(path.join(dir, '.claude')).sort(), ['hooks', 'settings.json', 'settings.json.tmp'], 'no temp file of init is left');
+    assert.equal(uninstall(dir).status, 0);
+    assert.equal(readFileSync(path.join(dir, '.claude/settings.json.tmp'), 'utf8'), "the user's own notes\n");
+  });
+});
+
+test(`a failed settings.json write removes only the temp file it created (${SPEC}#ac-27)`, async () => {
+  const { replaceWholeUnique } = await import('../analyzer/install-manifest.js');
+  assert.equal(typeof replaceWholeUnique, 'function');
+  const dir = realpathSync(mkdtempSync(path.join(tmpdir(), 'claude-hooks-tmp-')));
+  try {
+    mkdirSync(path.join(dir, '.claude/settings.json'), { recursive: true });
+    writeFileSync(path.join(dir, '.claude/settings.json.tmp'), 'KEEP');
+    // A folder where the file goes makes the final rename fail after the temp file exists.
+    assert.throws(() => replaceWholeUnique(dir, '.claude/settings.json', '{}\n'));
+    assert.deepEqual(readdirSync(path.join(dir, '.claude')).sort(), ['settings.json', 'settings.json.tmp']);
+    assert.equal(readFileSync(path.join(dir, '.claude/settings.json.tmp'), 'utf8'), 'KEEP');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test(`a profile that lists only the Bash secret guard still gets block-secrets.sh beside it (${SPEC}#ac-30)`, () => {
+  const dir = realpathSync(mkdtempSync(path.join(tmpdir(), 'claude-hooks-ac30-')));
+  try {
+    mkdirSync(path.join(dir, '.git'));
+    mkdirSync(path.join(dir, '.workflow'));
+    writeFileSync(path.join(dir, '.workflow/profile.yml'), 'skills:\nhooks:\n  - universal/pre-tool/block-secrets-bash.sh\nsubagents:\n');
+    writeFileSync(path.join(dir, '.gitignore'), 'node_modules/\n');
+    assert.equal(init(dir).status, 0);
+    assert.ok(statSync(path.join(dir, '.claude/hooks/block-secrets-bash.sh')).isFile(), 'the guard is copied');
+    assert.ok(statSync(path.join(dir, '.claude/hooks/block-secrets.sh')).isFile(), 'the guard runs block-secrets.sh beside it');
+    const bash = readSettings(dir).hooks.PreToolUse.find(g => g.matcher === 'Bash');
+    assert.ok(bash.hooks.some(h => h.command === RUN('pre', 'block-secrets-bash.sh', 'command').command), 'the guard is wired on Bash');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test(`init keeps the indentation and trailing newline of settings.json, and uses 2 spaces for a new file (${SPEC}#ac-27)`, () => {
+  for (const [indent, newline] of [['    ', '\n'], ['\t', '\n'], ['  ', ''], ['\t', '']]) {
+    withProject(dir => {
+      mkdirSync(path.join(dir, '.claude'));
+      const text = `${JSON.stringify(USER_SETTINGS, null, indent)}${newline}`;
+      writeFileSync(settingsPath(dir), text);
+      assert.equal(init(dir).status, 0, JSON.stringify(indent));
+      const after = readFileSync(settingsPath(dir), 'utf8');
+      assert.equal(after.startsWith(`{\n${indent}"permissions"`), true, `indent ${JSON.stringify(indent)} kept`);
+      assert.equal(after.endsWith('\n'), newline === '\n', 'trailing newline as it was');
+      assert.equal(uninstall(dir).status, 0);
+      assert.equal(readFileSync(settingsPath(dir), 'utf8'), text, 'uninstall writes the same text back');
+    });
+  }
+  withProject(dir => {
+    mkdirSync(path.join(dir, '.claude'));
+    writeFileSync(settingsPath(dir), '{"permissions":{"allow":["Bash(npm test)"]}}');
+    assert.equal(init(dir).status, 0);
+    assert.match(readFileSync(settingsPath(dir), 'utf8'), /^\{\n {2}"permissions": \{\n {4}"allow"/, 'no indented line: 2 spaces');
+  });
+  withProject(dir => {
+    assert.equal(init(dir).status, 0);
+    assert.match(readFileSync(settingsPath(dir), 'utf8'), /^\{\n {2}"hooks": \{\n {4}"PreToolUse"/, 'a new file: 2 spaces');
+  });
+});
+
+test(`init leaves settings.json unchanged and records nothing when a number would not survive JSON exactly (${SPEC}#ac-27)`, () => {
+  withProject(dir => {
+    mkdirSync(path.join(dir, '.claude'));
+    const text = '{\n  "maxTokens": 9007199254740993,\n  "label": "9007199254740993 is text"\n}\n';
+    writeFileSync(settingsPath(dir), text);
+    const r = init(dir);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.match(r.stdout, /^⚠ \.claude\/settings\.json has a number JSON would not keep exactly/m);
+    assert.equal(readFileSync(settingsPath(dir), 'utf8'), text);
+    assert.equal(readRecord(dir).claude_hooks, undefined, 'no entry is recorded');
+  });
+});
+
+test(`a safe integer and a digit inside a string do not stop init (${SPEC}#ac-27)`, () => {
+  withProject(dir => {
+    mkdirSync(path.join(dir, '.claude'));
+    writeFileSync(settingsPath(dir), '{\n  "maxTokens": 9007199254740991,\n  "label": "9007199254740993"\n}\n');
+    const r = init(dir);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.match(r.stdout, /wired 11 hooks/);
+    assert.equal(readSettings(dir).maxTokens, 9007199254740991);
   });
 });

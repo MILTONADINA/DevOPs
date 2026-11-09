@@ -478,3 +478,124 @@ test(`a dry run names the server and the .mcp.json it would delete, and changes 
     assert.deepEqual(snapshot(dir), installed);
   });
 });
+
+// #426: settings.json is rewritten without side effects, and only what init created is removed.
+const settingsFile = dir => path.join(dir, '.claude/settings.json');
+const settingsText = dir => readFileSync(settingsFile(dir), 'utf8');
+
+test(`uninstall writes settings.json back with the tab indentation it had (${SPEC}#ac-21)`, () => {
+  withProject(dir => {
+    mkdirSync(path.join(dir, '.claude'));
+    const text = `${JSON.stringify({ permissions: { allow: ['Bash(npm test)'] }, hooks: { Stop: [] } }, null, '\t')}\n`;
+    writeFileSync(settingsFile(dir), text);
+    install(dir);
+    assert.notEqual(settingsText(dir), text, 'init wired hooks into the file');
+    const r = uninstall(dir);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.equal(settingsText(dir), text);
+  });
+});
+
+test(`uninstall keeps an empty event array or hooks object that was there before init (${SPEC}#ac-21)`, () => {
+  withProject(dir => {
+    mkdirSync(path.join(dir, '.claude'));
+    writeFileSync(settingsFile(dir), `${JSON.stringify({ hooks: { PreToolUse: [], Stop: [] } }, null, 2)}\n`);
+    install(dir);
+    assert.notDeepEqual(JSON.parse(settingsText(dir)).hooks.PreToolUse, [], 'init wrote into the user array');
+    const r = uninstall(dir);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.deepEqual(JSON.parse(settingsText(dir)), { hooks: { PreToolUse: [], Stop: [] } });
+  });
+  withProject(dir => {
+    mkdirSync(path.join(dir, '.claude'));
+    writeFileSync(settingsFile(dir), '{\n  "hooks": {}\n}\n');
+    install(dir);
+    const r = uninstall(dir);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.deepEqual(JSON.parse(settingsText(dir)), { hooks: {} });
+  });
+});
+
+test(`uninstall leaves settings.json unchanged, with its entries still recorded, when it holds a number JSON would not keep exactly (${SPEC}#ac-21)`, () => {
+  withProject(dir => {
+    install(dir);
+    const text = settingsText(dir).replace('{\n', '{\n  "maxTokens": 9007199254740993,\n');
+    writeFileSync(settingsFile(dir), text);
+    const r = uninstall(dir);
+    assert.match(r.stdout, /^kept {6}\.claude\/settings\.json \(.*\): \.claude\/settings\.json has a number JSON would not keep exactly/m);
+    assert.equal(settingsText(dir), text);
+    assert.ok(JSON.parse(readFileSync(path.join(dir, MANIFEST), 'utf8')).claude_hooks.length > 0, 'the entries stay recorded');
+  });
+});
+
+
+test(`uninstall of a 0.8.x install, whose manifest has no created_events or created_object, still deletes the file init created (${SPEC}#ac-21)`, () => {
+  withProject(dir => {
+    install(dir);
+    const manifestPath = path.join(dir, MANIFEST);
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+    assert.equal(manifest.claude_hooks_created_file, true, 'init created settings.json');
+    assert.ok(Array.isArray(manifest.claude_hooks_created_events), 'this version always records the events');
+    delete manifest.claude_hooks_created_events;
+    delete manifest.claude_hooks_created_object;
+    writeFileSync(manifestPath, JSON.stringify(manifest));
+    const r = uninstall(dir);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.ok(!existsSync(settingsFile(dir)), 'the file init created is gone, as 0.8.x left it');
+  });
+  withProject(dir => {
+    mkdirSync(path.join(dir, '.claude'));
+    writeFileSync(settingsFile(dir), `${JSON.stringify({ permissions: { allow: ['Bash(npm test)'] } }, null, 2)}\n`);
+    install(dir);
+    const manifestPath = path.join(dir, MANIFEST);
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+    delete manifest.claude_hooks_created_events;
+    delete manifest.claude_hooks_created_object;
+    writeFileSync(manifestPath, JSON.stringify(manifest));
+    const r = uninstall(dir);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.deepEqual(JSON.parse(settingsText(dir)), { permissions: { allow: ['Bash(npm test)'] } }, 'no empty hooks residue');
+  });
+});
+
+test(`uninstall keeps CRLF line ends in settings.json (${SPEC}#ac-21)`, () => {
+  withProject(dir => {
+    mkdirSync(path.join(dir, '.claude'));
+    const text = `${JSON.stringify({ permissions: { allow: ['Bash(npm test)'] } }, null, 2)}\n`.replace(/\n/g, '\r\n');
+    writeFileSync(settingsFile(dir), text);
+    install(dir);
+    assert.ok(settingsText(dir).includes('\r\n') && !/[^\r]\n/.test(settingsText(dir)), 'init kept CRLF');
+    const r = uninstall(dir);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.equal(settingsText(dir), text);
+  });
+});
+
+test(`a 0.8.x install re-run with this version's init keeps the 0.8.x cleanup at uninstall (${SPEC}#ac-21)`, () => {
+  withProject(dir => {
+    install(dir);
+    const manifestPath = path.join(dir, MANIFEST);
+    const fresh = JSON.parse(readFileSync(manifestPath, 'utf8'));
+    assert.equal(typeof fresh.claude_hooks_created_object, 'boolean', 'this version always records created_object');
+    // Make it what 0.8.x wrote, then re-run init from this version.
+    delete fresh.claude_hooks_created_events;
+    delete fresh.claude_hooks_created_object;
+    // 0.8.x did not wire protect-gates.sh: drop its entry, so this init adds it as a new one.
+    const settings = JSON.parse(settingsText(dir));
+    for (const [event, groups] of Object.entries(settings.hooks)) {
+      settings.hooks[event] = groups
+        .map(group => ({ ...group, hooks: group.hooks.filter(hook => !hook.command.includes(' protect-gates.sh ')) }))
+        .filter(group => group.hooks.length > 0);
+    }
+    writeFileSync(settingsFile(dir), `${JSON.stringify(settings, null, 2)}\n`);
+    fresh.claude_hooks = fresh.claude_hooks.filter(entry => !entry.command.includes(' protect-gates.sh '));
+    writeFileSync(manifestPath, JSON.stringify(fresh));
+    install(dir);
+    const after = JSON.parse(readFileSync(manifestPath, 'utf8'));
+    assert.ok(after.claude_hooks.some(entry => entry.command.includes(' protect-gates.sh ')), 'init added the new entry');
+    assert.equal(after.claude_hooks_created_events, undefined, 'a 0.8.x manifest is not stamped as current');
+    const r = uninstall(dir);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.ok(!existsSync(settingsFile(dir)), 'the file 0.8.x init created is still deleted');
+  });
+});

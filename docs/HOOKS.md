@@ -62,6 +62,8 @@ other key and hook in that file, never adds an entry whose command is already th
 and records what it added in the install manifest, so `devops uninstall` removes only
 those entries.
 
+A settings.json rewrite keeps what the user wrote. Init and uninstall write the file through a temp file they create exclusively under a unique name, so a `.claude/settings.json.tmp` the user already has is never read, overwritten or removed. The file keeps its indentation (a tab, or the spaces of its first indented line; 2 spaces for a new file or one with no indented line) its trailing newline and CRLF line ends. A settings.json holding a number JSON would not keep exactly (an integer above 2^53, a decimal with more digits than a double holds, a value so large it would become `null`, or `-0`) is left unchanged with a warning. Uninstall deletes an event array, or the `hooks` object, only when init created it and uninstall's removal emptied it; an empty array that was there before init stays. An install made by 0.8.x did not record what init created, so for it uninstall deletes every event array and `hooks` its removal empties, as 0.8.x did, and a later init from this version keeps it that way (specs/release/npm-package.md AC-27, #426).
+
 A pre or post hook is named as
 
     node "${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/run-hook.mjs" <pre|post> <hook-file> <stdin|command|file>
@@ -70,23 +72,25 @@ A pre or post hook is named as
 tool call that Claude Code sends on stdin and gives the hook the input it takes:
 
 - `stdin`: the hook gets `--payload-stdin` and the raw payload bytes;
-- `command`: the hook gets `tool_input.command` as one argument;
+- `command`: the hook gets `tool_input.command` as its one argument (`$1`);
 - `file`: the hook runs once for each distinct non-empty one of `tool_input.file_path`,
   `tool_input.notebook_path`, `tool_input.path` and `tool_response.filePath`, with that string as
-  its one argument. For `pre`, the first non-zero result decides.
+  its one argument (`$1`). For `pre`, the first non-zero result decides.
 
 A call whose field is absent or empty has nothing to check: the runner exits 0 without
 running the hook. The runner is Node only, with no dependencies, and runs each hook with
-`bash` and no shell, so the argument is never parsed by one. It runs only the hook names
-in its own allowlist.
+`bash`. For `command` and `file` the value goes to bash on stdin, not on argv, so a command
+longer than one argument (128 KB on Linux) is still decided: bash sets `$1` from it and sources the
+hook, so `$0` is still the hook's path. A value holding a NUL byte cannot go that way, so a `pre`
+call with one fails closed with exit 2. The runner only runs the hook names in its own allowlist.
 
 A payload with no `tool_input` (or a `null` one) is a missing field, not an empty call. For a
 `pre` hook the runner writes one line to stderr, `HOOK: warning: tool_input is missing from the
 tool call; <hook> runs without it`. A `command` or `file` hook reads `tool_input`, so for those the
 call fails closed with exit 2 and `HOOK: tool_input is missing from the tool call -- failing closed`,
 and the hook does not run. A `stdin` hook reads the raw payload itself, so it runs after the warning.
-A `tool_input` that is present but not an object fails closed in every mode. `post` hooks are not
-affected by the missing-field rule.
+A `tool_input` that is present but not an object fails closed for a `pre` hook in every input mode. A
+`post` hook always exits 0, so it never fails closed.
 
 For `pre` hooks, exit 0 passes and exit 2 blocks. Any other outcome fails closed with
 exit 2 and `failing closed` on stderr: a non-zero exit other than 2, a signal, a missing
@@ -105,11 +109,14 @@ so Claude Code shows the leak.
 | `block-prod-write.sh` | `PreToolUse` | `Bash` | command |
 | `block-rm-rf.sh` | `PreToolUse` | `Bash` | command |
 | `block-new-dependency.sh` | `PreToolUse` | `Bash` | command |
-| `block-secrets.sh` | `PreToolUse` | `Read\|Write\|Edit\|MultiEdit\|NotebookEdit` | file |
+| `block-secrets.sh` | `PreToolUse` | `Read\|Write\|Edit\|MultiEdit\|NotebookEdit\|Grep\|Glob` | file |
+| `block-secrets-bash.sh` | `PreToolUse` | `Bash` | command |
 | `protect-gates.sh` | `PreToolUse` | `Write\|Edit\|MultiEdit\|NotebookEdit` | file |
 | `protect-gates-bash.sh` | `PreToolUse` | `Bash` | command |
 | `gitleaks-scan.sh` | `PostToolUse` | `Write\|Edit\|MultiEdit` | file |
 | `load-baton.sh` | `SessionStart` | none | (plain command) |
+
+`block-secrets.sh` is run for a Grep call's `glob` and a Glob call's `pattern` as well as the file fields. A Grep call's `pattern` is a regex and is not checked. `block-secrets-bash.sh` is a convenience guard, not a security boundary. It splits the command text into words the way a shell does: quotes are stripped, a backslash escapes the next character, a backslash-newline is removed, and unquoted whitespace, `; | & < > ( )` and backticks separate words. A word that still holds whitespace is skipped as a quoted message, unless it holds `$(` or a backtick, when each piece of it is checked with its quotes and backslashes removed (they belong to the inner shell). A command with a quote left open is also checked with every quote and backslash removed. Each word goes through the same check as `block-secrets.sh`. The hook needs `awk`, and blocks when `awk` is missing or fails. It reads the command text only and runs nothing from it, so it does not catch a path built by shell expansion (`cat $(echo .e)nv`), a path held in a variable, a glob such as `cat .en?`, or a secret read by a script, by an interpreter given the command as a string (`sh -c`), or by a program that opens the file itself. It also reads a heredoc's body as words, so a heredoc that names `.env` outside quotes is refused; quote the text or write the file with the Write tool. The split is one `awk` pass and the check runs in the same shell, so a command of 20000 words is decided in about a second.
 
 `load-baton.sh` is named as `cd "${CLAUDE_PROJECT_DIR:-.}" && bash .claude/hooks/load-baton.sh || true`
 and has no matcher. The `cd` makes it read the project root's baton, and create `.workflow/` only there.
@@ -190,7 +197,16 @@ These two hooks require Node (the repository supports `>=22.12.0`) and an adjace
 `graph-command-classifier.mjs`. Selecting either graph hook through
 `analyzer/install.ts` copies its required companion to `.claude/hooks/`; a
 missing companion fails installation. Missing/unrunnable helpers and invalid
-responses refuse hook invocation. Dry-run writes nothing to the target.
+responses refuse hook invocation. A command longer than 4 MiB, or holding more than 4096 words or
+256 commands, is refused with the reason `command exceeds parser bounds`: the classifier's analysis is
+quadratic in the words of one command, and a hook that outlasts Claude Code's hook timeout lets the call
+through, so the bound keeps every decision fast (specs/release/npm-package.md AC-31).
+
+`run-hook.mjs` gives the pre hooks of one tool call 30 seconds together. When they run out, it stops
+the hook and blocks the call (exit 2, "did not finish within the 30 s hook budget"), because Claude Code
+lets a call through when a hook outlasts its own hook timeout. `DEVOPS_HOOK_BUDGET_MS` can lower the
+budget, never raise it.
+Dry-run writes nothing to the target.
 Installing the files does not register them with every agent or tool.
 
 Arbitrary script contents, aliases/functions and generated programs are outside
@@ -210,5 +226,5 @@ See `CONTRIBUTING.md`. Hooks must:
 
 The `.sh` hooks under `hooks/` and `scripts/` use a Bash shebang
 (`#!/usr/bin/env bash`) and POSIX shell semantics. They require a POSIX
-shell (bash/zsh), which macOS and Linux provide natively. Configure Claude
+shell (bash), which macOS and Linux provide natively. Configure Claude
 Code (or the active agent) to invoke the hooks with `bash <hook>.sh`.

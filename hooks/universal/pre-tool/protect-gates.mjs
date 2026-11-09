@@ -12,6 +12,9 @@
 //                                         moves a bare .claude or .workflow, and it is not a plain
 //                                         read. A convenience guard, not a security boundary: see
 //                                         docs/HOOKS.md for what it does not catch.
+//   protect-gates.mjs --stdin [--command] the same check, with the path or command read from stdin, so a
+//                                         command longer than an argument can be checked (AC-31).
+//                                         The two gate hooks use this form (AC-31).
 //
 // Exit 0 allows. Exit 2 blocks, and so does any internal error. Node only, no dependencies.
 
@@ -394,14 +397,28 @@ function commandBlock(command) {
 }
 
 function main(argv) {
-  const [target, flag, ...rest] = argv;
-  if (target === undefined || rest.length > 0 || (flag !== undefined && flag !== '--command')) {
-    process.stderr.write('DevOPs GATE BLOCK: usage: protect-gates.mjs <path> | <command> --command -- failing closed\n');
+  const fromStdin = argv[0] === '--stdin';
+  const words = fromStdin ? argv.slice(1) : argv;
+  // Positional: <target> [--command]. Stdin: --stdin [--command], with the target read from stdin.
+  const valid = fromStdin
+    ? words.length <= 1 && (words.length === 0 || words[0] === '--command')
+    : words.length >= 1 && words.length <= 2 && (words.length === 1 || words[1] === '--command');
+  if (!valid) {
+    process.stderr.write('DevOPs GATE BLOCK: usage: protect-gates.mjs <path> | <command> --command | --stdin [--command] -- failing closed\n');
+    return 2;
+  }
+  const isCommand = (fromStdin ? words[0] : words[1]) === '--command';
+  let target;
+  try {
+    target = fromStdin ? fs.readFileSync(0, 'utf8') : words[0];
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    process.stderr.write(`DevOPs GATE BLOCK: protect-gates could not read its input: ${reason} -- failing closed\n`);
     return 2;
   }
   if (target === '') return 0;
   try {
-    const message = flag === '--command' ? commandBlock(target) : fileBlock(target);
+    const message = isCommand ? commandBlock(target) : fileBlock(target);
     if (message === null) return 0;
     process.stderr.write(`${message}\n`);
     return 2;

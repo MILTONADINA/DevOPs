@@ -26,7 +26,7 @@ import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { linkAgileGraph } from './agile-graph.js';
-import { ADOPTED_NOTICE, LOCAL_STATE_IGNORES, ignoreLines, openManifest, readRegular, replaceWhole, sha256 } from './install-manifest.js';
+import { ADOPTED_NOTICE, LOCAL_STATE_IGNORES, hasUnsafeInteger, ignoreLines, jsonText, openManifest, readRegular, replaceWholeUnique, sha256 } from './install-manifest.js';
 import { UnsafeWriteError, backupIfChanged, copyInside, freshBackupStamp, mkdirInside, present, writeInside } from './safe-write.js';
 
 // specs/release/npm-package.md REQ-2: DEVOPS_ROOT if set, else the package this file
@@ -431,7 +431,8 @@ const CLAUDE_HOOK_WIRING: Record<string, HookWiring> = {
   'block-prod-write.sh': { event: 'PreToolUse', matcher: 'Bash', command: runHook('pre', 'block-prod-write.sh', 'command') },
   'block-rm-rf.sh': { event: 'PreToolUse', matcher: 'Bash', command: runHook('pre', 'block-rm-rf.sh', 'command') },
   'block-new-dependency.sh': { event: 'PreToolUse', matcher: 'Bash', command: runHook('pre', 'block-new-dependency.sh', 'command') },
-  'block-secrets.sh': { event: 'PreToolUse', matcher: 'Read|Write|Edit|MultiEdit|NotebookEdit', command: runHook('pre', 'block-secrets.sh', 'file') },
+  'block-secrets.sh': { event: 'PreToolUse', matcher: 'Read|Write|Edit|MultiEdit|NotebookEdit|Grep|Glob', command: runHook('pre', 'block-secrets.sh', 'file') },
+  'block-secrets-bash.sh': { event: 'PreToolUse', matcher: 'Bash', command: runHook('pre', 'block-secrets-bash.sh', 'command') },
   'protect-gates.sh': { event: 'PreToolUse', matcher: 'Write|Edit|MultiEdit|NotebookEdit', command: runHook('pre', 'protect-gates.sh', 'file') },
   'protect-gates-bash.sh': { event: 'PreToolUse', matcher: 'Bash', command: runHook('pre', 'protect-gates-bash.sh', 'command') },
   'gitleaks-scan.sh': { event: 'PostToolUse', matcher: 'Write|Edit|MultiEdit', command: runHook('post', 'gitleaks-scan.sh', 'file') },
@@ -453,14 +454,15 @@ const runsThroughRunHook = (name: string) => {
 };
 
 const SETTINGS = '.claude/settings.json';
-const SETTINGS_TEMP = '.claude/settings.json.tmp';
 const plural = (n: number) => (n === 1 ? 'hook' : 'hooks');
 
 /**
  * Merges the entries for the copied hooks `names` into .claude/settings.json. Keeps every other
  * key and hook; adds nothing already wired under the same event and matcher (and says so for each),
  * and records only what it adds. A settings.json that is a link, not a regular file, or not a JSON
- * object is left unchanged, with a line saying why. A dry run writes nothing.
+ * object is left unchanged, with a line saying why, and so is one holding a number JSON would not keep exactly
+ * (JSON.parse would round it). The file keeps its indentation and trailing newline (#426). A dry
+ * run writes nothing.
  */
 function wireClaudeHooks(root: string, names: string[], dryRun: boolean) {
   const wanted: string[] = [];
@@ -488,11 +490,16 @@ function wireClaudeHooks(root: string, names: string[], dryRun: boolean) {
   }
   const bytes = stat ? readRegular(file) : null;
   const created = bytes === null;
+  const original = bytes === null ? null : bytes.toString('utf8');
+  if (original !== null && hasUnsafeInteger(original)) {
+    console.log(`⚠ ${SETTINGS} has a number JSON would not keep exactly (an integer above 2^53, a decimal with too many digits, or a value too large); left unchanged, and no hook was wired into it.`);
+    return;
+  }
   let config: Record<string, unknown> = {};
-  if (bytes !== null) {
+  if (original !== null) {
     let parsed: unknown = null;
     try {
-      parsed = JSON.parse(bytes.toString('utf8'));
+      parsed = JSON.parse(original);
     } catch {
       /* not JSON: refused below */
     }
@@ -520,8 +527,11 @@ function wireClaudeHooks(root: string, names: string[], dryRun: boolean) {
   // under the same event. The same command under another event or matcher is not wired, so it is
   // added. Each hook already wired is named, and nothing is added or recorded for it.
   const added: { name: string; event: string; matcher?: string; command: string; inner: { type: string; command: string } }[] = [];
+  // The events whose array this run creates (#426): uninstall deletes only those when emptied.
+  const createdEvents: string[] = [];
   for (const name of wanted) {
     const { event, matcher, command } = CLAUDE_HOOK_WIRING[name] as WiredRow;
+    if (byEvent[event] === undefined) createdEvents.push(event);
     const groups = (byEvent[event] ?? []) as unknown[];
     // An event without a matcher has groups without one: `matcher` undefined matches only those.
     const sameMatcher = groups.filter((g): g is { matcher?: unknown; hooks: unknown[] } =>
@@ -537,7 +547,8 @@ function wireClaudeHooks(root: string, names: string[], dryRun: boolean) {
     added.push({ name, event, matcher, command, inner });
   }
   if (added.length === 0) return;
-  if (config.hooks === undefined) config.hooks = byEvent;
+  const createdObject = config.hooks === undefined;
+  if (createdObject) config.hooks = byEvent;
 
   const list = added.map(a => `${a.event} ${a.name}`).join(', ');
   if (dryRun) {
@@ -553,9 +564,9 @@ function wireClaudeHooks(root: string, names: string[], dryRun: boolean) {
     command: a.command,
     sha256: sha256(JSON.stringify(a.inner)),
   }));
-  record?.claudeHooks(entries, created);
+  record?.claudeHooks(entries, created, createdEvents, createdObject);
   try {
-    replaceWhole(root, SETTINGS, `${JSON.stringify(config, null, 2)}\n`, { temp: SETTINGS_TEMP });
+    replaceWholeUnique(root, SETTINGS, jsonText(config, original));
   } catch (error) {
     record?.forgetClaudeHooks(entries.map(e => e.command));
     console.log(`⚠ ${SETTINGS} could not be written (${(error as Error).message}); no hook was wired into it.`);
@@ -771,6 +782,17 @@ function main() {
   // AC-28: both gate-protection hooks call protect-gates.mjs beside them.
   if (hooks.some(h => h === 'universal/pre-tool/protect-gates.sh' || h === 'universal/pre-tool/protect-gates-bash.sh')) {
     const companion = 'protect-gates.mjs';
+    const src = path.join(DEVOPS_ROOT, 'hooks/universal/pre-tool', companion);
+    if (!fs.existsSync(src) || !fs.statSync(src).isFile()) {
+      console.error(`required hook companion missing: ${companion}`);
+      process.exit(1);
+    }
+    if (!flags.dryRun) copy(PROJECT_ROOT, src, path.join(PROJECT_ROOT, '.claude/hooks', companion));
+  }
+  // AC-30: the Bash secret guard runs block-secrets.sh beside it, so init copies that even when
+  // the profile does not list it.
+  if (hooks.includes('universal/pre-tool/block-secrets-bash.sh') && !hooks.includes('universal/pre-tool/block-secrets.sh')) {
+    const companion = 'block-secrets.sh';
     const src = path.join(DEVOPS_ROOT, 'hooks/universal/pre-tool', companion);
     if (!fs.existsSync(src) || !fs.statSync(src).isFile()) {
       console.error(`required hook companion missing: ${companion}`);

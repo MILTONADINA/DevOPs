@@ -32,7 +32,7 @@
 import { execFileSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { HOOK_KEY, MANIFEST, ORIGINALS, readManifest, readRegular, replaceWhole, sha256 } from './install-manifest.js';
+import { HOOK_KEY, MANIFEST, ORIGINALS, hasUnsafeInteger, jsonText, readManifest, readRegular, replaceWhole, replaceWholeUnique, sha256 } from './install-manifest.js';
 import { assertInside, present, writeInside } from './safe-write.js';
 
 const HOOK_MARKER = '# DevOPs pre-commit hook';
@@ -192,16 +192,23 @@ function liveCommands(base) {
     return null;
   }
   if (bytes === null) return [];
+  const text = bytes.toString('utf8');
+  if (hasUnsafeInteger(text)) return null;
   let config = null;
   try {
-    config = JSON.parse(bytes.toString('utf8'));
+    config = JSON.parse(text);
   } catch {
     return null;
   }
   return plain(config) ? commandsIn(config) : null;
 }
 
-function unwireHooks(base, entries, createdFile) {
+/**
+ * Takes the recorded entries out of settings.json. `created` says what init created (#426):
+ * `file`, the `events` whose array it created, and `object` for `hooks`. Only those are deleted
+ * when uninstall's own removal empties them; an array or `hooks` that was already there stays.
+ */
+function unwireHooks(base, entries, created) {
   const plan = { kept: [], removed: [], dropped: [], bytes: null, deleteFile: false, remaining: null };
   let bytes;
   try {
@@ -212,9 +219,14 @@ function unwireHooks(base, entries, createdFile) {
     return plan;
   }
   if (bytes === null) return { ...plan, dropped: [...entries] };
+  const text = bytes.toString('utf8');
+  if (hasUnsafeInteger(text)) {
+    plan.kept = entries.map(entry => ({ entry, reason: `${SETTINGS_KEY} has a number JSON would not keep exactly (an integer above 2^53, a decimal with too many digits, or a value too large)` }));
+    return plan;
+  }
   let config = null;
   try {
-    config = JSON.parse(bytes.toString('utf8'));
+    config = JSON.parse(text);
   } catch {
     /* not JSON: kept below */
   }
@@ -245,18 +257,21 @@ function unwireHooks(base, entries, createdFile) {
       plan.kept.push({ entry, reason: 'edited since DevOPs wrote it' });
       continue;
     }
-    // Take the entry out, then the matcher group, the event and `hooks` only when each is left empty.
+    // Take the entry out, then the matcher group, the event and `hooks` only when each is left empty
+    // by this removal, and only the ones init created (#426). A manifest from 0.8.x has no record of
+    // what init created, so for it every event and `hooks` this removal empties goes, as 0.8.x did.
+    const legacy = created.events === null;
     found.group.hooks.splice(found.index, 1);
     if (found.group.hooks.length === 0) groups.splice(groups.indexOf(found.group), 1);
-    if (groups.length === 0) delete config.hooks[entry.event];
-    if (Object.keys(config.hooks).length === 0) delete config.hooks;
+    if (groups.length === 0 && (legacy || created.events.includes(entry.event))) delete config.hooks[entry.event];
+    if ((legacy || created.object === true) && config.hooks && Object.keys(config.hooks).length === 0) delete config.hooks;
     plan.removed.push(entry);
     plan.dropped.push(entry);
   }
   plan.remaining = commandsIn(config);
   if (plan.removed.length === 0) return plan;
-  if (createdFile && Object.keys(config).length === 0) plan.deleteFile = true;
-  else plan.bytes = `${JSON.stringify(config, null, 2)}\n`;
+  if (created.file && Object.keys(config).length === 0) plan.deleteFile = true;
+  else plan.bytes = jsonText(config, text);
   return plan;
 }
 
@@ -322,7 +337,6 @@ const STATE = '.workflow/state';
 const MANIFEST_SAVE_TEMP = `${STATE}/.uninstall-manifest.tmp`;
 const MCP_TEMP = `${STATE}/.uninstall-mcp.tmp`;
 const SETTINGS_KEY = '.claude/settings.json';
-const SETTINGS_TEMP = '.claude/settings.json.tmp';
 // Replaced whole, as install does, so an interrupted uninstall never leaves a truncated manifest.
 const save = (base, data) => replaceWhole(base, MANIFEST, `${JSON.stringify(data, null, 2)}\n`, { temp: MANIFEST_SAVE_TEMP });
 
@@ -351,7 +365,12 @@ export function uninstall(root, { dryRun = false, log = console.log } = {}) {
   // #418: the settings.json hook entries are planned before the files, so a kept entry can keep
   // the files it still runs. A kept entry whose command runs run-hook.mjs keeps the runner and the
   // hook it names: the files loop leaves both alone, and the kept line below names them once.
-  const settingsPlan = data.claude_hooks ? unwireHooks(base, data.claude_hooks, data.claude_hooks_created_file === true) : null;
+  const settingsPlan = data.claude_hooks ? unwireHooks(base, data.claude_hooks, {
+    file: data.claude_hooks_created_file === true,
+    // null: a manifest from 0.8.x, which did not record them (see unwireHooks).
+    events: data.claude_hooks_created_events ?? null,
+    object: data.claude_hooks_created_object ?? null,
+  }) : null;
   // The settings entries go before any hook file does: a run that cannot rewrite settings.json, or
   // stops part way, never leaves an active entry whose runner or hook is gone (which would block
   // every matching call).
@@ -376,7 +395,7 @@ export function uninstall(root, { dryRun = false, log = console.log } = {}) {
           removeRegular(path.join(base, SETTINGS_KEY));
         } else if (plan.bytes !== null) {
           // Replaced whole: the user's own settings share this file.
-          replaceWhole(base, SETTINGS_KEY, plan.bytes, { temp: SETTINGS_TEMP });
+          replaceWholeUnique(base, SETTINGS_KEY, plan.bytes);
         }
         handled += plan.removed.length;
         const dropped = new Set(plan.dropped);
@@ -384,6 +403,8 @@ export function uninstall(root, { dryRun = false, log = console.log } = {}) {
         if (data.claude_hooks.length === 0) {
           delete data.claude_hooks;
           delete data.claude_hooks_created_file;
+          delete data.claude_hooks_created_events;
+          delete data.claude_hooks_created_object;
         }
         save(base, data);
       } catch (error) {

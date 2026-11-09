@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import {
-  chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync,
+  chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -249,6 +249,26 @@ test(`other servers and keys in .mcp.json are kept when the entry is added (${SP
     assert.equal(config.$schema, 'x');
     assert.deepEqual(config.mcpServers.other, other);
     assert.ok(config.mcpServers[SERVER_KEY]);
+  });
+});
+
+test(`.mcp.json is replaced whole through a unique temp file, never truncated in place (${SPEC}#ac-4)`, { skip: process.platform === 'win32' && 'inode numbers and modes differ on Windows' }, () => {
+  withSetup(setup => {
+    setup.installEngine('project');
+    const mcp = path.join(setup.projectRoot, '.mcp.json');
+    const other = { command: 'other-server' };
+    writeFileSync(mcp, JSON.stringify({ mcpServers: { other } }));
+    chmodSync(mcp, 0o600);
+    writeFileSync(path.join(setup.projectRoot, '.mcp.json.tmp'), "the user's own notes\n");
+    const before = statSync(mcp).ino;
+    assert.equal(link(setup).status, 'linked');
+    // A new inode: the old file was renamed over, not opened with O_TRUNC and rewritten, so a run
+    // cut short leaves the old .mcp.json or the new one, never a truncated one.
+    assert.notEqual(statSync(mcp).ino, before, 'replaced by rename');
+    assert.equal(statSync(mcp).mode & 0o777, 0o600, 'a private .mcp.json stays private');
+    assert.deepEqual(mcpJson(setup.projectRoot).mcpServers.other, other);
+    assert.equal(readFileSync(path.join(setup.projectRoot, '.mcp.json.tmp'), 'utf8'), "the user's own notes\n");
+    assert.deepEqual(readdirSync(setup.projectRoot).filter(n => n.endsWith('.tmp')), ['.mcp.json.tmp'], 'no temp file of the link is left');
   });
 });
 

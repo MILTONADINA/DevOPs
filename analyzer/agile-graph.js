@@ -7,7 +7,7 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { UnsafeWriteError, assertInside, writeInside } from './safe-write.js';
+import { UnsafeWriteError, assertInside, replaceWholeUnique, writeInside } from './safe-write.js';
 
 export const ENGINE = '@agile-graph/engine';
 // The engine versions whose cloud-default tools are exactly the ones PIN_SOURCE pins,
@@ -183,7 +183,9 @@ export function linkAgileGraph({
     }
     record?.mcpServer(SERVER_KEY, entry, createdFile);
     try {
-      writeInside(projectRoot, mcpFile, `${JSON.stringify(next, null, 2)}\n`);
+      // Replaced whole through a unique temp file: a write cut short must never leave a
+      // truncated .mcp.json that loses the user's other servers (#426).
+      replaceWholeUnique(projectRoot, '.mcp.json', `${JSON.stringify(next, null, 2)}\n`);
     } catch (error) {
       if (copyPins) fs.rmSync(pinTarget, { force: true });
       record?.forgetMcpServer(SERVER_KEY);

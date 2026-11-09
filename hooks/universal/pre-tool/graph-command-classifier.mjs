@@ -7,6 +7,14 @@ import { spawnSync } from 'node:child_process';
 
 const root = fs.realpathSync(process.cwd());
 const MAX_TEXT = 64 * 1024;
+// The command the parser reads, in bytes: a long command with few words, such as a 1 MB heredoc,
+// gets a decision (AC-31). The word and command counts keep their old bounds, because the analysis
+// after tokenizing is quadratic in the words of one command: 4096 words decide at once, while 200,000
+// would take seconds and 800,000 over a minute, past the hook timeout. A command over any bound is
+// refused, with the reason it always had.
+const MAX_COMMAND = 4 * 1024 * 1024;
+const MAX_COMMANDS = 256;
+const MAX_WORDS = 4096;
 const statuses = new Set(['running', 'blocked', 'completed', 'failed', 'indeterminate']);
 const sealed = new Set(['refs/tags/v0.2.0', 'refs/heads/phase-2-security-depth', 'refs/heads/stratum-merge']);
 const within = (value) => value === root || value.startsWith(root + path.sep);
@@ -74,7 +82,7 @@ function substitutionEnd(text, start, backtick = false) {
 }
 
 function tokenize(text) {
-  if (text.length > MAX_TEXT || text.includes('\0')) throw new Error('command exceeds parser bounds');
+  if (text.length > MAX_COMMAND || text.includes('\0')) throw new Error('command exceeds parser bounds');
   const commands = [];
   let words = [];
   let word = null;
@@ -159,7 +167,7 @@ function tokenize(text) {
   }
   if (quote) throw new Error('unterminated quote');
   finish('');
-  if (commands.length > 256 || commands.reduce((sum, item) => sum + item.words.length, 0) > 4096) {
+  if (commands.length > MAX_COMMANDS || commands.reduce((sum, item) => sum + item.words.length, 0) > MAX_WORDS) {
     throw new Error('command exceeds parser bounds');
   }
   return commands;
