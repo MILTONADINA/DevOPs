@@ -37,6 +37,10 @@ const BLOCKED = [
   'rm -rf --no-preserve-root / ; true',
   'find / -name x -delete',
   'find / -exec rm -rf {} +',
+  // A path whose .. empties the resolved parts (exit 1 instead of 2 on bash 3.2 if the re-pack is unguarded).
+  'rm -rf /etc/..',
+  'rm -rf /usr/../etc/passwd',
+  'rm -rf /tmp/../etc',
   'rm -rf /etc/x',
   'rm -r -f /etc/x',
   'rm -f -R /opt/x',

@@ -143,18 +143,22 @@ fi
 # Collapse . and .. so ../ cannot climb out of the project while the path still
 # starts with the project root; paths compare by directory boundary, not prefix.
 normalise() {
-    local part out=() IFS=/
+    local part out=() IFS=/ had_noglob=0
+    [[ $- == *f* ]] && had_noglob=1
     set -f
     for part in $1; do
         # Empty and "." components add nothing. (An empty case pattern is
         # valid bash but breaks Semgrep's bash parser.)
         [[ -z "$part" || "$part" == "." ]] && continue
         case "$part" in
-            ..) if (( ${#out[@]} )); then unset 'out[${#out[@]}-1]'; out=("${out[@]}"); fi ;;
+            # The guarded re-pack: on bash 3.2 under set -u, "${out[@]}" of an emptied array is a fatal
+            # error that skips the ERR trap and exits 1.
+            ..) if (( ${#out[@]} )); then unset 'out[${#out[@]}-1]'; out=(${out[@]+"${out[@]}"}); fi ;;
             *) out+=("$part") ;;
         esac
     done
-    set +f
+    # Globbing goes back to how the caller had it.
+    (( had_noglob )) || set +f
     # Into NORMALISED, not printed: a $( ) per path forks once per word of a long command.
     printf -v NORMALISED '/%s' "${out[*]-}"
 }
