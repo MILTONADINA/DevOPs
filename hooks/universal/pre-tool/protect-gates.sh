@@ -9,10 +9,13 @@
 #   protect-gates.sh <path>               a file tool's target path (Write, Edit, ...)
 #   protect-gates.sh <command> --command  a Bash command (a heuristic; see docs/HOOKS.md)
 #
+# The value goes to protect-gates.mjs on stdin, not argv, so it is not limited by the argument size
+# (AC-31).
+#
 # Exit 0 allows the call; exit 2 blocks it.
 
 if [ "${2-}" = "--command" ]; then
-    node "$(dirname "$0")/protect-gates.mjs" "$1" --command
+    printf '%s' "$1" | node "$(dirname "$0")/protect-gates.mjs" --stdin --command
 else
-    node "$(dirname "$0")/protect-gates.mjs" "$1"
+    printf '%s' "$1" | node "$(dirname "$0")/protect-gates.mjs" --stdin
 fi

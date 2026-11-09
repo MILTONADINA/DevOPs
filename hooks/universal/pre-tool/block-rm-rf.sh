@@ -38,6 +38,27 @@ json_escape() {
     printf '%s' "$out"
 }
 
+# json_escape of at most 4096 characters of $1. json_escape takes time quadratic in its input, so a
+# 1 MB command would take minutes to log. A longer value is cut and marked with its length (AC-31).
+# Whether text $3 matches extended regex $2, with grep flags $1. The text goes through a pipe, not a
+# here-string: bash 3.2 writes a here-string to a temp file, and a temp file it cannot create would
+# read as no match. grep's own status decides (PIPESTATUS, so the printf's SIGPIPE when grep -q quits
+# early is ignored): 0 matches, 1 does not, anything else blocks (AC-31).
+matches() {
+    local status=0
+    printf '%s\n' "$3" | grep -q "$1" -e "$2" || status=${PIPESTATUS[1]}
+    [[ "$status" == 0 ]] && return 0
+    [[ "$status" == 1 ]] && return 1
+    echo "DevOPs RM BLOCK: grep failed with status $status while checking the command -- failing closed" >&2
+    exit 2
+}
+
+log_text() {
+    local s="$1"
+    if (( ${#s} > 4096 )); then s="${s:0:4096}...[${#s} chars]"; fi
+    json_escape "$s"
+}
+
 # Allowed deletion roots (relative or absolute paths within these are OK)
 PROJECT_ROOT="$(pwd)"
 ALLOWED_ROOTS=(
@@ -73,7 +94,9 @@ DESTRUCTIVE_PATTERNS=(
 # definition matches too. Like every pattern here, this reads the command text only: a fork bomb
 # built at run time is not caught.
 FORK_BOMB='(^|[^[:alnum:]_:])(function[[:space:]]+)?([[:alnum:]_:]+)[[:space:]]*([(][[:space:]]*[)])?[[:space:]]*[{][[:space:]]*\3([[:space:]]+[^;|{}]*)?[[:space:]]*[|][[:space:]]*\3([[:space:]]+[^;|{}]*)?&'
-if printf '%s' "$COMMAND" | tr '\n' ' ' | grep -qE "$FORK_BOMB"; then
+# The fork-bomb text is flattened first.
+flat_command="$(printf '%s' "$COMMAND" | tr '\n' ' ')"
+if matches -E "$FORK_BOMB" "$flat_command"; then
     echo "DevOPs RM BLOCK: fork bomb signature. Refused." >&2
     exit 2
 fi
@@ -81,7 +104,7 @@ fi
 is_destructive=false
 matched=""
 for p in "${DESTRUCTIVE_PATTERNS[@]}"; do
-    if echo "$COMMAND" | grep -qE "$p"; then
+    if matches -E "$p" "$COMMAND"; then
         is_destructive=true
         matched="$p"
         break
@@ -93,7 +116,7 @@ if [[ "$is_destructive" == "false" ]]; then
 fi
 
 # Special cases that are always blocked regardless of target
-if echo "$COMMAND" | grep -qE "rm[[:space:]]+-[^[:space:]]*[rf].*[[:space:]]/$|rm[[:space:]]+-[^[:space:]]*[rf].*[[:space:]]/[[:space:]]*$"; then
+if matches -E "rm[[:space:]]+-[^[:space:]]*[rf].*[[:space:]]/$|rm[[:space:]]+-[^[:space:]]*[rf].*[[:space:]]/[[:space:]]*$" "$COMMAND"; then
     echo "DevOPs RM BLOCK: 'rm -rf /' or equivalent. Absolutely not." >&2
     exit 2
 fi
@@ -132,7 +155,8 @@ normalise() {
         esac
     done
     set +f
-    printf '/%s' "${out[*]-}"
+    # Into NORMALISED, not printed: a $( ) per path forks once per word of a long command.
+    printf -v NORMALISED '/%s' "${out[*]-}"
 }
 inside() { [[ "$1" == "$2" || "$1" == "$2/"* ]]; }
 
@@ -140,17 +164,21 @@ inside() { [[ "$1" == "$2" || "$1" == "$2/"* ]]; }
 # This is heuristic — extract everything that looks like a path argument
 targets=$(echo "$COMMAND" | grep -oE '(/?[a-zA-Z0-9_./\-]+)' | grep -v '^-' || true)
 
+# The command's log text is escaped once, on the first in-project target, not once per target.
+# The hook runner blocks a hook that runs out of its time budget, so a slow decision cannot pass.
+command_log=""
 set -f
 for target in $targets; do
     # Resolve to a normalised absolute path
     if [[ "$target" == /* ]]; then
-        abs_target="$(normalise "$target")"
+        normalise "$target"; abs_target="$NORMALISED"
     else
-        abs_target="$(normalise "$PROJECT_ROOT/$target")"
+        normalise "$PROJECT_ROOT/$target"; abs_target="$NORMALISED"
     fi
 
     # Skip obvious non-paths
-    if [[ "$target" == "rm" || "$target" == "find" || ( ${#target} -lt 2 && "$target" != "." ) ]]; then
+    # One-character words are not paths, except . and / themselves: / is the root.
+    if [[ "$target" == "rm" || "$target" == "find" || ( ${#target} -lt 2 && "$target" != "." && "$target" != "/" ) ]]; then
         continue
     fi
 
@@ -175,7 +203,9 @@ for target in $targets; do
     if [[ "$protected" == "false" && "$in_allowed" == "false" ]] && inside "$abs_target" "$PROJECT_ROOT"; then
         # Within project but outside known transient dirs — allow with logging
         mkdir -p .workflow/state
-        echo "{\"ts\":$(date -u +%s),\"event\":\"destructive_in_project\",\"target\":\"$(json_escape "$abs_target")\",\"command\":\"$(json_escape "$COMMAND")\"}" >> .workflow/state/events.jsonl
+        [[ -n "$command_log" ]] || command_log="$(log_text "$COMMAND")"
+        [[ -n "${log_ts:-}" ]] || log_ts="$(date -u +%s)"
+        echo "{\"ts\":$log_ts,\"event\":\"destructive_in_project\",\"target\":\"$(log_text "$abs_target")\",\"command\":\"$command_log\"}" >> .workflow/state/events.jsonl
         continue
     fi
 
@@ -192,7 +222,7 @@ $(printf '  %s\n' "${ALLOWED_ROOTS[@]}")
 If you need to delete this path, do it outside the agent session.
 EOF
         mkdir -p .workflow/state
-        echo "{\"ts\":$(date -u +%s),\"event\":\"rm_blocked\",\"target\":\"$(json_escape "$abs_target")\"}" >> .workflow/state/events.jsonl
+        echo "{\"ts\":$(date -u +%s),\"event\":\"rm_blocked\",\"target\":\"$(log_text "$abs_target")\"}" >> .workflow/state/events.jsonl
         exit 2
     fi
 done

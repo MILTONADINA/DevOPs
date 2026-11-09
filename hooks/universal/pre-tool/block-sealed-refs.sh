@@ -78,9 +78,10 @@ cat >&2 <<EOF
 EOF
 
 if [[ "$(jq -r '.logAllowed' <<< "$RESULT")" == true ]]; then
+    # The command comes on stdin (-R -s), not argv, so a command longer than an argument is logged (AC-31).
     mkdir -p .workflow/state &&
-    jq -cn --arg ts "$(date -u +%s)" --argjson ref "$SEALED_REF_JSON" --arg pattern "$REASON" --arg command "$COMMAND" \
-        '{ts:($ts|tonumber),event:"sealed_ref_block",ref:$ref,pattern:$pattern,command:$command}' \
+    printf '%s' "$COMMAND" | jq -cRs --arg ts "$(date -u +%s)" --argjson ref "$SEALED_REF_JSON" --arg pattern "$REASON" \
+        '. as $command | {ts:($ts|tonumber),event:"sealed_ref_block",ref:$ref,pattern:$pattern,command:$command}' \
         >> .workflow/state/events.jsonl 2>/dev/null || true
 fi
 exit 2

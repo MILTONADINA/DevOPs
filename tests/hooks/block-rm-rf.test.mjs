@@ -30,6 +30,13 @@ function decide(command, base = FIXTURES) {
 }
 
 const BLOCKED = [
+  // The root followed by more text: a one-character / is the root, not a word to skip (#426).
+  'rm -rf / ; echo hi',
+  'rm -rf / && echo done',
+  'rm -rf /;',
+  'rm -rf --no-preserve-root / ; true',
+  'find / -name x -delete',
+  'find / -exec rm -rf {} +',
   'rm -rf /etc/x',
   'rm -r -f /etc/x',
   'rm -f -R /opt/x',
