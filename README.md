@@ -321,11 +321,11 @@ See `docs/PLAYBOOK.md` for the full operational guide.
 
 DevOps links to Agile Graph (MIT, https://github.com/MILTONADINA/agile-graph) when it
 is installed. Agile Graph indexes your project for an AI client and keeps engineering
-memory. Install the engine version whose tools DevOps pins (0.6.0 today) on
+memory. Install an engine version whose tools DevOps pins (0.6.0 or 0.7.0 today) on
 Node 24 to 26, then run `devops init`:
 
 ```bash
-npm install -g @agile-graph/engine@0.6.0      # or as a devDependency of the project
+npm install -g @agile-graph/engine@0.7.0      # or as a devDependency of the project
 devops init                                   # registers the MCP server in .mcp.json
 GRAPH_ENGINE_NO_FEEDBACK=1 agile-graph -C . init --cloud-mcp --export 'src/**'
 GRAPH_ENGINE_NO_FEEDBACK=1 agile-graph -C . index --lexical
