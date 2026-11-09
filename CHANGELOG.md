@@ -8,6 +8,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.8.2] — 2026-11-09
+
 ### Fixed
 
 - The Agile Graph link replaces `.mcp.json` whole through a temp file with a unique name, then a rename, instead of truncating the file and writing it in place. A run cut short can no longer leave a truncated `.mcp.json` that loses the user's other servers; a private `.mcp.json` keeps its permissions, and a `.mcp.json.tmp` the user has is left alone (#426, specs/graph/agile-graph-link.md AC-4).
