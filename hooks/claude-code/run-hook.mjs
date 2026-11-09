@@ -12,7 +12,9 @@
 //   command  the hook gets tool_input.command as one argument;
 //   file     the hook runs once for each distinct non-empty one of tool_input.file_path,
 //            tool_input.notebook_path, tool_input.path and tool_response.filePath, with that
-//            string as its one argument.
+//            string as its one argument. For a Glob call that is also tool_input.pattern (a
+//            path glob); for a Grep call it is tool_input.glob (a file filter). Grep's
+//            tool_input.pattern is a regex, not a path, and is never passed.
 // An absent or empty field inside tool_input means the call has nothing to check: exit 0, and the
 // hook does not run. A missing tool_input itself is different: a pre command or file hook fails closed.
 //
@@ -39,6 +41,7 @@ const HOOKS = [
   'block-rm-rf.sh',
   'block-new-dependency.sh',
   'block-secrets.sh',
+  'block-secrets-bash.sh',
   'protect-gates.sh',
   'protect-gates-bash.sh',
   'gitleaks-scan.sh',
@@ -46,6 +49,13 @@ const HOOKS = [
 
 const isObject = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 const absent = value => value === undefined || value === null || value === '';
+// The extra file-mode field a search call names: Glob's pattern is a path glob, Grep's glob is a file
+// filter. Grep's pattern is a regex, so it is never a path and is not read here.
+const globField = (toolName, toolInput) => {
+  if (toolName === 'Glob') return toolInput.pattern;
+  if (toolName === 'Grep') return toolInput.glob;
+  return undefined;
+};
 const isFile = file => { try { return fs.statSync(file).isFile(); } catch { return false; } };
 const isDirectory = dir => { try { return fs.statSync(dir).isDirectory(); } catch { return false; } };
 
@@ -133,7 +143,7 @@ function runHook() {
   } else {
     const fields = input === 'command'
       ? [toolInput.command]
-      : [toolInput.file_path, toolInput.notebook_path, toolInput.path, toolResponse.filePath];
+      : [toolInput.file_path, toolInput.notebook_path, toolInput.path, toolResponse.filePath, globField(payload.tool_name, toolInput)];
     const present = fields.filter(value => !absent(value));
     if (present.length === 0) return 0; // nothing in this call for the hook to check
     if (present.some(value => typeof value !== 'string')) {
