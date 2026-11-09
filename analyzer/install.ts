@@ -431,7 +431,8 @@ const CLAUDE_HOOK_WIRING: Record<string, HookWiring> = {
   'block-prod-write.sh': { event: 'PreToolUse', matcher: 'Bash', command: runHook('pre', 'block-prod-write.sh', 'command') },
   'block-rm-rf.sh': { event: 'PreToolUse', matcher: 'Bash', command: runHook('pre', 'block-rm-rf.sh', 'command') },
   'block-new-dependency.sh': { event: 'PreToolUse', matcher: 'Bash', command: runHook('pre', 'block-new-dependency.sh', 'command') },
-  'block-secrets.sh': { event: 'PreToolUse', matcher: 'Read|Write|Edit|MultiEdit|NotebookEdit', command: runHook('pre', 'block-secrets.sh', 'file') },
+  'block-secrets.sh': { event: 'PreToolUse', matcher: 'Read|Write|Edit|MultiEdit|NotebookEdit|Grep|Glob', command: runHook('pre', 'block-secrets.sh', 'file') },
+  'block-secrets-bash.sh': { event: 'PreToolUse', matcher: 'Bash', command: runHook('pre', 'block-secrets-bash.sh', 'command') },
   'protect-gates.sh': { event: 'PreToolUse', matcher: 'Write|Edit|MultiEdit|NotebookEdit', command: runHook('pre', 'protect-gates.sh', 'file') },
   'protect-gates-bash.sh': { event: 'PreToolUse', matcher: 'Bash', command: runHook('pre', 'protect-gates-bash.sh', 'command') },
   'gitleaks-scan.sh': { event: 'PostToolUse', matcher: 'Write|Edit|MultiEdit', command: runHook('post', 'gitleaks-scan.sh', 'file') },
@@ -781,6 +782,17 @@ function main() {
   // AC-28: both gate-protection hooks call protect-gates.mjs beside them.
   if (hooks.some(h => h === 'universal/pre-tool/protect-gates.sh' || h === 'universal/pre-tool/protect-gates-bash.sh')) {
     const companion = 'protect-gates.mjs';
+    const src = path.join(DEVOPS_ROOT, 'hooks/universal/pre-tool', companion);
+    if (!fs.existsSync(src) || !fs.statSync(src).isFile()) {
+      console.error(`required hook companion missing: ${companion}`);
+      process.exit(1);
+    }
+    if (!flags.dryRun) copy(PROJECT_ROOT, src, path.join(PROJECT_ROOT, '.claude/hooks', companion));
+  }
+  // AC-30: the Bash secret guard runs block-secrets.sh beside it, so init copies that even when
+  // the profile does not list it.
+  if (hooks.includes('universal/pre-tool/block-secrets-bash.sh') && !hooks.includes('universal/pre-tool/block-secrets.sh')) {
+    const companion = 'block-secrets.sh';
     const src = path.join(DEVOPS_ROOT, 'hooks/universal/pre-tool', companion);
     if (!fs.existsSync(src) || !fs.statSync(src).isFile()) {
       console.error(`required hook companion missing: ${companion}`);

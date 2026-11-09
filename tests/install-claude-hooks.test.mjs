@@ -29,7 +29,7 @@ const uninstall = (dir, ...args) => devops(dir, 'uninstall', ...args);
 const ALL_HOOKS = [
   'universal/pre-tool/block-new-dependency.sh', 'universal/pre-tool/block-prod-write.sh',
   'universal/pre-tool/block-rm-rf.sh', 'universal/pre-tool/block-sealed-refs.sh',
-  'universal/pre-tool/block-secrets.sh', 'universal/pre-tool/protect-gates.sh', 'universal/pre-tool/protect-gates-bash.sh', 'universal/pre-tool/budget-brake.sh',
+  'universal/pre-tool/block-secrets.sh', 'universal/pre-tool/block-secrets-bash.sh', 'universal/pre-tool/protect-gates.sh', 'universal/pre-tool/protect-gates-bash.sh', 'universal/pre-tool/budget-brake.sh',
   'universal/pre-tool/client-boundary.sh', 'universal/pre-tool/deploy-gate.sh',
   'universal/pre-tool/external-content-boundary.sh', 'universal/pre-tool/loop-detection.sh',
   'universal/post-tool/auto-format.sh', 'universal/post-tool/gitleaks-scan.sh',
@@ -41,7 +41,7 @@ const cmd = command => ({ type: 'command', command });
 const RUN = (phase, name, input) => cmd(`node "\${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/run-hook.mjs" ${phase} ${name} ${input}${phase === 'pre' ? ' || exit 2' : ''}`);
 const PLAIN = name => cmd(`cd "\${CLAUDE_PROJECT_DIR:-.}" && bash .claude/hooks/${name} || true`);
 const BASH = 'Bash';
-const READ_WRITE = 'Read|Write|Edit|MultiEdit|NotebookEdit';
+const READ_WRITE = 'Read|Write|Edit|MultiEdit|NotebookEdit|Grep|Glob';
 const WRITES = 'Write|Edit|MultiEdit';
 const WRITE_GATES = 'Write|Edit|MultiEdit|NotebookEdit';
 // What init writes into an empty project: each group in the order the profile lists its hooks.
@@ -52,6 +52,7 @@ const EXPECTED_HOOKS = {
       RUN('pre', 'block-prod-write.sh', 'command'),
       RUN('pre', 'block-rm-rf.sh', 'command'),
       RUN('pre', 'block-sealed-refs.sh', 'stdin'),
+      RUN('pre', 'block-secrets-bash.sh', 'command'),
       RUN('pre', 'protect-gates-bash.sh', 'command'),
       RUN('pre', 'deploy-gate.sh', 'stdin'),
     ] },
@@ -63,7 +64,7 @@ const EXPECTED_HOOKS = {
 };
 const WIRED_COMMANDS = Object.values(EXPECTED_HOOKS).flatMap(groups => groups.flatMap(g => g.hooks.map(h => h.command)));
 const WIRED_FILES = ['block-new-dependency.sh', 'block-prod-write.sh', 'block-rm-rf.sh', 'block-sealed-refs.sh',
-  'block-secrets.sh', 'deploy-gate.sh', 'gitleaks-scan.sh', 'load-baton.sh', 'protect-gates-bash.sh', 'protect-gates.sh', 'run-hook.mjs'];
+  'block-secrets.sh', 'block-secrets-bash.sh', 'deploy-gate.sh', 'gitleaks-scan.sh', 'load-baton.sh', 'protect-gates-bash.sh', 'protect-gates.sh', 'run-hook.mjs'];
 
 function withProject(fn) {
   const dir = realpathSync(mkdtempSync(path.join(tmpdir(), 'claude-hooks-418-')));
@@ -114,7 +115,7 @@ test(`init wires the hooks it can wire into an empty project's settings.json (${
     // Every copied hook is either wired or named with its reason; none is unmapped.
     assert.doesNotMatch(r.stdout, /no mapping/);
     for (const name of ALL_HOOKS.map(h => path.basename(h))) assert.match(r.stdout, new RegExp(name.replace(/\./g, '\\.')));
-    assert.match(r.stdout, /wired 10 hooks/);
+    assert.match(r.stdout, /wired 11 hooks/);
     assert.doesNotMatch(r.stdout, /do it by hand|wire them/);
   });
 });
@@ -389,7 +390,7 @@ test(`a command already in settings.json is left alone and not recorded (${SPEC}
     const r = init(dir);
     assert.equal(r.status, 0, r.stdout + r.stderr);
     assert.match(r.stdout, /^  already wired: load-baton\.sh \(SessionStart\)$/m);
-    assert.match(r.stdout, /wired 9 hooks/, 'the other hooks are still added');
+    assert.match(r.stdout, /wired 10 hooks/, 'the other hooks are still added');
     const record = readRecord(dir).claude_hooks;
     assert.deepEqual(record.map(e => e.command).sort(), WIRED_COMMANDS.filter(c => c !== PLAIN('load-baton.sh').command).sort(),
       'only the entries init added are recorded');
@@ -508,7 +509,7 @@ test(`a dry run says what it would wire and changes nothing (${SPEC}#ac-27)`, ()
     const before = snapshot(dir);
     const r = init(dir, '--dry-run');
     assert.equal(r.status, 0, r.stdout + r.stderr);
-    assert.match(r.stdout, /would wire 10 hooks/);
+    assert.match(r.stdout, /would wire 11 hooks/);
     assert.match(r.stdout, /would add .*SessionStart.*load-baton\.sh/);
     assert.deepEqual(snapshot(dir), before, 'nothing was written');
   });
@@ -572,6 +573,23 @@ test(`a failed settings.json write removes only the temp file it created (${SPEC
   }
 });
 
+test(`a profile that lists only the Bash secret guard still gets block-secrets.sh beside it (${SPEC}#ac-30)`, () => {
+  const dir = realpathSync(mkdtempSync(path.join(tmpdir(), 'claude-hooks-ac30-')));
+  try {
+    mkdirSync(path.join(dir, '.git'));
+    mkdirSync(path.join(dir, '.workflow'));
+    writeFileSync(path.join(dir, '.workflow/profile.yml'), 'skills:\nhooks:\n  - universal/pre-tool/block-secrets-bash.sh\nsubagents:\n');
+    writeFileSync(path.join(dir, '.gitignore'), 'node_modules/\n');
+    assert.equal(init(dir).status, 0);
+    assert.ok(statSync(path.join(dir, '.claude/hooks/block-secrets-bash.sh')).isFile(), 'the guard is copied');
+    assert.ok(statSync(path.join(dir, '.claude/hooks/block-secrets.sh')).isFile(), 'the guard runs block-secrets.sh beside it');
+    const bash = readSettings(dir).hooks.PreToolUse.find(g => g.matcher === 'Bash');
+    assert.ok(bash.hooks.some(h => h.command === RUN('pre', 'block-secrets-bash.sh', 'command').command), 'the guard is wired on Bash');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test(`init keeps the indentation and trailing newline of settings.json, and uses 2 spaces for a new file (${SPEC}#ac-27)`, () => {
   for (const [indent, newline] of [['    ', '\n'], ['\t', '\n'], ['  ', ''], ['\t', '']]) {
     withProject(dir => {
@@ -617,7 +635,7 @@ test(`a safe integer and a digit inside a string do not stop init (${SPEC}#ac-27
     writeFileSync(settingsPath(dir), '{\n  "maxTokens": 9007199254740991,\n  "label": "9007199254740993"\n}\n');
     const r = init(dir);
     assert.equal(r.status, 0, r.stdout + r.stderr);
-    assert.match(r.stdout, /wired 10 hooks/);
+    assert.match(r.stdout, /wired 11 hooks/);
     assert.equal(readSettings(dir).maxTokens, 9007199254740991);
   });
 });

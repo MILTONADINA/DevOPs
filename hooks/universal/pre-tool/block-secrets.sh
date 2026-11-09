@@ -6,9 +6,6 @@
 
 set -euo pipefail
 
-PATH_ARG="${1:-}"
-OPERATION="${2:-read}"
-
 # Escapes $1 for use inside a JSON string literal: backslash, quote, and control characters
 # (RFC 8259). A character loop, not ${var//pat/rep}: bash 3.2 (macOS /bin/bash) mangles quoted
 # replacements. Bytes 0x80 and above pass through unchanged, as UTF-8 (bash 3.2 reports them as
@@ -83,23 +80,35 @@ ALLOW=(
     ".env.sample"
 )
 
-# Check allow list first
-# Match case-insensitively: macOS and Windows file systems open .ENV or ID_RSA as
-# the same file. An example file is allowed only when it is the file named (its
-# basename), never because the name appears somewhere in a longer path, and never
-# through a .. component (.env.example/../.env names .env).
-LOWER="$(printf '%s' "$PATH_ARG" | tr '[:upper:]' '[:lower:]')"
-BASE="${LOWER##*/}"
-for a in "${ALLOW[@]}"; do
-    if [[ "$BASE" == "$a" && "/$LOWER/" != *"/../"* ]]; then
-        exit 0
-    fi
-done
+secret_restore_case() { if [[ "$1" == 0 ]]; then shopt -u nocasematch; fi; }
 
-# Check sensitive patterns
-for p in "${PATTERNS[@]}"; do
-    if [[ "$LOWER" == *"$p"* ]]; then
-        cat >&2 <<EOF
+# secret_check PATH [OPERATION]: returns 0 to allow and 2 to block, after printing the reason.
+# block-secrets-bash.sh sources this file and calls it once per word, so a long command does not
+# start one bash per word.
+secret_check() {
+    local PATH_ARG="${1:-}" OPERATION="${2:-read}" LOWER BASE a p e
+    # Check allow list first
+    # Match case-insensitively: macOS and Windows file systems open .ENV or ID_RSA as
+    # the same file. An example file is allowed only when it is the file named (its
+    # basename), never because the name appears somewhere in a longer path, and never
+    # through a .. component (.env.example/../.env names .env).
+    # nocasematch makes every [[ == ]] below case-insensitive without a tr subshell per call
+    # (bash 3.2 has no ${var,,}). It is put back as it was before returning.
+    local had_case=0
+    if shopt -q nocasematch; then had_case=1; fi
+    shopt -s nocasematch
+    LOWER="$PATH_ARG"
+    BASE="${LOWER##*/}"
+    for a in "${ALLOW[@]}"; do
+        if [[ "$BASE" == "$a" && "/$LOWER/" != *"/../"* ]]; then
+            secret_restore_case "$had_case"; return 0
+        fi
+    done
+
+    # Check sensitive patterns
+    for p in "${PATTERNS[@]}"; do
+        if [[ "$LOWER" == *"$p"* ]]; then
+            cat >&2 <<EOF
 DevOPs SECRET BLOCK: refused to $OPERATION $PATH_ARG
 This file matches sensitive pattern: $p
 
@@ -111,21 +120,29 @@ If you legitimately need to access secrets, use a vault tool:
 
 Never commit secrets to git. Never paste them into chat. Use the vault.
 EOF
-        # Log the attempt. The path and operation are caller-supplied, so they are escaped: a quote,
-        # backslash or newline in them must not break the line or add keys (issue #426).
-        mkdir -p .workflow/state
-        printf '{"ts":%s,"event":"secret_block","path":"%s","operation":"%s"}\n' \
-            "$(date -u +%s)" "$(json_escape "$PATH_ARG")" "$(json_escape "$OPERATION")" >> .workflow/state/events.jsonl
-        exit 2
-    fi
-done
+            # Log the attempt. The path and operation are caller-supplied, so they are escaped: a quote,
+            # backslash or newline in them must not break the line or add keys (issue #426).
+            mkdir -p .workflow/state
+            printf '{"ts":%s,"event":"secret_block","path":"%s","operation":"%s"}\n' \
+                "$(date -u +%s)" "$(json_escape "$PATH_ARG")" "$(json_escape "$OPERATION")" >> .workflow/state/events.jsonl
+            secret_restore_case "$had_case"; return 2
+        fi
+    done
 
-# Check extension blocklist
-for e in "${EXT_BLOCK[@]}"; do
-    if [[ "$LOWER" == *"$e" ]]; then
-        echo "DevOPs SECRET BLOCK: refused to $OPERATION $PATH_ARG (blocked extension: $e)" >&2
-        exit 2
-    fi
-done
+    # Check extension blocklist
+    for e in "${EXT_BLOCK[@]}"; do
+        if [[ "$LOWER" == *"$e" ]]; then
+            echo "DevOPs SECRET BLOCK: refused to $OPERATION $PATH_ARG (blocked extension: $e)" >&2
+            secret_restore_case "$had_case"; return 2
+        fi
+    done
 
-exit 0
+    secret_restore_case "$had_case"; return 0
+}
+
+# Run as a hook (not sourced): check $1.
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+    rc=0
+    secret_check "${1:-}" "${2:-read}" || rc=$?
+    exit "$rc"
+fi

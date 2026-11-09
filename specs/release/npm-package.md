@@ -562,6 +562,14 @@ IF the install manifest's `claude_hooks` names a hook file whose name starts wit
 
 **Verified by:** `tests/install-manifest.test.mjs`.
 
+### AC-30
+
+WHEN an agent's Grep or Glob call names a sensitive path, judged as `block-secrets.sh` judges a file path (a Glob call's `pattern`, and a Grep call's `glob`), THE SYSTEM SHALL block the call with exit 2. A Grep call's `pattern` is a regex, not a path, and SHALL NOT be judged. WHEN an agent's Bash command names a word that `block-secrets.sh` refuses, once the command is split into words as a shell splits it (quotes respected and stripped; a backslash escapes the next character and a backslash-newline is removed; unquoted whitespace and `; | & < > ( )` and backticks separate words; a word that still contains whitespace is skipped as a quoted message unless it holds `$(` or a backtick, when each piece of it is checked with its quotes and backslashes removed; a command with a quote left open is also checked with every quote and backslash removed), THE SYSTEM SHALL block the command with exit 2. IF `awk` is not on PATH or fails, THE SYSTEM SHALL block the command. The Bash check is a convenience guard, not a security boundary: it reads the command text only, so it does not catch a path built by shell expansion (`$(...)`, a variable, a glob such as `.en?`) or a secret that a script, an interpreter or a program opens itself.
+
+**Given** a project that `devops init` wrote **When** `run-hook.mjs` runs `block-secrets.sh` on a Glob call whose `pattern` is `**/.env`, or on a Grep call whose `glob` is `*.pem`, **Then** it exits 2, and on a Glob call whose `pattern` is `src/**/*.ts`, or a Grep call whose `pattern` is `id_rsa` with no `glob` or `path`, it exits 0. **And** `block-secrets-bash.sh`, given `cat .env`, `cat ./config/.ENV`, `less ~/.ssh/id_rsa`, `cp a.pem b`, `cat .env|wc`, `cat <.env`, `(cat .env)`, `cat "unclosed .env`, `cat .e''nv '`, `echo "$(cat .env)"` or ``echo `cat server.key` ``, exits 2, and given `cat .env.example`, `ls src`, `git commit -m "fix .env loading"` or `echo hi`, exits 0. **And** a profile that lists `block-secrets-bash.sh` without `block-secrets.sh` gets `block-secrets.sh` copied beside it, and init wires the Bash command for the guard. **And** `docs/HOOKS.md` states that the Bash check is a convenience guard and lists what it does not catch.
+
+**Verified by:** `tests/hooks/block-secrets-bash.test.mjs`, `tests/hooks/run-hook.test.mjs`, `tests/install-claude-hooks.test.mjs`.
+
 ## Out of scope
 
 - Publishing `runtime/` (`@miltonadina/devops-runtime` stays `private`).

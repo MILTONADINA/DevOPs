@@ -284,11 +284,31 @@ test(`the root is CLAUDE_PROJECT_DIR, else the git top level, and an unresolvabl
   assert.match(unresolved.stderr, /cannot resolve the project root .* -- failing closed/);
 });
 
+test(`file mode passes a Glob pattern and a Grep glob, never a Grep regex (${SPEC}#ac-30)`, () => {
+  const dir = project({
+    'block-secrets.sh': 'case "$1" in *.env*|*.pem|*id_rsa*) exit 2;; esac; exit 0',
+  });
+  const cases = [
+    ['pre', { tool_name: 'Glob', tool_input: { pattern: '**/.env' } }, 2],
+    ['pre', { tool_name: 'Glob', tool_input: { pattern: 'src/**/*.ts' } }, 0],
+    ['pre', { tool_name: 'Glob', tool_input: { pattern: '*.pem', path: '/p' } }, 2],
+    ['pre', { tool_name: 'Grep', tool_input: { pattern: 'id_rsa', glob: '*.pem' } }, 2],
+    ['pre', { tool_name: 'Grep', tool_input: { pattern: 'id_rsa' } }, 0],
+    ['pre', { tool_name: 'Grep', tool_input: { pattern: 'id_rsa', path: 'src' } }, 0],
+    ['pre', { tool_name: 'Grep', tool_input: { pattern: 'src', glob: '*.ts' } }, 0],
+    ['pre', { tool_name: 'Read', tool_input: { file_path: '/p/.env' } }, 2],
+  ];
+  for (const [phase, body, expected] of cases) {
+    const r = runner([phase, 'block-secrets.sh', 'file'], { root: dir, input: JSON.stringify(body) });
+    assert.equal(r.status, expected, `${JSON.stringify(body)}: ${r.stderr}`);
+  }
+});
+
 // Every hook under hooks/universal/, as a profile lists it (the wiring table covers each one).
 const PROFILE_HOOKS = [
   'universal/pre-tool/block-new-dependency.sh', 'universal/pre-tool/block-prod-write.sh',
   'universal/pre-tool/block-rm-rf.sh', 'universal/pre-tool/block-sealed-refs.sh',
-  'universal/pre-tool/block-secrets.sh', 'universal/pre-tool/protect-gates.sh', 'universal/pre-tool/protect-gates-bash.sh', 'universal/pre-tool/budget-brake.sh',
+  'universal/pre-tool/block-secrets.sh', 'universal/pre-tool/block-secrets-bash.sh', 'universal/pre-tool/protect-gates.sh', 'universal/pre-tool/protect-gates-bash.sh', 'universal/pre-tool/budget-brake.sh',
   'universal/pre-tool/client-boundary.sh', 'universal/pre-tool/deploy-gate.sh',
   'universal/pre-tool/external-content-boundary.sh', 'universal/pre-tool/loop-detection.sh',
   'universal/post-tool/auto-format.sh', 'universal/post-tool/gitleaks-scan.sh',

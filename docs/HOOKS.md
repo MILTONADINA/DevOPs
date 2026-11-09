@@ -107,11 +107,14 @@ so Claude Code shows the leak.
 | `block-prod-write.sh` | `PreToolUse` | `Bash` | command |
 | `block-rm-rf.sh` | `PreToolUse` | `Bash` | command |
 | `block-new-dependency.sh` | `PreToolUse` | `Bash` | command |
-| `block-secrets.sh` | `PreToolUse` | `Read\|Write\|Edit\|MultiEdit\|NotebookEdit` | file |
+| `block-secrets.sh` | `PreToolUse` | `Read\|Write\|Edit\|MultiEdit\|NotebookEdit\|Grep\|Glob` | file |
+| `block-secrets-bash.sh` | `PreToolUse` | `Bash` | command |
 | `protect-gates.sh` | `PreToolUse` | `Write\|Edit\|MultiEdit\|NotebookEdit` | file |
 | `protect-gates-bash.sh` | `PreToolUse` | `Bash` | command |
 | `gitleaks-scan.sh` | `PostToolUse` | `Write\|Edit\|MultiEdit` | file |
 | `load-baton.sh` | `SessionStart` | none | (plain command) |
+
+`block-secrets.sh` is run for a Grep call's `glob` and a Glob call's `pattern` as well as the file fields. A Grep call's `pattern` is a regex and is not checked. `block-secrets-bash.sh` is a convenience guard, not a security boundary. It splits the command text into words the way a shell does: quotes are stripped, a backslash escapes the next character, a backslash-newline is removed, and unquoted whitespace, `; | & < > ( )` and backticks separate words. A word that still holds whitespace is skipped as a quoted message, unless it holds `$(` or a backtick, when each piece of it is checked with its quotes and backslashes removed (they belong to the inner shell). A command with a quote left open is also checked with every quote and backslash removed. Each word goes through the same check as `block-secrets.sh`. The hook needs `awk`, and blocks when `awk` is missing or fails. It reads the command text only and runs nothing from it, so it does not catch a path built by shell expansion (`cat $(echo .e)nv`), a path held in a variable, a glob such as `cat .en?`, or a secret read by a script, by an interpreter given the command as a string (`sh -c`), or by a program that opens the file itself. It also reads a heredoc's body as words, so a heredoc that names `.env` outside quotes is refused; quote the text or write the file with the Write tool. The split is one `awk` pass and the check runs in the same shell, so a command of 20000 words is decided in about a second.
 
 `load-baton.sh` is named as `cd "${CLAUDE_PROJECT_DIR:-.}" && bash .claude/hooks/load-baton.sh || true`
 and has no matcher. The `cd` makes it read the project root's baton, and create `.workflow/` only there.
