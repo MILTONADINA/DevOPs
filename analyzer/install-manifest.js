@@ -21,7 +21,9 @@ import { createHash, randomBytes } from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { PIN_TARGET } from './agile-graph.js';
-import { UnsafeWriteError, assertInside, mkdirInside, present, writeInside } from './safe-write.js';
+import { UnsafeWriteError, assertInside, mkdirInside, present, replaceWholeUnique, writeInside } from './safe-write.js';
+
+export { replaceWholeUnique };
 
 export const MANIFEST = '.workflow/state/install-manifest.json';
 export const ORIGINALS = '.workflow/state/originals';
@@ -178,56 +180,6 @@ export function replaceWhole(base, target, bytes, { exclusive = false, temp = `$
     fs.linkSync(tempFile, file);
     fs.unlinkSync(tempFile);
   } else fs.renameSync(tempFile, file);
-}
-
-/**
- * Writes `bytes` over `target` whole, as replaceWhole does, but through a temp file this call
- * creates exclusively (`wx`) under a name with the pid and random bytes, so a `.tmp` file that is
- * already in the folder is never read, overwritten or removed. The new file keeps the old one's
- * permissions. When the write fails, only the temp file this call created is removed.
- */
-export function replaceWholeUnique(base, target, bytes) {
-  const file = path.join(base, target);
-  assertInside(base, file);
-  let mode;
-  try {
-    const stat = fs.lstatSync(file);
-    if (stat.isFile()) mode = stat.mode & 0o7777;
-  } catch {
-    /* no file yet: the default mode */
-  }
-  mkdirInside(base, path.dirname(file));
-  let temp = null;
-  let fd = null;
-  for (let attempt = 0; fd === null; attempt++) {
-    const name = path.join(path.dirname(file), `.${path.basename(file)}.${process.pid}.${randomBytes(8).toString('hex')}.tmp`);
-    try {
-      fd = fs.openSync(name, 'wx', mode ?? 0o644);
-      temp = name;
-    } catch (error) {
-      if (error.code !== 'EEXIST' || attempt >= 9) throw error;
-    }
-  }
-  let closed = false;
-  try {
-    if (!fs.fstatSync(fd).isFile()) throw new UnsafeWriteError(`refusing to write to a non-regular file: ${target}`);
-    fs.writeFileSync(fd, bytes);
-    if (mode !== undefined) fs.fchmodSync(fd, mode);
-    fs.fsyncSync(fd);
-    closed = true;
-    fs.closeSync(fd);
-    fs.renameSync(temp, file);
-    temp = null;
-  } finally {
-    if (!closed) {
-      try {
-        fs.closeSync(fd);
-      } catch {
-        /* already closed */
-      }
-    }
-    if (temp !== null) fs.rmSync(temp, { force: true });
-  }
 }
 
 /**

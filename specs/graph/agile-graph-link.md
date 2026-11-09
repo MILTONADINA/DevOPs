@@ -223,6 +223,11 @@ on `PATH`. With `--dry-run` the link writes nothing.
 be parsed, or a pin file that already exists **When** the link runs **Then** the
 existing entry, the other servers, the unparsable file and the existing pins are left
 as they were.
+When the link adds its entry, the system shall replace `.mcp.json` whole: it writes the new
+text to a temp file it creates exclusively under a unique name beside `.mcp.json`, then
+renames it over the old file, keeping the old file's permissions. A run cut short leaves the
+old `.mcp.json` or the new one, never a truncated one, and a `.mcp.json.tmp` the user has is
+not read, overwritten or removed (#426).
 
 **Verified by:** `tests/agile-graph-link.test.mjs` (`#ac-4`).
 
