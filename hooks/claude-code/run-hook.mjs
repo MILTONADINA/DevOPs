@@ -9,23 +9,28 @@
 //
 // Claude Code sends the tool call as JSON on stdin. <input> says what the hook takes:
 //   stdin    the hook gets --payload-stdin and the raw stdin bytes;
-//   command  the hook gets tool_input.command as one argument;
+//   command  the hook gets tool_input.command as its one argument ($1);
 //   file     the hook runs once for each distinct non-empty one of tool_input.file_path,
 //            tool_input.notebook_path, tool_input.path and tool_response.filePath, with that
-//            string as its one argument. For a Glob call that is also tool_input.pattern (a
+//            string as its one argument ($1). For a Glob call that is also tool_input.pattern (a
 //            path glob); for a Grep call it is tool_input.glob (a file filter). Grep's
 //            tool_input.pattern is a regex, not a path, and is never passed.
+//   The value of a command or file input is not put on argv: an argument is capped at 128 KB on
+//   Linux (MAX_ARG_STRLEN), and a command can be longer. It goes to bash on stdin, which sets $1
+//   from it and sources the hook, so $0 is still the hook's path and `dirname "$0"` still works.
+//   A value holding a NUL byte cannot be passed that way, and fails closed in pre.
 // An absent or empty field inside tool_input means the call has nothing to check: exit 0, and the
 // hook does not run. A missing tool_input itself is different: a pre command or file hook fails closed.
 //
-// pre: exit 0 passes and exit 2 blocks. The first non-zero result from any run decides. Anything
+// pre: exit 0 passes and exit 2 blocks. The first non-zero result from any run decides. All the pre runs
+// of one call get 30 s together; a run still going then is killed and the call fails closed. Anything
 // else (a signal, a missing hook, unparseable stdin, an unresolvable root, an error thrown while
 // running) fails closed: exit 2 with "failing closed" on stderr.
 // post: always exit 0, except gitleaks-scan.sh's exit 2, which passes through so Claude Code
 // shows the leak. Any other non-zero hook exit is printed to stderr.
 //
-// The hook runs with spawnSync and no shell, so its argument is never parsed by one.
-// Node only, no dependencies.
+// The hook runs with spawnSync. bash reads a command or file value from stdin as data (it runs no
+// shell over it), so the value is never parsed by a shell. Node only, no dependencies.
 
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -78,14 +83,51 @@ function projectRoot() {
   return path.resolve(git.stdout.trim());
 }
 
+// Bash reads the value up to a NUL byte from stdin, sets "$1" from it, then sources the hook with
+// "$0" set to the hook's path, so the hook sees the same $1 and $0 it would see from argv.
+const VALUE_FROM_STDIN = 'IFS= read -r -d "" __devops_arg; set -- "$__devops_arg"; unset __devops_arg; . "$0"';
+
 // Runs the hook once with one argument. Returns its exit code under the rules in the header.
+// A pre hook that runs past Claude Code's hook timeout (60 s or more) lets the tool call through, so
+// run-hook.mjs gives all the pre runs of one call 30 s together and fails closed when they use it up.
+// DEVOPS_HOOK_BUDGET_MS may lower the budget (tests do), never raise it: a lower budget only blocks
+// sooner. A helper a hook started may outlive the hook; it can no longer change the decision.
+const PRE_BUDGET_MS = 30_000;
+// A hook's message may quote a long command, so its output may be large.
+const OUTPUT_LIMIT = 64 * 1024 * 1024;
+const preBudgetMs = () => {
+  const lowered = Number(process.env.DEVOPS_HOOK_BUDGET_MS);
+  return Number.isInteger(lowered) && lowered > 0 ? Math.min(lowered, PRE_BUDGET_MS) : PRE_BUDGET_MS;
+};
+let preDeadline = null;
+
 function runOnce(phase, hookFile, hookPath, root, input, raw, arg) {
   const fail = reason => refuse(phase, reason);
-  const run = spawnSync('bash', [hookPath, arg], {
-    cwd: root,
-    input: input === 'stdin' ? raw : Buffer.alloc(0),
-    stdio: ['pipe', 'pipe', 'inherit'],
-  });
+  let limits = {};
+  if (phase === 'pre') {
+    preDeadline ??= Date.now() + preBudgetMs();
+    const left = preDeadline - Date.now();
+    if (left <= 0) return fail(`${hookFile} did not finish within the ${preBudgetMs() / 1000} s hook budget`);
+    limits = { timeout: left, killSignal: 'SIGKILL' };
+  }
+  let run;
+  if (input === 'stdin') {
+    run = spawnSync('bash', [hookPath, arg], { cwd: root, input: raw, stdio: 'pipe', maxBuffer: OUTPUT_LIMIT, ...limits });
+  } else {
+    // A NUL byte ends the value early on the way to bash, so it is refused here. Thrown, as before,
+    // so main() reports it: failing closed in pre, printed in post.
+    if (arg.includes('\u0000')) throw new Error(`the tool call's ${input === 'command' ? 'command' : 'file path'} contains a NUL byte`);
+    run = spawnSync('bash', ['-c', VALUE_FROM_STDIN, hookPath], {
+      cwd: root,
+      input: Buffer.concat([Buffer.from(arg, 'utf8'), Buffer.from([0])]),
+      stdio: 'pipe', maxBuffer: OUTPUT_LIMIT,
+      ...limits,
+    });
+  }
+  // The hook's stderr comes back through its own pipe, not run-hook.mjs's: a helper that outlives a
+  // killed hook then holds only that pipe, so Claude Code is not left waiting on run-hook.mjs's output.
+  if (run.stderr && run.stderr.length > 0) process.stderr.write(run.stderr);
+  if (run.error?.code === 'ETIMEDOUT') return fail(`${hookFile} did not finish within the ${preBudgetMs() / 1000} s hook budget`);
   if (run.error) return fail(`could not run ${hookFile}: ${run.error.message}`);
   if (run.stdout && run.stdout.length > 0) process.stdout.write(run.stdout);
   if (run.signal) return fail(`${hookFile} was killed by ${run.signal}`);

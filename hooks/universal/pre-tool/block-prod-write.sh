@@ -41,6 +41,14 @@ json_escape() {
     printf '%s' "$out"
 }
 
+# json_escape of at most 4096 characters of $1. json_escape takes time quadratic in its input, so a
+# 1 MB command would take minutes to log. A longer value is cut and marked with its length (AC-31).
+log_text() {
+    local s="$1"
+    if (( ${#s} > 4096 )); then s="${s:0:4096}...[${#s} chars]"; fi
+    json_escape "$s"
+}
+
 COMMAND="${1:-}"
 APPROVALS="${DEVOPS_APPROVALS:-.workflow/state/approvals.jsonl}"
 
@@ -71,11 +79,23 @@ PROD_PATTERNS=(
     "railway up"
 )
 
+# Whether text $3 matches extended regex $2, with grep flags $1. The text goes through a pipe, not a
+# here-string: bash 3.2 writes a here-string to a temp file, and a temp file it cannot create would
+# read as no match. grep's own status decides (PIPESTATUS, so the printf's SIGPIPE when grep -q quits
+# early is ignored): 0 matches, 1 does not, anything else blocks (AC-31).
+matches() {
+    local status=0
+    printf '%s\n' "$3" | grep -q "$1" -e "$2" || status=${PIPESTATUS[1]}
+    [[ "$status" == 0 ]] && return 0
+    [[ "$status" == 1 ]] && return 1
+    echo "DevOPs PROD BLOCK: grep failed with status $status while checking the command -- failing closed" >&2
+    exit 2
+}
+
 # Check if command matches any production pattern
 matched=""
 for pattern in "${PROD_PATTERNS[@]}"; do
-    # Case-insensitive: SQL keywords and CLI names are often typed in either case.
-    if echo "$COMMAND" | grep -qiE "$pattern"; then
+    if matches -iE "$pattern" "$COMMAND"; then
         matched="$pattern"
         break
     fi
@@ -93,15 +113,16 @@ fi
 # without jq nothing is approved.
 if [[ -f "$APPROVALS" ]]; then
     now="$(date -u +%s)"
-    if jq -nRe --arg command "$COMMAND" --argjson now "$now" '
+    # The command comes on stdin as --rawfile, not argv, so a long command is still compared (AC-31).
+    if printf '%s' "$COMMAND" | jq -nRe --rawfile command /dev/stdin --argjson now "$now" '
         [inputs | fromjson? | objects
          | select((.ts | type) == "number" and .ts >= ($now - 300) and .ts <= $now
                   and .command == $command)]
-        | length > 0' < "$APPROVALS" > /dev/null 2>&1; then
+        | length > 0' "$APPROVALS" > /dev/null 2>&1; then
         mkdir -p .workflow/state
-        # The command is escaped by json_escape, not jq: jq -R reads per line (a newline splits the
+        # The command is escaped by log_text (json_escape of at most 4096 characters), not jq: jq -R reads per line (a newline splits the
         # value into two JSON strings), and the fallback used to pass the text through unescaped (#426).
-        printf '{"ts":%s,"event":"prod_action_approved","command":"%s"}\n' "$now" "$(json_escape "$COMMAND")" >> .workflow/state/events.jsonl
+        printf '{"ts":%s,"event":"prod_action_approved","command":"%s"}\n' "$now" "$(log_text "$COMMAND")" >> .workflow/state/events.jsonl
         exit 0
     fi
 fi
@@ -131,6 +152,6 @@ EOF
 # Log the block
 mkdir -p .workflow/state
 printf '{"ts":%s,"event":"prod_write_blocked","command":"%s","pattern":"%s"}\n' \
-    "$(date -u +%s)" "$(json_escape "$COMMAND")" "$(json_escape "$matched")" >> .workflow/state/events.jsonl
+    "$(date -u +%s)" "$(log_text "$COMMAND")" "$(json_escape "$matched")" >> .workflow/state/events.jsonl
 
 exit 2

@@ -37,6 +37,14 @@ json_escape() {
     printf '%s' "$out"
 }
 
+# json_escape of at most 4096 characters of $1, for the event log: json_escape takes time quadratic
+# in its input, so a longer value is cut and marked with its length (AC-31).
+log_text() {
+    local s="$1"
+    if (( ${#s} > 4096 )); then s="${s:0:4096}...[${#s} chars]"; fi
+    json_escape "$s"
+}
+
 # Sensitive path patterns (file basenames or path fragments)
 PATTERNS=(
     ".env"
@@ -124,7 +132,7 @@ EOF
             # backslash or newline in them must not break the line or add keys (issue #426).
             mkdir -p .workflow/state
             printf '{"ts":%s,"event":"secret_block","path":"%s","operation":"%s"}\n' \
-                "$(date -u +%s)" "$(json_escape "$PATH_ARG")" "$(json_escape "$OPERATION")" >> .workflow/state/events.jsonl
+                "$(date -u +%s)" "$(log_text "$PATH_ARG")" "$(json_escape "$OPERATION")" >> .workflow/state/events.jsonl
             secret_restore_case "$had_case"; return 2
         fi
     done

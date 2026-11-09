@@ -72,15 +72,17 @@ A pre or post hook is named as
 tool call that Claude Code sends on stdin and gives the hook the input it takes:
 
 - `stdin`: the hook gets `--payload-stdin` and the raw payload bytes;
-- `command`: the hook gets `tool_input.command` as one argument;
+- `command`: the hook gets `tool_input.command` as its one argument (`$1`);
 - `file`: the hook runs once for each distinct non-empty one of `tool_input.file_path`,
   `tool_input.notebook_path`, `tool_input.path` and `tool_response.filePath`, with that string as
-  its one argument. For `pre`, the first non-zero result decides.
+  its one argument (`$1`). For `pre`, the first non-zero result decides.
 
 A call whose field is absent or empty has nothing to check: the runner exits 0 without
 running the hook. The runner is Node only, with no dependencies, and runs each hook with
-`bash` and no shell, so the argument is never parsed by one. It runs only the hook names
-in its own allowlist.
+`bash`. For `command` and `file` the value goes to bash on stdin, not on argv, so a command
+longer than one argument (128 KB on Linux) is still decided: bash sets `$1` from it and sources the
+hook, so `$0` is still the hook's path. A value holding a NUL byte cannot go that way, so a `pre`
+call with one fails closed with exit 2. The runner only runs the hook names in its own allowlist.
 
 A payload with no `tool_input` (or a `null` one) is a missing field, not an empty call. For a
 `pre` hook the runner writes one line to stderr, `HOOK: warning: tool_input is missing from the
@@ -195,7 +197,16 @@ These two hooks require Node (the repository supports `>=22.12.0`) and an adjace
 `graph-command-classifier.mjs`. Selecting either graph hook through
 `analyzer/install.ts` copies its required companion to `.claude/hooks/`; a
 missing companion fails installation. Missing/unrunnable helpers and invalid
-responses refuse hook invocation. Dry-run writes nothing to the target.
+responses refuse hook invocation. A command longer than 4 MiB, or holding more than 4096 words or
+256 commands, is refused with the reason `command exceeds parser bounds`: the classifier's analysis is
+quadratic in the words of one command, and a hook that outlasts Claude Code's hook timeout lets the call
+through, so the bound keeps every decision fast (specs/release/npm-package.md AC-31).
+
+`run-hook.mjs` gives the pre hooks of one tool call 30 seconds together. When they run out, it stops
+the hook and blocks the call (exit 2, "did not finish within the 30 s hook budget"), because Claude Code
+lets a call through when a hook outlasts its own hook timeout. `DEVOPS_HOOK_BUDGET_MS` can lower the
+budget, never raise it.
+Dry-run writes nothing to the target.
 Installing the files does not register them with every agent or tool.
 
 Arbitrary script contents, aliases/functions and generated programs are outside

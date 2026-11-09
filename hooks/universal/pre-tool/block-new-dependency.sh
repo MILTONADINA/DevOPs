@@ -16,8 +16,9 @@ COMMAND="${1:-}"
 CLASSIFIER="$(dirname -- "${BASH_SOURCE[0]}")/new-dependency-classifier.mjs"
 
 # exit 0 = allow, exit 2 = block (message on stderr); any other status is a fault.
+# The command goes on stdin, not argv, so a command longer than an argument is still checked (AC-31).
 status=0
-node "$CLASSIFIER" "$COMMAND" || status=$?
+printf '%s' "$COMMAND" | node "$CLASSIFIER" --stdin || status=$?
 case "$status" in
     0) exit 0 ;;
     2) exit 2 ;;

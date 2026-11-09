@@ -19,7 +19,7 @@ const source = readFileSync(CLASSIFIER, 'utf8');
 const start = source.indexOf('function tokenize(text) {');
 const end = source.indexOf('// Program position is ONE computed thing', start);
 assert.ok(start >= 0 && end > start, 'locate the production tokenizer');
-const tokenize = runInNewContext('const MAX_TEXT = 64 * 1024;\n' + source.slice(start, end) + '\ntokenize;');
+const tokenize = runInNewContext(`${source.match(/^const MAX_(COMMAND|COMMANDS|WORDS) = .*$/gm).join('\n')}\n${source.slice(start, end)}\ntokenize;`);
 
 const V = ['ver', 'cel'].join('');
 const D = ' deploy --prod';
