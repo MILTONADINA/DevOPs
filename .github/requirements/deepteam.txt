@@ -381,9 +381,9 @@ deepeval==4.2.6 \
     --hash=sha256:12e56ae25f19d0e3674c27ae0189d2d8d6fcbd250e2a781168f5046c528c608a \
     --hash=sha256:d3af4b9e36d46ad6c7fa640a423ee566dcb7e05f3ccc72516a821825e5d4fb4f
     # via deepteam
-deepteam==1.0.9 \
-    --hash=sha256:d44fb6bc34f02e4ac17cce459bcb9d1590c5589337597b609c4442578336e641 \
-    --hash=sha256:e1fd00e476baa3e25fc80f080a25bee743089b5d0bb92800ee8ff666752c68d7
+deepteam==1.0.10 \
+    --hash=sha256:aad9a3c8bd6cdcb5b34987bcb0f0107b5071ae0bd8392c0fa6790111ced3806b \
+    --hash=sha256:ab818f5f3fd7924104e11e3e3951df8a19a6d029e305be55339b477b99605a76
     # via -r .github/requirements/deepteam.in
 distro==1.9.0 \
     --hash=sha256:2fa77c6fd8940f116ee1d6b94a2f90b13b5ea8d019b98bc8bafdcabcdd9bdbed \
@@ -1471,9 +1471,9 @@ rich==14.3.4 \
     # via
     #   deepeval
     #   typer
-sentry-sdk==2.70.0 \
-    --hash=sha256:27e4b512f47be93136645dbe8f02d430473ee73a389ce430b2b7104baa66cf75 \
-    --hash=sha256:89600e8bb5fc5239cad5c4434217f453204f2207ad29399ea58947460b37a62e
+sentry-sdk==2.74.0 \
+    --hash=sha256:40b205af015649df3ec9986e057ce24ce85956bee3fb75efa72c93aa7036bdff \
+    --hash=sha256:dd91d75aacaef636006b579ac3ddb2fdbc9dce35f00f4b353b6b1b110c6b256a
     # via -r .github/requirements/deepteam.in
 setuptools==84.2.1 \
     --hash=sha256:3ff8b3b5492a0aa66960f4419365a86b84e013070d4313e4d4a6894f5d64d6bc \
