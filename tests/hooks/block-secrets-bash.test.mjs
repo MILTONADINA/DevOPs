@@ -85,8 +85,9 @@ for (const command of ALLOWED) {
 
 // A long command (a big heredoc) must still be decided well inside a hook timeout: the split is one
 // awk pass and the check runs in-process, so this takes well under a second, not minutes.
-const LONG = Array.from({ length: 15000 }, (_, i) => `word${i}`).join(' ');
-test(`block-secrets-bash decides a 15000-word command quickly (${SPEC}#ac-30)`, () => {
+// About 89 KB: under Linux's 128 KB limit on one argument (MAX_ARG_STRLEN), which this hook gets its command in.
+const LONG = Array.from({ length: 10000 }, (_, i) => `word${i}`).join(' ');
+test(`block-secrets-bash decides a 10000-word command quickly (${SPEC}#ac-30)`, () => {
   const started = process.hrtime.bigint();
   assert.equal(decide(`echo ${LONG}`), 0);
   assert.equal(decide(`echo ${LONG} ; cat .env`), 2);

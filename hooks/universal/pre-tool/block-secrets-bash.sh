@@ -18,7 +18,8 @@
 
 CMD="${1:-}"
 # No dirname: the directory comes from $0 itself, so the only programs this hook needs are awk and tr.
-case "$0" in */*) HERE="${0%/*}" ;; *) HERE=. ;; esac
+HERE=.
+[[ "$0" == */* ]] && HERE="${0%/*}"
 # shellcheck source=block-secrets.sh
 source "$HERE/block-secrets.sh" || exit 2
 set +e
@@ -32,10 +33,9 @@ command -v awk >/dev/null 2>&1 || fail_closed "awk is not on PATH, so the comman
 check_word() {
     local w="$1"
     [[ -z "$w" ]] && return 0
-    case "$w" in
-        *[./]*|*[Ii][Dd]_*|*[Ss][Ee][Rr][Vv][Ii][Cc][Ee]-[Aa][Cc][Cc][Oo][Uu][Nn][Tt]*) ;;
-        *) return 0 ;;
-    esac
+    if [[ "$w" != *[./]* && "$w" != *[Ii][Dd]_* && "$w" != *[Ss][Ee][Rr][Vv][Ii][Cc][Ee]-[Aa][Cc][Cc][Oo][Uu][Nn][Tt]* ]]; then
+        return 0
+    fi
     secret_check "$w" run || exit 2
 }
 
@@ -91,18 +91,17 @@ SPLIT="$(printf '%s' "$CMD" | LC_ALL=C awk '
 
 status=""
 while IFS= read -r line; do
-    case "$line" in
-        W*)
-            w="${line#W}"
-            if [[ "$w" == *[[:space:]]* ]]; then
-                # A quoted message is skipped, but not a command substitution inside one.
-                if [[ "$w" == *'$('* || "$w" == *'`'* ]]; then check_pieces "$w"; fi
-            else
-                check_word "$w"
-            fi
-            ;;
-        S0|S1) status="$line" ;;
-    esac
+    if [[ "$line" == W* ]]; then
+        w="${line#W}"
+        if [[ "$w" == *[[:space:]]* ]]; then
+            # A quoted message is skipped, but not a command substitution inside one.
+            if [[ "$w" == *'$('* || "$w" == *'`'* ]]; then check_pieces "$w"; fi
+        else
+            check_word "$w"
+        fi
+    elif [[ "$line" == S0 || "$line" == S1 ]]; then
+        status="$line"
+    fi
 done <<< "$SPLIT"
 
 [[ -n "$status" ]] || fail_closed "awk gave no result for the command"
