@@ -1,5 +1,22 @@
 # Upgrading DevOPs
 
+## Upgrading from 0.8.1 to 0.8.2
+
+A patch release of hook fixes, including a security fix in `block-rm-rf.sh` and `block-prod-write.sh`. Refresh the project so `.claude/hooks/` and `.claude/settings.json` get the fixed copies and the new hook:
+
+```sh
+npx @miltonadina/devops@0.8.2 version
+npx @miltonadina/devops@0.8.2 init --dry-run
+npx @miltonadina/devops@0.8.2 init
+```
+
+Nothing to change by hand. What you may notice:
+
+- A new pre-tool hook, `block-secrets-bash.sh`, checks Bash commands for secret paths such as `.env` and `~/.ssh/id_rsa`, and `block-secrets.sh` now also checks Grep and Glob calls. A quoted message that holds both `$(` and a secret file name is blocked too (`docs/HOOKS.md`).
+- A Bash command longer than one argument (128 KB on Linux) is now decided instead of blocked. The pre hooks of one tool call get 30 seconds together, and a call whose hooks run out of time is blocked.
+- The deploy and sealed-ref hooks (Agile Graph pipeline only) still refuse a command over 4096 words or 256 commands.
+- `init` replaces `.mcp.json` and `.claude/settings.json` whole through a temp file and keeps their indentation and permissions.
+
 ## Upgrading from 0.8.0 to 0.8.1
 
 A patch release of hook fixes. Refresh the project so `.claude/hooks/` gets the fixed copies:
