@@ -265,7 +265,7 @@ scripts off.
 
 ### AC-8
 
-WHEN `devops init` runs with `@agile-graph/engine` 0.6.0 installed on a supported Node, THE INSTALLER SHALL register the server and copy the shipped pins, and THE SHIPPED PINS SHALL be the cloud-default tool hashes that engine 0.6.0 reports. WHEN `devops init` runs with an engine version that `ENGINE_VERSIONS` does not list, such as 0.2.0, whose tools differ from those pins, THE INSTALLER SHALL write nothing and print one line.
+WHEN `devops init` runs with `@agile-graph/engine` 0.6.0 or 0.7.0 installed on a supported Node, THE INSTALLER SHALL register the server and copy the shipped pins, and THE SHIPPED PINS SHALL be the cloud-default tool hashes that engines 0.6.0 and 0.7.0 report. WHEN `devops init` runs with an engine version that `ENGINE_VERSIONS` does not list, such as 0.2.0, whose tools differ from those pins, THE INSTALLER SHALL write nothing and print one line.
 
 **Verified by:** `tests/agile-graph-link.test.mjs` (`#ac-8`); the CI job `agile-graph-link` (REQ-7) checks the same hashes against the live engine.
 
