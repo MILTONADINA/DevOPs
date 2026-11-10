@@ -165,10 +165,10 @@ test(`every listed engine version links (${SPEC}#ac-3)`, () => {
 });
 
 // The fixture is what `agile-graph -C <project> mcp-tools --client cloud --hashes` printed for
-// @agile-graph/engine 0.6.0 and 0.7.0 as published on npm. CI's
+// @agile-graph/engine 0.6.0, 0.7.0 and 0.8.0 as published on npm. CI's
 // agile-graph-link job checks the same hashes against the live engine (REQ-7).
-test(`engines 0.6.0 and 0.7.0 link, and 0.4.0 does not because its tools differ from the pins (${SPEC}#ac-8)`, () => {
-  for (const version of ['0.6.0', '0.7.0']) {
+test(`engines 0.6.0, 0.7.0 and 0.8.0 link, and 0.4.0 does not because its tools differ from the pins (${SPEC}#ac-8)`, () => {
+  for (const version of ['0.6.0', '0.7.0', '0.8.0']) {
     withSetup(setup => {
       setup.installEngine('project', version);
       assert.equal(link(setup).status, 'linked', version);
@@ -179,13 +179,13 @@ test(`engines 0.6.0 and 0.7.0 link, and 0.4.0 does not because its tools differ 
     const before = listing(setup.projectRoot);
     const result = link(setup);
     assert.equal(result.status, 'skipped');
-    assert.match(result.lines[0], /links only 0\.6\.0, 0\.7\.0; not linked/);
+    assert.match(result.lines[0], /links only 0\.6\.0, 0\.7\.0, 0\.8\.0; not linked/);
     assert.deepEqual(listing(setup.projectRoot), before, 'nothing written');
   });
 });
 
-test(`the shipped pins are the cloud-default tool hashes engines 0.6.0 and 0.7.0 report (${SPEC}#ac-8)`, () => {
-  for (const version of ['0.6.0', '0.7.0']) {
+test(`the shipped pins are the cloud-default tool hashes engines 0.6.0, 0.7.0 and 0.8.0 report (${SPEC}#ac-8)`, () => {
+  for (const version of ['0.6.0', '0.7.0', '0.8.0']) {
     const reported = JSON.parse(readFileSync(path.join(ROOT, `tests/fixtures/agile-graph/cloud-hashes-${version}.json`), 'utf8'));
     assert.deepEqual(JSON.parse(readFileSync(path.join(ROOT, PIN_SOURCE), 'utf8')), reported, version);
   }
