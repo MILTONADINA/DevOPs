@@ -410,7 +410,7 @@ function main(argv) {
   const isCommand = (fromStdin ? words[0] : words[1]) === '--command';
   let target;
   try {
-    target = fromStdin ? fs.readFileSync(0, 'utf8') : words[0];
+    target = fromStdin ? fs.readFileSync(0).toString('utf8') : words[0];
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
     process.stderr.write(`DevOPs GATE BLOCK: protect-gates could not read its input: ${reason} -- failing closed\n`);
