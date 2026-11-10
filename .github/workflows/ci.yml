@@ -122,7 +122,9 @@ jobs:
 
   validate:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    # The root suite alone takes 6 to 9 minutes on hosted runners, so a
+    # 10-minute cap cancelled slow-but-passing runs (#449).
+    timeout-minutes: 20
     steps:
       # No persisted token: this job only fetches the public repository, and checkout v6+
       # links a persisted token through an includeIf that the residue step refuses.

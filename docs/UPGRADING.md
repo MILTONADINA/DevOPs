@@ -1,5 +1,21 @@
 # Upgrading DevOPs
 
+## Upgrading from 0.9.0 to 0.9.1
+
+A patch release. Refresh the project so `.claude/hooks/` gets the fixed hook copies:
+
+```sh
+npx @miltonadina/devops@0.9.1 version
+npx @miltonadina/devops@0.9.1 init --dry-run
+npx @miltonadina/devops@0.9.1 init
+```
+
+Nothing to change by hand. What changes:
+
+- The hook helpers that read a long command from stdin now read it as bytes and decode it themselves. On some Linux Node 24 hosts the old read could crash the helper; the hook still blocked (it fails closed), but with no reason. Decisions are unchanged.
+- `runtime/` uses `@anthropic-ai/sdk` 0.137.0.
+- CI's secret scan uses `gitleaks/gitleaks-action` 3.0.0. This only affects this repository's own CI, not installed projects.
+
 ## Upgrading from 0.8.2 to 0.9.0
 
 A minor release that links newer Agile Graph engines and updates dependencies. Refresh the project:
