@@ -30,16 +30,17 @@ const APPLIED = [
   ['root', 'acorn', '8.19.0'],
   ['root', 'tsx', '4.23.15'],
   ['runtime', '@huggingface/transformers', '4.3.2'],
-  ['runtime', '@supabase/supabase-js', '2.118.0'],
+  ['runtime', '@supabase/supabase-js', '2.119.0'],
   ['runtime', 'axios', '1.21.0'],
-  ['runtime', '@cloudflare/workers-types', '5.20261102.1'],
+  ['runtime', '@cloudflare/workers-types', '5.20261109.1'],
   ['runtime', '@types/node', '22.20.5'],
-  ['runtime', '@vitest/coverage-v8', '5.0.5'],
-  ['runtime', 'vitest', '5.0.5'],
+  ['runtime', '@vitest/coverage-v8', '5.1.0'],
+  ['runtime', 'vitest', '5.1.0'],
+  ['runtime', 'fastify', '5.12.8'],
   ['runtime', 'prettier', '3.9.10'],
-  ['runtime', 'supabase', '2.122.0'],
+  ['runtime', 'supabase', '2.122.1'],
   ['runtime', 'tsx', '4.23.15'],
-  ['runtime', 'wrangler', '4.156.1'],
+  ['runtime', 'wrangler', '4.158.0'],
 ];
 for (const [dir, name, want] of APPLIED) {
   test(`${dir} lockfile applies the issue #209 update ${name}@${want}`, () => {
