@@ -8,6 +8,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.9.0] — 2026-11-10
+
 ### Added
 
 - `devops init` links `@agile-graph/engine` 0.8.0 as well as 0.6.0 and 0.7.0. Engine 0.8.0's cloud-default tool definitions match the shipped pins exactly, so the pin file is unchanged (#444, specs/graph/agile-graph-link.md AC-8).
