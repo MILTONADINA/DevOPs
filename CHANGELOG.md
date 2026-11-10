@@ -8,6 +8,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Security
+
+- The CI secret scan moves to `gitleaks/gitleaks-action` 3.0.0, still pinned by commit SHA. The release only moves the action from the Node 20 to the Node 24 runtime (Node 20 leaves GitHub-hosted runners on 2026-09-16); inputs, outputs and behaviour are unchanged, and `GITLEAKS_VERSION` stays pinned at 8.24.3.
+
 ## [0.9.0] — 2026-11-10
 
 ### Added

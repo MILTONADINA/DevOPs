@@ -1,7 +1,7 @@
 # governance/gitleaks-ci.toml
 #
 # Dedicated config for the automated CI gitleaks scan (the `gitleaks`
-# job's `gitleaks/gitleaks-action@v2` step in
+# job's `gitleaks/gitleaks-action@v3` step in
 # .github/workflows/security-scan.yml), wired via that step's
 # GITLEAKS_CONFIG env var. Gitleaks-action honors GITLEAKS_CONFIG as an
 # explicit config path with the same precedence as the gitleaks CLI's
