@@ -47,6 +47,10 @@ Bump `@anthropic-ai/sdk` from `^0.39.0` to `^0.99.0` (resolved to `0.99.0`).
 - Any deprecation warning surfaced by the SDK at runtime → investigate
 - Any test failure attributable to SDK behavior change → investigate
 
+## Update: 0.137.0
+
+The pin moved to `^0.137.0` (resolved `0.137.0`), re-verified as this ADR requires. The runtime still uses only `new Anthropic({ apiKey })`, `messages.countTokens`, the `Anthropic.MessageParam`, `Anthropic.Tool`, `Anthropic.Usage` and `Anthropic.TextBlock` types, and `messages.create` in the eval harness. The SDK CHANGELOG for 0.100.0 to 0.137.0 lists no breaking change to these; typecheck, lint and the runtime suite pass without source changes. The SDK declares no `engines.node` and the runtime needs Node `>=22.12.0`. It adds `@opentelemetry/api` as a dependency.
+
 ## Cross-references
 
 - `specs/meta/session-15-v0.3x-2a-code-gaps.md` REQ-S15-2a-3
