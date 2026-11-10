@@ -8,6 +8,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Hook helpers read a long command from stdin as a Buffer and decode it themselves, instead of with `fs.readFileSync(0, 'utf8')`. On Node 24.22.2 CI runners that call intermittently aborted the helper with glibc heap corruption (`free(): invalid next size`, exit 134), which failed the AC-31 1 MB tests in `tests/hooks/long-command.test.mjs` although the hooks blocked correctly (they fail closed). A test now rejects the utf8 shortcut in the hooks. Refs #449, which stays open for the one-off `validate` hang (specs/release/npm-package.md AC-31).
+
 ### Changed
 
 - `runtime/` updates `@anthropic-ai/sdk` from 0.99.0 to 0.137.0. The CHANGELOG between the two versions lists no breaking change to the client constructor or `messages.countTokens` that the runtime uses; no source change was needed. The SDK now depends on `@opentelemetry/api` (new in the lockfile). Supersedes #410.

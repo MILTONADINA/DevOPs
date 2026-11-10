@@ -304,7 +304,7 @@ export function classify(command, dir = process.cwd(), depth = 0, moved = false)
 
 if (import.meta.url === `file://${process.argv[1]}` || process.argv[1]?.endsWith('new-dependency-classifier.mjs')) {
   // --stdin reads the command from stdin, so a command longer than an argument can be checked.
-  const command = process.argv[2] === '--stdin' ? fs.readFileSync(0, 'utf8') : process.argv[2] ?? '';
+  const command = process.argv[2] === '--stdin' ? fs.readFileSync(0).toString('utf8') : process.argv[2] ?? '';
   const found = classify(command, fs.realpathSync(process.cwd()));
   if (found.length) {
     const first = found[0];

@@ -6,7 +6,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -274,4 +274,19 @@ test(`block-rm-rf.sh decides a command with many paths: an outside target still 
   const message = Array.from({ length: 400 }, (_, i) => `word${i}`).join(' ');
   const allowed = runner(['pre', 'block-rm-rf.sh', 'command'], { root: dir, input: bashPayload(`rm -rf dist && git commit -m "${message}"`) });
   assert.equal(allowed.status, 0, allowed.stderr.slice(0, 300));
+});
+
+// Issue #449: on Node 24.22.2 / Linux CI runners, helpers that read a ~1 MB command with
+// fs.readFileSync(0, 'utf8') intermittently died with glibc heap corruption ("free(): invalid next
+// size", exit 134) mid-read. run-hook.mjs reads the same bytes with the Buffer form of
+// readFileSync(0) and never aborted, so every hook helper reads a Buffer and decodes it itself.
+test(`no hook reads stdin through readFileSync's utf8 shortcut (${SPEC}#ac-31, issue #449)`, () => {
+  const offenders = [];
+  for (const dir of [path.join(ROOT, 'hooks/universal/pre-tool'), path.join(ROOT, 'hooks/claude-code')]) {
+    for (const name of readdirSync(dir)) {
+      if (!/\.(mjs|sh)$/.test(name)) continue;
+      if (/readFileSync\(\s*0\s*,/.test(readFileSync(path.join(dir, name), 'utf8'))) offenders.push(name);
+    }
+  }
+  assert.deepEqual(offenders, []);
 });
