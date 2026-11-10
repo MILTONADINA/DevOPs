@@ -1,5 +1,20 @@
 # Upgrading DevOPs
 
+## Upgrading from 0.8.2 to 0.9.0
+
+A minor release that links newer Agile Graph engines and updates dependencies. Refresh the project:
+
+```sh
+npx @miltonadina/devops@0.9.0 version
+npx @miltonadina/devops@0.9.0 init --dry-run
+npx @miltonadina/devops@0.9.0 init
+```
+
+Nothing to change by hand. What you may notice:
+
+- `init` now links a project that has `@agile-graph/engine` 0.7.0 or 0.8.0 installed, as well as 0.6.0. The shipped tool-hash pins are unchanged, because both engines report the same cloud-default tools as 0.6.0.
+- Runtime and test dependencies have non-major updates.
+
 ## Upgrading from 0.8.1 to 0.8.2
 
 A patch release of hook fixes, including a security fix in `block-rm-rf.sh` and `block-prod-write.sh`. Refresh the project so `.claude/hooks/` and `.claude/settings.json` get the fixed copies and the new hook:
