@@ -8,6 +8,21 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.9.1] — 2026-11-10
+
+### Fixed
+
+- CI's `validate` job gets 20 minutes instead of 10. It runs the whole root test suite, which takes 6 to 9 minutes on hosted runners, so a slow runner was cancelled at the cap while the tests were still passing. That was the `validate` "hang" in #449 (no test hung; the slowest were two publication tests at 2 to 3 minutes each).
+- Hook helpers read a long command from stdin as a Buffer and decode it themselves, instead of with `fs.readFileSync(0, 'utf8')`. On Node 24.22.2 CI runners that call intermittently aborted the helper with glibc heap corruption (`free(): invalid next size`, exit 134), which failed the AC-31 1 MB tests in `tests/hooks/long-command.test.mjs` although the hooks blocked correctly (they fail closed). A test now rejects the utf8 shortcut in the hooks. Refs #449, which stays open for the one-off `validate` hang (specs/release/npm-package.md AC-31).
+
+### Changed
+
+- `runtime/` updates `@anthropic-ai/sdk` from 0.99.0 to 0.137.0. The CHANGELOG between the two versions lists no breaking change to the client constructor or `messages.countTokens` that the runtime uses; no source change was needed. The SDK now depends on `@opentelemetry/api` (new in the lockfile). Supersedes #410.
+
+### Security
+
+- The CI secret scan moves to `gitleaks/gitleaks-action` 3.0.0, still pinned by commit SHA. The release only moves the action from the Node 20 to the Node 24 runtime (Node 20 leaves GitHub-hosted runners on 2026-09-16); inputs, outputs and behaviour are unchanged, and `GITLEAKS_VERSION` stays pinned at 8.24.3.
+
 ## [0.9.0] — 2026-11-10
 
 ### Added

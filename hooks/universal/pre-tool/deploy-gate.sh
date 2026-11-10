@@ -31,7 +31,7 @@ set -euo pipefail
 if [[ "${1:-}" == --payload-stdin ]]; then
     COMMAND="$(node -e '
         let payload;
-        try { payload = JSON.parse(require("fs").readFileSync(0, "utf8")); } catch { process.exit(1); }
+        try { payload = JSON.parse(require("fs").readFileSync(0).toString("utf8")); } catch { process.exit(1); }
         const command = payload?.tool_input?.command;
         if (command === undefined || command === null) process.exit(0);
         if (typeof command !== "string") process.exit(1);
