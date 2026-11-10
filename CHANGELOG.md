@@ -8,6 +8,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- `runtime/` updates `@anthropic-ai/sdk` from 0.99.0 to 0.137.0. The CHANGELOG between the two versions lists no breaking change to the client constructor or `messages.countTokens` that the runtime uses; no source change was needed. The SDK now depends on `@opentelemetry/api` (new in the lockfile). Supersedes #410.
+
 ### Security
 
 - The CI secret scan moves to `gitleaks/gitleaks-action` 3.0.0, still pinned by commit SHA. The release only moves the action from the Node 20 to the Node 24 runtime (Node 20 leaves GitHub-hosted runners on 2026-09-16); inputs, outputs and behaviour are unchanged, and `GITLEAKS_VERSION` stays pinned at 8.24.3.
