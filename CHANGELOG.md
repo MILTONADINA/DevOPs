@@ -12,6 +12,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- CI's `validate` job gets 20 minutes instead of 10. It runs the whole root test suite, which takes 6 to 9 minutes on hosted runners, so a slow runner was cancelled at the cap while the tests were still passing. That was the `validate` "hang" in #449 (no test hung; the slowest were two publication tests at 2 to 3 minutes each).
 - Hook helpers read a long command from stdin as a Buffer and decode it themselves, instead of with `fs.readFileSync(0, 'utf8')`. On Node 24.22.2 CI runners that call intermittently aborted the helper with glibc heap corruption (`free(): invalid next size`, exit 134), which failed the AC-31 1 MB tests in `tests/hooks/long-command.test.mjs` although the hooks blocked correctly (they fail closed). A test now rejects the utf8 shortcut in the hooks. Refs #449, which stays open for the one-off `validate` hang (specs/release/npm-package.md AC-31).
 
 ### Changed
